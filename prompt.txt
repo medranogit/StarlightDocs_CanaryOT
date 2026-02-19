@@ -1,0 +1,195 @@
+Atue como um Engenheiro de Software Sênior e Redator Técnico especializado em servidores Open Tibia (TFS/OTServ). Sua tarefa é criar uma documentação técnica detalhada para um script Lua fornecido.
+
+A documentação deve ser formatada em **Markdown/MDX** compatível com o framework **Starlight (Astro)**, utilizando componentes específicos.
+
+### 1. Regras de Formatação (Starlight Components)
+Você deve utilizar os seguintes componentes importados:
+- **Alertas/Dicas**: Use `<Aside type="tip">`, `<Aside type="caution">`, `<Aside type="note">` ou `<Aside type="danger">`. Não use blockquotes simples (>).
+- **Caminhos de Arquivo**: Use `<Card title="Caminho Original" icon="document">` para exibir o caminho do arquivo.
+- **Diagramas**: Use blocos de código `mermaid` para desenhar o fluxo lógico do script (graph TD).
+
+### 2. Estrutura Obrigatória do Documento
+O documento deve seguir estritamente esta ordem:
+
+1.  **Frontmatter**:
+    ```yaml
+    ---
+    title: NomeDoArquivo.lua
+    description: Uma frase resumindo o que o script faz.
+    ---
+    ```
+2.  **Imports**:
+    `import { Aside, Card, CardGrid } from '@astrojs/starlight/components';`
+3.  **🛠️ Informações do Arquivo**:
+    - Breve descrição do propósito do arquivo.
+    - Componente `<Card>` com o caminho do arquivo.
+    - Um `<Aside type="tip">` com uma curiosidade ou dica rápida sobre o arquivo.
+4.  **📄 Visão Geral do Código**:
+    - **Resumo Executivo**: Explicação técnica de alto nível.
+    - **Fluxo de Execução**: Um diagrama Mermaid mostrando a lógica (ex: If condition -> Then action).
+5.  **Análise Detalhada**:
+    - Explique as funções principais (`onSpeak`, `onUse`, etc.).
+    - Explique tabelas de configuração ou constantes importantes.
+6.  **Alertas/Observações Técnicas**:
+    - Use `<Aside type="caution">` para potenciais bugs, loops infinitos ou configurações perigosas.
+
+### 3. Tom de Voz
+- Técnico, porém acessível.
+- Idioma: **Português (Brasil)**.
+- Foco em explicar o "porquê" e o "como", não apenas traduzir o código.
+- Crie topicos de funções globais, locais e Métodos da Classe caso exista no codigo.
+- Adicione sempre um topico do fluxo de execução, para entender onde e chamado onde nao e, etc assim consigo entender a estrutura do projeto.
+
+Analise o bank_system.mdx para ter uma base, apos isso faça a documentação do help.lua
+
+data\chatchannels\scripts\help.lua
+data\npclib\npc_system\bank_system.mdx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+bank_system.mdx:
+
+
+
+
+
+
+
+
+
+
+
+---
+title: bank_system.lua
+description: "Documentação técnica do sistema de banco"
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Este arquivo implementa toda a lógica bancária para NPCs. Ele permite que os jogadores realizem operações de saldo, depósito, saque, transferência e troca de moedas (Gold/Platinum/Crystal), tanto para contas pessoais quanto para contas de guilda.
+
+<Card title="Caminho Original" icon="document">
+  `server/data/npclib/npc_system/bank_system.lua`
+</Card>
+
+<Aside type="tip">
+  Este sistema utiliza tópicos de conversa (`npcHandler:setTopic`) para gerenciar o estado da transação (ex: esperando confirmação de "yes" para um depósito).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+O `bank_system.lua` estende a classe `Npc` com métodos robustos para processar comandos bancários. Ele gerencia o fluxo de conversa, validação de valores, verificação de capacidade (cap) e slots na mochila, além de gerar recibos físicos para transações de guilda.
+
+### Fluxo de Execução
+
+Geralmente, um script de NPC bancário chama estas funções dentro do callback `onCreatureSay`.
+
+```mermaid
+graph TD
+    A[Player diz algo] -->|onCreatureSay| B[Script do NPC]
+    B -->|Chama| C[Npc:parseBankMessages]
+    B -->|Chama| D[Npc:parseBank]
+    B -->|Chama| E[Npc:parseGuildBank]
+    
+    D -.->|Lógica| F{Verifica Tópico}
+    F -->|Topic 0| G[Inicia Transação]
+    F -->|Topic > 0| H[Confirma Transação]
+```
+
+### Análise de Variáveis Locais
+
+Estas variáveis são usadas internamente para manter o estado das conversas e formatação.
+
+*   `count`: Tabela (`{playerId = number}`). Armazena temporariamente o valor monetário informado pelo jogador (para depósito, saque ou transferência) enquanto aguarda confirmação.
+*   `transfer`: Tabela (`{playerId = string}`). Armazena o nome do destinatário (jogador ou guilda) durante uma operação de transferência.
+*   `receiptFormat`: String. Define o layout do texto escrito nos recibos de guilda (Data, Tipo, Valor, Dono, Destinatário).
+
+### Análise de Funções Locais
+
+Estas funções são auxiliares e visíveis apenas dentro deste arquivo.
+
+#### `GetReceipt(info)`
+Gera um item de recibo (documento) com os detalhes da transação.
+*   **Parâmetros**: `info` (tabela com `type`, `amount`, `owner`, `recipient`, `message`, `success`).
+*   **Retorno**: Objeto `Item` (o recibo criado).
+*   **Uso**: Chamado automaticamente após transações de guilda (depósitos, saques, transferências).
+
+---
+
+### Análise de Funções Globais
+
+#### `NpcBankGreetCallback(npc, creature)`
+Função de callback para limpar o estado temporário quando um jogador cumprimenta o NPC.
+*   **Propósito**: Reseta as tabelas locais `count` e `transfer` para o `playerId` atual, garantindo que dados de conversas anteriores não interfiram na nova interação.
+*   **Uso**: Deve ser registrada no `NpcHandler` como callback de `onGreet`.
+
+---
+
+### Análise de Métodos da Classe NPC
+
+Estas funções estendem a metatabela `Npc`, permitindo que qualquer NPC execute lógica bancária complexa.
+
+#### `Npc:parseBankMessages(message, npc, creature, npcHandler)`
+Processa mensagens informativas e de ajuda.
+*   **Funcionalidade**: Responde a palavras-chave como "job", "help", "balance", "bank account" com explicações pré-definidas.
+*   **Lógica**: Utiliza `npcHandler:sendMessages` com um delay de 3 segundos para evitar spam.
+
+#### `Npc:parseBank(message, npc, creature, npcHandler)`
+O núcleo do sistema bancário pessoal. Gerencia uma máquina de estados complexa baseada em tópicos.
+*   **Operações Suportadas**:
+    *   **Balance**: Informa o saldo com mensagens diferentes dependendo da riqueza do jogador.
+    *   **Deposit**: Aceita "deposit all" ou valores específicos. Valida se o jogador tem o dinheiro.
+    *   **Withdraw**: Aceita valores. Verifica saldo, capacidade (cap) e espaço na mochila. Se o jogador não tiver espaço para todas as moedas, calcula quantas pilhas de Crystal/Platinum/Gold cabem e avisa.
+    *   **Transfer**: Transfere dinheiro para outro jogador. Valida existência do alvo e saldo.
+    *   **Change Gold/Platinum/Crystal**: Troca moedas (ex: 100 Gold -> 1 Platinum).
+*   **Lógica de Tópicos**:
+    *   `Topic 1/2`: Fluxo de Depósito.
+    *   `Topic 6/7`: Fluxo de Saque.
+    *   `Topic 11/12/13`: Fluxo de Transferência.
+    *   `Topic 14-22`: Fluxos de Troca de Moedas (Change).
+
+#### `Npc:parseGuildBank(message, npc, creature, playerId, npcHandler)`
+Gerencia o banco da guilda.
+*   **Requisitos**: O jogador deve ter guilda e, para saques/transferências, deve ser Líder ou Vice-Líder (`getGuildLevel() >= 2`).
+*   **Operações**:
+    *   **Guild Balance**: Mostra o saldo da guilda.
+    *   **Guild Deposit**: Deposita da conta pessoal para a guilda. Gera recibo.
+    *   **Guild Withdraw**: Saque da guilda para o jogador. Gera recibo.
+    *   **Guild Transfer**: Transfere de uma guilda para outra. Gera recibo.
+*   **Lógica de Tópicos**:
+    *   `Topic 122/123`: Depósito.
+    *   `Topic 124/125`: Saque.
+    *   `Topic 126/127/128`: Transferência.
+
+### Exemplo de Uso
+
+Para criar um NPC banqueiro, o script dele (`data/npc/scripts/banker.lua`) seria algo assim:
+
+```lua
+local keywordHandler = KeywordHandler:new()
+local npcHandler = NpcHandler:new(keywordHandler)
+NpcSystem.parseParameters(npcHandler)
+
+function onCreatureSay(npc, creature, type, message)
+    -- Chama as funções de parse definidas no bank_system.lua
+    npcHandler:onCreatureSay(npc, creature, type, message)
+    npc:parseBank(message, npc, creature, npcHandler)
+    npc:parseGuildBank(message, npc, creature, creature:getId(), npcHandler)
+end
+```
