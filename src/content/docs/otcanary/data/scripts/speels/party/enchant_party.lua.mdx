@@ -1,0 +1,472 @@
+---
+title: "Spell - enchant_party.lua"
+description: "Spell de aumento de poder mágico para party sorcerer exclusive"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `enchant_party.lua` |
+| **Localização** | `data/scripts/spells/party/` |
+| **Tipo de Script** | Spell (Instant) |
+| **Tipo** | Party Support (Magic Boost) |
+| **Alvo** | Party Members (Area CIRCLE 5x5) |
+| **Mana Requerida** | 120 Base (Dinâmico) |
+| **Words** | utori mas sio |
+| **Spell ID** | 129 |
+| **Cooldown** | 2s Individual |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Agressivo** | Não |
+| **Self Target** | Sim |
+| **Grupo** | support |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level** | 32 |
+| **Efeito Visual** | CONST_ME_MAGIC_BLUE |
+| **Som de Casting** | SOUND_EFFECT_TYPE_SPELL_ENCHANT_PARTY |
+| **Linhas de Código** | 85 |
+| **Complexidade** | Intermediária |
+
+**Descrição:**
+Spell de enchantment party magic power. Aumenta magic level de membros da party em +1. Condition `CONDITION_ATTRIBUTES` por 2 minutos. Area `CIRCLE5X5`. Mana dinâmica baseada em quantidade de membros: `0.9^(n-1)*120*n`. Distance check `<= 36`. Validação party + members. Range distance 36 squares. Sorcerer exclusive premium level 32. Words: `utori mas sio`. Spell enchant party sorcerer magic boost!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/party/enchant_party.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:name("Enchant Party")
+spell:words("utori mas sio")
+spell:group("support")
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_ENCHANT_PARTY)
+spell:id(129)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(32)
+spell:mana(120)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Enchantment Party - Sorcerer Magic Power Boost**
+
+Este spell oferece aumento de poder mágico para toda party:
+
+1. **Magic Power Boost:**
+   - Condition CONDITION_ATTRIBUTES
+   - CONDITION_PARAM_STAT_MAGICPOINTS +1
+   - Duração: 2 minutos (120 segundos)
+   - Magic level boost party!
+
+2. **Mana Dinâmica Escalável:**
+   - Base: 120 mana
+   - Cálculo: 0.9^(members-1) * 120 * members
+   - Exemplo: 2 members = 120 * 2 = 240 total
+   - Exemplo: 3 members = 0.9 * 120 * 3 = 324 total
+   - Escalagem eficiente!
+
+3. **Area Party CIRCLE 5x5:**
+   - Raio: aproximadamente 5-6 squares
+   - Só afeta membros dentro da distance
+   - Range check ≤ 36 squares!
+
+4. **Party Logic Robusta:**
+   - Validação: party:getMembers()
+   - Inclui leader (membros + 1)
+   - Distance check por membro
+   - Mínimo 2 afetados!
+
+**Uso Típico:**
+```
+Sorcerer lvl 32+ (Premium)
+// Cast "utori mas sio"
+// Sistema obtém party + members
+// Valida distance <= 36
+// Calcula mana dinâmica
+// Aplica condition +1 magic
+// Duração 2 minutos
+// Spell enchant party magic boost!
+```
+
+**Diferencial:** Sorcerer exclusive premium party magic power boost com mana dinâmica escalável!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `enchant_party` oferece aumento de magic level para membros da party com mana dinâmica:
+
+- **Tipo:** Party Support (Magic Attributes)
+- **Spell ID:** 129
+- **Vocações:** Sorcerer, Master Sorcerer
+- **Level:** 32 (premium!)
+- **Efeito:** Boost magic level +1 por 2 minutos
+- **Area:** CIRCLE5X5 (raio ~5-6 squares)
+- **Mana Base:** 120
+- **Mana Dinâmica:** 0.9^(members-1) * 120 * members
+- **Distance Check:** `<= 36` squares
+- **Mínimo Afetados:** 2 membros
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ setArea(AREA_CIRCLE5X5)
+├─ setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+├─ setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+└─ execute(creature, var)
+
+local condition = Condition(CONDITION_ATTRIBUTES)
+├─ CONDITION_PARAM_SUBID: 3
+├─ CONDITION_PARAM_BUFF_SPELL: 1
+├─ CONDITION_PARAM_TICKS: 120000 (2 min)
+└─ CONDITION_PARAM_STAT_MAGICPOINTS: +1
+
+local baseMana = 120
+
+local spell = Spell("instant")
+├─ onCastSpell(creature, var, isHotkey)
+│  ├─ Obter party + members
+│  ├─ Distance check <= 36
+│  ├─ Calcular mana dinâmico
+│  ├─ Validar mana suficiente
+│  ├─ Execute combat
+│  └─ Adicionar condition a cada membro
+└─ Configuração spell
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+```
+
+**Propósito:** Instância Combat para área party com efeito.
+
+**Tipo:** Combat
+
+**Parâmetros Configurados:**
+- Area: AREA_CIRCLE5X5
+- Effect: CONST_ME_MAGIC_BLUE
+- Aggressive: 0 (não-agressivo)
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_ATTRIBUTES)
+```
+
+**Propósito:** Condition para boost magic level.
+
+**Tipo:** Condition (CONDITION_ATTRIBUTES)
+
+**Parâmetros Configurados:**
+- SUBID: 3
+- BUFF_SPELL: 1 (é buff)
+- TICKS: 120000 (2 minutos)
+- STAT_MAGICPOINTS: +1
+
+---
+
+### Variável Global: baseMana
+
+```lua
+local baseMana = 120
+```
+
+**Propósito:** Mana base para cálculo dinâmico.
+
+**Tipo:** Integer
+
+**Valor:** 120
+
+---
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell.
+
+**Tipo:** Instant
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var, isHotkey)
+	local position = creature:getPosition()
+	local party = creature:getParty()
+	if not party then
+		creature:sendCancelMessage("No party members in range.")
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local membersList = party:getMembers()
+	membersList[#membersList + 1] = party:getLeader()
+	if membersList == nil or type(membersList) ~= "table" or #membersList <= 1 then
+		creature:sendCancelMessage("No party members in range.")
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local affectedList = {}
+	for _, targetPlayer in ipairs(membersList) do
+		if targetPlayer:getPosition():getDistance(position) <= 36 then
+			affectedList[#affectedList + 1] = targetPlayer
+		end
+	end
+
+	local tmp = #affectedList
+	if tmp <= 1 then
+		creature:sendCancelMessage("No party members in range.")
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local mana = math.ceil((0.9 ^ (tmp - 1) * baseMana) * tmp)
+	if creature:getMana() < mana then
+		creature:sendCancelMessage(RETURNVALUE_NOTENOUGHMANA)
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	if not combat:execute(creature, var) then
+		creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	creature:addMana(-(mana - baseMana), false)
+	creature:addManaSpent((mana - baseMana))
+
+	for _, targetPlayer in ipairs(affectedList) do
+		targetPlayer:addCondition(condition)
+	end
+
+	return true
+end
+```
+
+**Propósito:** Enchanta magic power de party members.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (sorcerer) |
+| `var` | Variant | Variant (self) |
+| `isHotkey` | Boolean | Se cast via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Enchantment aplicado |
+| `false` | Erro (sem party, sem mana, etc) |
+
+**Lógica Detalhada:**
+
+1. **Validação Party:**
+   - getParty() do creature
+   - Se não existe: erro
+
+2. **Obtenção Members:**
+   - getMembers() da party
+   - Adiciona leader: `membersList[#membersList + 1] = party:getLeader()`
+   - Validação: table com > 1 elementos
+
+3. **Distance Check:**
+   - ITera cada member
+   - Valida distance com limite de 36 squares
+   - Cria affectedList
+
+4. **Mínimo Afetados:**
+   - Valida tmp (affected count) > 1
+   - Se ≤ 1: erro
+
+5. **Cálculo Mana Dinâmica:**
+   - `mana = math.ceil((0.9 ^ (tmp - 1) * baseMana) * tmp)`
+   - Escalagem eficiente com decay
+   - Exemplo: 3 members = ceil(0.9 * 120 * 3) = 324
+
+6. **Validação Mana:**
+   - Verifica creature:getMana() >= mana
+   - Se insuficiente: erro
+
+7. **Execute Combat:**
+   - Execute area combat
+   - Se falha: erro
+
+8. **Mana Gasto:**
+   - Subtrai (mana - baseMana) como custo extra
+   - Registra gasto
+
+9. **Aplicar Condition:**
+   - ITera cada member afetado
+   - Adiciona condition ATTRIBUTES +1
+   - Duração 2 minutos
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância Combat area |
+| `condition` | Condition | Arquivo | Instância condition attributes |
+| `baseMana` | Integer | Arquivo | Base mana 120 |
+| `spell` | Spell | Arquivo | Instância spell |
+
+### Variáveis Locais (onCastSpell)
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `position` | Position | Posição do caster |
+| `party` | Party | Party do caster |
+| `membersList` | Table | Membros + leader |
+| `affectedList` | Table | Membros dentro de range |
+| `tmp` | Integer | Quantidade afetada |
+| `mana` | Integer | Mana total requerida |
+| `targetPlayer` | Player | Iteração members |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Party Validation Dupla
+
+```lua
+local party = creature:getParty()
+if not party then
+	-- erro
+end
+
+local membersList = party:getMembers()
+membersList[#membersList + 1] = party:getLeader()
+if membersList == nil or type(membersList) ~= "table" or #membersList <= 1 then
+	-- erro
+end
+```
+
+**Benefício:** Validação completa existência + tipo + quantidade!
+
+### Padrão 2: Distance Filtering
+
+```lua
+for _, targetPlayer in ipairs(membersList) do
+	if targetPlayer:getPosition():getDistance(position) <= 36 then
+		affectedList[#affectedList + 1] = targetPlayer
+	end
+end
+```
+
+**Benefício:** Filtra por distance 36 squares!
+
+### Padrão 3: Mana Dinâmica Escalável
+
+```lua
+local mana = math.ceil((0.9 ^ (tmp - 1) * baseMana) * tmp)
+```
+
+**Benefício:** Mana cresce com members mas com decay 0.9x!
+
+### Padrão 4: Mana Extra Gasto
+
+```lua
+creature:addMana(-(mana - baseMana), false)
+creature:addManaSpent((mana - baseMana))
+```
+
+**Benefício:** Cobra extra além do base mana!
+
+---
+
+## 🤖 Documentação das Funções
+
+### spell.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Enchanta magic level (+1) de party members em range.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (sorcerer lvl 32+) |
+| `var` | Variant | Variant (self) |
+| `isHotkey` | Boolean | Se cast via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Enchantment aplicado a party |
+| `false` | Erro (sem party/mana/range) |
+
+**Requisitos:**
+- Ter party (mínimo 2 membros)
+- Members dentro de 36 squares
+- Mana suficiente (dinâmica)
+- Sorcerer ou Master Sorcerer
+- Level 32+
+- Premium account
+
+**Mana Calculation:**
+
+| Members | Multiplicador | Exemplo Mana |
+|---|---|---|
+| 2 | 1.0 | 120 * 2 = 240 |
+| 3 | 0.9 | 0.9 * 120 * 3 = 324 |
+| 4 | 0.81 | 0.81 * 120 * 4 = 388.8 ≈ 389 |
+| 5 | 0.729 | 0.729 * 120 * 5 = 437.4 ≈ 437 |
+
+**Exemplo de Uso:**
+```lua
+-- Sorcerer lvl 32+, in party com 3 membros
+-- Cast "utori mas sio"
+-- Sistema obtém party + members
+-- Filtra por distance <= 36
+-- Calcula mana: ceil(0.9 * 120 * 3) = 324
+-- Se tem mana: apply condition +1 magic
+// Duração 2 minutos para cada membro
+// Efeito CONST_ME_MAGIC_BLUE
+// Spell enchant party magic boost premium!
+```
+
+---
+
+## 📌 Resumo
+
+**Enchant Party** é um spell sorcerer exclusive premium que oferece aumento de magic level (+1) para membros da party. Com condition CONDITION_ATTRIBUTES por 2 minutos, área CIRCLE5X5, distance check 36 squares, mana dinâmica 0.9^(n-1)*120*n escalável, validação party completa, mínimo 2 afetados, spell ID 129, palabras "utori mas sio", som SOUND_EFFECT_TYPE_SPELL_ENCHANT_PARTY, level 32, cooldown 2s, group 2s, isSelfTarget true, isAggressive false, isPremium true. Spell enchant party sorcerer magic power boost!

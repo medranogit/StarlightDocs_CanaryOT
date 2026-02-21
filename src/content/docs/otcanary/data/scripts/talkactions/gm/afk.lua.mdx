@@ -1,0 +1,305 @@
+---
+title: AFK
+description: Sistema completo de AFK (Away From Keyboard) com detecção, persistência em tabela global, global events, e callbacks de movimento/logout
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `afk.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) + GlobalEvent + EventCallback + CreatureEvent |
+| **Funcionalidade Principal** | Gerenciar estado AFK de jogadores |
+| **Comando** | `/afk on` / `/afk off` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | `on` ou `off` |
+| **Separador** | Espaço |
+| **Armazenamento** | Tabela global `playersAFKs` |
+| **GlobalEvent Interval** | 5000ms (5 segundos) |
+| **Callbacks** | PlayerOnWalk, GodAfkLogout |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/afk.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Sistema sofisticado de AFK que mantém tabela global de jogadores AFK, mostra mensagem "AFK !" periodicamente para spectators próximos, desativa ghost mode se ativo, e remove automaticamente do status AFK ao caminhar ou logout. GlobalEvent a cada 5 segundos executa efeito AFK, EventCallback `PlayerOnWalk` detecta movimento, CreatureEvent `GodAfkLogout` limpa ao sair. Suporta efeitos mágicos (CONST_ME_REDSMOKE), mensagens de status, e interface on/off simples. Útil para GMs que precisam se marcar como ausentes.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `afk.lua` implementa um sistema completo de AFK com múltiplos componentes: comando TalkAction (`/afk on` / `/afk off`), tabela global de estado `playersAFKs`, GlobalEvent de efeito periódico a cada 5 segundos, EventCallback de movimento que remove status AFK, e CreatureEvent de logout que limpa registro. O sistema permite gamemasters marcarem-se como ausentes, exibir mensagem "AFK !" em raio de visão, desativar ghost mode automaticamente, e remover status ao se mover ou sair. Implementação robusta com função helper `checkIsAFK()` para busca eficiente em tabela.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Tabela Global de Estado
+playersAFKs = {}
+
+-- 2. Função Helper: Verificar se jogador AFK
+local function checkIsAFK(id)
+    for index, item in pairs(playersAFKs) do
+        if id == item.id then
+            return { afk = true, index = index }
+        end
+    end
+    return { afk = false }
+end
+
+-- 3. Função Helper: Mostrar mensagem AFK para nearby spectators
+local function showAfkMessage(playerPosition)
+    -- Raio de 8 blocos em todas direções
+    local spectators = Game.getSpectators(playerPosition, false, true, 8, 8, 8, 8)
+    if #spectators > 0 then
+        for _, spectator in ipairs(spectators) do
+            -- Enviar mensagem "AFK !" como voz de monstro
+            spectator:say("AFK !", TALKTYPE_MONSTER_SAY, false, spectator, playerPosition)
+        end
+    end
+end
+
+-- 4. Instanciação e Função Principal do TalkAction
+local afk = TalkAction("/afk")
+
+function afk.onSay(player, words, param)
+    -- Validação de parâmetro ("on" ou "off")
+    if param == "" then
+        player:sendCancelMessage("You need to specify on/off param.")
+        return true
+    end
+    
+    -- Obter ID e posição do jogador
+    local id, playerPosition = player:getId(), player:getPosition()
+    -- Verificar status AFK atual
+    local isAfk = checkIsAFK(id)
+    
+    if param == "on" then
+        -- Ativar AFK
+        if isAfk.afk then
+            player:sendCancelMessage("You are already AFK!")
+            return true
+        end
+        
+        -- Adicionar à tabela global
+        table.insert(playersAFKs, { id = id, position = playerPosition })
+        
+        -- Desativar ghost mode se ativo
+        if player:isInGhostMode() then
+            player:setGhostMode(false)
+        end
+        
+        -- Feedback ao jogador
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You are now AFK!")
+        
+        -- Efeito mágico
+        playerPosition:sendMagicEffect(CONST_ME_REDSMOKE)
+        
+        -- Mostrar mensagem AFK para spectators
+        showAfkMessage(playerPosition)
+        
+    elseif param == "off" then
+        -- Desativar AFK
+        if isAfk.afk then
+            table.remove(playersAFKs, isAfk.index)
+            player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You are no longer AFK!")
+            playerPosition:sendMagicEffect(CONST_ME_REDSMOKE)
+        end
+    end
+    
+    return true
+end
+
+afk:separator(" ")
+afk:groupType("gamemaster")
+afk:register()
+
+-- 5. GlobalEvent: Mostrar efeito AFK a cada 5 segundos
+local afkEffect = GlobalEvent("GodAfkEffect")
+
+function afkEffect.onThink(interval)
+    for _, player in ipairs(playersAFKs) do
+        showAfkMessage(player.position)
+    end
+    return true
+end
+
+afkEffect:interval(5000)  -- 5 segundos
+afkEffect:register()
+
+-- 6. EventCallback: Remover AFK ao movimento
+local callback = EventCallback("PlayerOnWalk")
+
+function callback.playerOnWalk(player, direction)
+    local isAfk = checkIsAFK(player:getId())
+    if isAfk.afk then
+        table.remove(playersAFKs, isAfk.index)
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You are no longer AFK!")
+    end
+    return true
+end
+
+callback:register()
+
+-- 7. CreatureEvent: Remover AFK ao logout
+local godAfkLogout = CreatureEvent("GodAfkLogout")
+
+function godAfkLogout.onLogout(player)
+    local isAfk = checkIsAFK(player:getId())
+    if isAfk.afk then
+        table.remove(playersAFKs, isAfk.index)
+    end
+    return true
+end
+
+godAfkLogout:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **checkIsAFK(id)**
+
+**Descrição:** Função helper que busca jogador na tabela global `playersAFKs` e retorna status e índice.
+
+**Parâmetros:**
+- `id` (number): ID único do jogador
+
+**Fluxo de Execução:**
+1. Itera `playersAFKs` com `pairs()` (itera índices e valores em ordem arbitrary)
+2. Para cada entry: compara `id` com `item.id`
+3. Se encontrado: retorna `{ afk = true, index = index }`
+4. Se não encontrado: retorna `{ afk = false }`
+
+**Retorno:** 
+```lua
+{ afk = true, index = 3 }     -- Se encontrado no índice 3
+{ afk = false }                -- Se não encontrado
+```
+
+**Complexidade:** O(n) - iteração linear da tabela
+
+---
+
+### **showAfkMessage(playerPosition)**
+
+**Descrição:** Função helper que envia mensagem "AFK !" a todos os espectadores próximos.
+
+**Parâmetros:**
+- `playerPosition` (Position): Posição do jogador AFK
+
+**Fluxo de Execução:**
+1. Obtém spectadores em raio: `Game.getSpectators(playerPosition, false, true, 8, 8, 8, 8)`
+   - Raio de 8 blocos em X, Y (horizontal), e Z (vertical)
+   - Arg false: não inclui player mesmo
+   - Arg true: inclui monstros
+2. Se espectadores encontrados:
+   - Itera lista de espectadores
+   - Cada um recebe fala: `spectator:say("AFK !", TALKTYPE_MONSTER_SAY, ...)`
+   - Tipo de fala: MONSTER_SAY (mensagem de monstro)
+   - Origem: posição do AFK
+
+**Exemplo Visual:**
+```
+[Spectator 1] vê: "AFK !" (voz de monstro na posição do player)
+[Spectator 2] vê: "AFK !" (voz de monstro na posição do player)
+```
+
+---
+
+### **afk.onSay(player, words, param)**
+
+**Descrição:** Função callback do comando `/afk` que alterna status AFK.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavras do comando (`/afk`)
+- `param` (string): **[OBRIGATÓRIO]** `"on"` ou `"off"`
+
+**Sub-fluxos:**
+
+#### **Ativar AFK (`param == "on"`)**
+1. Validação de parâmetro
+2. Verificar se já AFK: `isAfk = checkIsAFK(id)`
+3. Se já AFK: retorna erro "You are already AFK!"
+4. **Inserir na tabela:** `table.insert(playersAFKs, { id = id, position = playerPosition })`
+5. **Desativar ghost:** Se `isInGhostMode()`, executa `setGhostMode(false)`
+6. **Feedback ao jogador:**
+   - Mensagem: "You are now AFK!"
+   - Tipo: `MESSAGE_EVENT_ADVANCE` (amarelo)
+   - Efeito: `CONST_ME_REDSMOKE` na posição
+7. **Notificação:** `showAfkMessage(playerPosition)`
+
+#### **Desativar AFK (`param == "off"`)**
+1. Verificar se AFK: `isAfk = checkIsAFK(id)`
+2. Se AFK:
+   - Remove de tabela: `table.remove(playersAFKs, isAfk.index)`
+   - Mensagem: "You are no longer AFK!"
+   - Tipo: `MESSAGE_EVENT_ADVANCE`
+   - Efeito: `CONST_ME_REDSMOKE`
+3. Se não AFK: sem ação (silencioso)
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+### **afkEffect.onThink(interval) [GlobalEvent]**
+
+**Descrição:** GlobalEvent executado a cada 5 segundos para mostrar mensagem AFK periódica.
+
+**Parâmetros:**
+- `interval` (number): Intervalo em milissegundos (5000)
+
+**Fluxo de Execução:**
+1. Itera todos os jogadores em `playersAFKs`
+2. Para cada jogador: `showAfkMessage(player.position)`
+3. Retorna `true` (evento continua ativo)
+
+**Intervalo:** 5000ms (5 segundos)
+
+**Efeito:** Todos os 5 segundos, spectadores próximos veem "AFK !" novamente
+
+---
+
+### **callback.playerOnWalk(player, direction) [EventCallback]**
+
+**Descrição:** EventCallback disparado quando jogador move. Remove status AFK automaticamente.
+
+**Parâmetros:**
+- `player` (Player): Jogador que se moveu
+- `direction` (number): Direção do movimento (não utilizado)
+
+**Fluxo de Execução:**
+1. Verifica AFK: `isAfk = checkIsAFK(player:getId())`
+2. Se AFK:
+   - Remove de tabela: `table.remove(playersAFKs, isAfk.index)`
+   - Mensagem: "You are no longer AFK!"
+   - Tipo: `MESSAGE_EVENT_ADVANCE`
+3. Retorna `true` (permite movimento)
+
+**Efeito:** Qualquer movimento automático remove status AFK
+
+---
+
+### **godAfkLogout.onLogout(player) [CreatureEvent]**
+
+**Descrição:** CreatureEvent disparado quando jogador faz logout. Remove do registro AFK.
+
+**Parâmetros:**
+- `player` (Player): Jogador que fez logout
+
+**Fluxo de Execução:**
+1. Verifica AFK: `isAfk = checkIsAFK(player:getId())`
+2. Se AFK:
+   - Remove de tabela: `table.remove(playersAFKs, isAfk.index)`
+3. Retorna `true` (logout prossegue)
+
+**Efeito:** Logout automático limpa registro para evitar vazamento de memória
+
+---
+
+## 📌 Resumo
+
+O arquivo `afk.lua` é sistema completo de AFK com interface simples (`/afk on`/`off`) e múltiplas camadas de automação (GlobalEvent periódico, detecção de movimento, limpeza em logout). Arquitetura que separa concerns: command handler, persistência em tabela global, efeitos visuais, e callbacks de eventos. Implementação robusta com função helper de busca, efeitos mágicos, mensagens periódicas para espectadores, e integração profunda com sistema de eventos. Essencial para GMs que precisam se marcar ausentes com notificação visual automática e limpeza de status em movimento ou logout.

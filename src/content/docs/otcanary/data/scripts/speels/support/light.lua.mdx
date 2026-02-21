@@ -1,0 +1,186 @@
+---
+title: Light
+description: Spell de suporte para todas vocações que cria condition de luz básica por 6 minutos 10 segundos
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `light.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Todas (10 vocações disponíveis) |
+| **Spell ID** | 10 |
+| **Mana Requerida** | 20 |
+| **Level Requerido** | 8 |
+| **Status Premium** | Não (acesso livre) |
+| **Duração da Luz** | 6 minutos 10 segundos (370 segundos = 370.000 ms) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utevo lux` |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Nível de Luz** | 6 (básico, menor que Great Light 8) |
+| **Cor da Luz** | 215 (amarelo/branco) |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (suporte utilitário) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/light.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell é versão básica de Great Light com nível inferior (6 vs 8). O cálculo de duração é: (6 * 60 + 10) * 1000 = 370.000 ms. Disponível para TODAS as 10 vocações como Great Light. A mana é apenas 20, metade de Great Light (60), tornando spell extremamente acessível. Level 8 é um dos acessos mais precoces no jogo. Não há verificação de condition anterior - spell pode ser castado novamente imediatamente.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `light.lua` implementa source de luz básica universal para todas as vocações (level 8+) que aplica condition de luz por 6 minutos 10 segundos com nível 6 (inferior a Great Light). É versão mais barata e acessível comparada a Great Light, oferecendo trade-off entre mana (20 vs 60) e duração/intensidade. O spell cria Combat com condition CONDITION_LIGHT parametrizado com nível 6 e cor 215, executa combat simples, e oferece iluminação adequada para dungeons básicos. A implementação demonstra padrão minimalista idêntico a Great Light mas com parâmetros reduzidos.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat com Efeito
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+
+-- 2. Criação de Condition de Luz
+local condition = Condition(CONDITION_LIGHT)
+condition:setParameter(CONDITION_PARAM_LIGHT_LEVEL, 6)
+condition:setParameter(CONDITION_PARAM_LIGHT_COLOR, 215)
+condition:setParameter(CONDITION_PARAM_TICKS, (6 * 60 + 10) * 1000)
+combat:addCondition(condition)
+
+-- 3. Instância do Spell
+local spell = Spell("instant")
+
+-- 4. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 4.1 Execução de Combat (aplica condition)
+    -- 4.2 Retorno de Status
+end
+
+-- 5. Configuração de Propriedades do Spell
+spell:name("Light")
+spell:words("utevo lux")
+spell:group("support")
+spell:vocation(...todas vocações...)
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_LIGHT)
+spell:id(10)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(8)
+spell:mana(20)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat com condition de luz |
+| `condition` | `Condition` | Local | Condition de luz com nível 6 e cor 215 |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Qualquer player que executa o spell |
+| `variant` | `Variant` | Parâmetro | Dados variáveis (não utilizados - self target) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Condition com Múltiplos Parâmetros**
+```lua
+local condition = Condition(CONDITION_LIGHT)
+condition:setParameter(CONDITION_PARAM_LIGHT_LEVEL, 6)
+condition:setParameter(CONDITION_PARAM_LIGHT_COLOR, 215)
+condition:setParameter(CONDITION_PARAM_TICKS, ...)
+```
+Idêntico a Great Light, mas com nível 6 ao invés de 8.
+
+### 2. **Padrão de Cálculo de Duração Legível**
+```lua
+condition:setParameter(CONDITION_PARAM_TICKS, (6 * 60 + 10) * 1000)
+```
+6 minutos + 10 segundos em millisegundos.
+
+### 3. **Padrão de Versão Reduzida (versus Great Light)**
+```lua
+spell:mana(20)         -- vs Great Light 60
+spell:level(8)         -- vs Great Light 13
+-- Nível 6 vs Nível 8
+```
+Trade-off: mana menor, level menor, luz menos intensa.
+
+### 4. **Padrão de Vocação Universal**
+```lua
+spell:vocation("druid;true", ..., "exalted monk;true")
+```
+Todas as 10 vocações (idêntico a Great Light).
+
+### 5. **Padrão de Handler Simples**
+```lua
+function spell.onCastSpell(creature, variant)
+    return combat:execute(creature, variant)
+end
+```
+Handler direto sem lógica adicional.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Aplica condition de luz básica ao caster.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Qualquer player (todas vocações) que executa o spell.
+- `variant` (Variant): Dados variáveis (não utilizados - self target).
+
+**Fluxo de Execução:**
+
+1. **Execução de Combat**:
+   - Chama `combat:execute(creature, variant)`
+   - Combat aplica condition de CONDITION_LIGHT
+
+2. **Aplicação de Condition**:
+   - Nível de luz: 6 (básico)
+   - Cor: 215 (amarelo/branco)
+   - Duração: 370.000 ms (6:10 minutos)
+
+3. **Efeito Visual**:
+   - Efeito `CONST_ME_MAGIC_BLUE` na posição
+   - Confirma visualmente que spell foi castado
+
+4. **Retorno**:
+   - Retorna `true` (cast bem-sucedido, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Light condition aplicada, mana de 20 consumida
+
+**Lógica Detalhes:**
+
+O spell implementa luz básica com duração moderada. O nível 6 é menor que máximo (8), oferecendo visibilidade adequada para dungeons pequenos mas não para exploração extensiva.
+
+A duração de 6:10 minutos é mais curta que Great Light (11:35), forcing recast mais frequente em exploração longa.
+
+A mana de 20 é extremamente baixa, tornando altamente spam-able. Level 8 é acesso muito cedo, permitindo luz desde o início do jogo para qualquer vocação.
+
+O trade-off de mana vs nível indica dois paths de uso:
+- Level 8+: use Light (barato, básico)
+- Level 13+: upgrade para Great Light (mais premium, luz melhor)
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_LIGHT`: Som característico
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+
+## 📌 Resumo
+
+**Light** é um spell de suporte universal disponível a TODAS as vocações (level 8+) que aplica fonte de luz básica (nível 6) por 6 minutos 10 segundos. O spell requer apenas 20 de mana e cooldown de 2 segundos, tornando acessível extremamente cedo no jogo. É versão reduzida de Great Light, oferecendo trade-off entre mana (20 vs 60) e intensidade de luz (6 vs 8). A implementação é minimalista idêntica a Great Light. É ferramenta essencial para exploração inicial em dungeons escuros, oferecendo visibilidade adequada sem requisito de mana alta ou level específico.
+
+A implementação segue padrão minimalista de condition, diferenciando-se por: (1) acesso universal, (2) mana extremamente baixa (20), (3) level ultra-cedo (8), (4) nível de luz reduzido (6), (5) duração moderada (6:10 vs 11:35).

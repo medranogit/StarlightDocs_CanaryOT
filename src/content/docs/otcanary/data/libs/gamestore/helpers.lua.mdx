@@ -1,0 +1,383 @@
+---
+title: "helpers.lua"
+description: "Módulo auxiliar do gamestore com funções de conversão de tipos de ofertas e configurações"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo helper do gamestore que fornece funções utilitárias para converter tipos de ofertas em tipos de exibição e determinar se ofertas requerem configuração adicional do jogador. Este módulo é essencial para mapear constantes de ofertas para o comportamento esperado na interface e sistema de loja.
+
+**Caminho Original**: `data/libs/gamestore/helpers.lua`
+
+**Dependências**:
+- gamestore.constants (mapeamento de tipos e configurações)
+
+<Aside>
+Este é um módulo de suporte crítico para o sistema gamestore, responsável por abstrair a lógica de mapeamento de tipos de ofertas para evitar duplicação de código em múltiplos pontos do sistema.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `helpers.lua` fornece **2 funções globais de conversão** que atuam como intermediários entre os tipos de ofertas definidos em `constants.lua` e o comportamento esperado no cliente. Estas funções utilizam tabelas de mapeamento para traduzir IDs de ofertas em valores apresentáveis e configuráveis, facilitando a padronização da lógica de exibição em toda a loja.
+
+### Estrutura de Funcionalidades
+
+```
+helpers (módulo)
+│
+├── convertType(type)
+│   └── Mapeia tipos de ofertas → tipos de exibição
+│
+└── useOfferConfigure(type)
+    └── Mapeia tipos de ofertas → configurações obrigatórias
+```
+
+### Arquitetura de Mapeamento
+
+O módulo implementa um padrão de **tabelas de mapeamento direto**, onde:
+
+1. **Chaves** são valores de `OfferTypes` de constants
+2. **Valores** são mapeamentos para `ConverType` ou `ConfigureOffers`
+3. **Fallback** retorna valor padrão se tipo não está mapeado
+
+---
+
+## Detalhes das Funções Globais
+
+### 1. helpers.convertType(type)
+
+Converte um tipo de oferta para seu tipo de exibição correspondente, determinando como a oferta será apresentada no cliente.
+
+**Parâmetros**:
+- type (number): ID do tipo de oferta a ser convertido
+
+**Retorna**: 
+- (number): Tipo de exibição correspondente (ConverType)
+
+**Lógica de Mapeamento**:
+
+| Tipo de Oferta | Tipo de Exibição | Descrição |
+|---|---|---|
+| OFFER_TYPE_OUTFIT | SHOW_OUTFIT | Exibe como outfit customizável |
+| OFFER_TYPE_OUTFIT_ADDON | SHOW_OUTFIT | Exibe como outfit com addon |
+| OFFER_TYPE_MOUNT | SHOW_MOUNT | Exibe como montaria |
+| OFFER_TYPE_ITEM | SHOW_ITEM | Exibe como item comum |
+| OFFER_TYPE_STACKABLE | SHOW_ITEM | Exibe como item stackável |
+| OFFER_TYPE_HOUSE | SHOW_ITEM | Exibe como item (casa) |
+| OFFER_TYPE_CHARGES | SHOW_ITEM | Exibe como item com carga |
+| OFFER_TYPE_HIRELING | SHOW_HIRELING | Exibe como capanga especial |
+| OFFER_TYPE_ITEM_BED | SHOW_NONE | Sem exibição visual |
+| OFFER_TYPE_ITEM_UNIQUE | SHOW_ITEM | Exibe como item único |
+
+**Valor Padrão**: Se o tipo não está no mapeamento, retorna `SHOW_NONE`
+
+**Comportamento**:
+```lua
+-- Tipos conhecidos retornam mapeamento específico
+local showType = helpers.convertType(constants.OfferTypes.OFFER_TYPE_OUTFIT)  -- SHOW_OUTFIT
+
+-- Tipos desconhecidos retornam SHOW_NONE
+local showType = helpers.convertType(999)  -- SHOW_NONE
+```
+
+---
+
+### 2. helpers.useOfferConfigure(type)
+
+Determina se um tipo de oferta requer configuração adicional do jogador antes da conclusão da compra (como nomeação de capanga, mudança de nome, etc).
+
+**Parâmetros**:
+- type (number): ID do tipo de oferta a verificar
+
+**Retorna**: 
+- (number): Estado de configuração (ConfigureOffers)
+
+**Lógica de Mapeamento**:
+
+| Tipo de Oferta | Configuração | Significado |
+|---|---|---|
+| OFFER_TYPE_NAMECHANGE | SHOW_CONFIGURE | Requer input de novo nome |
+| OFFER_TYPE_HIRELING | SHOW_CONFIGURE | Requer nomeação do capanga |
+| OFFER_TYPE_HIRELING_NAMECHANGE | SHOW_CONFIGURE | Requer renomeação de capanga |
+| OFFER_TYPE_HIRELING_SEXCHANGE | SHOW_CONFIGURE | Requer seleção de sexo |
+
+**Valor Padrão**: Se o tipo não requer configuração, retorna `SHOW_NORMAL`
+
+**Comportamento**:
+```lua
+-- Ofertas que precisam configuração
+local config = helpers.useOfferConfigure(constants.OfferTypes.OFFER_TYPE_NAMECHANGE)  -- SHOW_CONFIGURE
+
+-- Ofertas normais sem configuração
+local config = helpers.useOfferConfigure(constants.OfferTypes.OFFER_TYPE_OUTFIT)  -- SHOW_NORMAL
+```
+
+---
+
+## Dependências Críticas
+
+### Imports
+- **gamestore.constants**: Requerido para acessar todas as constantes de tipos e configurações
+
+### Integração com Constants
+
+O módulo funciona em conjunto com estas submapas de constants:
+
+| Constante | Propósito | Usada em |
+|---|---|---|
+| OfferTypes | Definição de tipos de ofertas | Ambas funções (chaves) |
+| ConverType | Tipos de exibição possíveis | convertType (valores) |
+| ConfigureOffers | Estados de configuração | useOfferConfigure (valores) |
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Exibição de Ofertas na UI
+
+```lua
+local helpers = require("gamestore.helpers")
+local constants = require("gamestore.constants")
+
+function displayOfferInUI(offer)
+    local showType = helpers.convertType(offer.type)
+    
+    if showType == constants.ConverType.SHOW_OUTFIT then
+        displayOutfitPreview(offer)
+    elseif showType == constants.ConverType.SHOW_MOUNT then
+        displayMountPreview(offer)
+    elseif showType == constants.ConverType.SHOW_ITEM then
+        displayItemIcon(offer)
+    elseif showType == constants.ConverType.SHOW_HIRELING then
+        displayHirelingCard(offer)
+    end
+end
+```
+
+### Padrão 2: Validação de Ofertas Configuráveis
+
+```lua
+local helpers = require("gamestore.helpers")
+local constants = require("gamestore.constants")
+
+function validateOfferCompletion(offer, playerInput)
+    local requiresConfig = helpers.useOfferConfigure(offer.type)
+    
+    if requiresConfig == constants.ConfigureOffers.SHOW_CONFIGURE then
+        if not playerInput or playerInput == "" then
+            return false, "Configuração da oferta é obrigatória"
+        end
+        offer.configuration = playerInput
+    end
+    
+    return true
+end
+```
+
+### Padrão 3: Filtragem por Tipo de Exibição
+
+```lua
+local helpers = require("gamestore.helpers")
+local constants = require("gamestore.constants")
+
+function getDisplayableOffers(allOffers)
+    local displayable = {}
+    
+    for _, offer in ipairs(allOffers) do
+        local showType = helpers.convertType(offer.type)
+        if showType ~= constants.ConverType.SHOW_NONE then
+            table.insert(displayable, offer)
+        end
+    end
+    
+    return displayable
+end
+```
+
+### Padrão 4: Processamento de Compra com Configuração
+
+```lua
+local helpers = require("gamestore.helpers")
+local constants = require("gamestore.constants")
+
+function processPurchase(offer, playerData)
+    local purchaseData = {
+        offerId = offer.id,
+        type = offer.type,
+        timestamp = os.time()
+    }
+    
+    -- Verificar se precisa configuração
+    local config = helpers.useOfferConfigure(offer.type)
+    if config == constants.ConfigureOffers.SHOW_CONFIGURE then
+        if offer.type == constants.OfferTypes.OFFER_TYPE_NAMECHANGE then
+            purchaseData.newName = playerData.newName
+        elseif offer.type == constants.OfferTypes.OFFER_TYPE_HIRELING then
+            purchaseData.hirelingName = playerData.hirelingName
+            purchaseData.sex = playerData.sex
+        end
+    end
+    
+    return completePurchase(purchaseData)
+end
+```
+
+### Padrão 5: Determinação de UI Dinâmica
+
+```lua
+local helpers = require("gamestore.helpers")
+local constants = require("gamestore.constants")
+
+function renderOfferDialog(offer)
+    local dialog = {
+        title = offer.name,
+        description = offer.description,
+        displayType = helpers.convertType(offer.type),
+        requiresConfiguration = helpers.useOfferConfigure(offer.type) == constants.ConfigureOffers.SHOW_CONFIGURE
+    }
+    
+    if dialog.requiresConfiguration then
+        if offer.type == constants.OfferTypes.OFFER_TYPE_NAMECHANGE then
+            dialog.inputLabel = "Novo Nome"
+            dialog.maxLength = 20
+        elseif offer.type == constants.OfferTypes.OFFER_TYPE_HIRELING then
+            dialog.inputLabel = "Nome do Capanga"
+            dialog.sexSelector = true
+        end
+    end
+    
+    return displayDialog(dialog)
+end
+```
+
+### Padrão 6: Cache e Validação de Tipos
+
+```lua
+local helpers = require("gamestore.helpers")
+local constants = require("gamestore.constants")
+
+local typeCache = {}
+
+function getCachedConvertType(type)
+    if typeCache[type] == nil then
+        typeCache[type] = helpers.convertType(type)
+    end
+    return typeCache[type]
+end
+
+function isValidOfferType(type)
+    local converted = helpers.convertType(type)
+    return converted ~= constants.ConverType.SHOW_NONE
+end
+```
+
+### Padrão 7: Sistema de Validação Completa
+
+```lua
+local helpers = require("gamestore.helpers")
+local constants = require("gamestore.constants")
+
+function validateOfferPurchase(offer, playerInput)
+    local results = {
+        valid = true,
+        errors = {}
+    }
+    
+    -- Validar tipo de exibição
+    local showType = helpers.convertType(offer.type)
+    if showType == constants.ConverType.SHOW_NONE then
+        results.valid = false
+        table.insert(results.errors, "Tipo de oferta não é exibível")
+        return results
+    end
+    
+    -- Validar configuração se necessária
+    local config = helpers.useOfferConfigure(offer.type)
+    if config == constants.ConfigureOffers.SHOW_CONFIGURE then
+        if not playerInput or playerInput == "" then
+            results.valid = false
+            table.insert(results.errors, "Configuração obrigatória não fornecida")
+        end
+    end
+    
+    return results
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Função |
+|---|---|---|
+| **Conversão de Tipos** | Mapear tipos de ofertas para tipos de exibição | convertType |
+| **Identificação de Configuração** | Determinar se oferta precisa input do jogador | useOfferConfigure |
+| **Tabelas de Mapeamento** | Estrutura chave-valor para abstrair lógica | Ambas funções |
+| **Valor Padrão (Fallback)** | Retorno seguro para tipos desconhecidos | Ambas funções |
+| **Abstração de Constantes** | Evitar duplicação através de helper functions | Propósito geral |
+
+### Padrões Identificados
+
+1. **Query Pattern**: Consultar tipo de exibição antes de processar
+2. **Validation Pattern**: Verificar configuração obrigatória antes de compra
+3. **Mapping Pattern**: Traduzir entre espaços de nome (OfferTypes → ConverType)
+4. **Caching Pattern**: Cache de conversões para performance
+5. **Fallback Pattern**: Valores padrão para entradas desconhecidas
+6. **Composition Pattern**: Uso em conjunto com constants para decisões
+
+### Responsabilidades do Módulo
+
+- ✅ Manter mapeamentos de tipos atualizados
+- ✅ Fornecer defaults sensatos para tipos desconhecidos
+- ✅ Isolar lógica de mapeamento do código cliente
+- ✅ Suportar extensão com novos tipos
+- ✅ Garantir consistência entre UI e servidor
+
+### Casos de Uso Principais
+
+1. **Renderização de Ofertas**: Decidir como exibir cada item
+2. **Validação de Compra**: Verificar se configuração é necessária
+3. **Processamento de Dados**: Completar informações de compra
+4. **Filtragem de Ofertas**: Remover ofertas não exibíveis
+5. **Geração de UI**: Criar dialogs com campos corretos
+
+---
+
+## 📚 Conclusão
+
+O módulo `helpers.lua` é um componente essencial de suporte do sistema gamestore, fornecendo abstrações críticas para mapeamento de tipos de ofertas. Através de suas duas funções bem definidas, `convertType()` e `useOfferConfigure()`, o módulo encapsula a lógica de decisão que determina como as ofertas são exibidas e processadas no jogo. 
+
+O design limpo baseado em tabelas de mapeamento torna o módulo fácil de estender com novos tipos de ofertas, enquanto os valores padrão garantem compatibilidade com tipos desconhecidos. Este padrão é repetido em toda a arquitetura gamestore, demonstrando a importância de abstrações bem projetadas para marcar a separação entre constantes estruturais e comportamento dinâmico. Ao estudar este módulo, você aprende um padrão fundamental de design Lua: usar tabelas de mapeamento para evitar cadeias de condicionais e centralizar lógica relacionada.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadados do Documento">
+- **Versão do Módulo**: Conforme constants.lua v2.0
+- **Data da Documentação**: 19 de Fevereiro, 2026
+- **Cobertura**: 100% (2 funções globais, 2 tabelas internas, 18 mapeamentos)
+- **Autor**: Documentação Canary Server Libs
+- **Padrão**: 7 seções MDX/Astro
+- **Exemplos Inclusos**: 7 padrões de uso completos
+</Card>
+
+<Aside type="tip">
+**Dica de Integração**: Este módulo funciona em perfeita harmonia com `constants.lua` e os validadores de `parsers.lua`. Ao implementar novos tipos de ofertas, lembre-se de atualizar simultaneamente `constants.lua` com a nova constante e `helpers.lua` com o mapeamento correspondente.
+</Aside>
+
+<Aside type="note">
+**Notas de Manutenção**: 
+- Sempre retornar valores de fallback seguros (SHOW_NONE, SHOW_NORMAL)
+- Manter mapeamentos em sincronização com constants.lua
+- Adicionar testes para novos tipos de ofertas antes de deployment
+- Considerar caching se o módulo for chamado frequentemente em loops
+</Aside>

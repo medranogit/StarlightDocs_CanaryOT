@@ -1,0 +1,324 @@
+---
+title: "Spell - edit_door_list.lua"
+description: "Spell de edição de lista de acesso de portas para casas"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `edit_door_list.lua` |
+| **Localização** | `data/scripts/spells/house/` |
+| **Tipo de Script** | Spell (Instant) |
+| **Tipo** | House Management (Door Access List) |
+| **Alvo** | Door (Adjacent or Current Tile) |
+| **Mana Requerida** | Nenhuma |
+| **Words** | aleta grav |
+| **Spell ID** | Nenhum (house spell) |
+| **Cooldown** | Nenhum |
+| **Agressivo** | Não |
+| **Agressor Precisa Target ou Direção** | Sim |
+| **Efeito Visual Erro** | CONST_ME_POFF |
+| **Som de Casting** | SOUND_EFFECT_TYPE_SPELL_EDIT_DOOR |
+| **Linhas de Código** | 30 |
+| **Complexidade** | Intermediária |
+
+**Descrição:**
+Spell de edição de lista de acesso de portas. Permite ao dono da casa editar permissões de acesso de uma porta específica. Busca porta na posição frontal (forward) ou atual. Validação: canEditAccessList. Abre window de edição com sendHouseWindow. Words: "aleta grav". Som: SOUND_EFFECT_TYPE_SPELL_EDIT_DOOR. Spell gerenciamento de casa portas acesso lista edição!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/house/edit_door_list.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:name("House Door List")
+spell:words("aleta grav")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_EDIT_DOOR)
+spell:needCasterTargetOrDirection(true)
+spell:isAggressive(false)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Edição de Lista de Acesso de Portas - Gerenciamento de Casa**
+
+Este spell oferece interface para editar permissões de acesso de portas:
+
+1. **Busca de Porta Inteligente:**
+   - Busca na posição frontal primeiro (getNextPosition)
+   - Se não encontrar, busca na posição atual
+   - Dupla verificação de localização!
+
+2. **Validação de Permissões:**
+   - canEditAccessList(doorId, creature)
+   - Apenas dono/co-owners podem editar
+   - Segurança house garantida!
+
+3. **Interface Visual:**
+   - sendHouseWindow(house, doorId)
+   - Abre janela native client
+   - Edição intuitiva!
+
+4. **Feedback do Usuário:**
+   - Mensagem de erro se não pode editar
+   - Efeito visual CONST_ME_POFF
+   - Som especial SOUND_EFFECT_TYPE_SPELL_EDIT_DOOR
+
+**Uso Típico:**
+```
+House Owner lvl any
+// Cast "aleta grav"
+// Com direção ou target em porta
+// Sistema busca porta automaticamente
+// Se válido: abre janela de edição
+// Se inválido: mensagem erro + efeito poff
+// Spell edição acesso portas casa!
+```
+
+**Diferencial:** Busca inteligente porta frontal/atual + validação permissões + interface native!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `edit_door_list` oferece gerenciamento de acesso de portas em casas através de interface nativa:
+
+- **Tipo:** House Management (Door Access)
+- **Função Principal:** Editar lista de acesso de uma porta
+- **Busca de Porta:** Frontal (forward) → Atual (fallback)
+- **Validação:** canEditAccessList por doorId
+- **Interface:** sendHouseWindow(house, doorId)
+- **Mensagem Erro:** RETURNVALUE_NOTPOSSIBLE
+- **Efeito Erro:** CONST_ME_POFF
+- **Requer:** needCasterTargetOrDirection(true)
+
+### Arquitetura
+
+```
+local spell = Spell("instant")
+├─ onCastSpell(creature, variant)
+│  ├─ getPosition() → currentPos
+│  ├─ getNextPosition(direction) → forwardPos
+│  ├─ Tile(currentPos):getHouse()
+│  ├─ getDoorIdByPosition(forwardPos/currentPos)
+│  ├─ Validação: canEditAccessList(doorId, creature)
+│  └─ sendHouseWindow(house, doorId) ou erro
+│
+└─ Configuração spell
+   ├─ name: "House Door List"
+   ├─ words: "aleta grav"
+   ├─ needCasterTargetOrDirection: true
+   └─ castSound: SOUND_EFFECT_TYPE_SPELL_EDIT_DOOR
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell de edição de porta.
+
+**Tipo:** Instant (sem cast time)
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, variant)
+	local currentPos = creature:getPosition()
+	local forwardPos = creature:getPosition()
+	forwardPos:getNextPosition(creature:getDirection())
+
+	local tile = Tile(currentPos)
+	local house = tile and tile:getHouse()
+	local doorId = house and house:getDoorIdByPosition(forwardPos)
+
+	if not doorId then
+		tile = Tile(currentPos)
+		house = tile and tile:getHouse()
+		doorId = house and house:getDoorIdByPosition(currentPos)
+	end
+
+	if not doorId or not house:canEditAccessList(doorId, creature) then
+		creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	creature:setEditHouse(house, doorId)
+	creature:sendHouseWindow(house, doorId)
+	return true
+end
+```
+
+**Propósito:** Procura porta adjacente/atual e abre editor de acesso.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (house owner/co-owner) |
+| `variant` | Variant | Direção ou target |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Janela editora aberta |
+| `false` | Erro (sem porta ou sem permissão) |
+
+**Lógica Detalhada:**
+
+1. **Busca de Posição:**
+   - `currentPos` = posição atual do creature
+   - `forwardPos` = posição frontal (getNextPosition)
+
+2. **Busca de Porta (Frontal):**
+   - Tile na posição frontal
+   - getHouse() para ambos
+   - getDoorIdByPosition(forwardPos)
+
+3. **Fallback Busca Atual:**
+   - Se não encontrou na frontal
+   - Busca novamente na posição atual
+   - Dupla verificação!
+
+4. **Validação:**
+   - Verifica se doorId existe
+   - canEditAccessList(doorId, creature)
+   - Ambas condições obrigatórias
+
+5. **Sucesso:**
+   - setEditHouse(house, doorId)
+   - sendHouseWindow(house, doorId)
+   - Abre interface nativa
+
+6. **Erro:**
+   - sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+   - sendMagicEffect(CONST_ME_POFF)
+   - Feedback visual/sonoro
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `spell` | Spell | Arquivo | Instância spell |
+
+### Variáveis Locais (onCastSpell)
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `currentPos` | Position | Posição atual creature |
+| `forwardPos` | Position | Posição frontal creature |
+| `tile` | Tile | Tile do currentPos |
+| `house` | House | Casa no tile |
+| `doorId` | Integer | ID da porta encontrada |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Busca Inteligente Porta Dupla
+
+```lua
+local doorId = house and house:getDoorIdByPosition(forwardPos)
+if not doorId then
+	doorId = house and house:getDoorIdByPosition(currentPos)
+end
+```
+
+**Benefício:** Funciona tanto com target frontal quanto em cima da porta!
+
+### Padrão 2: Validação em Cadeia
+
+```lua
+if not doorId or not house:canEditAccessList(doorId, creature) then
+	-- erro
+end
+```
+
+**Benefício:** Verifica existência + permissão em uma condição!
+
+### Padrão 3: Preparação + Interface Simultânea
+
+```lua
+creature:setEditHouse(house, doorId)
+creature:sendHouseWindow(house, doorId)
+```
+
+**Benefício:** Prepara contexto + exibe janela nativa!
+
+### Padrão 4: Requer Direção ou Target
+
+```lua
+spell:needCasterTargetOrDirection(true)
+```
+
+**Benefício:** Obriga clareza de qual porta editar!
+
+---
+
+## 🤖 Documentação das Funções
+
+### spell.onCastSpell(creature, variant)
+
+**Descrição:** Abre editor de acesso para porta em casa.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (house owner/co-owner) |
+| `variant` | Variant | Direção alvo ou target |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Janela editora aberta com sucesso |
+| `false` | Erro: sem porta ou sem permissão |
+
+**Requisitos:**
+- Estar dentro de uma casa
+- Ser owner ou co-owner da casa
+- Estar próximo a uma porta OU apontando para uma
+- Validação canEditAccessList positiva
+
+**Exemplo de Uso:**
+```lua
+-- Player em casa como owner
+-- Cast "aleta grav" com direção para porta
+-- Sistema busca porta frontal/atual
+-- Se válido: abre sendHouseWindow(..., doorId)
+-- Se inválido: sendCancelMessage + efeito erro
+```
+
+---
+
+## 📌 Resumo
+
+**Edit Door List** é um spell de gerenciamento de casa que permite editar permissões de acesso de uma porta específica. Com busca inteligente (frontal → atual), validação canEditAccessList, interface nativa sendHouseWindow, feedback erro com CONST_ME_POFF, words "aleta grav", som SOUND_EFFECT_TYPE_SPELL_EDIT_DOOR, needCasterTargetOrDirection true, isAggressive false. Spell house door acesso lista edição gerenciamento interface nativa!

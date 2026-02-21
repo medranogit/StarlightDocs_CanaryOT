@@ -1,0 +1,293 @@
+---
+title: Viper Star
+description: Arma de projétil tipo missile com dual combat (físico + terra com poison), condição poison delayed, break chance e fluxo de execução sequencial
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `viper_star.lua` |
+| **Tipo de Arma** | Missile (projétil reutilizável) |
+| **ID do Item** | 7366 |
+| **Tipo de Dano Primário** | COMBAT_PHYSICALDAMAGE |
+| **Tipo de Dano Secundário** | COMBAT_EARTHDAMAGE |
+| **Efeito Distância** | CONST_ANI_GREENSTAR (estrela verde) |
+| **Ataque Base** | 28 |
+| **Chance de Acerto** | 76% |
+| **Break Chance** | 9% (chance se quebra ao usar) |
+| **Ação** | Nenhuma (missile reutilizável) |
+| **Condição** | CONDITION_POISON (delayed) |
+| **Ticks de Veneno** | 2 (10s, 20s intervals) |
+| **Dano Veneno** | -2, -1 dano por tick |
+| **Fórm Primária** | Skill-based puro (1.0 factor) |
+| **Dual Execute** | Executa 2 combats sequencialmente |
+| **Target Check** | Valida hit antes secondary combat |
+
+## 📍 Caminho Original
+
+```
+data/scripts/weapons/scripts/viper_star.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Viper Star é missile tipo estrela que executa 2 combats sequencialmente: (1) combat físico puro, (2) se target hit (variant:getNumber() != 0), secondCombat com earth damage + poison condition. Poison tem 2 ticks delayed (-2/-1 em 10s/20s). Break chance 9% significa missile pode se quebrar ao usar. Ataque 28 com 76% hit chance indica projeto mid-tier. Padrão avançado de weapon com dual damage types + condition aplicada em segundo execute.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `viper_star.lua` implementa weapon missile com dual combat sequencial: primário (físico skill-based) + secundário (terra + poison delayed). Script define dois Combat objects: combat físico puro e secondCombat earth damage com condition poison. Handler onUseWeapon executa combat primário, valida hit (variant:getNumber()), se hit executa secondCombat com poison. Condition poison delayed tem 2 ticks (-2/-1 em 10s/20s). Weapon registra como WEAPON_MISSILE ID 7366, ataque 28, 76% hit chance, break chance 9%. Implementação avançada de missile com dual damage + condition application condicionada ao sucesso do hit primário. Padrão de sequential execution com validation de hit.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Configuração de Combat Primário (Físico)
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_GREENSTAR)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, true)
+combat:setFormula(COMBAT_FORMULA_SKILL, 0, 0, 1, 0)  -- Skill-based puro
+
+-- 2. Configuração de Condição Poison
+local condition = Condition(CONDITION_POISON)
+condition:setParameter(CONDITION_PARAM_DELAYED, true)
+condition:addDamage(10, 4000, -2)  -- Tick 1: 10s interval, -2 dano
+condition:addDamage(20, 4000, -1)  -- Tick 2: 20s interval, -1 dano
+
+-- 3. Configuração de Combat Secundário (Terra + Poison)
+local secondCombat = Combat()
+secondCombat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+secondCombat:addCondition(condition)
+
+-- 4. Instância de Weapon
+local viperStar = Weapon(WEAPON_MISSILE)
+
+-- 5. Handler de Uso - Dual Execute
+function viperStar.onUseWeapon(player, variant)
+	-- Executa combat primário
+	local boolean = combat:execute(player, variant)
+	if not boolean then
+		return false
+	end
+	
+	-- Valida se target foi atingido
+	local target = variant:getNumber()
+	if target ~= 0 then
+		-- Executa combat secundário com poison
+		boolean = secondCombat:execute(player, variant)
+	end
+	return boolean
+end
+
+-- 6. Configuração do Item
+viperStar:id(7366)
+viperStar:attack(28)
+viperStar:breakChance(9)
+viperStar:shootType(CONST_ANI_GREENSTAR)
+viperStar:maxHitChance(76)
+viperStar:register()
+```
+
+## 📊 Parâmetros de Combats
+
+### Combat Primário (Físico)
+
+| Parâmetro | Valor | Descrição |
+|---|---|---|
+| COMBAT_PARAM_TYPE | COMBAT_PHYSICALDAMAGE | Tipo de dano (físico) |
+| COMBAT_PARAM_DISTANCEEFFECT | CONST_ANI_GREENSTAR | Animação estrela verde em voo |
+| COMBAT_PARAM_BLOCKARMOR | true | Armor reduz dano |
+| COMBAT_FORMULA_SKILL | 0, 0, 1, 0 | Formula skill-based puro |
+
+### Combat Secundário (Terra + Poison)
+
+| Parâmetro | Valor | Descrição |
+|---|---|---|
+| COMBAT_PARAM_TYPE | COMBAT_EARTHDAMAGE | Tipo de dano (terra) |
+| Condition | CONDITION_POISON (delayed) | Aplica veneno (2 ticks) |
+
+## 📊 Escalas de Poison Damage
+
+| Tick | Intervalo | Duração | Dano |
+|---|---|---|---|
+| 1 | 10 segundos | 4 segundos | -2 |
+| 2 | 20 segundos | 4 segundos | -1 |
+
+**Total Dano Veneno:** -2 -1 = -3 dano over 20 segundos
+
+**Timeline:**
+- 0s: Hit físico + applicar condition
+- 10s: Tick 1 (-2 poison)
+- 20s: Tick 2 (-1 poison)
+
+## 🎯 Padrões de Implementação
+
+### 1. **Padrão de Dual Combat Sequencial**
+
+```lua
+function viperStar.onUseWeapon(player, variant)
+	local boolean = combat:execute(player, variant)
+	if not boolean then
+		return false
+	end
+	
+	local target = variant:getNumber()
+	if target ~= 0 then
+		boolean = secondCombat:execute(player, variant)
+	end
+	return boolean
+end
+```
+
+Executa 2 combats em sequência:
+1. Primary combat (físico)
+2. Se primary hit: Secondary combat (terra + poison)
+
+### 2. **Padrão de Target Validation**
+
+```lua
+local target = variant:getNumber()
+if target ~= 0 then
+	boolean = secondCombat:execute(player, variant)
+end
+```
+
+Valida se hit ocorreu (target != 0) antes executar secondary.
+
+### 3. **Padrão de Condition em DualCombat**
+
+```lua
+local condition = Condition(CONDITION_POISON)
+condition:setParameter(CONDITION_PARAM_DELAYED, true)
+condition:addDamage(10, 4000, -2)
+condition:addDamage(20, 4000, -1)
+
+local secondCombat = Combat()
+secondCombat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+secondCombat:addCondition(condition)
+```
+
+Condition aplicada apenas no secondCombat (terra damage).
+
+### 4. **Padrão de Missile com Break Chance**
+
+```lua
+viperStar:breakChance(9)
+```
+
+9% chance se quebra ao usar (reutilizável mas pode quebrar).
+
+### 5. **Padrão de Damage Types Dual**
+
+```lua
+COMBAT_PHYSICALDAMAGE  -- Combat primário
+COMBAT_EARTHDAMAGE     -- Combat secundário
+```
+
+Weapon combina 2 tipos de dano em fluxo sequential.
+
+## 🤖 Documentação de Funções
+
+### **viperStar.onUseWeapon(player, variant)**
+
+**Descrição:** Handler que executa dual combat sequencial com validation de hit.
+
+**Parâmetros:**
+- `player` (Player): Player disparando missile
+- `variant` (Variant): Target/tile alvo
+
+**Fluxo:**
+1. Executa `combat:execute(player, variant)` (dano físico)
+2. Se retorna false: return false (falhou)
+3. Pega target via `variant:getNumber()`
+4. Se target != 0 (hit válido):
+   - Executa `secondCombat:execute(player, variant)` (terra + poison)
+5. Retorna boolean final
+
+**Retorno:**
+- `boolean`: true (ambos combats executaram), false (primary falhou)
+
+**Exemplo de Uso:**
+```lua
+-- Player dispara viper star em inimigo
+-- 1. Executa combat físico
+-- 2. Se atingiu: executa secondCombat terra + poison
+-- 3. Resultados: dano físico + dano terra + poison delayed (-2/-1 em 10s/20s)
+```
+
+---
+
+### **variant:getNumber()**
+
+**Descrição:** Obtém ID do target atingido do variant.
+
+**Retorno:**
+- `0`: Nenhum target (miss)
+- `>0`: ID do target (hit)
+
+**Validação Viper Star:**
+```lua
+if target ~= 0 then
+	-- Executa secondary combat
+end
+```
+
+---
+
+### **Combat:execute(player, variant)**
+
+**Descrição:** Executa combat contra variant (target ou tile).
+
+**Retorno:**
+- `boolean`: true (sucesso), false (falhou)
+
+**Viper Star:**
+- Primary combat sempre executa
+- Secondary combat executa se primary retorna true
+
+---
+
+### **Condition:addDamage(interval, duration, damage)**
+
+**Descrição:** Adiciona tick de damage à condição.
+
+**Viper Star Poison:**
+- Tick 1: interval=10s, damage=-2
+- Tick 2: interval=20s, damage=-1
+
+**Timeline:**
+- 0s: Aplicar condition
+- 10s: Tick 1 (-2)
+- 20s: Tick 2 (-1)
+
+---
+
+### **Weapon:breakChance(percentage)**
+
+**Descrição:** Define chance de quebra ao usar weapon.
+
+**Valor Viper Star:** `9`
+- 9% chance se quebra
+- Missile reutilizável mas pode quebrar
+- Pattern para items valiosos
+
+## 📌 Variáveis Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Local | Combat object físico primário |
+| `condition` | Condition | Local | Condition poison com 2 ticks |
+| `secondCombat` | Combat | Local | Combat object terra + condition |
+| `viperStar` | Weapon | Local | Instância do weapon missile |
+| `boolean` | boolean | Local (handler) | Flag de sucesso/falha |
+| `target` | number | Local (handler) | ID do target atingido |
+| `player` | Player | Parâmetro (handler) | Player disparando |
+| `variant` | Variant | Parâmetro (handler) | Target/tile alvo |
+
+## 📌 Resumo
+
+**Viper Star** é weapon missile com dual combat sequencial (físico → terra + poison) e break chance 9%. Implementação executa combat primário (dano físico skill-based), valida hit, se sucesso executa segundo combat (dano terra + condition poison delayed). Condition poison tem 2 ticks (-2/-1 em 10s/20s). Weapon missile (reutilizável) com ataque 28, 76% hit chance, break chance 9% indica mid-tier progressive weapon. Padrão avançado de sequential execution com condition aplicada condicionalmente ao hit primário. Diferencia-se por dual damage combo + target validation + break chance.
+
+Diferencia-se por: (1) dual combat sequential, (2) target validation, (3) condition in secondary, (4) 2 damage types, (5) break chance 9%, (6) missile reutilizável, (7) conditional secondary execute.

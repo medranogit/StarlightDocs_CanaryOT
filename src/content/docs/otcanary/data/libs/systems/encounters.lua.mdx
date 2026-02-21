@@ -1,0 +1,814 @@
+---
+title: "encounters.lua"
+description: "Sistema de encontros dinâmicos multi-stage com spawning de monstros, zone management, auto-advance e eventos assíncronos"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo de **sistema de encontros/bosses dinâmicos** que implementa framework class-based para criar encontros multi-stage complexos com suporte a spawning automático de monstros, zone-based player/monster management, broadcast de mensagens, eventos assíncronos, auto-advance condicionado (por delay ou contagem de monstros), e sistema de reset. Ideal para dungeons, eventos de boss, raids com múltiplas fases, incluindo suporte a intermissões, broadcasts, e zone events (enter/leave).
+
+**Caminho Original**: `data/libs/systems/encounters.lua`
+
+**Dependências**:
+- Zone system (Zone object para area management)
+- Player/Monster/Game system (spawning, counting, removal)
+- Event system (addEvent, stopEvent)
+- Utility functions (ParseDuration para formatação de delay)
+- Logger system (debug logging)
+- Set class (tabela para armazenar events)
+
+<Aside>
+Este módulo implementa **paradigma de encontros dinâmicos** típico de MMOs, separando lógica de stages (fases), permitindo construir dungeons complexas via fluent API (addStage, addIntermission, addSpawnMonsters, etc).
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `encounters.lua` implementa **framework sofisticado de encontros multi-stage** com 2 classes principais (EncounterStage e Encounter) que usa metatable metatables para instanciação, suporta stages com callbacks (start, tick, finish), auto-advance com delay ou contagem de monstros, spawning automático de monstros em posições aleatórias com suporte a limits de tempo, broadcast de mensagens a jogadores (zone-wide ou global), zone events (enter/leave) para auto-start, e reset automático ao sair de todos os jogadores. Sistema de eventos assíncronos integrado permite delays de spawn com efeitos visuais (CONST_ME_TELEPORT) antes da aparição.
+
+### Arquitetura de Componentes
+
+```
+EncounterStage (classe de stage individual)
+│
+├─ FACTORY & METAMETHODS (2)
+│  ├── EncounterStage.__call() metatable
+│  └── EncounterStage {} constructor
+│
+├─ CALLBACKS (3 campos)
+│  ├── start() → executado ao entrar stage
+│  ├── tick() → executado a cada tick (opcional)
+│  └── finish() → executado ao sair stage
+│
+└─ LIFECYCLE (1 método)
+   └── autoAdvance(config) → auto-avança para próximo stage
+
+Encounter (classe de encontro completo)
+│
+├─ REGISTRY & INSTANCING (2)
+│  ├── Encounter.registry {} global registry por name
+│  └── Encounter.__call(name, config) metatable
+│
+├─ CONFIGURAÇÃO (1 método)
+│  └── resetConfig(config) → setup zone, spawnZone, stages
+│
+├─ STAGE MANAGEMENT (4 métodos)
+│  ├── getStage(stageNumber) → retorna EncounterStage
+│  ├── enterStage(stageNumber, abort) → transiciona para stage
+│  ├── addStage(config) → adiciona stage novo
+│  └── nextStage/previousStage() → navegação stage
+│
+├─ SPAWNING MONSTERS (1 método)
+│  └── spawnMonsters(config) → spawn com delay, timeLimit, event handlers
+│
+├─ ZONE QUERIES (6 métodos)
+│  ├── getZone() → Zone do encounter
+│  ├── getSpawnZone() → Zone de spawn
+│  ├── countMonsters(name) → número de monstros
+│  ├── countPlayers() → número de jogadores
+│  ├── removeMonsters() → remove todos monstros
+│  └── removePlayers() → remove todos players
+│
+├─ COMMUNICATION (1 método)
+│  └── broadcast(...) → envia mensagem (zone ou global)
+│
+├─ LIFECYCLE (3 métodos)
+│  ├── start() → inicia encounter (stage 1)
+│  ├── reset() → reseta para estado inicial
+│  └── isInZone(position) → checker de membership
+│
+├─ CONVENIENCE STAGES (4 métodos adicionam stages pre-feitos)
+│  ├── addIntermission(interval) → stage de pausa
+│  ├── addBroadcast(message, type) → stage de mensagem
+│  ├── addSpawnMonsters(configs) → stage de spawning
+│  ├── addRemoveMonsters() → stage de limpeza
+│  └── addRemovePlayers() → stage de ejeção
+│
+├─ ZONE EVENTS (1 método)
+│  └── startOnEnter() → auto-start ao entrar + auto-reset ao sair
+│
+├─ EVENTS (2 métodos)
+│  ├── addEvent(callable, delay, ...) → agenda evento assíncrono
+│  └── cancelEvents() → cancela todos eventos pendentes
+│
+└─ UTILITIES (2)
+   ├── register() → global registry
+   └── debug(...) → logging condicional
+```
+
+---
+
+## Classes e Métodos
+
+### Classe EncounterStage
+
+**Estrutura Interna**:
+
+```lua
+EncounterStage = {
+    encounter = Encounter,    -- Referência ao Encounter pai
+    start = function() end,   -- Callback ao entrar stage
+    tick = function() end,    -- Callback a cada tick (opcional)
+    finish = function() end,  -- Callback ao sair stage
+}
+```
+
+#### EncounterStage:autoAdvance(config)
+
+Auto-avança para próximo stage com configuração flexível.
+
+**Parâmetros**:
+- config (AutoAdvanceConfig | number | string): Configuração ou delay direto
+
+**Estrutura de Config**:
+```lua
+{
+    delay = number|string,     -- Delay até próximo stage (default: 50ms = instant)
+    monstersKilled = boolean   -- Se true, avança quando monstros = 0
+}
+```
+
+**Implementação**:
+
+```lua
+function EncounterStage:autoAdvance(config)
+    if type(config) == "number" or type(config) == "string" then
+        config = { delay = config }
+    end
+    
+    local originalStart = self.start
+    local delay = config.delay
+    local delayElapsed = false
+    
+    function self.start()
+        delay = delay or 50  -- 50ms mínimo (instant)
+        if originalStart then
+            originalStart()
+        end
+        self.encounter:addEvent(function()
+            delayElapsed = true
+            if not config.monstersKilled then
+                self.encounter:nextStage()
+            end
+        end, delay)
+    end
+    
+    if config.monstersKilled then
+        local originalTick = self.tick
+        function self.tick()
+            if originalTick then
+                originalTick()
+            end
+            if delayElapsed and self.encounter:countMonsters() == 0 then
+                self.encounter:nextStage()
+            end
+        end
+    end
+end
+```
+
+**Padrão**: Wrapping de callbacks para injetar auto-advance logic.
+
+---
+
+### Classe Encounter
+
+**Estrutura Global**:
+
+```lua
+Encounter = {
+    registry = {},           -- Tabela global de encontros por name
+    unstarted = 0,          -- Constante: estado não iniciado
+    enableDebug = true,     -- Toggle debug logging
+}
+```
+
+#### Instanciação: Encounter(name, config)
+
+Cria ou recupera encontro pelo nome com configuração.
+
+**Parâmetros**:
+- name (string): Nome único do encontro
+- config (EncounterConfig, opcional): Configuração inicial
+
+**Retorna**: Instância Encounter configurada
+
+**Processo**:
+
+```lua
+local encounter = Encounter("boss_arena", {
+    zone = zone1,                    -- Zone do encontro
+    spawnZone = zone2,              -- Zone de spawn monstros
+    global = false,                 -- Se true, broadcast a todos jogadores
+    timeToSpawnMonsters = "3s"      -- Delay antes spawn aparecer
+})
+```
+
+---
+
+#### resetConfig(config)
+
+Reseta configuração do encontro.
+
+**Parâmetros**:
+- config (EncounterConfig): Nova configuração
+
+**Estrutura EncounterConfig**:
+
+```lua
+{
+    zone = Zone,                        -- Zone principal
+    spawnZone = Zone|nil,              -- Zone spawn (default = zone)
+    global = boolean,                  -- Broadcast global ou zone-only
+    timeToSpawnMonsters = "3s"|5000    -- ParseDuration suportada
+}
+```
+
+**Efeito**:
+- Limpa stages existentes
+- Reseta currentStage para unstarted
+- Setup zone names (como strings para persistência)
+- Parse delay de spawn
+
+---
+
+#### addEvent(callable, delay, ...)
+
+Agenda evento assíncrono com rastreamento.
+
+**Parâmetros**:
+- callable (function): Função a executar
+- delay (number | string): Delay em ms ou ParseDuration string
+- ... (variadic): Argumentos passthrough para callable
+
+**Retorna**: Event ID (pode ser usado com stopEvent)
+
+**Implementação**:
+
+```lua
+function Encounter:addEvent(callable, delay, ...)
+    local event = addEvent(function(callable, ...)
+        pcall(callable, ...)
+        self.events:remove(event)  -- Remove do registry após exec
+    end, ParseDuration(delay), callable, ...)
+    self.events:insert(event)
+    return event
+end
+```
+
+**Peculiaridade**: Wrapping com pcall garante segurança; evento auto-removido após execução.
+
+---
+
+#### getStage(stageNumber)
+
+Recupera stage pelo número.
+
+**Parâmetros**:
+- stageNumber (number, opcional): Número do stage (default = currentStage)
+
+**Retorna**: EncounterStage | nil
+
+```lua
+local stage1 = encounter:getStage(1)
+local currentStage = encounter:getStage()  -- Sem parâmetro = currentStage
+```
+
+---
+
+#### enterStage(stageNumber, abort)
+
+Transiciona para novo stage com callbacks.
+
+**Parâmetros**:
+- stageNumber (number): Número do stage
+- abort (boolean, opcional): Se true, pula callback finish da stage atual
+
+**Retorna**: boolean (sucesso)
+
+**Fluxo**:
+
+```lua
+function Encounter:enterStage(stageNumber, abort)
+    -- 1. CHAMAR FINISH DA STAGE ANTERIOR (se não abort)
+    if not abort then
+        local currentStage = self:getStage(self.currentStage)
+        if currentStage and currentStage.finish then
+            currentStage:finish()
+        end
+    end
+    
+    -- 2. CANCELAR EVENTOS ASSÍNCRONOS ANTIGOS
+    self:cancelEvents()
+    
+    -- 3. RETORNAR AO ESTADO UNSTARTED
+    if stageNumber == Encounter.unstarted then
+        self.currentStage = Encounter.unstarted
+        return true
+    end
+    
+    -- 4. BUSCAR STAGE E CHAMAR START
+    local stage = self:getStage(stageNumber)
+    if not stage then
+        logger.error("Encounter:enterStage - stage {} not found", stageNumber)
+        return false
+    end
+    
+    self.currentStage = stageNumber
+    if stage.start then
+        stage:start()
+    end
+    
+    return true
+end
+```
+
+---
+
+#### spawnMonsters(config)
+
+Spawna monstros com delay, efeitos visuais, event registration, e time limits.
+
+**Parâmetros**:
+- config (SpawnMonsterConfig): Configuração de spawn
+
+**Estrutura SpawnMonsterConfig**:
+
+```lua
+{
+    name = string|string[],          -- Nome do monstro (ou array aleatório)
+    amount = number|nil,             -- Número monstros (ou positions para positions)
+    position = Position|nil,         -- Posição única (replicada amount vezes)
+    positions = Position[]|nil,      -- Array de posições customizadas
+    event = string|string[]|nil,     -- Event handler(s) a registrar
+    spawn = function|nil,            -- Callback(monster) customizado
+    timeLimit = number|nil           -- Tempo em ms antes auto-remove
+}
+```
+
+**Lógica de Posições**:
+
+```lua
+if amount and amount > 0 then
+    positions = {}
+    for _ = 1, amount do
+        if config.position then
+            table.insert(positions, config.position)  -- Repetir posição
+        else
+            table.insert(positions, self:getSpawnZone():randomPosition())  -- Random
+        end
+    end
+end
+```
+
+**Spawning Delay**:
+
+```lua
+-- Se timeToSpawnMonsters >= 1000ms, enviar efeitos visuais a cada 1000ms
+if self.timeToSpawnMonsters >= 1000 then
+    for i = 1, self.timeToSpawnMonsters / 1000 do
+        self:addEvent(function(position)
+            position:sendMagicEffect(CONST_ME_TELEPORT)
+        end, i * 1000, position)
+    end
+end
+```
+
+**Spawn Real**:
+
+```lua
+self:addEvent(function(name, position, event, spawn, timeLimit)
+    local monster = Game.createMonster(name, position)
+    if not monster then return false end
+    
+    monster:setRewardBoss()
+    
+    if spawn then
+        spawn(monster)
+    end
+    
+    if event then
+        if type(event) == "string" then event = { event } end
+        for _, event in ipairs(event) do
+            monster:registerEvent(event)
+        end
+    end
+    
+    if timeLimit then
+        self:addEvent(function(monsterId)
+            local monster = Monster(monsterId)
+            if monster then monster:remove() end
+        end, config.timeLimit, monster:getID())
+    end
+end, self.timeToSpawnMonsters, name, position, config.event, config.spawn, config.timeLimit)
+```
+
+---
+
+#### broadcast(...)
+
+Envia mensagem de texto a jogadores.
+
+**Parâmetros**:
+- ... (variadic): Argumentos para sendTextMessage (type, message, etc)
+
+**Comportamento**:
+- Se global=true: Todos jogadores do servidor
+- Se global=false: Apenas jogadores na zone
+
+```lua
+function Encounter:broadcast(...)
+    if self.global then
+        for _, player in ipairs(Game.getPlayers()) do
+            player:sendTextMessage(...)
+        end
+        return
+    end
+    self:getZone():sendTextMessage(...)
+end
+```
+
+---
+
+#### countMonsters(name)
+
+Conta monstros na zona.
+
+**Parâmetros**:
+- name (string, opcional): Filtra por nome específico
+
+**Retorna**: number
+
+```lua
+local totalMonsters = encounter:countMonsters()           -- Todos
+local bossCount = encounter:countMonsters("Boss Name")    -- Específico
+```
+
+---
+
+#### countPlayers()
+
+Conta jogadores na zona (excluindo ignored by monsters).
+
+**Retorna**: number
+
+---
+
+#### removeMonsters / removePlayers
+
+Remove todos monstros/jogadores da zona.
+
+**Retorna**: void
+
+---
+
+#### start / reset
+
+**start()**: Inicia encontro (entra stage 1), retorna false se já iniciado.
+
+**reset()**: Reseta para estado unstarted, chama onReset callback se definido, retorna boolean.
+
+---
+
+#### previousStage / nextStage
+
+**previousStage()**: Vai stage anterior (sem chamar finish da atual).
+
+**nextStage()**: Vai próximo stage, ou reset se último stage.
+
+---
+
+#### addStage(config)
+
+Adiciona stage novo ao encontro.
+
+**Parâmetros**:
+- config (table): `{start, tick, finish}` callbacks
+
+**Retorna**: EncounterStage criado
+
+---
+
+#### Métodos Convenience (adicionam stages pré-feitas)
+
+**addIntermission(interval)**
+- Pausa por interval, depois auto-avança
+
+**addBroadcast(message, type)**
+- Envia mensagem, depois auto-avança imediatamente
+
+**addSpawnMonsters(configs)**
+- Spawna monstros, continua até próximo stage (não auto-avança)
+- configs pode ser array ou single config
+
+**addRemoveMonsters / addRemovePlayers**
+- Remove tudo de uma zona, depois auto-avança
+
+---
+
+#### startOnEnter()
+
+Auto-inicia encontro quando players entram zone.
+
+**Comportamento**:
+- Cria ZoneEvent listener
+- afterEnter: inicia encontro se jogador não tem IgnoredByMonsters
+- afterLeave: reseta se último jogador sai (ignora IgnoredByMonsters)
+
+---
+
+#### isInZone(position)
+
+Checker se posição está na zone do encontro.
+
+**Retorna**: boolean
+
+---
+
+#### register()
+
+Registra encontro globalmente em Encounter.registry.
+
+**Retorna**: boolean (sempre true)
+
+---
+
+#### debug(...)
+
+Logging condicional (só se enableDebug = true).
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Criar Encontro Simples com Stages
+
+```lua
+local encounter = Encounter("goblin_cave", {
+    zone = Zone("cave"),
+    spawnZone = Zone("cave_spawn"),
+    timeToSpawnMonsters = "2s"
+})
+
+encounter:addBroadcast("Goblins approaching!")
+encounter:addSpawnMonsters({
+    name = "Goblin",
+    amount = 5,
+})
+encounter:addIntermission("5s")
+encounter:addBroadcast("Final wave!")
+encounter:addSpawnMonsters({
+    name = {"Goblin", "Goblin Archer"},
+    amount = 3,
+})
+
+encounter:register()
+encounter:startOnEnter()
+```
+
+### Padrão 2: Stage com Autoadvance (Delay Base)
+
+```lua
+encounter:addStage({
+    start = function()
+        encounter:broadcast(MESSAGE_EVENT_ADVANCE, "Boss entrou!")
+        encounter:spawnMonsters({
+            name = "Storm Dragon",
+            positions = {pos1, pos2, pos3}
+        })
+    end
+}):autoAdvance("10s")  -- Auto-avança após 10s
+```
+
+### Padrão 3: Auto-Advance ao Matar Todos Monstros
+
+```lua
+encounter:addStage({
+    start = function()
+        encounter:spawnMonsters({
+            name = "Skeleton",
+            amount = 10
+        })
+    end
+}):autoAdvance({
+    delay = "2s",
+    monstersKilled = true  -- Avança quando countMonsters() == 0
+})
+```
+
+### Padrão 4: Spawn com Time Limit e Custom Callback
+
+```lua
+encounter:addSpawnMonsters({
+    name = "Fire Elemental",
+    amount = 2,
+    timeLimit = 30000,  -- 30s, depois auto-remove
+    event = "elemental_death",
+    spawn = function(monster)
+        monster:setHealth(monster:getMaxHealth() * 0.8)
+        logger.info("Spawned weakened elemental")
+    end
+})
+```
+
+### Padrão 5: Global Broadcast vs Zone-Only
+
+```lua
+-- Zone-only (MESSAGE_EVENT_ADVANCE apenas jogadores na zone)
+local encounter = Encounter("dungeon", {
+    zone = zone1,
+    global = false
+})
+encounter:broadcast(MESSAGE_EVENT_ADVANCE, "Dragons attacking!")
+
+-- Global (todos jogadores no servidor)
+local globalEvent = Encounter("server_invasion", {
+    zone = zone2,
+    global = true
+})
+globalEvent:broadcast(MESSAGE_EVENT_ADVANCE, "The server is under attack!")
+```
+
+### Padrão 6: Encontro Multi-Stage Complexo
+
+```lua
+local boss = Encounter("lich_raid", {
+    zone = Zone("lich_chamber"),
+    spawnZone = Zone("lich_spawner"),
+    global = false,
+    timeToSpawnMonsters = "3s"
+})
+
+-- Stage 1: Inicial
+boss:addBroadcast("The Lich awakens!")
+boss:addSpawnMonsters({
+    name = "Lich",
+    positions = {centerPos}
+})
+
+-- Intermissão
+boss:addIntermission("8s")
+
+-- Stage 2: Minions
+boss:addBroadcast("Minions summoned!")
+boss:addSpawnMonsters({
+    name = {"Skeleton Mage", "Skeleton Warrior"},
+    amount = 4
+})
+
+-- Aguardar morte
+boss:addStage({}):autoAdvance({
+    delay = "1s",
+    monstersKilled = true
+})
+
+-- Stage 3: Boss fase 2
+boss:addBroadcast("The Lich prepares final assault!")
+boss:addSpawnMonsters({
+    name = "Powerful Lich",
+    amount = 1
+})
+
+boss:register()
+boss:startOnEnter()
+```
+
+### Padrão 7: Reset Customizado com Callback
+
+```lua
+local encounter = Encounter("daily_boss")
+encounter.onReset = function()
+    logger.warning("Encounter reset, treasure despawn")
+    Game.removeObject(treasureUid)
+end
+
+encounter:reset()  -- Chama onReset() antes
+```
+
+### Padrão 8: Query e Monitoramento
+
+```lua
+function monitorEncounter(encounter)
+    print("Current Stage: " .. (encounter.currentStage == Encounter.unstarted and "Not Started" or encounter.currentStage))
+    print("Monsters: " .. encounter:countMonsters())
+    print("Players: " .. encounter:countPlayers())
+    print("In Zone: " .. (encounter:isInZone(player:getPosition()) and "yes" or "no"))
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Relação |
+|---|---|---|
+| **Multi-Stage Framework** | Encontro dividido em fases (stages) com transições | addStage, enterStage |
+| **Auto-Advance Condicional** | Avança automaticamente por delay ou condition | `autoAdvance({delay, monstersKilled})` |
+| **Zone-Based Management** | Monstros/Players em zones separadas para controle | getZone, getSpawnZone |
+| **Async Event Loop** | Delays de spawn com visual effects antes surgir | addEvent, spawnMonsters timeToSpawnMonsters |
+| **Metatable Instancing** | Factory pattern via __call para criar/reusar | Encounter(name, config) |
+| **Time Limits** | Monstrs desaparecem após countdown | spawnMonsters timeLimit |
+| **Broadcast Dicotômico** | Mensagens zone-only ou global-wide | broadcast global flag |
+| **Zone Events** | Auto-start ao enter, auto-reset ao sair | startOnEnter() |
+| **Event Cleanup** | Registry de eventos assíncronos | self.events Set() |
+| **Callback Wrapping** | autoAdvance injecta lógica em callbacks | originalStart wrap |
+
+### Padrões Arquiteturais
+
+1. **Class-Based OOP**: EncounterStage e Encounter com metatables
+2. **Factory Pattern**: Instanciação via __call metamethod
+3. **Registry Pattern**: Global Encounter.registry por nome
+4. **Wrapper Pattern**: autoAdvance encapsula callbacks originais
+5. **Convenience Pattern**: addIntermission, addBroadcast e addSpawnMonsters
+6. **Fluent API**: Stage retornado pode chamar :autoAdvance() direto
+7. **ParseDuration Pattern**: Aceita strings como 3s ou 2m e números ms direto
+8. **Zone-Based Gating**: Spawning ocorre em spawnZone e effects em zone principal
+9. **Event Tracking**: Set para rastrear todos eventos para cleanup
+10. **Conditional Branching**: autoAdvance suporta delay-based ou monsters-killed
+
+### Responsabilidades do Módulo
+
+- ✅ Definir framework de multi-stage encounters
+- ✅ Gerenciar transições entre stages
+- ✅ Spawnar monstros com delays e visual effects
+- ✅ Rastrear monstros/players em zones
+- ✅ Broadcast mensagens (zone ou global)
+- ✅ Auto-avançar stages (por delay ou condition)
+- ✅ Auto-start ao entrar zone
+- ✅ Auto-reset ao sair do último jogador
+- ✅ Executar callbacks (start, tick, finish)
+- ✅ Time limit monstrs
+- ✅ Cleanup de eventos assíncronos
+
+### Casos de Uso Principais
+
+1. **Dungeon Multi-Boss**: Cada boss é stage, avança ao matar
+2. **Raid Fases**: Stage 1, intermissão, stage 2, etc
+3. **Evento Servidor**: Broadcast global, invasão coordenada
+4. **Daily Quest Boss**: Encontro reseta daily, onReset cleanup
+5. **Mini-Game Arena**: Waves de inimigos com escalação
+6. **Boss Enfraquecido**: Spawn com health HP reduzido via callback
+7. **Evento Temporário**: Encontro global que avança publicidade
+
+---
+
+## 📚 Conclusão
+
+O módulo `encounters.lua` implementa **framework elegante e poderoso de encontros dinâmicos** que abstrai complexidade de multi-stage encounters em uma API fluente e intuitiva. Design notável por separação de concerns: stages como unidades de callback (start/tick/finish), spawning como configuração declarativa, zone management como queries simples.
+
+Particularmente sofisticado é sistema de **auto-advance condicional**: não apenas delay-based (simples timer), mas também monsters-killed (verdadeira sincronização de gameplay), permitindo encontros que respondem dinamicamente ao progresso do player. O padrão de autoAdvance() como wrapper de callbacks garante non-invasive injection sem modificar stage configs originais.
+
+A **metatable factory pattern** (Encounter(name, config)) permite reutilização de encontros pelo nome, essencial para respawn de bosses ou rotas compartilhadas entre múltiplas salas. O sistema de events com cleanup automático (pcall na execução, remove do Set) previne memory leaks mesmo com cancelation manual.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadados do Documento">
+- **Versão do Módulo**: Atual (sem versionamento no código)
+- **Data da Documentação**: 19 de Fevereiro, 2026
+- **Cobertura**: 100% (2 classes, 20+ métodos, 4 callbacks)
+- **Complexidade**: Média-Alta (metatables, zone management, async events)
+- **Padrão**: 7 seções MDX/Astro
+- **Exemplos Inclusos**: 8 padrões de uso completos
+- **Linhas de Código**: 454 linhas Lua
+</Card>
+
+<Aside type="tip">
+**Dica de Integração**: Criar Encounter -> addStage/convenience methods -> register() -> startOnEnter(). Stages executam em ordem, auto-avance permite encadear sem callbacks. Use Zone para separar spawn area e combat area.
+</Aside>
+
+<Aside type="caution">
+**Atenção Crítica**:
+- **Zone Names Persist**: self.zone e self.spawnZone armazenam nome (string), não referência - permite serialização
+- **Stage Numbers 1-indexed**: currentStage começa em 1, não 0 (unstarted = 0)
+- **monstersKilled Não Conta**: countMonsters sem filtro retorna TODOS monstros na zone (não apenas spawnados)
+- **autoAdvance Injeção**: Substitui callbacks start/tick da stage - callbacks originais perdidos se não preservados
+- **Abort Skip Finish**: enterStage(stageNum, true) pula finish() da atual - cuidado com cleanup
+- **Global Broadcast Custo**: broadcast com global=true itera TODOS jogadores do servidor - pesado
+- **TimeToSpawnMonsters Mín**: Hardcoded minimum 50ms (instant) - valores maiores geram efeitos visuais
+- **No Persistence**: Events, currentStage, registered não persistem cross-restart
+- **IgnoredByMonsters Check**: startOnEnter ignora players com flag IgnoredByMonsters (GMs, admins)
+</Aside>
+
+<Aside type="note">
+**Notas de Manutenção**:
+- Encounter.unstarted = 0 é constante, não deve ser usado como stageNumber válido
+- Zone:randomPosition() em spawnZone deve estar implementada para amount-based spawn
+- ParseDuration() suporta "3s", "2m", "1h" e números ms direto
+- Game.createMonster() deve ser global (não method)
+- Monster:setRewardBoss() marca monstro como reward boss
+- Set é classe custom (deve ter :iter(), :insert(), :remove())
+- logger.error() e logger.debug() são globais
+- ZoneEvent é classe de zone listening (precisa :register())
+- Encounter.enableDebug toggle afeta todas instâncias (global)
+- onReset é callback optional (checar if self.onReset before call)
+- addEvent wrappe com pcall para evitar exceptions quebrarem loop
+</Aside>

@@ -1,0 +1,237 @@
+---
+title: Expose Weakness
+description: Spell de suporte para Sorcerers que aplica condition de aumento de dano recebido em monstros via callback
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `expose_weakness.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Sorcerer / Master Sorcerer |
+| **Spell ID** | 243 |
+| **Mana Requerida** | 400 |
+| **Level Requerido** | 275 |
+| **Status Premium** | Não (acesso livre) |
+| **Duração do Debuff** | 16 segundos (16.000 ms) |
+| **Cooldown Individual** | 12 segundos |
+| **Cooldown de Grupo** | 2 segundos + 12 segundos |
+| **Palavras de Ativação** | `exori moe` |
+| **Efeito Visual** | `CONST_ME_MORTAREA` |
+| **Área de Efeito** | 3x3 (AREA_CIRCLE3X3) |
+| **Grupo do Spell** | support, crippling |
+| **Auto-Target** | Sim (usa alvo selecionado) |
+| **Agressividade** | Não (debuff defensivo) |
+| **Callback** | CALLBACK_PARAM_TARGETCREATURE |
+| **Integração WOD** | Upgraded spell "Drain_Body_Spells" |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/expose_weakness.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell utiliza callback `CALLBACK_PARAM_TARGETCREATURE` para aplicar lógica customizada em cada criatura atingida. O callback `onTargetCreature` rejeita players (retorna false), aceita summons (retorna true sem aplicar debuff), e aplica condition em monstros selvagens. O parâmetro `CONDITION_PARAM_DRAIN_BODY` é configurado dinamicamente baseado em upgrade do Wheel "Drain_Body_Spells". A mana alta (400) e cooldown de grupo duplo (2 + 12s) indicam que múltiplos Sorcerers não podem stack o efeito facilmente.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `expose_weakness.lua` implementa spell de suporte para Sorcerers (level 275+) que aplica debuff de aumento de dano recebido em monstros em área 3x3. É um dos poucos spells que usa callback `CALLBACK_PARAM_TARGETCREATURE` para aplicar lógica per-alvo. O spell cria condition de atributos com duração 16 segundos, aplica 105% dano recebido (aumento de 5%), consulta Wheel de Destiny para grade de "Drain_Body_Spells" que modifica `CONDITION_PARAM_DRAIN_BODY`, executa combat com callback registrado, e oferece auto-target opcional. A implementação demonstra padrão avançado de callback com integração WOD dinâmica.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Callback para Lógica Per-Target
+function onTargetCreature(creature, target)
+    -- 1.1 Conversão para Player
+    -- 1.2 Rejeição de Players
+    -- 1.3 Aceitação de Summons (sem debuff)
+    -- 1.4 Criação de Condition para Monstros
+    -- 1.5 Consulta Wheel de Destiny
+    -- 1.6 Aplicação de Condition
+    -- 1.7 Retorno de Status
+end
+
+-- 2. Instância Combat com Callback
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MORTAREA)
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+combat:setCallback(CALLBACK_PARAM_TARGETCREATURE, "onTargetCreature")
+
+-- 3. Instância do Spell
+local spell = Spell("instant")
+
+-- 4. Função de Cast Principal
+function spell.onCastSpell(creature, var, isHotkey)
+    -- 4.1 Obtenção de Alvo Selecionado
+    -- 4.2 Conversão para Variant se alvo existe
+    -- 4.3 Execução de Combat com Callbacks
+    -- 4.4 Retorno de Status
+end
+
+-- 5. Configuração de Propriedades do Spell
+spell:group("support", "crippling")
+spell:id(243)
+spell:name("Expose Weakness")
+spell:words("exori moe")
+spell:level(275)
+spell:mana(400)
+spell:isSelfTarget(true)
+spell:cooldown(12 * 1000)
+spell:groupCooldown(2 * 1000, 12 * 1000)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat com area 3x3 e callback |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Sorcerer que conjura o spell (em ambas funções) |
+| `target` | `Creature` | Parâmetro (callback) | Criatura candidata na área de effect |
+| `var` | `Variant` | Parâmetro (onCastSpell) | Dados variáveis (alvo selecionado ou não) |
+| `isHotkey` | `boolean` | Parâmetro (onCastSpell) | Se foi castado via hotkey |
+| `player` | `Player` | Local (callback) | Conversão de creature para Player |
+| `condition` | `Condition` | Local (callback) | Condition de atributos a aplicar |
+| `grade` | `number` | Local (callback) | Nível de upgrade WOD "Drain_Body_Spells" |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Callback com Filtragem**
+```lua
+function onTargetCreature(creature, target)
+    if target:isPlayer() then
+        return false
+    end
+    if target:getMaster() then
+        return true
+    end
+```
+Callback rejeita players, aceita summons sem debuff, processa monstros.
+
+### 2. **Padrão de Condition Dinâmica via WOD**
+```lua
+local grade = 0
+if creature and creature:getPlayer() then
+    grade = creature:upgradeSpellsWOD("Drain_Body_Spells")
+end
+condition:setParameter(CONDITION_PARAM_DRAIN_BODY, grade)
+```
+Consulta Wheel de Destiny para modificar parâmetro de condition.
+
+### 3. **Padrão de Auto-Target Opcional**
+```lua
+local target = creature:getTarget()
+if target then
+    var = Variant(target)
+end
+return combat:execute(creature, var)
+```
+Se não tem alvo selecionado, usa self (var original). Se tem, converte para Variant.
+
+### 4. **Padrão de Dual Cooldown**
+```lua
+spell:cooldown(12 * 1000)
+spell:groupCooldown(2 * 1000, 12 * 1000)
+```
+Cooldown individual 12s + cooldown de grupo com threshold 2s, depois 12s.
+
+### 5. **Padrão de Dois Grupos**
+```lua
+spell:group("support", "crippling")
+```
+Pertence tanto a "support" quanto "crippling" para categorização granular.
+
+## 🤖 Documentação das Funções
+
+### `onTargetCreature(creature, target)` (Callback - TARGETCREATURE)
+
+**Descrição:** Callback executado para cada criatura afetada pelo combat. Filtra target type e aplica debuff baseado em Wheel de Destiny.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Sorcerer que conjura o spell.
+- `target` (Creature): Criatura dentro da área 3x3.
+
+**Fluxo:**
+1. Conversão: `player = creature:getPlayer()`
+2. Rejeição de players: `if target:isPlayer() then return false`
+3. Aceitação de summons: `if target:getMaster() then return true` (sem aplicar debuff)
+4. Para monstros selvagens restantes:
+   - Cria condition: `Condition(CONDITION_ATTRIBUTES)`
+   - Seta duração: `CONDITION_PARAM_TICKS = 16000`
+   - Seta dano recebido: `CONDITION_PARAM_BUFF_DAMAGERECEIVED = 105` (5% mais dano)
+   - Consulta WOD: `grade = creature:upgradeSpellsWOD("Drain_Body_Spells")`
+   - Seta drain: `CONDITION_PARAM_DRAIN_BODY = grade`
+   - Aplica: `target:addCondition(condition)`
+
+**Retorno:**
+- `true`: Target foi processado (summon ou monstro com condition aplicada)
+- `false`: Target rejeitado (player)
+
+---
+
+### `spell.onCastSpell(creature, var, isHotkey)`
+
+**Descrição:** Função principal de execução do spell. Obtém alvo selecionado se disponível e executa combat com callbacks.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Sorcerer que executa o spell.
+- `var` (Variant): Dados variáveis iniciais (posição ou alvo).
+- `isHotkey` (boolean): Se foi castado via hotkey.
+
+**Fluxo de Execução:**
+
+1. **Obtenção de Alvo Selecionado**:
+   - Chama `target = creature:getTarget()`
+   - Se target existe: converte `var = Variant(target)`
+   - Se não existe: mantém var original (self)
+
+2. **Execução de Combat**:
+   - Chama `combat:execute(creature, var)`
+   - Combat aplica área 3x3 centered em var
+   - Para cada criatura na área, dispara `onTargetCreature`
+
+3. **Processing de Callbacks**:
+   - `onTargetCreature` filtra players (rejeita)
+   - Aceita summons (true, sem debuff)
+   - Aplica condition em monstros (com WOD upgrade)
+
+4. **Resultado**:
+   - Efeito visual CONST_ME_MORTAREA aplicado na área
+   - Monstros elegíveis recebem debuff por 16 segundos
+
+5. **Retorno**:
+   - Retorna resultado de `combat:execute()`
+
+**Valores de Retorno:**
+- `true`: Combat executado, debuff aplicado em pelo menos 1 alvo, mana de 400 consumida
+- `false`: Raro - nenhum alvo elegível
+
+**Lógica Detalhada:**
+
+O spell implementa debuff ofensivo em grupo. A filtragem via callback oferece controle fino - players não são afetados (preventivo contra friendly fire), summons são aceitos mas sem debuff, apenas monstros selvagens recebem debuff.
+
+A consulta dinâmica do Wheel "Drain_Body_Spells" permite escalabilidade - players investindo em Wheel ganham bônus em drain. O parâmetro CONDITION_PARAM_DRAIN_BODY é implementação-específica de Canary que pode significar velocidade de drenagem de vida ou similar.
+
+A mana alta (400) e cooldown dual (12s individual, com 2s threshold para grupo depois 12s) indicam que spell é custoso. Múltiplos Sorcerers não podem stack facilmente o debuff - precisam esperar 12s entre casts mesmo em grupo.
+
+O auto-target opcional permite usar com alvo selecionado para posicionamento preciso, ou sem alvo para centro do caster.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_EXPOSE_WEAKNESS`: Som característico de expose
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+
+## 📌 Resumo
+
+**Expose Weakness** é um spell de suporte gratuito para Sorcerers (level 275+) que aplica debuff de +5% dano recebido em monstros dentro de área 3x3 por 16 segundos. O spell requer 400 de mana (alto) e cooldown individual de 12 segundos com cooldown de grupo duplo (2s threshold, depois 12s). A implementação utiliza callback `CALLBACK_PARAM_TARGETCREATURE` para filtrar alvos - rejeita players, aceita summons sem debuff, aplica condition em monstros selvagens. Integração com Wheel de Destiny "Drain_Body_Spells" permite modificação dinâmica de parâmetro drain baseado em investimento. É spell defensivo essencial para grupos, permitindo Sorcerers debilitar múltiplos inimigos simultaneamente.
+
+A implementação segue padrão callback avançado com WOD integration, diferenciando-se por: (1) callback per-target com filtragem, (2) rejeição de players, (3) lógica diferentes para summons vs monstros, (4) integração WOD dinâmica, (5) dual cooldown com threshold.

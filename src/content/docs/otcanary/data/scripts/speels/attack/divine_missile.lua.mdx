@@ -1,0 +1,427 @@
+---
+title: "Spell - divine_missile.lua"
+description: "Spell de míssil divino para paladins level 40 com fórmula escalável"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `divine_missile.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 122 |
+| **Tipo de Dano** | COMBAT_HOLYDAMAGE |
+| **Vocações** | Paladin, Royal Paladin |
+| **Level Requerido** | 40 |
+| **Mana Requerida** | 20 |
+| **Words** | exori san |
+| **Alcance** | 4 |
+| **Área** | Single target |
+| **Cooldown** | 2s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level based (1.79-3 MLvl) - ALTA! |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_DIVINE_MISSILE |
+| **Requer Caster/Target/Direction** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 39 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de míssil divino para paladins nível 40 (mid-game). Dano sagrado com escalabilidade muito ALTA em MLvl (1.79-3 coef). Fórmula potente com bônus fixos. 20 mana (baato). Range 4 (distância). Premium only. Cooldown rápido 2s. Efeito SMALLHOLY projétil.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/divine_missile.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(122)
+spell:name("Divine Missile")
+spell:words("exori san")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_DIVINE_MISSILE)
+spell:level(40)
+spell:mana(20)
+spell:isPremium(true)
+spell:range(4)
+spell:needCasterTargetOrDirection(true)
+spell:blockWalls(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("paladin;true", "royal paladin;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Míssil Divino - Escalabilidade Sagrada**
+
+Este spell implementa um **sistema de míssil holy com escalabilidade MLvl muito alta**:
+
+1. **Escalabilidade Extrema:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 1.79) + 11
+   - max = (level/5) + (maglevel × 3) + 18
+   - Coef MLvl MUITO ALTOS (1.79-3!)
+
+2. **Mid-Game Premium:**
+   - Level 40 (mid!)
+   - 20 mana (baato)
+   - Premium only
+   - Cooldown 2s (rápido)
+
+3. **Tipo Holy:**
+   - COMBAT_HOLYDAMAGE
+   - Efeito SMALLHOLY
+   - Range 4 (distância boa)
+   - Projétil sagrado
+
+4. **Targeting Flexível:**
+   - needCasterTargetOrDirection
+   - Target ou direction
+   - Flexible usage
+
+**Fórmula Visual:**
+```
+Paladin lvl 40, mlvl 10:
+  min = 8 + 17.9 + 11 = 36.9
+  max = 8 + 30 + 18 = 56
+
+Paladin lvl 80, mlvl 20:
+  min = 16 + 35.8 + 11 = 62.8
+  max = 16 + 60 + 18 = 94
+```
+
+**Diferencial:** Escalabilidade sagrada extrema mid-game!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `divine_missile` oferece dano sagrado escalável:
+
+- **Dano:** COMBAT_HOLYDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*1.79/3) + bônus (MUITO ALTA!)
+- **Mana:** 20 (baato)
+- **Level:** 40 (mid-game)
+- **Range:** 4 (distância)
+
+### Arquitetura
+
+Combat com callback magic-level:
+
+```
+local combat = Combat()
+├─ Type: HOLYDAMAGE
+├─ Effect: SMALLHOLY
+├─ Distance: SMALLHOLY (projétil)
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max escalável extremo
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_HOLYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HOLYDAMAGE)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_SMALLHOLY)
+```
+
+**Propósito:** Combat de dano sagrado.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_HOLYDAMAGE | Dano sagrado |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HOLYDAMAGE | Efeito holy |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_SMALLHOLY | Projétil sagrado |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.79) + 11
+	local max = (level / 5) + (maglevel * 3) + 18
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano sagrado escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 1.79) + 11
+max = (level / 5) + (maglevel * 3) + 18
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 1.79 (MUITO ALTO!)
+- Maglevel max: 3 (MUITO ALTO!)
+- Bônus: 11/18 (significativo)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 40 | 10 | 36 | 56 |
+| 60 | 15 | 46 | 78 |
+| 80 | 20 | 62 | 94 |
+| 120 | 30 | 95 | 138 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Divine missile ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback magic |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Escalabilidade MLvl Extrema
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.79) + 11
+	local max = (level / 5) + (maglevel * 3) + 18
+	return -min, -max
+end
+```
+
+**Benefício:** Dano escala muito com magic level.
+
+### Padrão 2: Premium Early Mid-Game
+
+```lua
+spell:isPremium(true)
+spell:level(40)
+```
+
+**Benefício:** Acesso mid-game com premium.
+
+### Padrão 3: Targeting Flexível
+
+```lua
+spell:needCasterTargetOrDirection(true)
+```
+
+**Benefício:** Target ou direction = flexível.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano sagrado escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(paladin, 60, 15)
+// min = 12 + 26.85 + 11 = 49.85
+// max = 12 + 45 + 18 = 75
+// Retorna: -49, -75
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura míssil divino em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Paladin conjurador |
+| `var` | Variant | Target ou direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Míssil ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 40+
+- 20 mana
+- Target ou direction
+- Premium account
+- Cooldown 2s
+
+**Efeito:**
+- Efeito holy
+- Projétil sagrado
+- Dano magic-level escalável
+- Range 4 tiles
+- Bloqueia walls
+
+**Exemplo:**
+
+```lua
+-- Paladin lvl 60, MLvl 15
+spell.onCastSpell(paladin, targetVariant)
+// Validações:
+//   ✓ Level 60 >= 40
+//   ✓ Mana 20 disponível
+//   ✓ Target ou direction
+//   ✓ Premium account
+// Combat executa
+// Projétil sagrado viaja
+// Impacto holy
+// Dano: -49 a -75
+// Range 4 tiles
+// Cooldown 2s
+// Resultado: Míssil sagrado preciso!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Mid-Game Paladin
+
+```lua
+-- Paladin lvl 40+ premium
+// Divine Missile = spell ranged mid
+// Escalabilidade extrema MLvl
+// Range 4 = distância boa
+```
+
+### Caso 2: Premium Advantage
+
+```lua
+-- Premium paladin
+// Acesso level 40
+// Escalabilidade forte
+// Dano crescente
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_HOLYDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Effects:** CONST_ME_HOLYDAMAGE, CONST_ANI_SMALLHOLY
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Míssil sagrado escalável |
+| **Dano Type** | COMBAT_HOLYDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*1.79)+11, max=(lvl/5)+(mlvl*3)+18 |
+| **Mana** | 20 |
+| **Range** | 4 |
+| **Level** | 40 (mid) |
+| **Cooldown** | 2s (rápido) |
+| **Premium** | Sim |
+| **Vocações** | Paladin, Royal Paladin |
+| **Padrão** | Magic-level extrema escalável + targeting flexível |

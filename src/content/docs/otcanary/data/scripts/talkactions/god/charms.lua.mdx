@@ -1,0 +1,391 @@
+---
+title: Charms Management
+description: Comandos GOD para gerenciar charm points, bestiary e expansões de charm
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `charms.lua` |
+| **Tipo de Sistema** | Comandos Talk Action (GOD) |
+| **Funcionalidade Principal** | Gerenciar charm points e bestiary |
+| **Comandos** | `/addcharms`, `/addminorcharms`, `/resetcharms`, `/charmexpansion`, `/setbestiary` |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Parâmetro Alvo** | Opcional (padrão: self) |
+| **Magic Effect** | HOLYAREA (visual) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/charms.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** 5 comandos para charm system. Primeiros 3 com parâmetro alvo opcional (padrão self). Últimos 2 com validações mais complexas. `/setbestiary` com modo "all" que itera `Game.getMonsterTypes()`. Filtro `mType:raceId() > 0` para bestiary válido. Magic effect HOLYAREA em todas operações. Split com validação #split para parâmetros múltiplos.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `charms.lua` implementa 5 comandos TalkAction para gerenciar charm points, expansões, runes e bestiary de jogadores. O sistema oferece operações simples (add/reset/expansion) e complexas (setbestiary com modo "all"), fornece feedback diferenciado, aplica magic effect visual, e integra com bestiary system. Ferramenta completa de charm management.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **1. /addcharms - Adicionar Charm Points**
+
+```lua
+local addCharm = TalkAction("/addcharms")
+
+function addCharm.onSay(player, words, param)
+    logCommand(player, words, param)
+    
+    local usage = "/addcharms PLAYER NAME,AMOUNT"
+    if param == "" then
+        player:sendCancelMessage("Command param required. Usage: " .. usage)
+        return true
+    end
+    
+    local split = param:split(",")
+    if not split[2] then
+        player:sendCancelMessage("Insufficient parameters. Usage: " .. usage)
+        return true
+    end
+    
+    local target = Player(split[1])
+    if not target then
+        player:sendCancelMessage("A player with that name is not online.")
+        return true
+    end
+    
+    split[2] = split[2]:trimSpace()
+    
+    player:sendCancelMessage("Added " .. split[2] .. " charm points to character '" .. target:getName() .. "'.")
+    target:sendCancelMessage("Received " .. split[2] .. " charm points!")
+    target:addCharmPoints(tonumber(split[2]))
+    target:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+end
+
+addCharm:separator(" ")
+addCharm:groupType("god")
+addCharm:register()
+```
+
+### **2. /addminorcharms - Adicionar Minor Charm Echoes**
+
+```lua
+local addMinorCharm = TalkAction("/addminorcharms")
+
+function addMinorCharm.onSay(player, words, param)
+    logCommand(player, words, param)
+    
+    local usage = "/addminorcharms PLAYER NAME,AMOUNT"
+    if param == "" then
+        player:sendCancelMessage("Command param required. Usage: " .. usage)
+        return true
+    end
+    
+    local split = param:split(",")
+    if not split[2] then
+        player:sendCancelMessage("Insufficient parameters. Usage: " .. usage)
+        return true
+    end
+    
+    local target = Player(split[1])
+    if not target then
+        player:sendCancelMessage("A player with that name is not online.")
+        return true
+    end
+    
+    split[2] = split[2]:trimSpace()
+    
+    player:sendCancelMessage("Added " .. split[2] .. " minor charm points to character '" .. target:getName() .. "'.")
+    target:sendCancelMessage("Received " .. split[2] .. " minor charm points!")
+    target:addMinorCharmEchoes(tonumber(split[2]))
+    target:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+end
+
+addMinorCharm:separator(" ")
+addMinorCharm:groupType("god")
+addMinorCharm:register()
+```
+
+### **3. /resetcharms - Resetar Charm Points**
+
+```lua
+local resetCharm = TalkAction("/resetcharms")
+
+function resetCharm.onSay(player, words, param)
+    logCommand(player, words, param)
+    
+    if param == "" then
+        param = player:getName()
+    end
+    
+    local target = Player(param)
+    if not target then
+        player:sendCancelMessage("A player with that name is not online.")
+        return true
+    end
+    
+    player:sendCancelMessage("Reseted charm points from character '" .. target:getName() .. "'.")
+    target:sendCancelMessage("Reseted your charm points!")
+    target:resetCharmsBestiary()
+    target:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+end
+
+resetCharm:separator(" ")
+resetCharm:groupType("god")
+resetCharm:register()
+```
+
+### **4. /charmexpansion - Adicionar Charm Expansion**
+
+```lua
+local charmExpansion = TalkAction("/charmexpansion")
+
+function charmExpansion.onSay(player, words, param)
+    logCommand(player, words, param)
+    
+    if param == "" then
+        param = player:getName()
+    end
+    
+    local target = Player(param)
+    if not target then
+        player:sendCancelMessage("A player with that name is not online.")
+        return true
+    end
+    
+    player:sendCancelMessage("Added charm expansion for player '" .. target:getName() .. "'.")
+    target:sendCancelMessage("Received charm expansion!")
+    target:charmExpansion(true)
+    target:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+end
+
+charmExpansion:separator(" ")
+charmExpansion:groupType("god")
+charmExpansion:register()
+```
+
+### **5. /setbestiary - Configurar Bestiary Kills**
+
+```lua
+local setBestiary = TalkAction("/setbestiary")
+
+function setBestiary.onSay(player, words, param)
+    logCommand(player, words, param)
+    
+    local usage = "/setbestiary PLAYER NAME,MONSTER NAME/ALL,AMOUNT"
+    if param == "" then
+        player:sendCancelMessage("Command param required. Usage: " .. usage)
+        return true
+    end
+    
+    local split = param:split(",")
+    if not split[3] then
+        player:sendCancelMessage("Insufficient parameters. Usage: " .. usage)
+        return true
+    end
+    
+    local target = Player(split[1])
+    if not target then
+        player:sendCancelMessage("A player with that name is not online.")
+        return true
+    end
+    
+    split[2] = split[2]:trimSpace()
+    split[3] = split[3]:trimSpace()
+    
+    local amount = tonumber(split[3])
+    if not amount then
+        player:sendCancelMessage("Wrong kill amount.")
+        return true
+    end
+    
+    local monsterName = split[2]
+    
+    -- Modo "all": iterar todos monsters
+    if monsterName:lower() == "all" then
+        local monsterList = Game.getMonsterTypes()
+        for _, mType in pairs(monsterList) do
+            if mType:raceId() > 0 then  -- Apenas monsters com bestiary
+                target:addBestiaryKill(mType:name(), amount)
+            end
+        end
+        player:sendCancelMessage("Set bestiary kill count to '" .. amount .. "' for all monsters for player '" .. target:getName() .. "'.")
+        target:sendCancelMessage("Updated kills for all monsters in the bestiary!")
+    else
+        -- Modo single: monster específico
+        local mType = MonsterType(monsterName)
+        if not mType or (mType and mType:raceId() == 0) then
+            player:sendCancelMessage("This monster has no bestiary. Type the name exactly as in the game.")
+            return true
+        end
+        
+        target:addBestiaryKill(monsterName, amount)
+        player:sendCancelMessage("Set bestiary kill of monster '" .. monsterName .. "' for player '" .. target:getName() .. "' to '" .. amount .. "'.")
+        target:sendCancelMessage("Updated kills of monster '" .. monsterName .. "'!")
+    end
+    
+    target:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+end
+
+setBestiary:separator(" ")
+setBestiary:groupType("god")
+setBestiary:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **addCharm.onSay(player, words, param)**
+
+**Descrição:** Adiciona charm points (moeda de charm) a jogador.
+
+**Parâmetros:**
+- `param` (string): `<playername>, <amount>`
+
+**Formato de Comando:**
+```
+/addcharms Player1, 100           -- +100 charm points
+/addcharms TestPlayer, 50        -- +50 charm points
+```
+
+**Fluxo:**
+1. Parse: playername, amount
+2. Busca jogador online
+3. Valida parâmetros (split[2] obrigatório)
+4. Trim do amount
+5. Aplica via `addCharmPoints(tonumber(amount))`
+6. Feedback ao GM e alvo
+7. Magic effect HOLYAREA
+
+---
+
+### **addMinorCharm.onSay(player, words, param)**
+
+**Descrição:** Adiciona minor charm echoes (moeda de charm menor) a jogador.
+
+**Parâmetros:**
+- `param` (string): `<playername>, <amount>`
+
+**Idêntico ao addCharm mas usa:**
+- `addMinorCharmEchoes(tonumber(amount))`
+
+---
+
+### **resetCharm.onSay(player, words, param)**
+
+**Descrição:** Reseta todos charm points de um jogador.
+
+**Parâmetros:**
+- `param` (string): Nome do jogador (padrão: self se vazio)
+
+**Fluxo:**
+1. Se param vazio, usa self (player:getName())
+2. Busca jogador
+3. Aplica `resetCharmsBestiary()`
+4. Feedback e magic effect
+
+---
+
+### **charmExpansion.onSay(player, words, param)**
+
+**Descrição:** Adiciona charm expansion (unlocks mais charms) a jogador.
+
+**Parâmetros:**
+- `param` (string): Nome do jogador (padrão: self)
+
+**Fluxo:**
+1. Se param vazio, usa self
+2. Busca jogador
+3. Aplica `charmExpansion(true)`
+4. Feedback e magic effect
+
+---
+
+### **setBestiary.onSay(player, words, param)**
+
+**Descrição:** Configura kills de bestiary (simples ou todos monsters).
+
+**Parâmetros:**
+- `param` (string): `<playername>, <monster|all>, <amount>`
+
+**Formatos:**
+```
+/setbestiary Player1, Dragon Lord, 10
+/setbestiary Player1, all, 5
+```
+
+**Fluxo:**
+
+1. **Parse 3 parâmetros:**
+   - playername, monsterName, amount
+   - Se split[3] não existe: "Insufficient parameters"
+
+2. **Validação de Amount:**
+   - Deve ser número
+   - Se não: "Wrong kill amount."
+
+3. **Modo "all" - Todos Monsters:**
+   ```lua
+   if monsterName:lower() == "all" then
+       local monsterList = Game.getMonsterTypes()
+       for _, mType in pairs(monsterList) do
+           if mType:raceId() > 0 then
+               target:addBestiaryKill(mType:name(), amount)
+           end
+       end
+   ```
+   - Obtém lista comple
+ta de monsters
+   - Filtra `raceId() > 0` (tem bestiary entry)
+   - Itera cada um
+   - Aplica kills
+
+4. **Modo Single - Monster Específico:**
+   ```lua
+   else
+       local mType = MonsterType(monsterName)
+       if not mType or mType:raceId() == 0 then
+           player:sendCancelMessage("This monster has no bestiary...")
+       end
+       target:addBestiaryKill(monsterName, amount)
+   ```
+   - Busca monster por nome
+   - Valida `raceId() > 0`
+   - Aplica kills ao jogador
+
+5. **Feedback Diferenciado:**
+   - "all": "Set bestiary kill count to 'X' for all monsters..."
+   - single: "Set bestiary kill of monster 'X' ... to 'Y'..."
+
+---
+
+### **Variáveis Globais e Funções**
+
+| Função | Descrição |
+|---|---|
+| `param:split(",")` | Divide por vírgula |
+| `string:trimSpace()` | Remove espaços |
+| `tonumber(str)` | Converte para número |
+| `Player(name)` | Busca jogador online |
+| `player:getName()` | Nome do jogador |
+| `target:addCharmPoints(amount)` | Adiciona charm points |
+| `target:addMinorCharmEchoes(amount)` | Adiciona minor charm |
+| `target:resetCharmsBestiary()` | Reseta charms |
+| `target:charmExpansion(bool)` | Adiciona expansão |
+| `target:addBestiaryKill(name, count)` | Adiciona kills |
+| `target:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)` | Efeito visual |
+| `Game.getMonsterTypes()` | Lista todos monsters |
+| `MonsterType(name)` | Busca monster |
+| `mType:raceId()` | ID da raça (> 0 = bestiary) |
+| `mType:name()` | Nome do monster |
+
+---
+
+## 📌 Resumo
+
+O arquivo `charms.lua` é gerenciador completo de charm system. Implementação com 5 comandos (add/minor/reset/expansion/bestiary), parâmetros alvo opcionais com default self, modo "all" em setbestiary, feedback diferenciado, magic effect visual. Essencial para GMs gerenciar charm progression de jouadores. Design modular permite gestão simples e avançada.

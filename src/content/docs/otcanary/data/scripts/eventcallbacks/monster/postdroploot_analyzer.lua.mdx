@@ -1,0 +1,389 @@
+---
+title: "postdroploot_analyzer.lua"
+description: "Post-loot callback que atualiza kill tracking para participants após loot ser gerado e adicionado ao corpse"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Event callback que implementa **kill tracker update** disparado APÓS loot ser gerado e adicionado ao corpse. Diferente de `onDropLoot` que é PRE-loot, este `postDropLoot` é **POST-loot** permitindo análise do loot gerado. Coleta todos os participants (player + party se compartilhando experiência), chama `participant:updateKillTracker()` para cada um passando monster e corpse (com loot já adicionado). Permite sistemas de tracking/analytics que precisem saber o que foi loot-ado. Padrão de **post-hook statistics** para logging/análise.
+
+**Caminho Original**: `data/scripts/eventcallbacks/monster/postdroploot_analyzer.lua`
+
+**Tipo**: EventCallback (monsterPostDropLoot trigger)
+
+**Dependências**:
+- EventCallback API (engine C++) - Post-drop version
+- Monster/Player/Corpse/Party objects
+- Player:updateKillTracker(monster, corpse) API
+
+<Aside>
+Este callback executa **após todos os outros callbacks de loot** terminarem, garantindo que corpse já tem todo o loot adicionado. Permite systems que dependem de saber "quanto loot foi gerado" para este kill. Nome "analyzer" é literal - analisa/registra o que foi feito.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `postdroploot_analyzer.lua` implementa **post-loot statistics tracker** que intercepta `monsterPostDropLoot` (disparado APÓS loot generation callbacks) e executa simples responsabilidade: coletar todos os participants (solo player ou party inteira se shared exp), iterar cada um, e chamar `updateKillTracker(monster, corpse)` para que registrem o kill com loot já adicionado ao corpse. Padrão de **thin post-hook** que não modifica loot, apenas notifica subsistemas de que kill ocorreu.
+
+### Arquitetura de Componentes
+
+```
+Post Drop Loot Analyzer
+│
+├─ PARTICIPANT COLLECTION (4 operações)
+│  ├── player = Player(corpse:getCorpseOwner())
+│  ├── canReceiveLoot() validation
+│  ├── party = player:getParty()
+│  └── if party:isSharedExperienceEnabled()
+│     └─ participants = party:getMembers() + party:getLeader()
+│
+├─ KILL TRACKING (1 loop)
+│  └── for each participant:
+│     └── participant:updateKillTracker(monster, corpse)
+```
+
+### Fluxo Sequencial
+
+```
+[Monster Death Sequence]
+    │
+    ├─ Step 1: Engine prepara corpse vazio
+    ├─ Step 2: Dispara onDropLoot callbacks
+    │  ├─ ondroploot_base.lua → add base loot
+    │  ├─ ondroploot_boosted.lua → add boosted loot
+    │  ├─ ondroploot_prey.lua → add prey loot
+    │  └─ ... (outros loot callbacks)
+    │
+    ├─ Step 3: [Corpse agora tem TODO loot adicionado]
+    │
+    ├─ ▶️ Step 4: Dispara postDropLoot callbacks
+    │    │
+    │    ├─ postdroploot_analyzer.lua ativado
+    │    │  ├─ participants = {player, party members...}
+    │    │  ├─ for each participant:
+    │    │  │  └─ participant:updateKillTracker(monster, corpse)
+    │    │  │     └─ [Registra kill com loot completo]
+    │    │  │
+    │    │  └─ return (nada a fazer mais)
+    │    │
+    │    └─ ... (outros post-loot callbacks)
+    │
+    ├─ Step 5: Corpse aparece no mundo
+    └─ [Sequência Completa]
+```
+
+---
+
+## Detalhes da Função Global
+
+### `callback.monsterPostDropLoot(monster, corpse)`
+
+**Tipo**: EventCallback hook
+
+**Descrição**: Função disparada APÓS loot generation callbacks terminarem. Responsável apenas de notificar subsistemas de tracking que kill ocorreu.
+
+**Parâmetros**:
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `monster` | userdata | Monstro morto (com tipo completo) |
+| `corpse` | userdata | Corpse **com TODO loot já adicionado** |
+
+**Retorna**: 
+- `nil` (implícito)
+
+**Algoritmo**:
+
+```lua
+function callback.monsterPostDropLoot(monster, corpse)
+    -- 1. GET PLAYER
+    local player = Player(corpse:getCorpseOwner())
+    if not player or not player:canReceiveLoot() then
+        return
+    end
+
+    -- 2. VALIDATE MONSTER
+    local mType = monster:getType()
+    if not mType then
+        return
+    end
+
+    -- 3. COLLECT PARTICIPANTS
+    local participants = { player }
+    local party = player:getParty()
+    if party and party:isSharedExperienceEnabled() then
+        participants = party:getMembers()
+        table.insert(participants, party:getLeader())
+    end
+
+    -- 4. UPDATE KILL TRACKER FOR EACH
+    for _, participant in ipairs(participants) do
+        if participant then
+            -- Call update tracker (now corpse has full loot)
+            participant:updateKillTracker(monster, corpse)
+        end
+    end
+end
+```
+
+**Características Principais**:
+
+| Característica | Valor | Notas |
+|---|---|---|
+| Execution Timing | Post-loot | Após todos onDropLoot callbacks |
+| Loot State | Complete | Corpse tem 100% do loot |
+| Participants | Solo + Party | Se shared exp enabled |
+| Actions | Update tracker | Notifica cada participant |
+| Modification | Nenhuma | Não modifica corpse |
+| Return | nil | Sempre silencioso |
+
+---
+
+## Detalhes das Variáveis Locais
+
+### `player` (userdata | nil)
+
+**Tipo**: userdata (Player object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local player = Player(corpse:getCorpseOwner())`
+
+**Descrição**: Jogador proprietário do corpse (quem matou ou party leader).
+
+### `mType` (MonsterType | nil)
+
+**Tipo**: userdata
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local mType = monster:getType()`
+
+**Descrição**: Tipo do monstro. Validado para existência.
+
+### `participants` (table)
+
+**Tipo**: `table` with numeric keys and userdata values
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local participants = { player }`
+
+**Descrição**: Array de jogadores que compartilharam o kill. Começa com solo player, expande se party com shared exp.
+
+**Variações**:
+```lua
+participants = {player}                    -- Solo
+participants = {member1, ..., leader}      -- Party (shared exp on)
+```
+
+### `party` (Party | nil)
+
+**Tipo**: userdata (Party object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local party = player:getParty()`
+
+**Descrição**: Party do player se existir. `nil` se solo.
+
+---
+
+## Padrões & Implementação
+
+### 1. Padrão de Post-Hook Callback
+
+Callback que executa APÓS main work (loot generation):
+
+```lua
+-- PRE-HOOK: Antes de ação
+function onDropLoot(monster, corpse)
+    -- Gera loot
+    corpse:addLoot(...)
+end
+
+-- POST-HOOK: Depois de ação
+function postDropLoot(monster, corpse)
+    -- Analisa/registra resultado
+    participant:updateKillTracker(...)
+end
+```
+
+**Benefício**:
+- Post-hook vê resultado final completo
+- Pre-hook decision points
+- Clean separation of concerns
+
+### 2. Padrão de Simple Iteration with Nil Guard
+
+Loopando collection com defensive nil check:
+
+```lua
+for _, participant in ipairs(participants) do
+    if participant then
+        participant:updateKillTracker(...)
+    end
+end
+```
+
+**Razão**:
+- Party members podem desconectar between collection e uso
+- Guard previne crash em nil:updateKillTracker()
+- Graceful degradation
+
+### 3. Padrão de Pass-Through to Subsystem
+
+Não processar os dados, apenas passar forward:
+
+```lua
+-- ✅ Correct: Pass to subsystem
+for _, participant in ipairs(participants) do
+    participant:updateKillTracker(monster, corpse)
+end
+
+-- ❌ Wrong: Fazer lógica aqui
+for _, participant in ipairs(participants) do
+    local lootValue = calculateValue(corpse)
+    participant:addStatistic(lootValue)
+end
+```
+
+**Vantagem**:
+- Lógica de tracking centralizada em player:updateKillTracker()
+- Este callback apenas coordena
+- Fácil manter se logic mudar
+
+---
+
+## Fluxo de Operação
+
+### Timeline Completo de Kill
+
+```
+[Player kills Monster]
+    │
+    ├─ 1. Monster HP reaches 0
+    ├─ 2. Engine cria corpse vazio
+    │
+    ├─ ▶️ Phase 1: Pre-Loot Callbacks (PRE-LOOT)
+    │    ├─ onDropLoot callbacks disparados
+    │    ├─ Diversos callbacks adicionam loot items
+    │    └─ corpse agora tem N items
+    │
+    ├─ ▶️ Phase 2: Post-Loot Callbacks (POST-LOOT)
+    │    │
+    │    ├─ postdroploot_analyzer.lua ativado
+    │    │  ├─ player = Game.getPlayer(corpse:getCorpseOwner())
+    │    │  ├─ participants = {player + party}
+    │    │  │
+    │    │  ├─ for each participant:
+    │    │  │  └─ participant:updateKillTracker(monster, corpse)
+    │    │  │     └─ Registra: killed monster X, received Y items
+    │    │  │
+    │    │  └─ return (silent)
+    │    │
+    │    └─ ... (outros post-loot callbacks, se existem)
+    │
+    ├─ 3. Corpse aparece no mundo
+    ├─ 4. Players veem: "You received loot. [...]"
+    │
+    └─ [Kill Sequence Complete]
+```
+
+### Caso: Solo Kill
+
+```
+[Solo Player kills Monster]
+    │
+    ├─ monsterPostDropLoot(monster, corpse)
+    │
+    ├─ player = corpse owner
+    ├─ mType = monster:getType() ✓
+    │
+    ├─ participants = {player} (solo, no party)
+    │
+    ├─ for _, participant in ipairs({player}):
+    │  └─ player:updateKillTracker(monster, corpse)
+    │     └─ Registra kill individual
+    │
+    └─ return (nil)
+```
+
+### Caso: Party Kill
+
+```
+[Party (4 members) kills Monster]
+    │
+    ├─ monsterPostDropLoot(monster, corpse)
+    │
+    ├─ player = leader (corpse owner)
+    ├─ party = player:getParty() → Party object
+    ├─ party:isSharedExperienceEnabled() → true
+    │
+    ├─ participants = {member1, member2, member3, member4, leader}
+    │
+    ├─ Loop 5 times:
+    │  ├─ member1:updateKillTracker(monster, corpse)
+    │  ├─ member2:updateKillTracker(monster, corpse)
+    │  ├─ member3:updateKillTracker(monster, corpse)
+    │  ├─ member4:updateKillTracker(monster, corpse)
+    │  └─ leader:updateKillTracker(monster, corpse)
+    │     └─ Cada um registra seu kill com shared loot
+    │
+    └─ return (nil)
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+**Versão da Documentação**: 1.0
+
+**Última Atualização**: 2026-02-20
+
+**Tipo de Complexidade**: ⚪ **Trivial**
+- Arquivo com 23 linhas de código
+- 1 função callback
+- 3 variáveis locais
+- Lógica: collection + simple loop + delegation
+- Padrões: post-hook, nil guard, subsystem pass-through
+- Tempo estimado de aprendizado: 10 minutos
+
+**Cobertura de Tópicos**:
+- ✅ Variáveis locais (3)
+- ✅ Função global
+- ✅ Padrões de implementação
+- ✅ Fluxo de operação
+- ✅ Pre vs Post-hook difference
+
+**Referências Relacionadas**:
+- [ARQUITETURA_PROJETO.mdx](../../../ARQUITETURA_PROJETO.mdx)
+- ondroploot_*.lua callbacks (pre-loot phase)
+- Player:updateKillTracker() implementation
+- Party API
+
+**Status de Implementação**: ✅ **Completamente Implementado**
+- Participant collection operacional
+- Nil guard presente
+- Kill tracker update delegado
+- Silent return pattern
+
+**Padrões Principais Implementados**:
+1. ✅ Post-hook callback pattern
+2. ✅ Defensive nil check in loop
+3. ✅ Simple delegation to subsystem
+4. ✅ Solo + Party support
+5. ✅ Corpse state knowledge (post-loot)
+
+**Notas para Futuros Desenvolvedores**:
+1. Timing é **crítico**: POST-loot garante corpse tem loot completo
+2. `updateKillTracker()` recebe monster + corpse - pode inspecionar loot
+3. Participants podem estar offline entre collection e loop - guard previne erro
+4. Sem modificações ao loot - apenas notification/tracking
+5. Simple callback - boa template para outros post-hooks
+

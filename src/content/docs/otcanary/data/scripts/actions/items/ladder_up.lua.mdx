@@ -1,0 +1,208 @@
+---
+title: ladder_up.lua
+description: Sistema de escadas com moveUpstairs ou incremento Z
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="ladder_up.lua" icon="star">
+Script de ação Lua que implementa sistema de escadas com dois modos de movimento.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/ladder_up.lua`
+
+Escadas que utilizam sistema global Game.getLadderIds() para determinar comportamento. IDs ladder registrados usam moveUpstairs() (transição suave), ID 435 usa incremento z+1. Validação PZ lock impede telep se no interior de zona proteção. Item ID: 435 + ladderTable dinâmica.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `ladder_up.lua` implementa escadas com dois modos de subida. Escadas registradas em Game.getLadderIds() são movidas via estrutura moveUpstairs() (transição animada). Escada ID 435 usa incremento simples z+1. Ambas teleportam player para nova posição. Validação impede teleportação se player está PZ locked e posição é interior zona proteção.
+
+**Estrutura de Funcionalidades**
+
+```
+[Get ladderTable = Game.getLadderIds()]
+
+[Create ladder Action]
+    ↓
+[onUse function]
+    ├─ If item.itemid in ladderTable
+    │   └─ fromPosition:moveUpstairs()
+    └─ Else (item.itemid == 435)
+        └─ fromPosition.z = fromPosition.z + 1
+    ↓
+[Validação PZ Lock]
+    ├─ If player:isPzLocked() and Tile has PROTECTIONZONE flag
+    │   └─ sendCancelMessage(PLAYERISPZLOCKED)
+    │   └─ return true
+    └─ continue
+    ↓
+[player:teleportTo(fromPosition, true)]
+    └─ true = effect
+    ↓
+[return true]
+    ↓
+[Register on ID 435 + all ladderTable]
+```
+
+## Variáveis Globais
+
+### ladderTable (local)
+
+```lua
+local ladderTable = Game.getLadderIds()
+```
+
+Tabela dinâmica de IDs ladder registrados pelo servidor.
+
+**Origem**: Game.getLadderIds() fetch global.
+
+## Funções
+
+### ladder.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que sobe escada.
+
+**Parâmetros:**
+- player: Creature player
+- item: Escada sendo usada
+- fromPosition: Posição da escada
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. If table.contains(ladderTable, item.itemid)
+   └─ fromPosition:moveUpstairs()
+
+2. Else
+   └─ fromPosition.z = fromPosition.z + 1
+
+3. If player:isPzLocked() and Tile(fromPosition):hasFlag(TILESTATE_PROTECTIONZONE)
+   ├─ sendCancelMessage(RETURNVALUE_PLAYERISPZLOCKED)
+   └─ return true
+
+4. player:teleportTo(fromPosition, true)
+
+5. return true
+```
+
+**Implementação:**
+
+```lua
+function ladder.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if table.contains(ladderTable, item.itemid) then
+		fromPosition:moveUpstairs()
+	else
+		fromPosition.z = fromPosition.z + 1
+	end
+
+	if player:isPzLocked() and Tile(fromPosition):hasFlag(TILESTATE_PROTECTIONZONE) then
+		player:sendCancelMessage(RETURNVALUE_PLAYERISPZLOCKED)
+		return true
+	end
+
+	player:teleportTo(fromPosition, true)
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| ladderTable | table | IDs ladder dinâmicos |
+| TILESTATE_PROTECTIONZONE | constant | Flag zona proteção |
+| RETURNVALUE_PLAYERISPZLOCKED | constant | Retorno PZ locked |
+
+## Dois Modos de Subida
+
+### Modo 1: Ladder Registrado (moveUpstairs)
+
+Para IDs em ladderTable:
+```lua
+fromPosition:moveUpstairs()
+```
+
+Transição suave animada para floor acima.
+
+### Modo 2: Ladder 435 (Z Incremento)
+
+Para ID 435:
+```lua
+fromPosition.z = fromPosition.z + 1
+```
+
+Incremento simples do Z sem animação.
+
+## Validação PZ Lock
+
+```lua
+if player:isPzLocked() and Tile(fromPosition):hasFlag(TILESTATE_PROTECTIONZONE) then
+	player:sendCancelMessage(RETURNVALUE_PLAYERISPZLOCKED)
+	return true
+end
+```
+
+Bloqueia teleportação se:
+- Player está PZ locked (em combat) AND
+- Posição de destino é zona proteção interior
+
+## Fluxo de Operação
+
+```
+[Player usa escada]
+    ↓
+[item.itemid est em ladderTable?]
+    ├─ SIM → moveUpstairs() (transição suave)
+    └─ NÃO (435) → z+1 (simples)
+    ↓
+[Validar PZ Lock]
+    ├─ PZ locked + interior PZ? 
+    │   └─ SIM → reject + return
+    └─ NÃO → continuar
+    ↓
+[player:teleportTo(posição, effect=true)]
+    ↓
+[return true]
+```
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Tabela dinâmica via Game.getLadderIds()
+2. Dois métodos de movimento (moveUpstairs vs z+1)
+3. Condição composta PZ lock check
+4. Tile flag validation
+5. Teleportação com efeito visual
+6. Table.contains utility
+
+**Responsabilidades:**
+1. Detectar tipo escada (registrado vs default)
+2. Aplicar método movimento apropriado
+3. Validar PZ lock condition
+4. Teleportar player
+5. Emitir effect
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 18 linhas  
+**Função**: 1 (onUse)  
+**Item IDs**: 435 + ladderTable dinâmica  
+**Modo 1**: moveUpstairs (ladder registered)  
+**Modo 2**: z+1 (ID 435)  
+**Validação**: PZ lock check
+</Card>
+
+<Aside type="note">
+Escadas com dois modos: registradas usam moveUpstairs (suave), ID 435 usa z+1 (simples). Validação PZ lock impede em zona proteção. Teleportação com efeito.
+</Aside>

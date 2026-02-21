@@ -1,0 +1,824 @@
+---
+title: "Script Lib - register_npc_type.lua"
+description: "Sistema de registro de propriedades NpcType com parsers DSL e validação global de preços"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `register_npc_type.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Registration System / DSL Framework |
+| **Padrão** | Metatable Multi-Parser Dispatcher |
+| **Linhas de Código** | 244 |
+| **Parser Functions** | 15 |
+| **Funções Globais** | 0 (todos parsers são locais em table) |
+| **Variáveis Globais** | 1 (NpcPriceChecker - rastreador de preços) |
+| **Complexidade** | Médium |
+| **Status** | Complete NPC configuration framework |
+
+**Descrição:**
+Sistema de registro para configuração declarativa completa de NPCs via DSL. Implementa padrão de metatable dispatcher com 15 parsers especializados cobrindo: basicProperties (name, description, outfit, health), movimento (walkInterval, walkRadius, speed), comportamento (voices, sounds, events), visual (light, speechBubble), comércio (shop extensível com parent/child items e validação global de preços), e configuração (respawnType, currency, flags). Inclui sistema global NpcPriceChecker que valida inconsistências de preços entre NPCs (sell > buy = warning).
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/register_npc_type.lua
+```
+
+**Tipo de Carregamento:** Executado durante inicialização, estende NpcType class
+
+**Contexto de Uso:** NPC registration - configuração declarativa de todos NPCs do servidor
+
+**Pré-requisitos:**
+- Classe global `NpcType` (native C++)
+- Classe `Shop` para shop items
+- Logger system
+- NpcType():getName() e métodos nativos
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de NPC Registration (Declarative Configuration)**
+
+Configurar um NPC requer múltiplas propriedades (nome, saúde, outfit, shop items, vozes):
+
+**Sem registration DSL:**
+```lua
+local npc = NpcType()
+npc:name("Merchant")
+npc:nameDescription("A friendly merchant")
+npc:outfit({lookType = 128})
+npc:maxHealth(100)
+npc:health(100)
+local shop = Shop()
+shop:setNameItem("Gold Coin")
+shop:setBuyPrice(1)
+shop:setSellPrice(1)
+npc:addShopItem(shop)
+npc:addVoice("Hello!", 10, 100, false)
+-- Verbose demais
+```
+
+**Com registration (declarative):**
+```lua
+NpcType():register({
+	name = "Merchant",
+	description = "A friendly merchant",
+	outfit = {lookType = 128},
+	maxHealth = 100,
+	health = 100,
+	shop = {
+		{
+			itemName = "Gold Coin",
+			buy = 1,
+			sell = 1
+		}
+	},
+	voices = {
+		{
+			text = "Hello!",
+			interval = 10,
+			chance = 100
+		}
+	}
+})
+```
+
+**Pattern:**
+```
+registerNpcType metatable
+  ├─ __call intercepta: NpcType(def_table)
+  ├─ Itera 15 parsers
+  ├─ Cada parser valida/aplica sua seção
+  └─ NPC configurado completo
+```
+
+**Benefício:** DSL limpa, validação global de preços, mantenível
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `register_npc_type.lua` implementa **NPC configuration DSL**:
+
+- **Define registerNpcType** metatable com dispatcher e 15 parsers
+- **Estende NpcType** com método `.register(definitionTable)`
+- **Suporta shop items** com hierarquia parent-child
+- **Valida preços globalmente** via NpcPriceChecker (detecta sell > buy)
+- **Processa vozes/sons** com intervals e chances
+- **Gerencia flags** de movimento e física
+- **Registra eventos** dinamicamente
+
+### Arquitetura
+
+Script usa padrão de **multi-parser dispatcher**:
+
+```lua
+registerNpcType = {}
+setmetatable(registerNpcType, {
+	__call = function(self, npcType, mask)
+		for _, parse in pairs(self) do
+			parse(npcType, mask)
+		end
+	end,
+})
+
+NpcType.register = function(self, mask)
+	return registerNpcType(self, mask)
+end
+```
+
+15 parsers especializados: `name`, `description`, `outfit`, `health`, `flags`, `shop`, `voices`, `sounds`, etc.
+
+### Fluxo Lógico Resumido
+
+| Fase | Ação | Validação |
+|------|------|-----------|
+| **Definição** | Table com propriedades é passado | Cada propriedade é chave do parser |
+| **Dispatch** | `__call` intercepta | Itera todos parsers em registerNpcType |
+| **Per-Parser** | Parser específico executa se mask.propriedade existe | `if mask.propriedade then` |
+| **Aplicação** | Chama métodos C++ do NpcType | `npcType:method(value)` |
+| **Shop Validation** | Shop items são rastreados em NpcPriceChecker | Detecta sell > buy |
+| **Persistência** | Configuração salva no NpcType | Sobrevive ao jogo |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Parser: registerNpcType.name
+
+```lua
+registerNpcType.name = function(npcType, mask)
+	if mask.name then
+		npcType:name(mask.name)
+	end
+end
+```
+
+**Propósito:** Definir nome do NPC.
+
+**Simples:** Valida `mask.name` existe, aplica via `npcType:name()`.
+
+---
+
+### Parser: registerNpcType.description
+
+```lua
+registerNpcType.description = function(npcType, mask)
+	if mask.description then
+		npcType:nameDescription(mask.description)
+	end
+end
+```
+
+**Propósito:** Definir descrição/subtitle do NPC.
+
+**Mapeamento:** `mask.description` → `npcType:nameDescription()` (nota: método é `nameDescription`, não `description`)
+
+---
+
+### Parser: registerNpcType.outfit
+
+```lua
+registerNpcType.outfit = function(npcType, mask)
+	if mask.outfit then
+		npcType:outfit(mask.outfit)
+	end
+end
+```
+
+**Propósito:** Definir aparência visual do NPC.
+
+**Esperado:** Table com outfit data (lookType, addons, head, body, legs, feet)
+
+---
+
+### Parser: registerNpcType.flags (Nested Booleans)
+
+```lua
+registerNpcType.flags = function(npcType, mask)
+	if mask.flags then
+		if mask.flags.floorchange ~= nil then
+			npcType:floorChange(mask.flags.floorchange)
+		end
+		if mask.flags.canPushCreatures ~= nil then
+			npcType:canPushCreatures(mask.flags.canPushCreatures)
+		end
+		if mask.flags.canPushItems ~= nil then
+			npcType:canPushItems(mask.flags.canPushItems)
+		end
+		if mask.flags.pushable ~= nil then
+			npcType:isPushable(mask.flags.pushable)
+		end
+	end
+end
+```
+
+**Propósito:** Centralizar flags booleanas em nested table.
+
+**Sub-flags:**
+- `floorchange` - Pode trocar de floor
+- `canPushCreatures` - Poder empurrar criaturas
+- `canPushItems` - Poder empurrar items
+- `pushable` - Pode ser empurrado
+
+**Validação:** Cada flag usa `~= nil` (permite false explícito)
+
+---
+
+### Parser: registerNpcType.light (Nested Table)
+
+```lua
+registerNpcType.light = function(npcType, mask)
+	if mask.light then
+		if mask.light.color then
+			local color = mask.light.color
+		end
+		if mask.light.level then
+			npcType:light(color, mask.light.level)
+		end
+	end
+end
+```
+
+**Propósito:** Configurar luz emitida pelo NPC.
+
+**Propriedades:**
+- `color` - Cor (RGB hex)
+- `level` - Intensidade
+
+**Nota:** Bug potencial - `color` é armazenado em variável local, só aplicado se `level` existe. Deveria ser persistente entre checks.
+
+---
+
+### Parser: registerNpcType.respawnType (Nested Table)
+
+```lua
+registerNpcType.respawnType = function(npcType, mask)
+	if mask.respawnType then
+		if mask.respawnType.period then
+			npcType:respawnTypePeriod(mask.respawnType.period)
+		end
+		if mask.respawnType.underground then
+			npcType:respawnTypeIsUnderground(mask.respawnType.underground)
+		end
+	end
+end
+```
+
+**Propósito:** Configurar tipo/padrão de respawn.
+
+**Sub-propriedades:**
+- `period` - Período de respawn em ms
+- `underground` - Se respa bajo ground
+
+---
+
+### Parser: registerNpcType.sounds (Nested Table)
+
+```lua
+registerNpcType.sounds = function(npcType, mask)
+	if type(mask.sounds) == "table" then
+		if mask.sounds.ticks and mask.sounds.chance and mask.sounds.ids and type(mask.sounds.ids) == "table" and #mask.sounds.ids > 0 then
+			npcType:soundSpeedTicks(mask.sounds.ticks)
+			npcType:soundChance(mask.sounds.chance)
+			for _, v in pairs(mask.sounds.ids) do
+				npcType:addSound(v)
+			end
+		end
+	end
+end
+```
+
+**Propósito:** Registrar sons que NPC reproduz periodicamente.
+
+**Validação em Cascata:**
+1. `mask.sounds` é table
+2. `ticks`, `chance`, `ids` existem
+3. `ids` é table e não-vazio
+
+**Fluxo:**
+```lua
+npcType:soundSpeedTicks(mask.sounds.ticks)    -- Intervalo em ticks
+npcType:soundChance(mask.sounds.chance)       -- Chance de tocar (%)
+for _, v in pairs(mask.sounds.ids) do
+	npcType:addSound(v)                         -- Adiciona cada sound ID
+end
+```
+
+---
+
+### Parser: registerNpcType.voices (Nested Table Array)
+
+```lua
+registerNpcType.voices = function(npcType, mask)
+	if type(mask.voices) == "table" then
+		local interval, chance
+		if mask.voices.interval then
+			interval = mask.voices.interval
+		end
+		if mask.voices.chance then
+			chance = mask.voices.chance
+		end
+		for k, v in pairs(mask.voices) do
+			if type(v) == "table" then
+				npcType:addVoice(v.text, interval, chance, v.yell)
+			end
+		end
+	end
+end
+```
+
+**Propósito:** Registrar vozes/diálogos que NPC fala.
+
+**Fluxo:**
+
+1. **Extrair interval/chance globais** (opcionais)
+   ```lua
+   local interval, chance
+   if mask.voices.interval then interval = mask.voices.interval end
+   ```
+
+2. **Iterar tabela de vozes**
+   ```lua
+   for k, v in pairs(mask.voices) do
+       if type(v) == "table" then
+   ```
+
+3. **Adicionar voz individual**
+   ```lua
+   npcType:addVoice(v.text, interval, chance, v.yell)
+   ```
+
+**Esperado:**
+```lua
+voices = {
+	interval = 10,    -- Global interval
+	chance = 100,     -- Global chance
+	{
+		text = "Hello!",
+		yell = false
+	},
+	{
+		text = "Howdy partner!",
+		yell = true
+	}
+}
+```
+
+---
+
+### Parser: registerNpcType.events
+
+```lua
+registerNpcType.events = function(npcType, mask)
+	if type(mask.events) == "table" then
+		for k, v in pairs(mask.events) do
+			npcType:registerEvent(v)
+		end
+	end
+end
+```
+
+**Propósito:** Registrar event listeners do NPC.
+
+**Fluxo:** Itera array de event names, registra cada um via `npcType:registerEvent(eventName)`.
+
+---
+
+### Parser: registerNpcType.shop (Complex Nested with Global Validation)
+
+Função mais complexa (75 linhas). Processa shop items com hierarquia parent-child e validação global de preços.
+
+**Propósito Principal:**
+
+```lua
+registerNpcType.shop = function(npcType, mask)
+	if type(mask.shop) == "table" then
+		for _, shopItems in pairs(mask.shop) do
+			-- Processa cada item shop
+		end
+	end
+end
+```
+
+#### Fluxo de cada Shop Item:
+
+**1. Criar Shop Object Parent**
+```lua
+local parent = Shop()
+```
+
+**2. Extrair Variáveis**
+```lua
+local itemName = shopItems.itemName or shopItems.itemname
+local clientId = shopItems.clientId or shopItems.clientid
+local buyPrice = shopItems.buy
+local sellPrice = shopItems.sell
+local npcName = npcType:getName()
+```
+
+**Nota:** Case insensitivity (itemName vs itemname, clientId vs clientid)
+
+**3. Configurar Parent Shop Item**
+```lua
+if itemName then
+	parent:setNameItem(itemName)
+end
+if clientId then
+	parent:setId(clientId)
+end
+if shopItems.subType or shopItems.subtype or shopItems.count then
+	parent:setCount(...)
+end
+if buyPrice then
+	parent:setBuyPrice(buyPrice)
+end
+if sellPrice then
+	parent:setSellPrice(sellPrice)
+end
+```
+
+**4. Global Price Validation via NpcPriceChecker**
+
+```lua
+-- Global item tracker to track buy and sell prices across all NPCs
+NpcPriceChecker = NpcPriceChecker or {}
+
+if clientId then
+	if not NpcPriceChecker[clientId] then
+		NpcPriceChecker[clientId] = { buy = nil, sell = nil, buyNpc = nil, sellNpc = nil }
+	end
+
+	if buyPrice then
+		NpcPriceChecker[clientId].buy = buyPrice
+		NpcPriceChecker[clientId].buyNpc = npcName
+	end
+
+	if sellPrice then
+		NpcPriceChecker[clientId].sell = sellPrice
+		NpcPriceChecker[clientId].sellNpc = npcName
+	end
+
+	if NpcPriceChecker[clientId].buy and NpcPriceChecker[clientId].sell then
+		if NpcPriceChecker[clientId].sell > NpcPriceChecker[clientId].buy then
+			logger.warn("The item {} ({}) is being sold for a value greater than the value it is purchased for by the NPCs. Buy NPC: {}, Sell NPC: {}", 
+				itemName, clientId, NpcPriceChecker[clientId].buyNpc, NpcPriceChecker[clientId].sellNpc)
+		end
+	end
+end
+```
+
+**Validação:** Detecta quando sell > buy (economia inválida, avisa)
+
+**5. Storage Keys (Quest Requisites, Optional)**
+
+```lua
+if shopItems.storageKey or shopItems.storagekey then
+	parent:setStorageKey(shopItems.storageKey or shopItems.storagekey)
+end
+if shopItems.storageValue or shopItems.storagevalue then
+	parent:setStorageValue(shopItems.storageValue or shopItems.storagevalue)
+end
+```
+
+**Propósito:** Requisitos de quest (player precisa ter storage value específico para comprar/vender)
+
+**6. Child Shop Items (Nested)**
+
+```lua
+if shopItems.child then
+	for _, children in pairs(shopItems.child) do
+		local child = Shop()
+		-- Repetir configuração acima para child
+		parent:addChildShop(child)
+	end
+end
+```
+
+**Hierarquia:** Items podem ter sub-items
+
+**7. Adicionar ao NPC**
+
+```lua
+npcType:addShopItem(parent)
+```
+
+#### Exemplo de Shop Definition:
+
+```lua
+shop = {
+	{
+		itemName = "Gold Coin",
+		clientId = 3031,
+		buy = 5,
+		sell = 10,
+		storageKey = "gold_unlock",
+		storageValue = 1,
+		child = {
+			{
+				itemName = "Gold Token",
+				clientId = 3032,
+				buy = 10,
+				sell = 15
+			}
+		}
+	}
+}
+```
+
+---
+
+### Parser: registerNpcType.currency
+
+```lua
+registerNpcType.currency = function(npcType, mask)
+	if mask.currency then
+		npcType:currency(mask.currency)
+	end
+end
+```
+
+**Propósito:** Definir tipo de moeda que NPC usa.
+
+**Simples:** Aplica currency type.
+
+---
+
+### Parser: registerNpcType.speechBubble
+
+```lua
+registerNpcType.speechBubble = function(npcType, mask)
+	if mask.speechBubble then
+		npcType:speechBubble(mask.speechBubble)
+	end
+end
+```
+
+**Propósito:** Definir aparência da speech bubble.
+
+**Simples:** Aplica speechBubble styling.
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variável Global Criada
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `registerNpcType` | table (dispatcher) | Global | Metatable com 15 parsers |
+| `NpcPriceChecker` | table (global tracker) | Global | Rastreador de preços para validação cross-NPC |
+
+### Estrutura de NpcPriceChecker
+
+```lua
+NpcPriceChecker = {
+	[clientId] = {
+		buy = number,          -- Preço que alguém compra
+		sell = number,         -- Preço que alguém vende
+		buyNpc = string,       -- Nome do NPC que compra
+		sellNpc = string       -- Nome do NPC que vende
+	}
+}
+```
+
+### Métodos Estendidos
+
+| Classe | Método Adicionado | Descrição |
+|--------|------------------|-----------|
+| `NpcType` | `.register(mask)` | Delega para registerNpcType |
+
+### Estrutura de Definition Table (mask) - exemplo
+
+```lua
+{
+	name = "Merchant",
+	description = "A friendly merchant",
+	outfit = {lookType = 128, addons = 0},
+	maxHealth = 100,
+	health = 100,
+	race = "human",
+	
+	speed = 100,
+	walkInterval = 2000,
+	walkRadius = 15,
+	
+	flags = {
+		floorchange = true,
+		canPushCreatures = false,
+		canPushItems = true,
+		pushable = true
+	},
+	
+	light = {
+		color = 215,
+		level = 2
+	},
+	
+	respawnType = {
+		period = 300000,           -- 5 minutos
+		underground = false
+	},
+	
+	sounds = {
+		ticks = 10,
+		chance = 100,
+		ids = {12345, 12346, 12347}
+	},
+	
+	voices = {
+		interval = 30,
+		chance = 100,
+		{
+			text = "Hello there!",
+			yell = false
+		},
+		{
+			text = "Welcome to my shop!",
+			yell = false
+		}
+	},
+	
+	shop = {
+		{
+			itemName = "Health Potion",
+			clientId = 7618,
+			buy = 50,
+			sell = 50,
+			child = {
+				{
+					itemName = "Great Health Potion",
+					clientId = 7642,
+					buy = 100,
+					sell = 100
+				}
+			}
+		}
+	},
+	
+	currency = 3031,
+	speechBubble = 1,
+	
+	events = {"npc_hello", "npc_goodbye"}
+}
+```
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrón 1: Multi-Parser Dispatcher Pattern
+
+**Técnica:** Iterar table de functions, cada parser é função independente.
+
+```lua
+registerNpcType = {}
+setmetatable(registerNpcType, {
+	__call = function(self, npcType, mask)
+		for _, parse in pairs(self) do
+			parse(npcType, mask)
+		end
+	end,
+})
+
+registerNpcType.name = function(...) ... end
+registerNpcType.health = function(...) ... end
+-- ... 15 parsers
+```
+
+**Vantagem:**
+- Modular: cada parser isolado
+- Extendable: novo parser = uma função
+- Order-independent: sem dependências
+- Clean: separação de concerns
+
+**Aplicação:** Massive configuration systems.
+
+---
+
+### Padrón 2: Nested Table Validation
+
+**Técnica:** Validar sub-propriedades antes de aplicar.
+
+```lua
+registerNpcType.flags = function(npcType, mask)
+	if mask.flags then
+		if mask.flags.floorchange ~= nil then
+			npcType:floorChange(...)
+		end
+		if mask.flags.pushable ~= nil then
+			npcType:isPushable(...)
+		end
+	end
+end
+```
+
+**Vantagem:**
+- Safe: sub-propriedades são opcionais
+- Flexible: cada uma pode existir ou não
+- Explicit: claro quando algo é aplicado
+
+**Aplicação:** Complex nested configurations.
+
+---
+
+### Padrón 3: Global State Validation (Price Checking)
+
+**Técnica:** Track valores globais de múltiplos NPCs para validação cross-instance.
+
+```lua
+NpcPriceChecker = NpcPriceChecker or {}
+
+if NpcPriceChecker[clientId].sell > NpcPriceChecker[clientId].buy then
+	logger.warn("Economy inconsistency: sell > buy")
+end
+```
+
+**Vantagem:**
+- Holistic: vê economia inteira, não item individual
+- Preventive: avisa antes de problema se manifestar
+- Tracked: logs qual NPC é culpado
+
+**Aplicação:** Cross-system validation.
+
+---
+
+### Padrón 4: Case Insensitivity Pattern
+
+**Técnica:** Aceitar múltiplas variantes de case para mesma propriedade.
+
+```lua
+local itemName = shopItems.itemName or shopItems.itemname
+local clientId = shopItems.clientId or shopItems.clientid
+```
+
+**Vantagem:**
+- Forgiving: typos de case não quebram config
+- Backwards Compatible: aceita legacy names
+- User-Friendly: não depende de case exato
+
+**Aplicação:** Configuration loading from multiple sources.
+
+---
+
+### Padrón 5: Hierarchical Shop Items (Parent-Child)
+
+**Técnica:** Items principais podem ter sub-items (containers, bundles).
+
+```lua
+if shopItems.child then
+	for _, children in pairs(shopItems.child) do
+		local child = Shop()
+		-- Configure child
+		parent:addChildShop(child)
+	end
+end
+```
+
+**Vantagem:**
+- Realistic: backpack contém items
+- Logical: organiza shop items em grupos
+- Flexible: profundidade ilimitada
+
+**Aplicação:** Complex shop hierarchies.
+
+---
+
+## 🤖 Informações da Documentação
+
+| Meta | Valor |
+|------|-------|
+| **Arquivo Documentado** | register_npc_type.lua |
+| **Versão de Análise** | v1 (244 linhas) |
+| **Linguagem** | Lua 5.1+ com Canary extensions |
+| **Parsers Documentados** | 15 |
+| **Variáveis Globais** | 2 (registerNpcType, NpcPriceChecker) |
+| **Padrões Identificados** | 5 |
+| **Data de Documentação** | February 20, 2026 |
+
+**Notas de Análise:**
+- Arquivo é substancialmente menor que register_monster_type.lua (244 vs 962 linhas)
+- NpcPriceChecker é feature única (validação global de preços)
+- Shop system suporta parent-child hierarchy (similar a loot no monster)
+- Case insensitivity em shopItems (itemName vs itemname)
+- Light parser tem bug potencial (color local var não persiste)
+- Voices e sounds têm validação em cascata diferente
+
+**Possíveis Melhorias:**
+- Fix light parser (persistir color corretamente)
+- Add schema validation para shop items obrigatórios
+- Documentar storage key requisites em XML reference
+- Add price range validation (warn se muito caro/barato)
+- Warnings para NPCs sem shop items ou voices

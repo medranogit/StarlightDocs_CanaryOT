@@ -1,0 +1,185 @@
+---
+title: Gold Highscore
+description: Comando GM para visualizar ranking dos 10 jogadores com maior saldo de moeda no servidor
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `gold_highscore.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Exibir ranking de ouro (highscore) |
+| **Comando** | `/goldrank` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Não |
+| **Separador** | Espaço |
+| **Tamanho do Ranking** | Top 10 jogadores |
+| **Filtro de Grupos** | group_id < 3 (exclui admins) |
+| **Tipo de Saída** | Popup FYI ao jogador |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/gold_highscore.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que consulta o banco de dados filtrando jogadores com group_id menor que 3 (exclui administradores), ordena por balance descendente, limita a 10 resultados, e itera sobre cada registro usando `Result.next()`. Formata números com função global `FormatNumber()` para melhor legibilidade. Usa `popupFYI()` para exibir resultado em popup de interface. Trata caso onde nenhum resultado é encontrado com mensagem apropriada.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `gold_highscore.lua` implementa um comando TalkAction (`/goldrank`) que consulta o banco de dados para extrair os 10 jogadores com maior saldo de moeda no servidor. O sistema filtra jogadores por grupo (group_id < 3), ordena por balance descendente, itera sobre resultados numerando posições de ranking, formata números com função global `FormatNumber()`, e exibe em popup FYI com tratamento de casos vazios. Integração direta com banco de dados com limpeza apropriada de recursos.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local goldRank = TalkAction("/goldrank")
+
+-- 2. Função Principal (onSay)
+function goldRank.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Query ao banco de dados
+    local highscoreQuery = db.storeQuery(
+        "SELECT `balance`, `name` FROM `players` " ..
+        "WHERE group_id < 3 " ..
+        "ORDER BY balance DESC " ..
+        "LIMIT 10"
+    )
+    
+    -- Tratamento de query vazia
+    if not highscoreQuery then
+        player:sendCancelMessage("No highscore to show.")
+        return true
+    end
+    
+    -- Inicializar lista de highscore
+    local highscoreList = ""
+    local rank = 0
+    
+    -- Iterar sobre cada resultado
+    repeat
+        -- Incrementar posição de rank (1, 2, 3, ...)
+        rank = rank + 1
+        
+        -- Extrair dados do resultado
+        local playerName = Result.getString(highscoreQuery, "name")
+        local playerBalance = FormatNumber(Result.getNumber(highscoreQuery, "balance"))
+        
+        -- Construir string: "1- Nome (1000000)."
+        highscoreList = highscoreList .. "\n" .. rank .. "- " .. playerName .. 
+                        " (" .. playerBalance .. ")."
+    until not Result.next(highscoreQuery)
+    
+    -- Liberar recursos da query
+    Result.free(highscoreQuery)
+    
+    -- Tratamento de lista vazia após iteração
+    if highscoreList == "" then
+        highscoreList = "No highscore to show."
+    end
+    
+    -- Exibir em popup FYI
+    player:popupFYI("Current gold highscore for this server:\n" .. highscoreList)
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+goldRank:separator(" ")
+goldRank:groupType("gamemaster")
+goldRank:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **goldRank.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/goldrank` é utilizado. Consulta banco de dados e exibe ranking de ouro.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavras do comando (`/goldrank`)
+- `param` (string): Parâmetros adicionais (não utilizado)
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Query ao Banco de Dados:**
+   ```sql
+   SELECT `balance`, `name` FROM `players` 
+   WHERE group_id < 3 
+   ORDER BY balance DESC 
+   LIMIT 10
+   ```
+   - Seleciona: saldo e nome
+   - Filtra: apenas jogadores (group_id < 3 exclui admins/GMs)
+   - Ordena: saldo descendente (maior primeiro)
+   - Limita: 10 resultados
+
+3. **Tratamento de Query Vazia:**
+   - Se query retorna nil: envia "No highscore to show." e retorna
+   - Indica nenhum jogador qualificado
+
+4. **Iteração de Resultados:**
+   ```lua
+   repeat
+       rank = rank + 1
+       playerName = Result.getString(highscoreQuery, "name")
+       playerBalance = FormatNumber(Result.getNumber(highscoreQuery, "balance"))
+       highscoreList = highscoreList .. "\n" .. rank .. "- " .. playerName .. " (" .. playerBalance .. ")."
+   until not Result.next(highscoreQuery)
+   ```
+   - Incrementa rank a cada iteração (1, 2, 3...)
+   - Obtém dados via Result.getString/getNumber
+   - Formata números com separadores (ex: 1.000.000)
+   - Constrói string com \<ranking>- \<nome> (\<saldo formado>).
+
+5. **Limpeza de Recursos:**
+   - `Result.free(highscoreQuery)` libera recursos
+
+6. **Validação Final:**
+   - Se highscoreList vazio após iteração: "No highscore to show."
+
+7. **Exibição:**
+   - `player:popupFYI("Current gold highscore for this server:\n" .. highscoreList)`
+   - Abre popup FYI com título e lista
+
+**Exemplo de Saída:**
+```
+Current gold highscore for this server:
+
+1- Vinicius (5.000.000).
+2- Admin (4.500.000).
+3- Player1 (3.200.000).
+...
+10- Player10 (500.000).
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `db.storeQuery(sql)` | Executa SELECT retornando ID de resultado |
+| `Result.getString(id, field)` | Obtém string de célula |
+| `Result.getNumber(id, field)` | Obtém número de célula |
+| `Result.next(id)` | Avança para próximo registro |
+| `Result.free(id)` | Libera recursos |
+| `FormatNumber(number)` | Formata número com separadores |
+| `player:popupFYI(message)` | Exibe popup FYI de informação |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `gold_highscore.lua` é utilitário simples de consulta de rankings. Implementação que executa query SQL estruturada, itera resultados com tratamento de casos vazios, formata números para legibilidade, e exibe em interface via popup. Essencial para gamemasters auditarem economia do servidor e jogadores consultarem posicionamento. Sem modificação de dados, apenas leitura segura com limpeza de recursos.

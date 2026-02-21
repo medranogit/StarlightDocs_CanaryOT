@@ -1,0 +1,212 @@
+---
+title: sweetheart_ring.lua
+description: Anel que emite efeito visual HEARTS quando equipado, retorna false se não está equipado.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="sweetheart_ring.lua" icon="pencil">
+Handler trivial de efeito visual: apenas verification de equip + HEARTS.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/sweetheart_ring.lua`
+
+**Linhas:** 8 (MENOR arquivo da Batch 8) | **ID do Item:** 3002 | **Tipo:** Action Handler
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script é trivialmente simples: verifica se o anel está equipado (item == getSlotItem), emite efeito HEARTS se verdadeiro, e retorna false se não equipado. Não consumi o item, não há cooldown, não há mensagem. É handler puramente visual com validação de slot.
+
+### Estrutura de Funcionalidades
+
+```
+sweetheartRing (Action)
+  ├─ onUse(player, item, fromPosition, target, toPosition, isHotkey)
+  │   ├─ item == player:getSlotItem(CONST_SLOT_RING)?
+  │   │   ├─ SIM → Equipado
+  │   │   │   ├─ sendMagicEffect(CONST_ME_HEARTS)
+  │   │   │   └─ return true
+  │   │   │
+  │   │   └─ NÃO → Não equipado
+  │   │       └─ return false (recusa total)
+  │   │
+  │   └─ (sem consumo de item)
+  │
+  └─ register() → ID 3002
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| sweetheartRing | Action | Objeto handler |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| ID Item | 3002 | Sweetheart Ring |
+| Efeito | CONST_ME_HEARTS | Coração mágico |
+| Slot | CONST_SLOT_RING | Dedo (ring) |
+| Consumo | Não | Item permanece |
+| Duração | Instantânea | Apenas efeito visual |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function sweetheartRing.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Verificar se o anel está equipado
+	if item == player:getSlotItem(CONST_SLOT_RING) then
+		-- Anel equipado: enviar efeito
+		player:getPosition():sendMagicEffect(CONST_ME_HEARTS)
+		return true
+	end
+	
+	-- Anel não equipado: recusar
+	return false
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador executa ação sobre sweetheart_ring
+  │
+  ├─ item == player:getSlotItem(CONST_SLOT_RING)?
+  │   │
+  │   ├─ SIM → Anel no dedo
+  │   │   ├─ sendMagicEffect(HEARTS)
+  │   │   ├─ Efeito visual aparece
+  │   │   └─ return true (sucesso)
+  │   │
+  │   └─ NÃO → Anel no inventário (não equipado)
+  │       ├─ Sem efeito
+  │       ├─ System message: "You must equip it first."
+  │       └─ return false (falha/recusa)
+```
+
+### Return True vs Return False
+
+```
+return true:
+  ├─ Handler executado com sucesso
+  ├─ Item consumido OU permanece (conforme script)
+  ├─ Sistema permite ação
+  └─ Neste caso: Permanece (não removido)
+
+return false:
+  ├─ Handler NOÃ pode ser executado (item fora de uso)
+  ├─ VS Code mostra mensagem automática: "You must equip it first"
+  ├─ Item não consumido
+  ├─ Ação recusada pelo sistema
+  └─ Neste caso: Anel deve estar no dedo
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Slot Comparison**: item == player:getSlotItem(CONST_SLOT_RING)
+- **Return False**: Indica item deve estar equipado
+- **No Consumption**: item:remove() não é chamado
+- **Instant Effect**: Sem cooldown, sem delay
+- **Only Hearts**: Efeito visual único
+- **Object Comparison**: Compara objetos item, não IDs
+- **Trivial Logic**: 1 condição + 1 ação
+- **No Messages**: Apenas efeito mágico (sistema enviará mensagem própria)
+
+### Responsabilidades do Handler
+
+1. **Comparar objetos**: item == getSlotItem()
+2. **Se equipado**: Enviar efeito HEARTS
+3. **Se não equipado**: Return false (recusar)
+4. **Nenhuma consumição**: Item permanece
+5. **Nenhum feedback**: Apenas efeito visual
+
+---
+
+## Patterns e Implementação
+
+### Padrão Trivial - Slot Verification
+
+Este script é minimal:
+
+```lua
+if item == player:getSlotItem(CONST_SLOT_RING) then
+	player:getPosition():sendMagicEffect(CONST_ME_HEARTS)
+	return true
+end
+return false
+```
+
+Comparação entre objetos item (do inventário) vs getSlotItem (do slot).
+
+### Return False Edge Case
+
+Diferente da maioria dos handlers que sempre retornam true:
+
+```
+Padrão comum:
+  └─ if not condition then
+       └─ return true (sem consumir)
+     end
+     └─ (consumir ou processar)
+
+Sweetheart Ring:
+  └─ if item == equipado then
+       └─ return true (com efeito)
+     end
+     └─ return false (RECUSA ação)
+```
+
+Only 3 scripts na batch documentada até aqui usam return false.
+
+### Comparação: Sweetheart Ring vs Sweet Mangonaise
+
+| Aspecto | Sweetheart (3002) | Sweet Mangonaise (11588) |
+|---------|---|---|
+| Linhas | 8 (trivial) | 57 (complexo) |
+| Validação | Slot apenas | Slot + type table |
+| Efeito | HEARTS | MAGIC_RED |
+| Consumo | Não | Sim (1x) |
+| Item Resultado | Nenhum | 10x anel |
+| Retorno | Bolean (sim/não) | Always true |
+| Cooldown | Não | Sim (10 min) |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: sweetheart_ring.lua" icon="star">
+Análise de handler trivial com validação de slot e efeito visual. Demonstra return false para indicar requisito de equipamento obrigatório.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Trivial visual effect com slot validation | Complexidade: Muito Baixa
+</Aside>

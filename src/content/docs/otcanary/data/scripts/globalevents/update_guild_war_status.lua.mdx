@@ -1,0 +1,347 @@
+---
+title: "Global Event - update_guild_war_status.lua"
+description: "Global event para atualizar status de guild wars com timeout"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `update_guild_war_status.lua` |
+| **Localização** | `data/scripts/globalevents/` |
+| **Tipo de Script** | GlobalEvent |
+| **Event Name** | `UpdateGuildWarStatus` |
+| **Função Registrada** | `onThink(interval)` |
+| **Linhas de Código** | 10 |
+| **Intervalo** | 60000ms (1 minuto) |
+| **Complexidade** | Trivial-Médium |
+| **Status** | Base implementation |
+
+**Descrição:**
+Global event que processa atualizações de status de guild wars periodicamente. A cada minuto, verifica o database para wars que finalizaram (status=1 com ended timestamp expirado) e marca-as como concluídas (status=4). Executa via SQL direta com proteção de timeout.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/globalevents/update_guild_war_status.lua
+```
+
+**Pré-requisitos:**
+- GlobalEvent API (`GlobalEvent` função global)
+- Database API: `db.query()`
+- os.time() global function
+- Tabela `guild_wars` com colunas: `status`, `ended`
+
+**Valores de Status Guild War:**
+- `0` - Pending/Draft (não iniciada)
+- `1` - Active/In Progress (guerra em andamento)
+- `2` - Ended/Completed (terminou naturalmente)
+- `3` - Cancelled/Forfeit (cancelada)
+- `4` - Finished/Archived (concluída e archived)
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Update Guild War Status (Guild War Finalization)**
+
+A cada minuto, o sistema valida e finaliza guild wars expiradas:
+
+1. **Trigger:** GlobalEvent dispara a cada 60 segundos
+2. **Query:** Busca wars com status=1 (ativa) e ended timestamp expired
+3. **Atualização:** Marca war como status=4 (archived)
+4. **Persistência:** Mudança é persisted no database
+5. **Ciclo:** Repete a cada minuto
+
+**Timeline de War**
+```
+T+0min    - War starts (status=1, ended=T+120min)
+T+60min   - onThink() executa
+  ├─ Checa: status=1 && ended <= now?
+  └─ Não → ignora (ainda em progresso)
+T+120min  - War ends naturally (ended timestamp reached)
+T+121min  - onThink() executa
+  ├─ Checa: status=1 && ended <= now?
+  ├─ Sim → UPDATE status=4
+  └─ War arquivo (não aparece mais em listagens ativas)
+```
+
+**Por quê status 4 (finished)?**
+- Status 1 = ainda iterável (queries ativas)
+- Status 4 = archived (não interfere em lógica)
+- Melhora performance (menos rows em scans)
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `update_guild_war_status.lua` implementa a finalização automática de guild wars:
+
+- **Monitora guild wars em progresso** via GlobalEvent tick
+- **Valida expiração** baseado em timestamp `ended`
+- **Atualiza status** para archived quando expirado
+- **Executa em background** sem afetar performance do jogador
+
+### Arquitetura
+
+O script usa padrão de **periodic database sweep com SQL direct**:
+
+```
+GlobalEvent (60s interval)
+  └─ onThink(interval)
+     └─ db.query("UPDATE guild_wars SET status=4 WHERE ...")
+        └─ WHERE status=1 AND ended != 0 AND ended < now
+```
+
+### Fluxo Lógico Resumido
+
+| Evento | Timestamp | Ação |
+|--------|-----------|------|
+| **War Inicia** | T | status=1, ended=T+duration |
+| **Periodic Check** | T+1min | Verifica se `ended <= now` |
+| **Expired Detection** | T+duration | Detecção quando passed |
+| **Update Executed** | T+duration+1min | UPDATE status=4 |
+| **Archived** | T+duration+1min+ | War não aparece mais |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (GlobalEvent)
+
+#### **onThink(interval)**
+
+```lua
+function updateGuildWarStatus.onThink(interval)
+	local currentTime = os.time()
+	db.query(string.format("UPDATE `guild_wars` SET `status` = 4, `ended` = %d WHERE `status` = 1 AND `ended` != 0 AND `ended` < %d", currentTime, currentTime))
+	return true
+end
+```
+
+**Propósito:** Entry point do global event. Atualiza status de wars finalizadas.
+
+**Fluxo de Execução:**
+
+1. **Obter Tempo Atual:**
+   ```lua
+   local currentTime = os.time()
+   ```
+   - Obtém timestamp UNIX atual (segundos desde epoch)
+
+2. **Executar Update SQL:**
+   ```lua
+   db.query(string.format("UPDATE `guild_wars` SET `status` = 4, `ended` = %d 
+   WHERE `status` = 1 AND `ended` != 0 AND `ended` < %d", currentTime, currentTime))
+   ```
+
+3. **Clausulas WHERE:**
+   - `status` = 1 - Apenas wars que estão ativas
+   - `ended` != 0 - Apenas wars com ended timestamp definido (não infinitas)
+   - `ended` < currentTime - Apenas wars com timestamp expirado
+
+4. **Updates Executados:**
+   - `status` → 4 (archived)
+   - `ended` → currentTime (timestamp de finalização)
+
+5. **Retorno:**
+   ```lua
+   return true
+   ```
+   - Sempre retorna true (continue event)
+
+**Parâmetros:**
+- `interval` - Intervalo do GlobalEvent (60000ms) - não utilizado na função
+
+**Retorno:**
+- `true` - GlobalEvent continua ativo
+
+**Query Explicada:**
+
+```sql
+UPDATE `guild_wars` 
+SET `status` = 4, `ended` = 1724534400
+WHERE `status` = 1 
+  AND `ended` != 0 
+  AND `ended` < 1724534400
+```
+
+- **SET status=4:** Marca war como archived/finished
+- **SET ended=now:** Registra quando foi finalizada (auditoria)
+- **WHERE status=1:** Filtra apenas wars ativas
+- **WHERE ended!=0:** Ignora wars com ended=0 (infinite duration)
+- **WHERE ended\<now:** Apenas wars cujo ended timestamp já passou
+
+---
+
+### Configuração de Intervalo
+
+#### **updateGuildWarStatus:interval() e :register()**
+
+```lua
+updateGuildWarStatus:interval(60000)
+updateGuildWarStatus:register()
+```
+
+**Descrição:** Configura intervalo e registra o GlobalEvent.
+
+**Intervalo:** 60000 milliseconds = 60 segundos = 1 minuto
+
+**Frequência:** A cada minuto, checks são realizados
+
+**Timing:**
+- Suficiente para detectar expiração rapidamente (max 1-2 minutos de delay)
+- Não overhead: apenas 1 update query por minuto
+- Razoável: evita wars "zombie" em tabela
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Locais (Script-Level)
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `updateGuildWarStatus` | GlobalEvent | Local | GlobalEvent object do updater |
+| `currentTime` | number | Function | Timestamp UNIX atual |
+
+### Database Columns Utilizadas
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| `status` | number | Estado da guild war (0-4) |
+| `ended` | number | Timestamp UNIX quando war termina |
+
+### Values de Status
+
+| Valor | Status | Descrição |
+|-------|--------|-----------|
+| `0` | Pending | War ainda não iniciada/em draft |
+| `1` | Active | War em progresso |
+| `2` | Ended | Terminou naturalmente (sem winner?) |
+| `3` | Cancelled | Cancelada antes de começar |
+| `4` | Finished | Concluída e archived |
+
+### Objetos Externos Referenciados
+
+| Objeto | Propriedade/Método | Descrição |
+|--------|-------------------|-----------|
+| `updateGuildWarStatus` | `onThink()` | Função callback do GlobalEvent |
+| `updateGuildWarStatus` | `interval(ms)` | Define intervalo em milliseconds |
+| `updateGuildWarStatus` | `register()` | Registra event no sistema |
+| `os` | `time()` | Retorna timestamp UNIX atual |
+| `db` | `query(sql)` | Executa query SQL síncrona |
+| `string` | `format()` | Formata string com valores |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Database Sweep (Periodic Cleanup)
+
+**Técnica:** Executar UPDATE/DELETE bulk em intervalo regular para housekeeping.
+
+```lua
+db.query(string.format(
+	"UPDATE `guild_wars` SET `status` = 4 WHERE `status` = 1 AND `ended` < %d",
+	currentTime
+))
+```
+
+**Vantagem:**
+- Sem polling de aplicação (direto no DB)
+- Eficiente: uma query para múltiplos records
+- Escalável: não importa quantas wars existem
+
+**Aplicação:** Cleanup de dados temporários, timeouts, expirations.
+
+---
+
+### Padrão 2: String Format com Values Dinâmicos
+
+**Técnica:** Usar `string.format()` para injetar valores em SQL dinamicamente.
+
+```lua
+local currentTime = os.time()
+db.query(string.format(
+	"UPDATE ... WHERE ... ended < %d",
+	currentTime
+))
+```
+
+**Vantagem:**
+- SQL legível (sem concatenation manual)
+- Type-safe para números (numbers não precisam quotes)
+- Fácil manutenção
+
+**Cuidado:** Para strings, sempre usar `db.escapeString()` contra SQL injection!
+
+---
+
+### Padrão 3: Multi-Condition WHERE com AND
+
+**Técnica:** Múltiplas condições AND para refinar query.
+
+```lua
+WHERE `status` = 1           -- Apenas wars ativas
+  AND `ended` != 0           -- Com ended timestamp definido
+  AND `ended` < currentTime  -- E que já expiraram
+```
+
+**Vantagem:**
+- Preciso: evita atualizar wars que não devem
+- Seguro: não afeta infinita-duration wars (ended=0)
+- Claro: lê como lógica natural
+
+**Aplicação:** Qualquer UPDATE/DELETE que precisa múltiplas validações.
+
+---
+
+### Padrão 4: Timestamp-Based Expiration
+
+**Técnica:** Usar `os.time()` para comparações de expiration.
+
+```lua
+local currentTime = os.time()
+if recordEndTime < currentTime then
+	-- Expirou
+end
+```
+
+**Vantagem:**
+- Independente de timezone (UNIX time é universal)
+- Preciso (segundo resolution)
+- Simples lógica
+
+**Aplicação:** Timeouts, expirations, agendamentos.
+
+---
+
+## 📈 Complexidade & Performance
+
+### Time Complexity
+- **O(n)** onde n = número de guild_wars com status=1 e ended expirado
+- Típicamente muito pequeno (~0-10 records em maioria dos servidores)
+- Database optimization via index em columns `status`, `ended`
+
+### Space Complexity
+- **O(1)** - Não aloca estruturas Lua grandes
+- Database lida com resultados
+
+### Impact no Servidor
+- **Frequência:** 1 query a cada 60 segundos
+- **Duration:** less than 1ms (update direto no DB)
+- **Blocking:** Não bloqueia game loop (db.query() é síncrona mas rápida)
+
+### Otimizações Recomendadas
+1. Criar índice composto: `CREATE INDEX idx_gw_status_ended ON guild_wars(status, ended);`
+2. Se houver muitas wars: considerar async query `db.asyncQuery()`
+3. Adicionar logging se atualizar muitos records (debug performance)

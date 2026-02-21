@@ -1,0 +1,237 @@
+---
+title: gold_converter.lua
+description: Conversor de moedas com múltiplos níveis
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="gold_converter.lua" icon="star">
+Script de ação Lua que implementa conversor de moedas entre três tipos.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/gold_converter.lua`
+
+Conversor de moedas (IDs 23722, 25719) que permite conversão entre gold, platinum e crystal coins. Gold → Platinum (1:1), Platinum ↔ Crystal (100:1 ou vice-versa). Usa charges como consumível. Validações: quantidade (type), charges suficientes.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `gold_converter.lua` implementa conversor de moedas com três tipos: gold, platinum, crystal. Gold (type 0) → Platinum (type 1), Platinum ↔ Crystal com ratio 100:1. Validações checam tipo de moeda alvo, se quantidade é exata (type == 100 para up-convert), charges do conversor. Cada conversão consome 1 charge. Conversor removido quando charges == 0.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define config com 3 moedas]
+    ├─ Gold: changeTo = Platinum
+    ├─ Platinum: changeBack = Gold, changeTo = Crystal
+    └─ Crystal: changeBack = Platinum
+
+[Create goldConverter Action]
+    ↓
+[onUse function]
+    ├─ coin = config[target.itemid]
+    ├─ Not found? return false
+    ├─ charges = item:getCharges()
+    ├─ If coin.changeTo and target.type == 100
+    │   ├─ target:remove() (100 gold coins desaparecem)
+    │   ├─ addItem Platinum 1
+    │   ├─ item:transform charges-1
+    ├─ Elseif coin.changeBack
+    │   ├─ target:transform type-1 (platinum stack decreases)
+    │   ├─ addItem Gold 100
+    │   ├─ item:transform charges-1
+    └─ Else return false
+    ├─ If charges == 0 remove conversor
+    └─ return true
+    ↓
+[Register on item IDs 23722, 25719]
+```
+
+## Variáveis Globais
+
+### config (local table - 3 moedas)
+
+Mapeamento de moeda ID para conversões.
+
+**Estrutura**:
+```lua
+[moedaId] = {
+  changeTo = id_upgrade (optional),
+  changeBack = id_downgrade (optional)
+}
+```
+
+## Moedas e Conversões
+
+| Moeda | ID | changeTo | changeBack | Tipo | Ratio |
+|-------|------|-----------|------------|------|-------|
+| Gold Coin | 3031 | Platinum | - | 0 | 1:1 |
+| Platinum Coin | 3035 | Crystal | Gold | 1 | 100:1 |
+| Crystal Coin | 3038 | - | Platinum | 100 | 1:100 |
+
+**Fluxos**:
+- 100 Gold → 1 Platinum (Gold type 0 completo)
+- 1 Platinum → 1 Crystal (Platinum type 1)
+- 1 Crystal → 100 Gold (Crystal type 100 → Platinum type 1)
+
+## Funções
+
+### goldConverter.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que converte moedas.
+
+**Parâmetros:**
+- player: Creature player
+- item: Conversor (com charges)
+- fromPosition: Posição original
+- target: Moeda alvo
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. coin = config[target.itemid]
+   ├─ Não existe? return false
+   └─ Existe? continuar
+
+2. charges = item:getCharges()
+
+3. If coin.changeTo and target.type == 100
+   ├─ Upgrade (Gold 100 → Platinum 1)
+   ├─ target:remove()
+   ├─ player:addItem(coin.changeTo, 1)
+   ├─ item:transform charges-1
+   └─ continue
+
+4. Elseif coin.changeBack
+   ├─ Downgrade (Platinum 1 → Gold 100 ou Crystal → Platinum)
+   ├─ target:transform (type - 1)
+   ├─ player:addItem(coin.changeBack, 100)
+   ├─ item:transform charges-1
+   └─ continue
+
+5. Else return false (conversão inválida)
+
+6. If charges == 1 (sera 0 após)
+   └─ item:remove() (conversor gasto)
+
+7. return true
+```
+
+**Implementação:**
+
+```lua
+function goldConverter.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local coin = config[target.itemid]
+	if not coin then
+		return false
+	end
+
+	local charges = item:getCharges()
+	if coin.changeTo and target.type == 100 then
+		target:remove()
+		player:addItem(coin.changeTo, 1)
+		item:transform(item:getId(), charges - 1)
+	elseif coin.changeBack then
+		target:transform(target.itemid, target.type - 1)
+		player:addItem(coin.changeBack, 100)
+		item:transform(item:getId(), charges - 1)
+	else
+		return false
+	end
+
+	if charges == 0 then
+		item:remove()
+	end
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| ITEM_GOLD_COIN | constant | ID gold (3031) |
+| ITEM_PLATINUM_COIN | constant | ID platinum (3035) |
+| ITEM_CRYSTAL_COIN | constant | ID crystal (3038) |
+| charges | integer | Usos restantes |
+
+## Validações e Lógica
+
+**Upgrade (changeTo)**:
+- Requer: target.type == 100 (stack cheio de gold)
+- Ação: Remove 100 gold, add 1 platinum
+- Exemplo: 100 gold coins → 1 platinum coin
+
+**Downgrade (changeBack)**:
+- Ação: Transform stack (type - 1), add 100 de outro tipo
+- Exemplo: 1 platinum → 99 platinum + 100 gold
+
+**Charges**:
+- Cada conversão consome 1
+- Conversor remove ao chegar 0
+
+## Fluxo de Operação
+
+```
+[Player alvo (target) moeda com conversor]
+    ↓
+[Moeda alvo está em config?]
+    ├─ NÃO → return false
+    └─ SIM → continuar
+    ↓
+[Validar conversão possível]
+    ├─ coin.changeTo? (upgrade)
+    │   └─ type == 100? SIM → remove target, add new, charges-1
+    ├─ coin.changeBack? (downgrade)
+    │   └─ transform type-1, add 100 other, charges-1
+    └─ Nenhum? return false
+    ↓
+[Charges == 0?]
+    ├─ SIM → remove conversor
+    └─ NÃO → keep
+    ↓
+[return true]
+```
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Configuração bidirecional (changeTo/changeBack)
+2. Validação type == 100 (stack completo)
+3. Transform com decremente charges
+4. Ratio diferente por direção (1:1 vs 100:1)
+5. Consumível via charges
+6. Stack reduction via type (type-1)
+
+**Responsabilidades:**
+1. Validar moeda alvo existe
+2. Verificar conversão possível
+3. Validar type correto (se upgrade)
+4. Remove/Add moedas apropriadas
+5. Transform stack (se downgrade)
+6. Decrementa charges
+7. Remove conversor se 0 charges
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 28 linhas  
+**Função**: 1 (onUse)  
+**Item (Conversor) IDs**: 23722, 25719  
+**Moedas Suportadas**: 3 (Gold, Platinum, Crystal)  
+**Conversões**: 4 (Gold→Plat, Plat→Crystal, Crystal→Plat, Plat→Gold)  
+**Consumível**: Sim (charges)  
+**Ratios**: 1:1 (gold-plat), 100:1 (plat-crystal)
+</Card>
+
+<Aside type="note">
+Conversor com 3 moedas e 4 conversões bidirecionais. Gold ↔ Platinum (1:1), Platinum ↔ Crystal (100:1). Charges consumível, remove ao expirar.
+</Aside>

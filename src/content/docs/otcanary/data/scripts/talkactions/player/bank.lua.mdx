@@ -1,0 +1,338 @@
+---
+title: Bank System
+description: Comandos PLAYER para gerenciar saldo e transferências bancárias
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | bank.lua |
+| **Tipo de Sistema** | Bank Management (PLAYER) |
+| **Funcionalidade Principal** | Balance, deposits, withdrawals, transfers |
+| **Comandos** | !balance, !deposit, !withdraw, !transfer |
+| **Requisito** | Feature habilitado (config.enabled) |
+| **Separador** | Espaço |
+| **Validação** | Money amount, player names |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/bank.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Config table (enabled, messageStyle). !balance: Bank.balance(player), FormatNumber. !deposit: param="all"? getMoney() : tonumber(param), Bank.deposit(player, amount). !withdraw: tonumber(param), Bank.withdraw(player, amount). !transfer: split",", tonumber amount, Game.getNormalizedPlayerName, player:transferMoneyTo(name, amount). Todos com validação isValidMoney e FormatNumber feedback.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo bank.lua implementa sistema completo de banco com 4 comandos. Dispõe de balance check, deposit (com "all"), withdrawal, player-to-player transfer, validações de amount, formatted feedback. Ferramenta essencial de currency management.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Variáveis Locais**
+
+```lua
+local config = {
+	enabled = true,               -- Feature habilitado
+	messageStyle = MESSAGE_LOOK,  -- Tipo de mensagem
+}
+
+if not config.enabled then
+	return  -- Early exit se desabilitado
+end
+```
+
+---
+
+### **TalkAction !balance**
+
+```lua
+local balance = TalkAction("!balance")
+
+function balance.onSay(player, words, param)
+	player:sendTextMessage(config.messageStyle, "Your current bank balance is " .. FormatNumber(Bank.balance(player)) .. ".")
+	return true
+end
+
+balance:separator(" ")
+balance:groupType("normal")
+balance:register()
+```
+
+**Comando:** `!balance`
+
+**Fluxo:**
+1. Bank.balance(player) obtém saldo
+2. FormatNumber formata com separadores
+3. Feedback: "Your current bank balance is X."
+
+---
+
+### **TalkAction !deposit**
+
+```lua
+local deposit = TalkAction("!deposit")
+
+function deposit.onSay(player, words, param)
+	local amount
+	if param == "all" then
+		amount = player:getMoney()       -- Todo o dinheiro em mão
+	else
+		amount = tonumber(param)
+		if not amount or amount <= 0 and isValidMoney(amount) then
+			player:sendTextMessage(config.messageStyle, "Invalid amount.")
+			return true
+		end
+	end
+
+	if not Bank.deposit(player, amount) then
+		player:sendTextMessage(config.messageStyle, "You don't have enough money.")
+		return true
+	end
+
+	player:sendTextMessage(config.messageStyle, "You have deposited " .. FormatNumber(amount) .. " gold coins.")
+	return true
+end
+
+deposit:separator(" ")
+deposit:groupType("normal")
+deposit:register()
+```
+
+**Comando:**
+```
+!deposit 1000          -- Deposita 1000 coins
+!deposit all           -- Deposita todo dinheiro em mão
+```
+
+**Fluxo:**
+1. Se param="all": getMoney() (inventário)
+2. Senão: tonumber(param)
+3. Valida amount > 0 e isValidMoney
+4. Bank.deposit(player, amount)
+5. Feedback com FormatNumber
+
+---
+
+### **TalkAction !withdraw**
+
+```lua
+local withdraw = TalkAction("!withdraw")
+
+function withdraw.onSay(player, words, param)
+	local amount = tonumber(param)
+	if not amount or amount <= 0 and isValidMoney(amount) then
+		player:sendTextMessage(config.messageStyle, "Invalid amount.")
+		return true
+	end
+
+	if not Bank.withdraw(player, amount) then
+		player:sendTextMessage(config.messageStyle, "You don't have enough money.")
+		return true
+	end
+
+	player:sendTextMessage(config.messageStyle, "You have withdrawn " .. FormatNumber(amount) .. " gold coins.")
+	return true
+end
+
+withdraw:separator(" ")
+withdraw:groupType("normal")
+withdraw:register()
+```
+
+**Comando:** `!withdraw 5000`
+
+**Fluxo:**
+1. Parse amount numérico
+2. Valida > 0
+3. Bank.withdraw(player, amount)
+4. Feedback com FormatNumber
+
+---
+
+### **TalkAction !transfer**
+
+```lua
+local transfer = TalkAction("!transfer")
+
+function transfer.onSay(player, words, param)
+	local split = param:split(",")
+	local amount = tonumber(split[2])
+	if not amount or amount <= 0 and isValidMoney(amount) then
+		player:sendTextMessage(config.messageStyle, "Invalid amount.")
+		return true
+	end
+
+	local name = split[1]
+	if not name then
+		player:sendTextMessage(config.messageStyle, "Invalid name.")
+		return true
+	end
+	name = name:trim()
+	
+	-- Normalizar nome (query banco de dados)
+	local normalizedName = Game.getNormalizedPlayerName(name)
+	if not normalizedName then
+		player:sendTextMessage(config.messageStyle, "A player with name " .. name .. " does not exist.")
+		return true
+	end
+	name = normalizedName
+
+	-- Transferir
+	if not player:transferMoneyTo(name, amount) then
+		player:sendTextMessage(config.messageStyle, "You don't have enough money.")
+		return true
+	end
+
+	player:sendTextMessage(config.messageStyle, "You have transferred " .. FormatNumber(amount) .. " gold coins to " .. name .. ".")
+	return true
+end
+
+transfer:separator(" ")
+transfer:groupType("normal")
+transfer:register()
+```
+
+**Comando:** `!transfer PlayerName, 2500`
+
+**Fluxo:**
+1. Parse split(",") : name, amount
+2. Valida amount > 0
+3. Valida name não vazio
+4. Trim nome
+5. Game.getNormalizedPlayerName normaliza (caso)
+6. player:transferMoneyTo(name, amount)
+7. Feedback com FormatNumber
+
+---
+
+## **Exemplos Completos**
+
+### **Deposit**
+
+```
+Player: !deposit all
+Inventário: 5000 coins
+
+Fluxo:
+1. param="all" -> getMoney() = 5000
+2. Bank.deposit(player, 5000) = true
+3. Feedback: "You have deposited 5,000 gold coins."
+
+Resultado:
+- 5000 removido do inventário
+- 5000 adicionado ao saldo banco
+
+---
+
+Player: !deposit 2500
+Bank saldo anterior: 10000
+
+Fluxo:
+1. amount = 2500
+2. Valida 2500 > 0 ✓
+3. Bank.deposit(player, 2500) = true
+4. Feedback: "You have deposited 2,500 gold coins."
+
+Resultado:
+- 2500 no banco
+- Novo saldo: 12500
+```
+
+### **Withdraw**
+
+```
+Player: !withdraw 3000
+Bank saldo: 10000
+
+Fluxo:
+1. amount = 3000
+2. Valida > 0 ✓
+3. Bank.withdraw(player, 3000) = true
+4. Feedback: "You have withdrawn 3,000 gold coins."
+
+Resultado:
+- 3000 no inventário
+- Saldo banco: 7000
+```
+
+### **Balance**
+
+```
+Player: !balance
+Bank saldo: 1234567
+
+Fluxo:
+1. Bank.balance(player) = 1234567
+2. FormatNumber(1234567) = "1,234,567"
+3. Feedback: "Your current bank balance is 1,234,567."
+
+Resultado:
+- Saldo exibido formatado
+```
+
+### **Transfer**
+
+```
+Player: !transfer Rogue, 1000
+Target player: Rogue (existe)
+Saldo: 5000
+
+Fluxo:
+1. Parse: name="Rogue", amount=1000
+2. Game.getNormalizedPlayerName("Rogue") = "Rogue" (case-correct)
+3. player:transferMoneyTo("Rogue", 1000) = true
+4. Feedback: "You have transferred 1,000 gold coins to Rogue."
+
+Resultado:
+- 1000 removido de player
+- 1000 adicionado a Rogue
+- Ambos recebem feedback
+
+---
+
+Player: !transfer InvalidPlayer, 500
+Target player: não existe
+
+Fluxo:
+1. Game.getNormalizedPlayerName("InvalidPlayer") = nil
+2. Feedback: "A player with name InvalidPlayer does not exist."
+
+Resultado:
+- Transfer cancelado
+```
+
+---
+
+**Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `configManager.getBoolean(key)` | Obtém config bool |
+| `Bank.balance(player)` | Obtém saldo |
+| `Bank.deposit(player, amount)` | Deposita |
+| `Bank.withdraw(player, amount)` | Saca |
+| `player:getMoney()` | Dinheiro inventário |
+| `player:transferMoneyTo(name, amount)` | Transfere |
+| `tonumber(str)` | Converte número |
+| `param:split(sep)` | Divide string |
+| `string:trim()` | Remove espaços |
+| `Game.getNormalizedPlayerName(name)` | Normaliza nome |
+| `isValidMoney(amount)` | Valida amount |
+| `FormatNumber(num)` | Formata número |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+
+**Constantes:**
+- `MESSAGE_LOOK`
+
+**Retorno:** `true`
+
+---
+
+## 📌 Resumo
+
+O arquivo bank.lua é sistema robusto de banco. Implementação com 4 comandos (balance/deposit/withdraw/transfer), validações extensas, "all" shortcut, nome normalization, formatted feedback com FormatNumber. Essencial para currency management. Design completo com validações em cadeia.

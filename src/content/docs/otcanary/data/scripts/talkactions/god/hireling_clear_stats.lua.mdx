@@ -1,0 +1,221 @@
+---
+title: Hireling Clear Stats
+description: Comando GOD para resetar estatísticas de hireling de um jogador
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | hireling_clear_stats.lua |
+| **Tipo de Sistema** | Hireling System (GOD) |
+| **Funcionalidade Principal** | Resetar stats de hireling |
+| **Comando** | /clearhirelingstas [player] |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Nota** | Nome do comando tem typo: "stas" ao invés de "stats" |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/hireling_clear_stats.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando minimalista. Parse param por vírgula, split[1] != "" ? split[1] : nil. Busca player via Player(name), aplica player:clearAllHirelingStats() no alvo ou self. Magic effect GREEN confirmando. Parâmetro opcional com self-default. Útil para testing environments.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo hireling_clear_stats.lua implementa comando TalkAction (/clearhirelingstas) que reseta todas as estatísticas de hireling de um jogador. O sistema oferece parâmetro alvo opcional (default self), valida player, aplica clearAllHirelingStats(), magic effect GREEN confirmação. Ferramenta de hireling testing.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- Very useful for testing environments
+local talk = TalkAction("/clearhirelingstas")
+
+function talk.onSay(player, words, param)
+	-- create log
+	logCommand(player, words, param)
+	
+	-- Parse: optional player name
+	local split = param:split(",")
+	local name = split[1] ~= "" and split[1]
+	
+	-- Buscar jogador ou usar self
+	local target = Player(name)
+	if target then
+		target:clearAllHirelingStats()
+	else
+		player:clearAllHirelingStats()
+	end
+	
+	-- Magic effect visual
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+	return true
+end
+
+talk:separator(" ")
+talk:groupType("god")
+talk:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **talk.onSay(player, words, param)**
+
+**Descrição:** Função callback que reseta hireling stats de um jogador.
+
+**Parâmetros:**
+- `param` (string): Nome do jogador (opcional, padrão: self)
+
+**Formato de Comando:**
+```
+/clearhirelingstas                  -- Reseta stats do próprio GM
+/clearhirelingstas PlayerName      -- Reseta stats de outro jogador
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   ```lua
+   logCommand(player, words, param)
+   ```
+
+2. **Parse de Parâmetro:**
+   ```lua
+   local split = param:split(",")
+   local name = split[1] ~= "" and split[1]
+   ```
+   - Se split[1] vazio: name = nil
+   - Se split[1] não vazio: name = split[1]
+
+   **Exemplos:**
+   ```lua
+   param = ""
+   split[1] = ""
+   name = nil  -- Usará self
+
+   ---
+
+   param = "TestPlayer"
+   split[1] = "TestPlayer"
+   name = "TestPlayer"  -- Buscará player
+   ```
+
+3. **Buscar Jogador:**
+   ```lua
+   local target = Player(name)
+   if target then
+       target:clearAllHirelingStats()
+   else
+       player:clearAllHirelingStats()
+   end
+   ```
+
+   **Modo 1: Parâmetro Fornecido**
+   - Busca player por nome
+   - Se encontrado: reseta stats do target
+   - Se não encontrado: reseta stats do executor (self-fallback)
+
+   **Modo 2: Parâmetro Vazio**
+   - name = nil
+   - Player(nil) retorna nil
+   - Reseta stats do executor
+
+4. **Magic Effect:**
+   ```lua
+   player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+   ```
+   - GREEN effect na posição do GM
+   - Confirmação visual
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /clearhirelingstas
+
+Fluxo:
+1. Parse: split[1]="", name=nil
+2. Player(nil) -> nil
+3. player:clearAllHirelingStats()
+4. GREEN effect
+
+Resultado:
+- Stats do hireling do GM são resetadas
+
+---
+
+GM: /clearhirelingstas TestPlayer
+
+Fluxo:
+1. Parse: split[1]="TestPlayer", name="TestPlayer"
+2. Player("TestPlayer") -> target (se online)
+3. target:clearAllHirelingStats()
+4. GREEN effect
+
+Resultado:
+- Stats do hireling do TestPlayer são resetadas
+- Se TestPlayer offline: reseta stats do GM
+
+---
+
+GM (offline): /clearhirelingstas OfflinePlayer
+
+Resultado:
+- Player("OfflinePlayer") -> nil
+- player:clearAllHirelingStats() (self-fallback)
+```
+
+---
+
+**Variáveis Globais**
+
+Comentário no arquivo:
+```lua
+-- Very useful for testing environments
+```
+
+Indica que comando é ferramenta de testing/debug.
+
+---
+
+**Nota Importante**
+
+O comando tem typo no nome: `/clearhirelingstas` ao invés de `/clearhireligstats`. Este é o nome registrado no sistema.
+
+---
+
+**Tabela de Comportamentos**
+
+| Cenário | name | Efeito |
+|---|---|---|
+| Sem parâmetro | nil | Reseta self |
+| Com parâmetro (online) | "PlayerName" | Reseta target |
+| Com parâmetro (offline) | "OfflineName" | Reseta self (fallback) |
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `Player(name)` | Busca player online |
+| `player:clearAllHirelingStats()` | Reseta stats |
+| `player:getPosition()` | Posição do GM |
+| `position:sendMagicEffect(effect)` | Efeito visual |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo hireling_clear_stats.lua é ferramenta de hireling testing. Implementação minimalista com parâmetro opcional, self-fallback (não falha se offline), magic effect confirmação, sem feedback textual. Essencial para GMs resetar hireling progression em testing environments. Design simples focado em rapidez.

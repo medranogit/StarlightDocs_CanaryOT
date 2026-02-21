@@ -1,0 +1,239 @@
+---
+title: Add Money
+description: Comando GOD para adicionar moedas de ouro à conta de um jogador
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `add_money.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Adicionar ouro à bank/conta |
+| **Comando** | `/addmoney <playername>, <amount>` |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Sistema** | Bank (conta) |
+| **Integração** | Logging, normalização de nome |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/add_money.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que usa `Game.getNormalizedPlayerName()` para aceitar variações de nome. Valida nome e amount separadamente com mensagens específicas. `Bank.credit()` para adicionar moedas (não inline direto). Diferencia feedback para jogador online vs offline. Logger.info para auditoria, logger.error para falhas. Feedback para ambos (executor e alvo se online).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `add_money.lua` implementa um comando TalkAction (`/addmoney`) que adiciona moedas de ouro à conta bancária de jogadores. O sistema normaliza nome via `Game.getNormalizedPlayerName()`, valida parâmetros em múltiplas camadas, aplica via `Bank.credit()`, fornece feedback diferenciado para online/offline, e registra em logs. Ferramenta de monetização com auditoria.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- /addmoney playername, 100000
+
+local addMoney = TalkAction("/addmoney")
+
+function addMoney.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    -- Validação: parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Player name param required")
+        logger.error("[addMoney.onSay] - Player name param not found")
+        return true
+    end
+    
+    -- Parse: name, amount
+    local split = param:split(",")
+    local name = split[1]:trim()
+    
+    -- Normalizar nome
+    local normalizedName = Game.getNormalizedPlayerName(name)
+    if not normalizedName then
+        player:sendCancelMessage("A player with name " .. name .. " does not exist.")
+        return true
+    end
+    name = normalizedName
+    
+    -- Extrair amount
+    local amount = nil
+    if split[2] then
+        amount = tonumber(split[2])
+    end
+    
+    -- Validar amount
+    if amount <= 0 or amount == nil then
+        player:sendCancelMessage("Invalid amount.")
+        return true
+    end
+    
+    -- Adicionar moedas à bank
+    if not Bank.credit(name, amount) then
+        player:sendCancelMessage("Failed to add money to " .. name .. ".")
+        logger.error("[addMoney.onSay] - Failed to add money to player")
+        return true
+    end
+    
+    -- Feedback ao executor
+    player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+        "Successfull added " .. amount .. " gold coins to " .. name .. ".")
+    
+    -- Se alvo online, notifica
+    local targetPlayer = Player(name)
+    if targetPlayer then
+        targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            "" .. player:getName() .. " added " .. amount .. " gold coins to your character.")
+    end
+    
+    -- Logger de auditoria
+    logger.info("{} added {} gold coins to {} player", player:getName(), amount, name)
+    
+    return true
+end
+
+addMoney:separator(" ")
+addMoney:groupType("god")
+addMoney:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **addMoney.onSay(player, words, param)**
+
+**Descrição:** Função callback que adiciona moedas de ouro à conta bancária de um jogador.
+
+**Parâmetros:**
+- `param` (string): `<playername>, <amount>`
+
+**Formato de Comando:**
+```
+/addmoney Player1, 100000          -- Adiciona 100k moedas
+/addmoney TestPlayer, 50000        -- Adiciona 50k moedas
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Player name param required"
+   - Log de erro em logger
+
+3. **Parse de Parâmetros:**
+   ```lua
+   local split = param:split(",")
+   local name = split[1]:trim()
+   local amount = tonumber(split[2])
+   ```
+   - Exemplo: `"Player1, 100000"` -> `{"Player1", " 100000"}`
+   - name: "Player1" (com trim)
+   - amount: 100000
+
+4. **Normalizar Nome:**
+   ```lua
+   local normalizedName = Game.getNormalizedPlayerName(name)
+   if not normalizedName then
+       player:sendCancelMessage("A player with name " .. name .. " does not exist.")
+       return true
+   end
+   ```
+   - Busca exato (case-insensitive)
+   - Valida existência na DB
+   - Se falhar: "A player with name X does not exist."
+
+5. **Validação de Amount:**
+   - Deve ser > 0
+   - Se amount `<= 0` ou nil: "Invalid amount."
+
+6. **Adicionar Moedas via Bank:**
+   ```lua
+   if not Bank.credit(name, amount) then
+       player:sendCancelMessage("Failed to add money to " .. name .. ".")
+       logger.error("[addMoney.onSay] - Failed to add money to player")
+       return true
+   end
+   ```
+   - `Bank.credit(playerName, amount)` retorna true/false
+   - Se falhar: "Failed to add money to X."
+
+7. **Feedback ao Executor:**
+   ```lua
+   player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+       "Successfull added " .. amount .. " gold coins to " .. name .. ".")
+   ```
+
+8. **Notificar Alvo se Online:**
+   ```lua
+   local targetPlayer = Player(name)
+   if targetPlayer then
+       targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+           "" .. player:getName() .. " added " .. amount .. " gold coins to your character.")
+   end
+   ```
+
+9. **Auditoria em Log:**
+   ```lua
+   logger.info("{} added {} gold coins to {} player", player:getName(), amount, name)
+   ```
+
+**Exemplo de Execução:**
+
+```
+GM: /addmoney TestPlayer, 100000
+
+Fluxo:
+1. logCommand registro
+2. Parse: name="TestPlayer", amount=100000
+3. Normaliza: "TestPlayer" encontrado ✓
+4. Valida: 100000 > 0 ✓
+5. Bank.credit("TestPlayer", 100000) ✓
+6. GM vê: "Successfull added 100000 gold coins to TestPlayer."
+7. Se TestPlayer online:
+   - Vê: "[GM] added 100000 gold coins to your character."
+8. Logger: "[GM] added 100000 gold coins to TestPlayer player"
+```
+
+**Mensagens de Erro Detalhadas:**
+
+```
+"Player name param required"
+(se param vazio)
+
+"A player with name X does not exist."
+(se normalizeNa falhar)
+
+"Invalid amount."
+(se amount <= 0 ou nil)
+
+"Failed to add money to X."
+(se Bank.credit falhar)
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `param:split(sep)` | Divide por separador |
+| `name:trim()` | Remove espaços |
+| `tonumber(str)` | Converte para número |
+| `Game.getNormalizedPlayerName(name)` | Normaliza nome (DB lookup) |
+| `Bank.credit(name, amount)` | Adiciona moedas |
+| `Player(name)` | Busca jogador online |
+| `logger.info(msg, ...)` | Log de sucesso |
+| `logger.error(msg, ...)` | Log de erro |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `add_money.lua` é ferramenta de monetização com auditoria. Implementação com normalização de nome, validação em múltiplas camadas, feedback diferenciado online/offline, e logging completo. Essencial para administradores adicionar ouro, recompensar jogadores, ou correctr contas. Design robusto com tratamento de erro específico por camada.

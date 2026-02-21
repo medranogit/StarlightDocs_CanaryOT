@@ -1,0 +1,296 @@
+---
+title: key_door.lua
+description: Sistema de portas com validação por chave
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="key_door.lua" icon="star">
+Script de ação Lua que implementa sistema de portas com validação por chave, incluindo estados locked, closed e open.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/doors/key_door.lua`
+
+Script que registra handlers de portas com chave baseadas em KeyDoorTable. Integra chaves do jogo (keysID) com portas trancadas.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `key_door.lua` implementa um sistema avançado de portas com três estados: locked (trancada com chave), closed (fechada), e open (aberta). Cada porta requer uma chave específica identificada por actionid. Portas trancadas enviam mensagem "It is locked" até serem destrancadas com chave correspondente.
+
+**Estrutura Fundamental**
+
+```
+[Load KeyDoorTable]
+    ↓
+[Extract doorIds and state tables]
+    ↓
+[Create keyDoor Action]
+    ↓
+[onUse function with two modes]
+    ├── Door usage (direct click)
+    │   ├── Locked check → reject
+    │   ├── Closed → Open (transform + sound)
+    │   └── Open → Closed (transform + sound)
+    └── Key usage on door (key click on target)
+        ├── actionid match check
+        ├── Locked + Key match → Unlock
+        └── Open/Closed + Key → Lock
+    ↓
+[Register Action on all doorIds + keys]
+```
+
+## Variáveis Globais
+
+### doorId (local array)
+
+```lua
+local doorId = {}
+```
+
+Array contendo todos os IDs únicos: portas (closed/open/locked) + chaves.
+
+### keyLockedDoor (local array)
+
+```lua
+local keyLockedDoor = {}
+```
+
+Array contendo apenas IDs de portas em estado locked.
+
+### keyUnlockedDoor (local array)
+
+```lua
+local keyUnlockedDoor = {}
+```
+
+Array contendo apenas IDs de portas em estado closed (destrancadas).
+
+### Preenchimento das Tabelas
+
+```lua
+for index, value in ipairs(KeyDoorTable) do
+  if not table.contains(doorId, value.closedDoor) then
+    table.insert(doorId, value.closedDoor)
+  end
+  if not table.contains(doorId, value.lockedDoor) then
+    table.insert(doorId, value.lockedDoor)
+  end
+  if not table.contains(doorId, value.openDoor) then
+    table.insert(doorId, value.openDoor)
+  end
+  if not table.contains(keyLockedDoor, value.lockedDoor) then
+    table.insert(keyLockedDoor, value.lockedDoor)
+  end
+  if not table.contains(keyUnlockedDoor, value.closedDoor) then
+    table.insert(keyUnlockedDoor, value.closedDoor)
+  end
+end
+
+for index, value in pairs(keysID) do
+  if not table.contains(doorId, value) then
+    table.insert(doorId, value)
+  end
+end
+```
+
+Itera KeyDoorTable para extrair 3 estados, e keysID para adicionar chaves.
+
+### KeyDoorTable (global, externa)
+
+Tabela global esperada:
+
+```lua
+KeyDoorTable = {
+  {
+    closedDoor = 1000,   -- ID da porta fechada
+    lockedDoor = 1001,   -- ID da porta trancada
+    openDoor = 1002      -- ID da porta aberta
+  },
+  -- ... mais portas
+}
+```
+
+### keysID (global, externa)
+
+Tabela global esperada:
+
+```lua
+keysID = {
+  [1] = 2000,   -- actionid 1 → item ID 2000
+  [2] = 2001,   -- actionid 2 → item ID 2001
+}
+```
+
+## Funções
+
+### keyDoor.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback principal acionado quando player usa item ou clica em porta.
+
+**Parâmetros:**
+- player: Creature player
+- item: Item sendo usado
+- fromPosition: Posição origin
+- target: Item alvo (pode ser porta ou nil)
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Lógica Binária:**
+
+```
+1. É uma porta locked/closed (direct door usage)?
+   ├─ Locked → "It is locked." message + return true
+   └─ Closed → next
+
+2. Estava close, pode abrir?
+   ├─ Existe closedDoor em table?
+   │   ├─ SIM → Open transform + som + return true
+   │   └─ NÃO → next
+   └─ Estava open, pode fechar?
+       ├─ SIM → Close transform + som + return true
+       └─ NÃO → continue
+
+3. Key usage on target door?
+   ├─ target.actionid > 0?
+   │   ├─ SIM → Check key match
+   │   │   ├─ Match? → Unlock locked door OR Lock open/closed
+   │   │   └─ No match? → "The key does not match."
+   │   └─ NÃO → continue
+   └─ return false (no action taken)
+```
+
+**Bloco 1: Locked Door Check**
+
+```lua
+if table.contains(keyLockedDoor, item.itemid) or 
+   (table.contains(keyUnlockedDoor, item.itemid) and 
+    table.contains({ 1001, 101 }, item.actionid)) then
+  player:sendTextMessage(MESSAGE_LOOK, "It is locked.")
+  return true
+end
+```
+
+Valida se porta está locked (rejeita direto) ou se é closed com actionid específico.
+
+**Bloco 2: Unlocked Door Toggle**
+
+```lua
+for index, value in ipairs(KeyDoorTable) do
+  if value.closedDoor == item.itemid then
+    item:transform(value.openDoor)
+    item:getPosition():sendSingleSoundEffect(SOUND_EFFECT_TYPE_ACTION_OPEN_DOOR)
+    return true
+  end
+end
+for index, value in ipairs(KeyDoorTable) do
+  if value.openDoor == item.itemid then
+    if Creature.checkCreatureInsideDoor(player, toPosition) then
+      return false
+    end
+    item:transform(value.closedDoor)
+    item:getPosition():sendSingleSoundEffect(SOUND_EFFECT_TYPE_ACTION_CLOSE_DOOR)
+    return true
+  end
+end
+```
+
+Abre closed → open, e fecha open → closed com creature check.
+
+**Bloco 3: Key on Door (Lock/Unlock)**
+
+```lua
+if target.actionid > 0 then
+  for index, value in ipairs(KeyDoorTable) do
+    if item.actionid ~= target.actionid and 
+       value.lockedDoor == target.itemid then
+      player:sendCancelMessage("The key does not match.")
+      return true
+    end
+    if item.actionid == target.actionid then
+      if value.lockedDoor == target.itemid then
+        target:transform(value.openDoor)
+        item:getPosition():sendSingleSoundEffect(SOUND_EFFECT_TYPE_ACTION_OPEN_DOOR)
+        return true
+      elseif table.contains({ value.openDoor, value.closedDoor }, target.itemid) then
+        if value.openDoor == item.itemid then
+          item:getPosition():sendSingleSoundEffect(SOUND_EFFECT_TYPE_ACTION_CLOSE_DOOR)
+        end
+        target:transform(value.lockedDoor)
+        return true
+      end
+    end
+  end
+end
+```
+
+Valida chave, desbloqueia locked ou tranca open/closed.
+
+## Estados de Porta
+
+| Estado | ID | Descrição | Transição |
+|--------|----|-----------|----|
+| Locked | lockedDoor | Trancada, rejeita uso | Key match → Open |
+| Closed | closedDoor | Fechada, desbloqueada | Uso → Open |
+| Open | openDoor | Aberta | Uso → Closed ou Key → Locked |
+
+## Fluxo de Operação
+
+```
+[Player clica em porta ou com chave]
+    ↓
+[Validar locked status da porta]
+    ├─ É locked? → "It is locked." + return
+    └─ Não, continuar
+    ↓
+[Modo 1: Door Usage]
+    ├─ É closed?
+    │   └─ Open com transform + som
+    └─ É open?
+        └─ Fechar (creature check) + transform + som
+    ↓
+[Modo 2: Key Usage]
+    ├─ target.actionid > 0?
+    │   ├─ key.actionid match target.actionid?
+    │   │   ├─ target.locked?
+    │   │   │   └─ Unlock + open
+    │   │   └─ target.open ou closed?
+    │   │       └─ Lock (transform para locked)
+    │   └─ No match? → "The key does not match."
+    └─ Sem target → return false
+```
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Três estados de porta: locked, closed, open
+2. Portas locked requerem chave com actionid correspondente
+3. Chaves têm actionid que deve corresponder com porta actionid
+4. Door toggle (open ↔ closed) sem validação quando desbloqueada
+5. Key pode lock/unlock conforme actionid match
+
+**Responsabilidades:**
+1. Manter 3 arrays separados por estado (locked, closed/open)
+2. Validar locked antes de permitir toggle
+3. Verificar actionid match para operações com chave
+4. Emitir mensagens de erro apropriadas (locked vs mismatched key)
+5. Creature check ao fechar para prevenir empurrar
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 85 linhas  
+**Funções**: 1 (onUse)  
+**Variáveis**: 3 local (doorId, keyLockedDoor, keyUnlockedDoor)  
+**Tabelas Externas**: KeyDoorTable, keysID (obrigatórias)
+</Card>
+
+<Aside type="note">
+Script complexo com validação de chave e três estados de porta. Requer KeyDoorTable (closedDoor, lockedDoor, openDoor) e keysID global. Implementa lógica de match entre chave e porta via actionid. Mais avançado que custom_door, mas menos restritivo que level_door ou quest_door.
+</Aside>

@@ -1,0 +1,233 @@
+---
+title: Create Summon
+description: Comando GOD para criar summons (monstros controlados pelo GM)
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `create_summon.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Criar summons (pets) |
+| **Comando** | `/s <monster_name>` |
+| **Requisito** | Acesso de God |
+| **Separador** | Espaço |
+| **Master** | GM executor |
+| **Feat. Especial** | Outfit fallback (familiar) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/create_summon.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que cria monster como summon (temporary, com GM como master). Usa `Game.createMonster(param, pos, true, false, player)` - último param é master. Valida sucesso, cheça outfit via `:getOutfit().lookType`, se zero seta familiar via `player:getFamiliarLooktype()`. Magic effects: BLUE inicialmente, TELEPORT na posição do summon.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `create_summon.lua` implementa um comando TalkAction (`/s`) que cria summons (monstros controlados). O sistema valida parâmetro, cria monster com GM como master, valida espaço, oferece outfit fallback (familiar), aplica magic effects (BLUE + TELEPORT), fornece feedback visual. Ferramenta de pet creation.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local createSummon = TalkAction("/s")
+
+function createSummon.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    -- Validação: parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Obter posição do GM
+    local position = player:getPosition()
+    
+    -- Criar summon (último param é o master)
+    local summon = Game.createMonster(param, position, true, false, player)
+    if not summon then
+        player:sendCancelMessage(RETURNVALUE_NOTENOUGHROOM)
+        position:sendMagicEffect(CONST_ME_POFF)
+        return true
+    end
+    
+    -- Outfit fallback: se não tem lookType, usar familiar do master
+    if summon:getOutfit().lookType == 0 then
+        summon:setOutfit({ lookType = player:getFamiliarLooktype() })
+    end
+    
+    -- Magic effects
+    position:sendMagicEffect(CONST_ME_MAGIC_BLUE)
+    summon:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+    
+    return true
+end
+
+createSummon:separator(" ")
+createSummon:groupType("god")
+createSummon:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **createSummon.onSay(player, words, param)**
+
+**Descrição:** Função callback que cria summon (monster controlado pelo GM).
+
+**Parâmetros:**
+- `param` (string): `<monster_name>`
+
+**Formato de Comando:**
+```
+/s Wolf                     -- Cria Wolf como summon
+/s Dragon                   -- Cria Dragon como summon
+/s Fire Elemental          -- Cria Fire Elemental como summon
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Obter Posição:**
+   ```lua
+   local position = player:getPosition()
+   ```
+
+4. **Criar Summon:**
+   ```lua
+   local summon = Game.createMonster(param, position, true, false, player)
+   ```
+   - param: nome do monstro
+   - position: posição do GM
+   - true: is summon flag
+   - false: não-controllable (controle via master)
+   - player: master (GM executor)
+
+5. **Validação de Espaço:**
+   ```lua
+   if not summon then
+       player:sendCancelMessage(RETURNVALUE_NOTENOUGHROOM)
+       position:sendMagicEffect(CONST_ME_POFF)
+       return true
+   end
+   ```
+   - Se não há espaço: "No room"
+   - POFF effect de erro
+
+6. **Outfit Fallback:**
+   ```lua
+   if summon:getOutfit().lookType == 0 then
+       summon:setOutfit({ lookType = player:getFamiliarLooktype() })
+   end
+   ```
+   - Se outfit inválido (lookType = 0)
+   - Usa familiar appearance do master
+
+7. **Magic Effects:**
+   ```lua
+   position:sendMagicEffect(CONST_ME_MAGIC_BLUE)
+   summon:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+   ```
+   - BLUE effect na posição do GM (visual de criação)
+   - TELEPORT effect na posição do summon
+
+**Exemplos de Uso:**
+
+```
+GM: /s Wolf
+
+Resultado:
+- Wolf criado como summon
+- Master: GM
+- Posição: onde o GM está
+- BLUE effect na posição do GM
+- TELEPORT effect no summon
+- Wolf aparece e fica controlável pelo GM
+
+---
+
+GM: /s Dragon
+
+Resultado:
+- Dragon criado como summon
+- Se Dragon não tem outfit válido:
+  - Seta outfit do familiar do GM
+- BLUE + TELEPORT effects
+- Dragon sob controle do GM
+
+---
+
+GM: (em sala cheia) /s Balrog
+
+Resultado:
+- Sem espaço disponível
+- Mensagem: "There is not enough room."
+- POFF effect de erro
+- Balrog não é criado
+```
+
+**Diferenças com `/spawn`:**
+
+| Aspecto | /s (Summon) | /spawn |
+|---|---|---|
+| Sistema | Temporary summon | Spawn system |
+| Master | GM executor | Nenhum (wild) |
+| Duração | Session | Spawntime |
+| Controle | Pelo GM | Nenhum |
+| Objetivo | Assistência | Populating |
+
+---
+
+### **Outfit Fallback System**
+
+Se o monstro não tem outfit válido:
+```lua
+summon:getOutfit().lookType == 0  -- Inválido
+summon:setOutfit({ lookType = player:getFamiliarLooktype() })  -- Usa familiar
+```
+
+**Familiaridade do GM:**
+- Cada jogador tem familiar looktype associado
+- Usado como fallback para summons sem outfit
+
+---
+
+### **Magic Effects**
+
+| Efeito | Localização | Significado |
+|---|---|---|
+| MAGIC_BLUE | Posição do GM | Criação de summon |
+| TELEPORT | Posição do Summon | Aparição do summon |
+
+---
+
+### **Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `Game.createMonster(name, pos, bool1, bool2, master)` | Cria summon |
+| `summon:getOutfit()` | Obtém outfit |
+| `summon:getOutfit().lookType` | Obtém appearance ID |
+| `summon:setOutfit(table)` | Seta appearance |
+| `player:getFamiliarLooktype()` | Familiar do GM |
+| `position:sendMagicEffect(effect)` | Efeito visual |
+| `summon:getPosition()` | Posição do summon |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `create_summon.lua` é ferramenta de pet creation. Implementação com outfit fallback (familiar), validação de espaço, magic effects (BLUE + TELEPORT), feedback mínimo. Essencial para GMs criar assistentes temporários. Design defensivo garante outfit válido sempre.

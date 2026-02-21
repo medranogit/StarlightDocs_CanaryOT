@@ -1,0 +1,499 @@
+---
+title: "shops.lua"
+description: "Configuração centralizada de lojas de compra e venda de itens do servidor"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações
+
+| Propriedade | Valor |
+|---|---|
+| **Localização** | [data/scripts/lib/shops.lua](../../data/scripts/lib/shops.lua) |
+| **Tipo** | Biblioteca de Configuração |
+| **Linhas** | 1620 |
+| **Objetivo** | Gerenciar preços de compra e venda, categorias de produtos e lookup de itens em lojas |
+| **Dependências** | Nenhuma (biblioteca pura) |
+
+## 📍 Caminho
+
+```
+data/scripts/lib/
+└── shops.lua
+```
+
+## 💡 Dica
+
+Este arquivo é fundamental para o sistema de comércio do servidor. Todas as lojas NPCs devem usar as configurações definidas aqui para consistência de preços. Quando criar novos itens, registre-os nas tabelas apropriadas para garantir que os preços estejam corretos em toda a economia do jogo.
+
+<Aside type="tip">
+Use `FindSupplyShopItem()` e `FindLootShopItem()` para localizar preços de itens dinamicamente ao invés de hardcodar valores.
+</Aside>
+
+## 📄 Visão Geral
+
+`shops.lua` é uma biblioteca centralizada que define todas as configurações de compra e venda do servidor. Cada item tem um `clientId` (ID visual do cliente), nome em português e seu preço de compra (`buy`) ou venda (`sell`). O arquivo organiza produtos em duas estruturas principais:
+
+1. **SupplyShopConfigTable** - Itens disponíveis para compra, organizados em 10+ categorias
+2. **LootShopConfigTable** - Itens que podem ser vendidos, incluindo drops de criaturas, produtos colecionáveis e lixo dinâmico
+
+Os preços variam drasticamente: desde 1 (lixo comum) até 10.000.000+ (itens raros como exercício duradouro). O arquivo também oferece funções de busca para localizações rápidas de itens por nome.
+
+## 🔧 Estrutura
+
+### SupplyShopConfigTable
+
+Tabela principal que organiza itens disponíveis para compra em 10 categorias:
+
+| Categoria | Quantidade | Exemplos |
+|---|---|---|
+| **foods** | 2+ | brown mushroom, fire mushroom |
+| **exercise weapons** | 24 | durable exercise axe, exercise bow, lasting exercise sword |
+| **distance equipments** | 28 | arrow, bolt, bow, spear, assassin star |
+| **runes** | 34 | explosion rune, ultimate healing rune, paralyze rune |
+| **tools** | 6 | fishing rod, torch, crowbar, backpack |
+| **amulets** | 13 | glacier amulet, stone skin amulet, leviathan's amulet |
+| **rings** | 11 | life ring, might ring, ring of healing, prismatic ring |
+| **potions** | 12 | health potion, mana potion, ultimate health potion |
+
+**Estrutura de Dados:**
+
+```lua
+SupplyShopConfigTable = {
+	["categoria"] = {
+		{ itemName = "nome do item", clientId = 123, buy = 500 },
+		{ itemName = "outro item", clientId = 456, buy = 1000 },
+		-- ...
+	},
+	-- outras categorias...
+}
+```
+
+**Características:**
+- Cada item contém: `itemName` (string), `clientId` (número), `buy` (preço de compra em ouro)
+- Preços variam de 1 até 10.000.000
+- O campo `itemName` deve estar em minúsculas para lookups consistentes
+- `clientId` refere-se ao visual do item no cliente
+
+### SupplyShopConfig
+
+Array plano gerado dinamicamente que contém todos os itens de compra em uma única lista:
+
+```lua
+SupplyShopConfig = {}
+for _, categoryTable in pairs(SupplyShopConfigTable) do
+	for _, itemTable in ipairs(categoryTable) do
+		table.insert(SupplyShopConfig, itemTable)
+	end
+end
+```
+
+**Propósito:** Facilitar buscas rápidas sem iterar sobre categorias.
+
+### LootShopConfigTable
+
+Tabela de venda organizada em categorias de produtos vendáveis (drops de criaturas, itens colecionáveis, etc):
+
+| Categoria | Quantidade | Exemplos |
+|---|---|---|
+| **creature products** | 500+ | abomination's eye, afflicted strider head, acorn |
+| **supplies** | 200+ | health potion, mana potion, arrow, bolt |
+| **equipment** | 300+ | sword, axe, helmet, armor, shield, bow |
+| **collectibles** | 100+ | ancient belt buckle, amber with a bug, book page |
+| **trophies & decorations** | 50+ | werewolf trophy, statue of devovorga, stuffed dragon |
+| **potions** | 7 | berserk potion, bullseye potion, mastermind potion |
+| **food** | 6 | dark mushroom, fire mushroom, wood mushroom |
+| **garbage** | Dinâmico | Gerado a partir de array de lixo |
+
+**Estrutura de Dados:**
+
+```lua
+LootShopConfigTable = {
+	["categoria"] = {
+		{ itemName = "nome do item", clientId = 123, sell = 500 },
+		{ itemName = "outro item", clientId = 456, sell = 1000 },
+		-- ...
+	},
+	-- outras categorias...
+}
+```
+
+### Garbage (Lixo Dinâmico)
+
+Array de itens considerados "lixo" que são automaticamente adicionados à categoria `garbage`:
+
+```lua
+local garbage = {
+	"Spatial Warp Almanac",
+	"assassin star",
+	"bug meat",
+	"cape",
+	-- ... mais 30+ itens/IDs
+	1047, -- bone
+	1048, -- bone
+	3115, -- bone
+	2920, -- torch
+	-- ...
+}
+
+LootShopConfigTable["garbage"] = {}
+
+for _, itemNameOrId in ipairs(garbage) do
+	local item = ItemType(itemNameOrId)
+	if item and item:getId() > 0 then
+		local suplyShop = FindSupplyShopItem(item:getName())
+		local price = 1
+		if suplyShop then
+			price = math.ceil(suplyShop.buy / 3)
+		end
+		table.insert(LootShopConfigTable["garbage"], { itemName = item:getName(), clientId = item:getId(), sell = price })
+	end
+end
+```
+
+**Lógica:**
+- Cada item de lixo é procurado em `SupplyShopConfig`
+- Se encontrado: preço de venda = preço de compra / 3 (arredondado para cima)
+- Se não encontrado: preço de venda padrão = 1
+
+### LootShopConfig
+
+Array plano gerado dinamicamente contendo todos os itens de venda, incluindo uma entrada especial:
+
+```lua
+local lootPouchEntry = { itemName = "all loot in pouch", clientId = ITEM_GOLD_POUCH, sell = 1 }
+LootShopConfig = { lootPouchEntry }
+
+for category, items in pairs(LootShopConfigTable) do
+	for _, item in ipairs(items) do
+		table.insert(LootShopConfig, item)
+	end
+	table.insert(LootShopConfigTable[category], lootPouchEntry)
+end
+```
+
+**Características:**
+- Começa com `"all loot in pouch"` (referência especial)
+- Agrupa todos os itens de todas as categorias
+- Cada categoria também tem sua própria entrada de bolsa de ouro
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Descrição | Uso |
+|---|---|---|---|
+| **SupplyShopConfigTable** | table | Tabela aninhada de categorias de compra | Configuração centralizada |
+| **SupplyShopConfig** | table | Array plano de itens de compra | Lookups eficientes |
+| **LootShopConfigTable** | table | Tabela aninhada de categorias de venda | Configuração centralizada |
+| **LootShopConfig** | table | Array plano de itens de venda | Lookups eficientes |
+| **garbage** | table | Array de itens considerados lixo | Preços dinâmicos |
+| **lootPouchEntry** | table | Entrada especial da bolsa de ouro | Vendas em massa |
+
+## 🎯 Padrões
+
+### Padrão 1: Estrutura Categórica
+
+Itens são organizados em categorias para facilitar filtragem:
+
+```lua
+-- SupplyShopConfigTable
+SupplyShopConfigTable["distance equipments"] = {
+	{ itemName = "arrow", clientId = 3447, buy = 3 },
+	{ itemName = "bolt", clientId = 3446, buy = 4 },
+	{ itemName = "bow", clientId = 3350, buy = 400 },
+	{ itemName = "envenomed arrow", clientId = 16143, buy = 12 },
+}
+```
+
+**Benefício:** Permite filtrar itens por categoria (ex: "mostre todos os itens de distância").
+
+### Padrão 2: Preços Derivados para Lixo
+
+Preços de venda são calculados automaticamente a partir de preços de compra:
+
+```lua
+local suplyShop = FindSupplyShopItem(item:getName())
+local price = 1
+if suplyShop then
+	price = math.ceil(suplyShop.buy / 3)
+end
+```
+
+**Benefício:** Evita inconsistências - lixo que aparece em `SupplyShop` tem preço proporcional.
+
+### Padrão 3: Lookups String-Based
+
+As funções de busca usam `string.starts` para buscas flexíveis (case-insensitive):
+
+```lua
+function FindSupplyShopItem(itemName)
+	for _, item in ipairs(SupplyShopConfig) do
+		if string.starts(item.itemName:lower(), itemName:lower()) then
+			return item
+		end
+	end
+end
+```
+
+**Benefício:** Permite buscar "fire" e localizar "fire mushroom", "fire sword", etc.
+
+### Padrão 4: Arrays Planos vs. Categóricos
+
+Mantém ambas as estruturas:
+
+- **Categórico** (`SupplyShopConfigTable`): Filtragem por tipo
+- **Plano** (`SupplyShopConfig`): Lookups rápidos
+
+```lua
+-- Lookup global rápido
+local item = FindSupplyShopItem("mushroom")
+
+-- Filtro por categoria
+local foods = SupplyShopConfigTable["foods"]
+```
+
+**Benefício:** Máxima flexibilidade com performance.
+
+### Padrão 5: Normalização de Preços
+
+Preços excepcionalmente altos mantêm proporção com a raridade:
+
+```lua
+["exercise weapons"] = {
+	{ itemName = "exercise axe", clientId = 28553, buy = 347222 },
+	{ itemName = "durable exercise axe", clientId = 35280, buy = 1250000 },
+	{ itemName = "lasting exercise axe", clientId = 35286, buy = 10000000 },
+}
+```
+
+**Padrão:** 
+- `exercise` ~347k
+- `durable` ~1.25M (3.6x)
+- `lasting` ~10M (28x)
+
+**Benefício:** Cria economia clara de progressão (equipamento básico → durável → duradouro).
+
+### Padrão 6: Compatibilidade ID/String
+
+A geração de lixo aceita tanto nome quanto ID:
+
+```lua
+local garbage = {
+	"Spatial Warp Almanac",  -- string (nome)
+	1047,                     -- number (clientId)
+	"assassin star",
+	2920,
+}
+
+for _, itemNameOrId in ipairs(garbage) do
+	local item = ItemType(itemNameOrId)
+	-- ...
+end
+```
+
+**Benefício:** Flexibilidade para referências legíveis ou compactas.
+
+## 🤖 Documentação das Funções
+
+### FindSupplyShopItem(itemName)
+
+Busca um item na tabela de compra usando busca por prefixo (case-insensitive).
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `itemName` | string | Nome ou prefixo do item a buscar |
+
+**Retorno:**
+
+| Tipo | Descrição |
+|---|---|
+| table \| nil | Tabela `{ itemName, clientId, buy }` se encontrado, `nil` se não |
+
+**Exemplo:**
+
+```lua
+local item = FindSupplyShopItem("mushroom")
+if item then
+	print("Preço de compra: " .. item.buy)
+	-- Saída: Preço de compra: 10
+end
+
+local notFound = FindSupplyShopItem("xyz")
+if not notFound then
+	print("Item não encontrado")
+end
+```
+
+**Notas:**
+- Busca case-insensitive (maiúsculas/minúsculas não importam)
+- Usa `string.starts()` - busca pelo prefixo
+- Retorna o primeiro match encontrado
+- Procura em `SupplyShopConfig` (array plano)
+
+---
+
+### FindLootShopCategory(categoryName)
+
+Busca uma categoria inteira na tabela de venda.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `categoryName` | string | Nome ou prefixo da categoria |
+
+**Retorno:**
+
+| Tipo | Descrição |
+|---|---|
+| table \| nil | Array de itens da categoria se encontrada, `nil` se não |
+
+**Exemplo:**
+
+```lua
+local creatureProducts = FindLootShopCategory("creature products")
+for _, item in ipairs(creatureProducts) do
+	print(item.itemName .. ": " .. item.sell)
+end
+
+-- Saída:
+-- abomination's eye: 650000
+-- abomination's tail: 700000
+-- ...
+```
+
+**Notas:**
+- Case-insensitive
+- Usa `string.starts()` para prefixo
+- Retorna a categoria completa (array)
+- Útil para listar itens de uma categoria específica
+
+---
+
+### FindLootShopItem(itemName)
+
+Busca um item na tabela de venda.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `itemName` | string | Nome ou prefixo do item a buscar |
+
+**Retorno:**
+
+| Tipo | Descrição |
+|---|---|
+| table \| nil | Tabela `{ itemName, clientId, sell }` se encontrado, `nil` se não |
+
+**Exemplo:**
+
+```lua
+local item = FindLootShopItem("health")
+if item then
+	print("Preço de venda: " .. item.sell)
+	-- Saída: Preço de venda: 225
+end
+
+-- Conseguir preço de venda de qualquer item
+local dropItem = FindLootShopItem("abomination's eye")
+if dropItem then
+	print("Recebe: " .. dropItem.sell .. " ouro")
+end
+```
+
+**Notas:**
+- Busca em `LootShopConfig` (array plano)
+- Case-insensitive com `string.starts()`
+- Primeira correspondência é retornada
+- Inclui a entrada especial `"all loot in pouch"`
+
+---
+
+## 📝 Exemplos de Uso
+
+### Verificar Preço de Compra de um Item
+
+```lua
+local mushroom = FindSupplyShopItem("brown mushroom")
+if mushroom then
+	print("Você pode comprar por " .. mushroom.buy .. " ouro")
+	print("ID visual: " .. mushroom.clientId)
+end
+```
+
+### Calcular Lucro de Venda
+
+```lua
+local item_name = "health potion"
+local buy_price = FindSupplyShopItem(item_name)
+local sell_price = FindLootShopItem(item_name)
+
+if buy_price and sell_price then
+	local profit = sell_price.sell - buy_price.buy
+	print("Diferença de preço: " .. profit .. " ouro")
+end
+```
+
+### Listar Todos os Anéis Disponíveis para Compra
+
+```lua
+local rings = SupplyShopConfigTable["rings"]
+if rings then
+	for _, ring in ipairs(rings) do
+		print(ring.itemName .. " - Compra: " .. ring.buy)
+	end
+end
+```
+
+### Calcular Valor Total de Todos os Drops de Criatura
+
+```lua
+local creature_products = FindLootShopCategory("creature products")
+local total_value = 0
+
+if creature_products then
+	for _, item in ipairs(creature_products) do
+		total_value = total_value + item.sell
+	end
+	print("Valor total de drops: " .. total_value .. " ouro")
+end
+```
+
+### Validar se um Item Pode Ser Vendido
+
+```lua
+function CanSellItem(itemName)
+	return FindLootShopItem(itemName) ~= nil
+end
+
+if CanSellItem("arrow") then
+	print("Este item pode ser vendido")
+else
+	print("Este item não pode ser vendido")
+end
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Servidor:** [server/game/game.cpp](../../src/server/game/game.cpp) - Implementação do comércio NPC
+- **Enums:** [enums/items.hpp](../../src/enums/items.hpp) - Definições de IDs de itens
+- **Tabelas Lua:** [data/XML/items.xml](../../data/XML/items.xml) - Configuração de items core
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Propósito** | Gerencer preços centralizados de compra/venda |
+| **Tabelas Principais** | SupplyShopConfigTable, LootShopConfigTable |
+| **Arrays Planos** | SupplyShopConfig, LootShopConfig |
+| **Funções de Busca** | 3 (FindSupplyShopItem, FindLootShopCategory, FindLootShopItem) |
+| **Categorias Compra** | 10 (foods, exercise weapons, distance equipments, runes, tools, amulets, rings, potions) |
+| **Categorias Venda** | 8+ (creature products, supplies, equipment, collectibles, trophies, potions, food, garbage) |
+| **Preços Mín/Máx** | 1 até 10.000.000 ouro |
+| **Lógica Especial** | Garbage dinâmico com preços derivados de compra |

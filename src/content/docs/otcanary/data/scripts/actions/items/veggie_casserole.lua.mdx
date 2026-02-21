@@ -1,0 +1,259 @@
+---
+title: veggie_casserole.lua
+description: Comida que aplica condition de Melee +10 por 1 hora com cooldown compartilhado de 10 minutos.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="veggie_casserole.lua" icon="pencil">
+Handler simples de buff de skill melee via condition pré-compilada.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/veggie_casserole.lua`
+
+**Linhas:** 20 | **ID do Item:** 9084 | **Tipo:** Action Handler com Pre-compiled Condition
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa comida que aplica condition de melee +10 durante 60 minutos. A condition é compilada localmente (meleeCondition) com CONDITION_ATTRIBUTES e SKILL_MELEE. Usa cooldown compartilhado "special-foods-cooldown" (10 min), efeito MAGIC_RED, emote "Yum." e mensagem "You feel stronger."
+
+### Estrutura de Funcionalidades
+
+```
+LOCAL CONDITION:
+  └─ meleeCondition (Condition object)
+      ├─ CONDITION_ATTRIBUTES
+      ├─ SUBID: JeanPierreMelee
+      ├─ BUFF_SPELL: 1 (não-dispelável)
+      ├─ TICKS: 60*60*1000 ms (1 hora)
+      ├─ SKILL_MELEE: +10
+      └─ FORCEUPDATE: true
+
+HANDLER:
+  └─ veggieCasserole.onUse()
+      ├─ hasExhaustion("special-foods-cooldown")?
+      │   └─ SIM → bloqueado
+      ├─ addCondition(meleeCondition)
+      ├─ Message: "You feel stronger."
+      ├─ Emote: "Yum."
+      ├─ Effect: MAGIC_RED
+      ├─ setExhaustion(10 min)
+      ├─ item:remove(1)
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| meleeCondition | Condition | Pré-compilada melee +10 |
+| veggieCasserole | Action | Objeto handler |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Condition Parameters
+
+| Parâmetro | Valor | Significado |
+|-----------|-------|------------|
+| Type | CONDITION_ATTRIBUTES | Modifica skills |
+| SubID | JeanPierreMelee | Identificador único |
+| BUFF_SPELL | 1 | Permanente/não-dispel |
+| Ticks | 60*60*1000 | 3,600,000 ms = 60 min |
+| SKILL_MELEE | 10 | +10 ao skill melee |
+| FORCEUPDATE | true | Atualiza UI imediato |
+
+### Item Parameters
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| Item ID | 9084 | Veggie Casserole |
+| Cooldown | special-foods-cooldown | Compartilhado |
+| Duração | 10*60 | 600 segundos = 10 min |
+| Efeito | CONST_ME_MAGIC_RED | Vermelho mágico |
+| Emote | Yum. | Fala do personagem |
+| Mensagem | You feel stronger. | Feedback positivo |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+-- Condition compilada localmente
+local meleeCondition = Condition(CONDITION_ATTRIBUTES)
+meleeCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreMelee)
+meleeCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+meleeCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+meleeCondition:setParameter(CONDITION_PARAM_SKILL_MELEE, 10)
+meleeCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+
+local veggieCasserole = Action()
+
+function veggieCasserole.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: Cooldown compartilhado
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true
+	end
+
+	-- Aplicar condition
+	player:addCondition(meleeCondition)
+
+	-- Feedback ao jogador
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You feel stronger.")
+	player:say("Yum.", TALKTYPE_MONSTER_SAY)
+
+	-- Efeito visual
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+
+	-- Ativar cooldown
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+
+	-- Consumir item
+	item:remove(1)
+	return true
+end
+
+veggieCasserole:id(9084)
+veggieCasserole:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa veggie_casserole (9084)
+  │
+  ├─ hasExhaustion("special-foods-cooldown")?
+  │   ├─ SIM → Bloqueado
+  │   │   ├─ Message: "You need to wait..."
+  │   │   ├─ Item NÃO removido
+  │   │   └─ return true
+  │   │
+  │   └─ NÃO → Continua...
+  │
+  ├─ Aplicar condition:
+  │   └─ Melee +10 por 60 min
+  │
+  ├─ Feedback ao jogador:
+  │   ├─ Message: "You feel stronger."
+  │   ├─ Emote: "Yum."
+  │   └─ Effect: MAGIC_RED
+  │
+  ├─ Ativar cooldown:
+  │   └─ setExhaustion(10 min)
+  │
+  ├─ Consumir item:
+  │   └─ item:remove(1)
+  │
+  └─ return true (sempre sucesso)
+```
+
+### Melee Buff Duration
+
+```
+t = 0:00
+  └─ addCondition(meleeCondition)
+  └─ Melee: +10 imediatamente
+  └─ UI atualiza (FORCEUPDATE: true)
+
+t = 30:00 (meio do buff)
+  └─ Melee: ainda +10
+
+t = 60:00 (após expiração)
+  └─ Condition expira
+  └─ Melee: volta ao base value
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Condition Compile**: Compilação local no início do script
+- **CONDITION_ATTRIBUTES**: Para modificar skills/stats
+- **SKILL_MELEE**: Adiciona ao fighting skill
+- **BUFF_SPELL**: Valor 1 = buff permanente (não-dispel)
+- **FORCEUPDATE**: true para UI atualizar sem delay
+- **Shared Cooldown**: "special-foods-cooldown" afeta todas as comidas
+- **hasExhaustion()**: Verifica se em cooldown antes de usar
+- **return true se bloqueado**: Sem consumir item
+- **Auto Expiration**: Condition expira após ticks
+
+### Responsabilidades do Handler
+
+1. **Validar cooldown**: hasExhaustion("special-foods-cooldown")
+2. **Rejeitar se bloqueado**: return true (sem consumir)
+3. **Aplicar buff**: addCondition(meleeCondition)
+4. **Mensagem**: "You feel stronger."
+5. **Emote**: "Yum." audível
+6. **Efeito visual**: MAGIC_RED
+7. **Ativar cooldown**: setExhaustion(10 min)
+8. **Consumir item**: remove(1)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Condition Compilation
+
+Compilação local no início:
+
+```lua
+local meleeCondition = Condition(CONDITION_ATTRIBUTES)
+meleeCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreMelee)
+meleeCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+meleeCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+meleeCondition:setParameter(CONDITION_PARAM_SKILL_MELEE, 10)
+meleeCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+```
+
+Uso no handler:
+```lua
+player:addCondition(meleeCondition)
+```
+
+### Comparação: Veggie Casserole vs Other Food Buffs
+
+| Aspecto | Veggie (Melee) | Tropical (Magic) | Strawberry (Heal) |
+|---------|---|---|---|
+| Tipo | Skill +10 | Skill +5 | 100% HP |
+| Duração | 60 min | 60 min | Instant |
+| Cooldown | Shared (foods) | Shared (foods) | Próprio |
+| Efeito | MAGIC_RED | MAGIC_RED | Nenhum |
+| Emote | Yum. | Chomp. | Mmmm. |
+| Mensagem | Feel stronger | Feel smarter | Health refilled |
+| Condition | Melee | Magic | N/A |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: veggie_casserole.lua" icon="star">
+Análise de buff de skill melee com condition compilada localmente. Demonstra CONDITION_ATTRIBUTES com SKILL_MELEE e FORCEUPDATE.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Skill buff via condition | Complexidade: Baixa
+</Aside>

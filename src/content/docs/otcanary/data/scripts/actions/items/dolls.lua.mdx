@@ -1,0 +1,293 @@
+---
+title: dolls.lua
+description: Sistema de bonecas com frases aleatórias e efeitos temáticos
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="dolls.lua" icon="star">
+Script de ação Lua que implementa sistema extenso de bonecas com mensagens aleatórias.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/dolls.lua`
+
+Sistema com 16 tipos de bonecas diferentes, cada uma com 1-10 frases aleatórias. Algumas bonecas transformam após uso (decay), outras emitem efeitos especiais (vermelho, amarelo, fogo, explosão). Frases podem ser personalizadas com placeholder |PLAYERNAME|. Item IDs diversos.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `dolls.lua` é extenso mapeamento de 16 bonecas temáticas cada com pool único de 1-10 frases. Ao usar, seleciona frase aleatória do pool, substitui placeholder |PLAYERNAME| por nome real do jogador, e emite via say monster. Algunas bonecas (5668, 9144, 12904, 14764, 21435, 22120) transformam em estado alternado (decay). Boneca 6566 tem lógica de efeitos especiais por frase.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define dollsTable com 16 bonecas]
+    ├─ 5080: 1 frase (Hug me!)
+    ├─ 5668: 10 frases comuns (com transform)
+    ├─ 6566: 5 frases especiais (com efeitos)
+    ├─ 6387: 1 frase natal (com placeholder)
+    ├─ 6511: 6 frases papai noel (com transform)
+    ├─ 8146: 1 frase épica
+    ├─ 8149: 5 frases pirata
+    ├─ 8153: 4 frases newsreader
+    ├─ 8154: 3 frases glacial
+    ├─ 9144: 4 frases viking (com transform)
+    ├─ 12043: 3 frases imperador
+    ├─ 12904: 4 frases troll (com transform)
+    ├─ 14764: 2 frases poderoso (com transform)
+    ├─ 18343: 3 frases bibliotecário
+    ├─ 21435: 6 frases sombria (com transform)
+    └─ 22120: 2+ frases ranger (com transform)
+    ↓
+[Create dolls Action]
+    ↓
+[onUse function]
+    ├─ Get sounds por item ID
+    ├─ Not found? return false
+    ├─ If position in container, use player pos
+    ├─ chance = random(1, #sounds)
+    ├─ sound = sounds[chance]
+    ├─ Switch por item ID (alguns com effects)
+    ├─ sound:gsub("|PLAYERNAME|", player:getName())
+    ├─ player:say(sound, TALKTYPE_MONSTER_SAY)
+    └─ return true
+```
+
+## Variáveis Globais
+
+### dollsTable (local table - 16 itens)
+
+Mapeamento extenso de bonecas com seus pools de frases.
+
+**Estrutura**:
+```lua
+[itemId] = { "frase1", "frase2", ... }
+```
+
+## Bonecas e Seus Comportamentos
+
+### Bonecas Simples (sensay)
+
+| ID | Frases | Comportamento |
+|----|--------|---------------|
+| 5080 | 1 | Say apenas |
+| 6387 | 1 | Say + efeito YELLOW |
+| 8146 | 1 | Say apenas |
+| 18343 | 3 | Say apenas |
+
+### Bonecas com Transform e Decay
+
+| ID | Frases | Efeito | Descrição |
+|----|--------|--------|-----------|
+| 5668 | 10 | RED | Sábio com transformação |
+| 9144 | 4 | Say | Viking com transform |
+| 12904 | 4 | Say | Troll com transform |
+| 14764 | 2 | Say | Poderoso com transform |
+| 21435 | 6 | Say | Escuro com transform |
+| 22120 | 2+ | Say | Ranger com transform |
+
+### Boneca Especial: 6566 (Dragon)
+
+| Chance | Frase | Efeito |
+|--------|-------|--------|
+| 1 | Fchhhhhh! | Say normal |
+| 2 | Zchhhhhh! | Say normal |
+| 3 | Grooaaaaar*cough* | CONST_ME_POFF |
+| 4 | Aaa...CHOO! | CONST_ME_FIREAREA |
+| 5 | You...will....burn! | EXPLOSIONHIT + -1 health |
+
+### Boneca Especial: 6511 (Santa)
+
+| ID | Ação |
+|----|------|
+| 6511 | Say 6 frases natalinas + transform |
+
+### Boneca Especial: 8149 (Pirata)
+
+| ID | Ação |
+|----|------|
+| 8149 | Say 5 frases pirata |
+
+### Boneca Especial: 8153 (Newsreader)
+
+| ID | Ação |
+|----|------|
+| 8153 | Say 4 frases news com transform |
+
+### Boneca Especial: 8154 (Glacial)
+
+| ID | Ação |
+|----|------|
+| 8154 | Say 3 frases glaciais |
+
+### Boneca Especial: 12043 (Imperador)
+
+| ID | Ação |
+|----|------|
+| 12043 | Say 3 frases imperio com placeholder |
+
+## Funções
+
+### dolls.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que emite frase aleatória.
+
+**Parâmetros:**
+- player: Creature player
+- item: Boneca sendo usada
+- fromPosition: Posição original
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. sounds = dollsTable[item.itemid]
+   ├─ Não existe? return false
+   └─ Existe? continuar
+
+2. If fromPosition in container
+   └─ fromPosition = player:getPosition()
+
+3. chance = random(1, #sounds)
+
+4. sound = sounds[chance]
+
+5. Switch por item.itemid
+   ├─ 5668: transform + MAGIC_RED + decay
+   ├─ 6387: efeito SOUND_YELLOW
+   ├─ 6566: 3 efeitos especiais (POFF, FIRE, EXPLOSION)
+   ├─ 9144, 12904, 14764, 21435, 22120:
+   │   └─ transform + decay
+   └─ Others: say apenas
+
+6. sound:gsub("|PLAYERNAME|", player:getName())
+   └─ Substitui placeholder
+
+7. player:say(sound, TALKTYPE_MONSTER_SAY)
+
+8. return true
+```
+
+**Implementação:**
+
+```lua
+function dolls.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local sounds = dollsTable[item.itemid]
+	if not sounds then
+		return false
+	end
+
+	if fromPosition.x == CONTAINER_POSITION then
+		fromPosition = player:getPosition()
+	end
+
+	local chance = math.random(#sounds)
+	local sound = sounds[chance]
+	
+	-- Lógica de transformações e efeitos por ID
+	if item.itemid == 5668 then
+		fromPosition:sendMagicEffect(CONST_ME_MAGIC_RED)
+		item:transform(item.itemid + 1)
+		item:decay()
+	elseif item.itemid == 6387 then
+		fromPosition:sendMagicEffect(CONST_ME_SOUND_YELLOW)
+	-- ... mais branches ...
+	end
+
+	sound = sound:gsub("|PLAYERNAME|", player:getName())
+	player:say(sound, TALKTYPE_MONSTER_SAY, false, 0, fromPosition)
+	return true
+end
+```
+
+## Constantes e Efeitos
+
+| Efeito | Constant | Descrição |
+|--------|----------|-----------|
+| Vermelho | CONST_ME_MAGIC_RED | Padrão transformação |
+| Amarelo Som | CONST_ME_SOUND_YELLOW | Som amarelo temático |
+| Smoke | CONST_ME_POFF | Dragon special |
+| Fogo | CONST_ME_FIREAREA | Dragon breath |
+| Explosion Hit | CONST_ME_EXPLOSIONHIT | Dragon danagem |
+
+## Placeholder Substitution
+
+```lua
+sound = sound:gsub("|PLAYERNAME|", player:getName())
+```
+
+String.gsub substitui |PLAYERNAME| em qualquer frase que o contenha.
+
+**Exemplos**:
+- "Hail |PLAYERNAME|!" → "Hail PlayerName!"
+- "Merry Christmas |PLAYERNAME|." → "Merry Christmas PlayerName."
+
+## Fluxo de Operação
+
+```
+[Player usa boneca]
+    ↓
+[Lookup dollsTable[itemId]]
+    ├─ Não existe? return false
+    └─ Existe? continuar
+    ↓
+[Posição em container? use player pos]
+    ↓
+[chance = random(1, #sounds)]
+    ↓
+[sound = sounds[chance]]
+    ↓
+[Switch por itemId]
+    ├─ Alguns: apply transform + decay
+    ├─ Alguns: apply magic effect
+    └─ Dragon: conditional effects
+    ↓
+[String substitution: |PLAYERNAME|]
+    ↓
+[player:say(sound)]
+    ↓
+[return true]
+```
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Mapeamento multipool de itens
+2. Seleção aleatória sem duplicação (single chance)
+3. String.gsub para personalização dinâmica
+4. Switch statement por item ID
+5. Conditional effects por chance selecionada
+6. Transform + decay para alternância visual
+7. Multi-ID registration via loop
+
+**Responsabilidades:**
+1. Validar boneca ID existente
+2. Selecionar frase aleatória
+3. Emitir efeito especial (se config)
+4. Substituir placeholder com nome player
+5. Transformar se requerido
+6. Emitir say monster
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 161 linhas  
+**Função**: 1 (onUse)  
+**Bonecas**: 16 tipos  
+**Frases Totais**: 60+  
+**Com Transform**: 7 variantes  
+**Com Efeitos Especiais**: 3 variantes  
+**Placeholder Support**: Sim (|PLAYERNAME|)
+</Card>
+
+<Aside type="note">
+Sistema extenso de bonecas temáticas com frases aleatórias. Algumas transformam e decaem. Dragon especial (6566) tem efeitos condicionais por chance. Frases personalizáveis com nome do player.
+</Aside>

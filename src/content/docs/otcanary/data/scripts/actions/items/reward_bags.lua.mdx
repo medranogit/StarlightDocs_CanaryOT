@@ -1,0 +1,331 @@
+---
+title: reward_bags.lua
+description: Sistema de reward bags com 3 tipos de bolsas contendo 15-21 itens únicos com seleção aleatória, webhook e broadcast.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="reward_bags.lua" icon="pencil">
+Sistema de reward bags com 3 tipos de bolsas contendo 15-21 itens únicos com seleção aleatória, webhook e broadcast.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/reward_bags.lua`
+
+**Linhas:** 75 | **IDs de Bags:** BAG_YOU_DESIRE, PRIMAL_BAG, BAG_YOU_COVET | **Tipo:** Action Handler com Config Tables
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa um sistema de reward bags que contém 3 tipos de bolsas temáticas: Soul items (21), Ethereal/Spiritthorn (15), e Sanguine (16). Ao usar uma bolsa, um item aleatório é selecionado de sua lista, adicionado ao jogador, e notificado via webhook + broadcast para outros jogadores. Cada bolsa contém items de alto nível decorados tematicamente.
+
+### Estrutura de Funcionalidades
+
+```
+REWARD BAGS CONFIG:
+  ├─ BAG_YOU_DESIRE (21 items)
+  │   └─ soulcutter, soulshredder, soulbiter, ... (soul-themed)
+  │
+  ├─ PRIMAL_BAG (15 items)
+  │   └─ spiritthorn armor, alicorn, arcanomancer, ... (ethereal/primal)
+  │
+  └─ BAG_YOU_COVET (16 items)
+      └─ sanguine blade, sanguine cudgel, ... (sanguine-themed)
+
+HANDLER:
+  └─ randomItems.onUse()
+      ├─ Math.random(1, #bag)
+      ├─ player:addItem(rewardItem.id)
+      ├─ Message ao jogador
+      ├─ Webhook.sendMessage()
+      ├─ Broadcast() a outros
+      └─ item:remove(1)
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| rewardBags | table | Master table contendo 3 bags de rewards |
+| randomItems | Action | Objeto handler para seleção aleatória |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### BAG_YOU_DESIRE (21 Soul Items)
+
+| Item ID | Nome Item |
+|---------|-----------|
+| 34082 | soulcutter |
+| 34083 | soulshredder |
+| 34084 | soulbiter |
+| 34085 | souleater |
+| 34086 | soulcrusher |
+| 34087 | soulmaimer |
+| 34088 | soulbleeder |
+| 34089 | soulpiercer |
+| 34090 | soultainter |
+| 34091 | soulhexer |
+| 34092 | soulshanks |
+| 34093 | soulstrider |
+| 34094 | soulshell |
+| 34095 | soulmantle |
+| 34096 | soulshroud |
+| 34097 | pair of soulwalkers |
+| 34098 | pair of soulstalkers |
+| 34099 | soulbastion |
+| 50159 | soulkamas |
+| 50240 | sousoles |
+| 50254 | soulgarb |
+
+### PRIMAL_BAG (15 Ethereal/Spiritthorn Items)
+
+| Item ID | Nome Item |
+|---------|-----------|
+| 39147 | spiritthorn armor |
+| 39148 | spiritthorn helmet |
+| 39149 | alicorn headguard |
+| 39150 | alicorn quiver |
+| 39151 | arcanomancer regalia |
+| 39152 | arcanomancer folio |
+| 39153 | arboreal crown |
+| 39154 | arboreal tome |
+| 39177 | charged spiritthorn ring |
+| 39180 | charged ethereal ring |
+| 39183 | charged arcanomancer sigil |
+| 39186 | charged arboreal ring |
+| 50147 | charged ethereal ring |
+| 50150 | ethereal ring |
+| 50188 | ethereal coned hat |
+
+### BAG_YOU_COVET (16 Sanguine Items)
+
+| Item ID | Nome Item |
+|---------|-----------|
+| 43864 | sanguine blade |
+| 43866 | sanguine cudgel |
+| 43868 | sanguine hatchet |
+| 43870 | sanguine razor |
+| 43872 | sanguine bludgeon |
+| 43874 | sanguine battleaxe |
+| 43876 | sanguine legs |
+| 43877 | sanguine bow |
+| 43879 | sanguine crossbow |
+| 43881 | sanguine greaves |
+| 43882 | sanguine coil |
+| 43884 | sanguine boots |
+| 43885 | sanguine rod |
+| 43887 | sanguine galoshes |
+| 50146 | sanguine trousers |
+| 50157 | sanguine claws |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function randomItems.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Carrega bag configurada para esse item
+	local rewardBag = rewardBags[item.itemid]
+	if not rewardBag then
+		return false  -- Item não é uma bag conhecida
+	end
+
+	-- Seleciona índice aleatório
+	local randomIndex = math.random(1, #rewardBag)
+	local rewardItem = rewardBag[randomIndex]
+	
+	-- Adiciona item ao jogador
+	player:addItem(rewardItem.id, 1)
+	
+	-- Mensagem privada ao jogador
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You received a " .. rewardItem.name .. ".")
+
+	-- Notificação via Webhook discord
+	Webhook.sendMessage(":game_die: " .. player:getMarkdownLink() .. " received a **" .. 
+	  rewardItem.name .. "** from a _" .. item:getName() .. "_.")
+	
+	-- Broadcast a todos EXCETO o jogador
+	local text = player:getName() .. " received a " .. rewardItem.name .. " from a " .. item:getName() .. "."
+	Broadcast(text, function(targetPlayer)
+		return targetPlayer ~= player  -- Filtro: todos menos o jogador
+	end)
+
+	-- Consome a bag
+	item:remove(1)
+	return true
+end
+
+-- Register: percorre todos os IDs de bags
+for itemId, info in pairs(rewardBags) do
+	randomItems:id(tonumber(itemId))
+end
+randomItems:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa reward bag (BAG_ID)
+  │
+  ├─ Bag configurada em rewardBags?
+  │   └─ NÃO → return false (item inválido)
+  │
+  ├─ SIM → Seleciona aleatório:
+  │   ├─ random(1, #bag) → indice aleatório
+  │   └─ rewardBag[indice] → item selecionado
+  │
+  ├─ Adiciona item:
+  │   └─ player:addItem(rewardItem.id, 1)
+  │
+  ├─ Notifica jogador:
+  │   ├─ MSG privada: "You received a..."
+  │   ├─ Webhook: Discord notification
+  │   └─ Broadcast: Mensagem pública (menos o jogador)
+  │
+  ├─ Consome bag:
+  │   └─ item:remove(1)
+  │
+  └─ return true (sucesso)
+```
+
+### Seleção Aleatória
+
+```
+Probabilidade para BAG_YOU_DESIRE (21 items):
+  └─ Cada item: 1/21 (~4.76% chance)
+
+Exemplo: Math.random(1, 21)
+  ├─ Result 1 → rewardBag[1] = soulcutter
+  ├─ Result 2 → rewardBag[2] = soulshredder
+  ├─ Result 21 → rewardBag[21] = soulgarb
+  └─ Todos equiprováveis
+```
+
+### Notificações Multiplos Canais
+
+```
+1° Canal: Mensagem Direta ao Jogador
+   └─ MESSAGE_EVENT_ADVANCE: "You received a soulcutter."
+
+2° Canal: Webhook Discord
+   └─ ":game_die: [Player Name] received a **soulcutter** from a _bag_"
+
+3° Canal: Broadcast In-Game
+   └─ "Player Name received a soulcutter from a bag"
+   └─ Enviado para todos EXCEPT o jogador
+      (evita duplicação de mensagem)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Master Table Config**: Múltiplas bags em única table structure
+- **Random Selection**: `math.random(1, #rewardBag)` para equiprobabilidade
+- **addItem() Pattern**: Adiciona items ao player inventory
+- **Webhook Integration**: Notificação automática em Discord
+- **Broadcast com Filter**: `Broadcast(text, filterFunction)` para filtrar destinatários
+- **Função Anonymous**: `function(targetPlayer) return ... end` como filter
+- **Dynamic Registration**: Loop `pairs()` para registrar todos os bags
+- **tonumber()**: Converte ID para número (pode ser string em table)
+
+### Responsabilidades do Handler
+
+1. **Validar bag**: Verificar se item ID existe em rewardBags
+2. **Selecionar aleatório**: math.random(1, #bag) para índice
+3. **Buscar item**: rewardBag[randomIndex]
+4. **Adicionar inventory**: player:addItem(id, 1)
+5. **Notificar privado**: Mensagem para jogador
+6. **Notificar webhook**: Enviar a Discord
+7. **Broadcast público**: Mensagem a outros jogadores (com filtro)
+8. **Consumir bag**: item:remove(1)
+9. **Registrar todas**: Loop para registrar todos os bags
+
+---
+
+## Patterns e Implementação
+
+### Padrão Config Table com Nomes
+
+Este script armazena não apenas IDs, mas também nomes legíveis:
+
+```lua
+{ id = 34082, name = "soulcutter" },
+```
+
+Isso permite usar `rewardItem.name` em mensagens sem lookup separado.
+
+### Padrão Dynamic Registration
+
+Loop que registra todos os bags sem hardcoding:
+
+```lua
+for itemId, info in pairs(rewardBags) do
+	randomItems:id(tonumber(itemId))
+end
+randomItems:register()
+```
+
+Adicionar nova bag à table registra automaticamente.
+
+### Comparação: 3 Bags e Probabilidades
+
+| Bag | Items | Probabilidade por Item | Total Skills |
+|---|---|---|---|
+| BAG_YOU_DESIRE | 21 | 1/21 (4.76%) | Soul-themed weapons |
+| PRIMAL_BAG | 15 | 1/15 (6.67%) | Ethereal/Spiritthorn |
+| BAG_YOU_COVET | 16 | 1/16 (6.25%) | Sanguine equipment |
+
+### Fluxo de Notificação
+
+```
+Jogador recebe: soulcutter
+
+1° Mensagem (Privada):
+   "You received a soulcutter."
+   (Apenas jogador vê)
+
+2° Notificação (Discord):
+   ":game_die: [Player Name] received a **soulcutter** from a _Bag_"
+   (Webhook envia para Discord)
+
+3° Broadcast (In-Game):
+   "[Player Name] received a soulcutter from a Bag"
+   (Todos jogadores EXCETO o recebedor veem)
+   
+   ← Filtro: function(targetPlayer) return targetPlayer ~= player end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: reward_bags.lua" icon="star">
+Análise completa de sistema de reward bags com 3 malas temáticas, seleção aleatória equiprobável, integração webhook e broadcast com filtro. Detalha padrão dynamic registration.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Config table + dynamic registration | Complexidade: Média
+</Aside>

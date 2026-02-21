@@ -1,0 +1,188 @@
+---
+title: ferumbras_mana_keg.lua
+description: Keg dual-state que gera pociones de mana
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="ferumbras_mana_keg.lua" icon="star">
+Script de ação Lua que implementa keg temático com dois estados para geração de pociones.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/ferumbras_mana_keg.lua`
+
+Keg dual-state (22769 cheio, 22770 vazio) que gera 10 pociones de mana ultimate ao usar. Requer estar no estado cheio (22769). Após uso, transforma para vazio (22770) com decay timer. Item ID 22769 (cheio) e 22770 (vazio/recarregando).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `ferumbras_mana_keg.lua` implementa keg temático com dois handlers para dois estados. Estado cheio (22769) permite extrair 10 pociones de mana ultimate, transformando em vazio (22770) iniciando decay. Estado vazio rejeita uso enquanto recarrega. Simples e direto sem validações complexas.
+
+**Estrutura de Funcionalidades**
+
+```
+[Create ferumbrasAscendantManaKeg Action]
+    ↓
+[onUse function]
+    ├─ If itemid == 22769 (cheio)
+    │   ├─ player:addItem("ultimate mana potion", 10)
+    │   ├─ item:transform(22770)
+    │   ├─ item:decay()
+    │   ├─ sendMagicEffect(CONST_ME_MAGIC_RED)
+    │   ├─ sendTextMessage descritiva
+    │   └─ return true
+    └─ Elseif itemid == 22770 (vazio)
+        ├─ sendTextMessage: "You are tired..."
+        └─ return true
+```
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| 22769 | ID | Keg cheio |
+| 22770 | ID | Keg vazio/recarregando |
+| ultimate mana potion | string | Nombre da poção (item by name) |
+| 10 | integer | Quantidade de pociones |
+| CONST_ME_MAGIC_RED | constant | Efeito mágico |
+
+## Funções
+
+### ferumbrasAscendantManaKeg.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que extrai pociones de mana.
+
+**Parâmetros:**
+- player: Creature player
+- item: Keg sendo usado
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. If item.itemid == 22769 (cheio)
+   ├─ addItem("ultimate mana potion", 10)
+   │   └─ Cria 10 pociones no inventory
+   ├─ item:transform(22770)
+   │   └─ Vira vazio
+   ├─ item:decay()
+   │   └─ Inicia timer de recharge
+   ├─ sendMagicEffect(CONST_ME_MAGIC_RED)
+   │   └─ Efeito visual
+   ├─ sendTextMessage(descritivo)
+   │   └─ "Magical sparks... you fill ten empty vials..."
+   └─ return true
+
+2. Elseif item.itemid == 22770 (vazio)
+   ├─ sendTextMessage: "You are tired of the last use..."
+   └─ return true
+```
+
+**Implementação:**
+
+```lua
+function ferumbrasAscendantManaKeg.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if item.itemid == 22769 then
+		player:addItem("ultimate mana potion", 10)
+		item:transform(22770)
+		item:decay()
+		player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Magical sparks whirl around the keg as you open the spigot and you fill ten empty vials with mana fluid.")
+		return true
+	elseif item.itemid == 22770 then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You are tired of the last use of the mana keg, rest your arms for a moment.")
+	end
+	return true
+end
+```
+
+## Item States
+
+### Estado Cheio (ID 22769)
+
+- Ativo e usável
+- Gera 10 pociones de mana ultimate
+- Emite efeito mágico vermelho
+- Transforma para vazio após uso
+
+### Estado Vazio (ID 22770)
+
+- Recarregando
+- Rejeita uso
+- Entra em decay timer
+- Volta para 22769 após decay
+
+## Fluxo de Operação
+
+```
+[Player usa keg]
+    ↓
+[ID == 22769 (cheio)?]
+    ├─ SIM → continuar
+    └─ NÃO (22770) → "You are tired..." (return)
+    ↓
+[addItem("ultimate mana potion", 10)]
+    └─ Cria 10 pociones
+    ↓
+[item:transform(22770)] [vazio]
+    ↓
+[item:decay()] [inicia timer]
+    ↓
+[sendMagicEffect(MAGIC_RED)]
+    ↓
+[sendTextMessage descritiva]
+    ↓
+[return true]
+```
+
+## Comparação com ferumbras_amulet.lua
+
+| Aspecto | Amulet | Mana Keg |
+|---------|--------|----------|
+| Estados | 2 (cheio/vazio) | 2 (cheio/vazio) |
+| Efeito | MAGIC_BLUE | MAGIC_RED |
+| Ação | Restaura HP/Mana | Gera pociones |
+| Quantidade | 1000 | 10 itens |
+| Probabilidade | 50/50 | Determinístico |
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Dual state handlers (cheio/vazio)
+2. Item generation via addItem (by name)
+3. Batch creation (10 pociones)
+4. Transform + decay para regeneração
+5. Efeito mágico como feedback
+6. Mensagens descritivas temáticas
+
+**Responsabilidades:**
+1. Validar estado (cheio/vazio)
+2. Gerar pociones (10x)
+3. Transformar para vazio
+4. Iniciar decay timer
+5. Emitir efeito visual
+6. Enviar mensagem
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler - dual state)  
+**Tamanho**: 17 linhas  
+**Função**: 1 (onUse)  
+**Item IDs**: 2 (22769, 22770)  
+**Geração**: 10x ultimate mana potion  
+**Efeito**: MAGIC_RED  
+**Ação**: Determinística (sem probabilidade)
+</Card>
+
+<Aside type="note">
+Keg simples dual-state que gera 10 pociones de mana. Sem probabilidade. Entra em decay após uso. Feedback "fill ten empty vials with mana fluid".
+</Aside>

@@ -1,0 +1,303 @@
+---
+title: "Spell/Rune - poison_wall.lua"
+description: "Runa que cria parede de veneno com áreas wallfield e diagonal"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `poison_wall.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 32 |
+| **ID do Item (runeId)** | 3176 |
+| **Level Requerido** | 29 |
+| **Magic Level Requerido** | 5 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_EARTHDAMAGE |
+| **Área** | Wall + Diagonal (2 áreas) |
+| **Field** | ITEM_POISONFIELD_PVP |
+| **Cooldown** | 2s |
+| **Cargas** | 4 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Bloqueio** | Não (creatures passam) |
+| **PZ Locked** | Sim |
+| **Agressividade** | Sim |
+| **Requer Target** | Não |
+| **Linhas de Código** | 31 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa que cria parede de veneno com cobertura wall + diagonal. Padrão similar a energy_wall/fire_wall mas tipo terra com field automático. Sem needTarget permite auto-cast. Sem bloqueio (creatures passam) facilita movimento em combate. Cargas moderadas (4) indicam poder tático em wall patterns.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/poison_wall.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(32)
+rune:runeId(3176)
+rune:level(29)
+rune:magicLevel(5)
+rune:group("attack")
+rune:allowFarUse(true)
+rune:setPzLocked(true)
+rune:charges(4)
+rune:isBlocking(false)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Parede de Veneno com Cobertura Total**
+
+Esta runa implementa um **sistema de wall pattern em terra**:
+
+1. **Áreas Múltiplas:**
+   - WALLFIELD: linha principal
+   - AREADIAGONAL_WALLFIELD: cobertura diagonal
+   - Padrão 2-area wall
+
+2. **Field Automático:**
+   - POISONFIELD_PVP auto-deploy
+   - Controle territorial
+   - Tipo terra (raro!)
+
+3. **Sem Bloqueio:**
+   - isBlocking: false
+   - Creatures passam
+   - Movimento fluido
+
+4. **Sem Target:**
+   - Auto-cast permitido
+   - Apenas posição
+
+**Fluxo:**
+```
+Conjura parede
+├─ Area wallfield (linha)
+├─ Area diagonal (cantos)
+├─ Fields criam parede
+└─ Creatures passam (livres)
+```
+
+**Diferencial:** Wall veneno terra = tipo raro + padrão familiar!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `poison_wall` oferece parede tática:
+
+- **Dano:** COMBAT_EARTHDAMAGE (fixo)
+- **Áreas:** Wall + diagonal (2)
+- **Field:** POISONFIELD_PVP automático
+- **Bloqueio:** Não (passagem)
+- **Cargas:** 4
+
+### Arquitetura
+
+Combat com múltiplas áreas:
+
+```
+local combat = Combat()
+├─ Type: EARTHDAMAGE
+├─ Effect: GREEN_RINGS
+├─ Distance: POISON
+├─ CreateItem: POISONFIELD_PVP
+├─ Area: WALLFIELD
+└─ Area: AREADIAGONAL_WALLFIELD
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_GREEN_RINGS)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_POISON)
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_POISONFIELD_PVP)
+combat:setArea(createCombatArea(AREA_WALLFIELD, AREADIAGONAL_WALLFIELD))
+```
+
+**Propósito:** Combat com múltiplas áreas wall.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_EARTHDAMAGE | Dano terra |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_GREEN_RINGS | Efeito anéis |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_POISON | Projétil veneno |
+| `COMBAT_PARAM_CREATEITEM` | ITEM_POISONFIELD_PVP | Field automático |
+| `Area 1` | AREA_WALLFIELD | Linha principal |
+| `Area 2` | AREADIAGONAL_WALLFIELD | Diagonais |
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Parede criada |
+| `false` | Position falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | 2 areas + field |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Wall Dupla
+
+```lua
+combat:setArea(createCombatArea(AREA_WALLFIELD, AREADIAGONAL_WALLFIELD))
+```
+
+**Benefício:** Cobertura linha + diagonal = parede completa.
+
+### Padrão 2: Field Automático
+
+```lua
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_POISONFIELD_PVP)
+```
+
+**Benefício:** Fields criam barreira tática.
+
+### Padrão 3: Sem Bloqueio
+
+```lua
+rune:isBlocking(false)
+```
+
+**Benefício:** Passagem livre, movimento tático.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Cria parede de veneno com cobertura completa.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Position central |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Parede criada |
+| `false` | Position falhou |
+
+**Efeito:**
+- Projétil veneno viaja
+- Impacto GREEN_RINGS
+- Fields em pattern wall + diagonal
+- Dano earth fixo
+- Creatures passam
+
+**Exemplo:**
+
+```lua
+-- Mago nível 29, MLvl 5
+rune.onCastSpell(mago, centerVariant, false)
+// Position: centro da parede
+// Wallfield: linha horizontal/vertical
+// Diagonal: cantos cobertos
+// Fields automáticos: bloqueio tático
+// Creatures: passam (livres)
+// Resultado: Parede completa!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Bloqueio Corredor
+
+```lua
+-- Mago quer parede em corredor estreito
+// Wall + diagonal = cobertura
+// Creatures passam = fluido
+```
+
+### Caso 2: Defesa Territorial
+
+```lua
+-- 4 cargas = múltiplas paredes
+// Zona protegida por veneno
+// Strategy tática
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Areas:** AREA_WALLFIELD, AREADIAGONAL_WALLFIELD
+- **Field:** ITEM_POISONFIELD_PVP
+- **Effects:** CONST_ME_GREEN_RINGS, CONST_ANI_POISON
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Parede veneno earth |
+| **Dano** | COMBAT_EARTHDAMAGE (fixo) |
+| **Áreas** | Wall + diagonal (2) |
+| **Field** | POISONFIELD_PVP automático |
+| **Cargas** | 4 |
+| **Distancia** | Sim (allowFarUse) |
+| **Bloqueio** | Não (passagem) |
+| **PZ Locked** | Sim |
+| **Level** | 29 (mid) |
+| **MLvl** | 5 |
+| **Padrão** | Wall dupla + field automático |

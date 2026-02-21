@@ -1,0 +1,269 @@
+---
+title: change_gold.lua
+description: Sistema de conversão e troca de moedas de jogo
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="change_gold.lua" icon="star">
+Script de ação Lua que implementa sistema de conversão entre 3 tipos de moedas do jogo.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/change_gold.lua`
+
+Sistema de troca de moedas com conversão bidirecional: gold (100x = platinum), platinum (100x = crystal ou voltar para gold), crystal (voltar para platinum). 3 item IDs registrados.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `change_gold.lua` implementa sistema econômico de conversão de moedas com suporte a 3 níveis de denominação: ouro, platina e cristal. Cada nível pode converter "para cima" (mais valiosa, 100x volume) e alguns podem converter "para baixo" (menos valiosa, 1x = 100 anteriores). Validações de stack size garantem conversão correta.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define config table]
+    ├─ ITEM_GOLD_COIN
+    │   └─ changeTo: ITEM_PLATINUM_COIN
+    ├─ ITEM_PLATINUM_COIN
+    │   ├─ changeBack: ITEM_GOLD_COIN
+    │   └─ changeTo: ITEM_CRYSTAL_COIN
+    └─ ITEM_CRYSTAL_COIN
+        └─ changeBack: ITEM_PLATINUM_COIN
+    ↓
+[Create changeGold Action]
+    ↓
+[onUse function]
+    ├─ Get coin config por item ID
+    ├─ IF changeTo AND stack = 100
+    │   ├─ item:remove()
+    │   ├─ player:addItem(changeTo, 1)
+    │   └─ return true
+    ├─ ELSEIF changeBack
+    │   ├─ item:remove(1)
+    │   ├─ player:addItem(changeBack, 100)
+    │   └─ return true
+    └─ ELSE return false
+    ↓
+[Register Action on 3 coin IDs]
+    ├─ ITEM_GOLD_COIN
+    ├─ ITEM_PLATINUM_COIN
+    └─ ITEM_CRYSTAL_COIN
+```
+
+## Variáveis Globais
+
+### config (local table)
+
+```lua
+local config = {
+	[ITEM_GOLD_COIN] = { changeTo = ITEM_PLATINUM_COIN },
+	[ITEM_PLATINUM_COIN] = { changeBack = ITEM_GOLD_COIN, changeTo = ITEM_CRYSTAL_COIN },
+	[ITEM_CRYSTAL_COIN] = { changeBack = ITEM_PLATINUM_COIN },
+}
+```
+
+Mapeamento de conversões de moedas.
+
+**Estrutura:**
+
+| Item | changeTo | changeBack | Descrição |
+|------|----------|-----------|-----------|
+| Gold Coin | Platinum | - | Upgrade para platina |
+| Platinum Coin | Crystal | Gold | Upgrade/Downgrade |
+| Crystal Coin | - | Platinum | Downgrade para platina |
+
+**Regras:**
+- Gold: só sobe para Platinum (1 → 100x menos)
+- Platinum: sobe para Crystal ou desce para Gold
+- Crystal: só desce para Platinum (100x mais)
+
+## Funções
+
+### changeGold.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback acionado ao usar moeda para conversão.
+
+**Parâmetros:**
+- player: Creature player
+- item: Moeda sendo convertida
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo de Execução:**
+
+```lua
+1. Get coin config
+   └─ coin = config[item:getId()]
+   
+2. IF changeTo AND item.type == 100
+   ├─ item:remove() [remove full stack]
+   ├─ player:addItem(coin.changeTo, 1) [add 1 de nova moeda]
+   └─ return true
+   
+3. ELSEIF changeBack
+   ├─ item:remove(1) [remove 1 unidade]
+   ├─ player:addItem(coin.changeBack, 100) [add 100 de moeda menor]
+   └─ return true
+   
+4. ELSE
+   └─ return false
+```
+
+**Implementação:**
+
+```lua
+function changeGold.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local coin = config[item:getId()]
+	if coin.changeTo and item.type == 100 then
+		item:remove()
+		player:addItem(coin.changeTo, 1)
+		return true
+	elseif coin.changeBack then
+		item:remove(1)
+		player:addItem(coin.changeBack, 100)
+		return true
+	end
+	return false
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| ITEM_GOLD_COIN | constant | ID moeda ouro |
+| ITEM_PLATINUM_COIN | constant | ID moeda platina |
+| ITEM_CRYSTAL_COIN | constant | ID moeda cristal |
+| item.type | integer | Stack size (100 = full) |
+
+## Fluxos de Conversão
+
+### Fluxo 1: Gold → Platinum (100 gold = 1 platinum)
+
+```
+[Player usa 100x gold coin]
+    ↓
+[coin.changeTo = ITEM_PLATINUM_COIN?]
+    └─ SIM
+    ↓
+[item.type == 100?]
+    └─ SIM (full stack)
+    ↓
+[item:remove()] [remove 100 gold]
+    ↓
+[player:addItem(PLATINUM_COIN, 1)] [add 1 platinum]
+    ↓
+[return true]
+```
+
+### Fluxo 2: Platinum → Crystal (100 platinum = 1 crystal)
+
+```
+[Player usa 100x platinum coin]
+    ↓
+[coin.changeTo = ITEM_CRYSTAL_COIN?]
+    └─ SIM
+    ↓
+[item.type == 100?]
+    └─ SIM (full stack)
+    ↓
+[item:remove()] [remove 100 platinum]
+    ↓
+[player:addItem(CRYSTAL_COIN, 1)] [add 1 crystal]
+    ↓
+[return true]
+```
+
+### Fluxo 3: Platinum → Gold (1 platinum = 100 gold)
+
+```
+[Player usa 1x platinum coin]
+    ↓
+[coin.changeBack = ITEM_GOLD_COIN?]
+    └─ SIM
+    ↓
+[item:remove(1)] [remove 1 platinum]
+    ↓
+[player:addItem(GOLD_COIN, 100)] [add 100 gold]
+    ↓
+[return true]
+```
+
+### Fluxo 4: Crystal → Platinum (1 crystal = 100 platinum)
+
+```
+[Player usa 1x crystal coin]
+    ↓
+[coin.changeBack = ITEM_PLATINUM_COIN?]
+    └─ SIM
+    ↓
+[item:remove(1)] [remove 1 crystal]
+    ↓
+[player:addItem(PLATINUM_COIN, 100)] [add 100 platinum]
+    ↓
+[return true]
+```
+
+## Validações e Regras
+
+### Validação: item.type == 100
+
+```lua
+if coin.changeTo and item.type == 100 then
+```
+
+Garante que upgrade (changeTo) só ocorre com stack completo (100 moedas).
+
+**Razão**: Evita conversão parcial ou error.
+
+**Efeito**: Player precisa de stack exato para converter para cima.
+
+### Downgrade (changeBack)
+
+```lua
+elseif coin.changeBack then
+	item:remove(1)
+	player:addItem(coin.changeBack, 100)
+```
+
+Downgrade não precisa de validação stack - apenas remove 1 e adiciona 100.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Config table com múltiplas opções por chave
+2. Stack size validation (item.type == 100)
+3. Conversão bidirecional (up/down)
+4. Proporção 1:100 entre níveis
+5. Remoção condicional (completo vs. unitário)
+6. Multi-ID registration no handler
+
+**Responsabilidades:**
+1. Mapear item ID em config table
+2. Validar stack size para upgrade
+3. Remover quantidade correta de item
+4. Adicionar quantidade correta de novo item
+5. Retornar true/false segundo conversão viável
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 17 linhas  
+**Função**: 1 (onUse)  
+**Item IDs**: 3 (gold, platinum, crystal)  
+**Conversão**: Bidirecional  
+**Proporção**: 1:100 entre níveis  
+**Validação**: Stack size para upgrade
+</Card>
+
+<Aside type="note">
+Sistema econômico com 3 níveis de moedas. Bidirecional com validação de stack (100 mínimo para upgrade). Upgrade (menor → maior) requer full stack; downgrade (maior → menor) aceita unitário. Proporção constante 1:100.
+</Aside>

@@ -1,0 +1,307 @@
+---
+title: "Player - on_request_quest_line.lua"
+description: "Callback de solicitação de linha de quest para jogador"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `on_request_quest_line.lua` |
+| **Localização** | `data/scripts/eventcallbacks/player/` |
+| **Tipo de Script** | EventCallback |
+| **Callback Principal** | `PlayerOnRequestQuestLineBaseEvent` |
+| **Função Registrada** | `playerOnRequestQuestLine(player, questId)` |
+| **Linhas de Código** | 6 |
+| **Complexidade** | Trivial |
+| **Status** | Base implementation |
+
+**Descrição:**
+Callback responsável por processar solicitações de dados de quest. Quando um jogador solicita informações sobre uma quest (via interface de quest log), este callback envia os dados da quest de volta ao cliente.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/eventcallbacks/player/on_request_quest_line.lua
+```
+
+**Pré-requisitos:**
+- EventCallback API (`EventCallback` função global)
+- Player quest system
+- Quest data storage
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Solicitação de Quest Line (Request Quest)**
+
+Quando um jogador solicita dados de quest:
+
+1. **Trigger:** Client envia REQUEST_QUEST_LINE packet
+2. **Servidor:** playerOnRequestQuestLine é disparado
+3. **Processamento:** Recupera dados da quest
+4. **Resposta:** player:sendQuestLine(questId) envia dados de volta
+
+**Exemplo de Fluxo - Quest Log:**
+```
+Jogador abre Quest Log
+Jogador clica em "Quest X"
+  ├─ Client envia: {questId: 123}
+  ├─ Server dispara: playerOnRequestQuestLine(player, 123)
+  ├─ Server recupera: Quest 123 data
+  └─ Client recebe: Quest line, objectives, rewards
+```
+
+**Diferença de Outros Callbacks:**
+- Callback é **requisição-resposta** (não just event)
+- Client estava esperando resposta específica
+- Deve enviar exatamente sendQuestLine() com ID
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `on_request_quest_line.lua` implementa o callback de solicitação de quest. Quando um jogador solicita informações sobre uma quest específica:
+
+- **Recebe ID da quest** solicitada
+- **Recupera dados da quest** do servidor
+- **Envia resposta** ao cliente para exibição
+
+### Arquitetura
+
+O script usa um padrão simples de **request-response**:
+
+```
+playerOnRequestQuestLine (entrada)
+  ├─ questId recebido
+  └─ player:sendQuestLine(questId)
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Processamento | Saída |
+|---------|---------------|-------|
+| `player, questId` | Busca dados quest | Envia quest line ao cliente |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (Callback)
+
+#### **playerOnRequestQuestLine(player, questId)**
+
+```lua
+function callback.playerOnRequestQuestLine(player, questId)
+	player:sendQuestLine(questId)
+end
+```
+
+**Propósito:** Entry point do callback. Responde a solicitação de dados de quest do cliente.
+
+**Fluxo de Execução:**
+
+1. **Recebimento:** Callback disparado quando cliente solicita quest data
+2. **Entrada:** Recebe player e questId específico
+3. **Processamento:** Determina quais dados da quest enviar (lógica em sendQuestLine)
+4. **Resposta:** Envia dados de quest ao cliente via `player:sendQuestLine(questId)`
+
+**Parâmetros:**
+- `player` - Player solicitando dados da quest
+- `questId` - ID da quest sendo solicitada
+
+**Sem retorno** - Callback é void (apenas envia resposta)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Não há variáveis locais declaradas
+
+### Player Methods Utilizados
+
+| Método | Descrição |
+|--------|-----------|
+| `player:sendQuestLine(questId)` | Envia dados da quest para cliente |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Request-Response Callback
+
+**Técnica:** Callback que responde a solicitação específica do cliente.
+
+```lua
+function callback.playerOnRequestQuestLine(player, questId)
+	player:sendQuestLine(questId)  -- Responde com dados solicitados
+end
+```
+
+**Vantagem:** Simples, direto. Cliente sabe que receberá resposta. Determinístico.
+
+**Aplicação:** Qualquer callback que seja resultado de ação do usuário (não espontâneo).
+
+---
+
+### Padrão 2: ID-Based Entity Retrieval
+
+**Técnica:** Usar ID como chave única para localizar entidade.
+
+```lua
+player:sendQuestLine(questId)  -- questId identifica unicamente a quest
+```
+
+**Vantagem:** Simples, eficiente. Pode ser cached/indexed.
+
+**Aplicação:** Sistema de quest, banco de dados, referências.
+
+---
+
+### Padrão 3: Transparent Delegation
+
+**Técnica:** Delegar todo processamento para método especializado.
+
+```lua
+-- on_request_quest_line.lua - apenas recebe e delega
+player:sendQuestLine(questId)
+
+-- Player:sendQuestLine() implementa:
+-- - Validar se player pode ver quest
+-- - Recuperar dados do banco de dados
+-- - Formatar para protocolo do cliente
+-- - Enviar packet
+```
+
+**Vantagem:** Separação de concerns. Callback é thin wrapper.
+
+**Aplicação:** Quando lógica é complexa e centralizada em object model.
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Jogador solicita dados de quest ativa
+
+```
+Client: REQUEST_QUEST_LINE {questId: 42}
+  └─ Server dispara: playerOnRequestQuestLine(player, 42)
+     ├─ player:sendQuestLine(42)
+     └─ [Server-side processing]
+        ├─ Valida: Player tem acesso a quest 42?
+        ├─ Recupera: Quest 42 data (name, description, objectives)
+        ├─ Formata: Packet QUEST_LINE_DATA
+        └─ Envia: Client recebe "Quest: Dragon Slayer - Objectives: [...]"
+```
+
+**Resultado ao Cliente:**
+Interface de quest exibe dados da Quest 42
+
+---
+
+### Cenário 2: Jogador solicita quest completada
+
+```
+Client: REQUEST_QUEST_LINE {questId: 15}
+  └─ Server dispara: playerOnRequestQuestLine(player, 15)
+     ├─ player:sendQuestLine(15)
+     └─ [Server validations]
+        ├─ Quest 15 está completa para este player
+        ├─ Dados incluem: Completion markers, Rewards recebidos
+        └─ Client exibe: "COMPLETED" badge + reward summary
+```
+
+**Resultado ao Cliente:**
+Interface mostra quest como completa com badge visual
+
+---
+
+### Cenário 3: Jogador solicita quest unavailable
+
+```
+Client: REQUEST_QUEST_LINE {questId: 999}
+  └─ Server dispara: playerOnRequestQuestLine(player, 999)
+     ├─ player:sendQuestLine(999)
+     └─ [Server validation]
+        ├─ Quest 999 não existe ou não é acessível
+        ├─ sendQuestLine pode:
+        │  ├─ Opção A: Enviar erro silencioso (nothing happens)
+        │  ├─ Opção B: Enviar mensagem de erro
+        │  └─ Opção C: Enviar dados parciais (apenas meta)
+        └─ Client handles apropriadamente
+```
+
+**Resultado ao Cliente:**
+Nenhuma mudança visual ou mensagem de erro (depende impl)
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial |
+| **Estimativa de Aprendizado** | 5 minutos |
+| **Tópicos Principais** | Request-response callbacks, ID-based entity lookup, Transparent delegation |
+| **Padrões Documentados** | 3 padrões |
+| **Cenários Documentados** | 3 cenários (active quest, completed, unavailable) |
+| **Funções** | 1 (playerOnRequestQuestLine - callback entry) |
+| **Callbacks Registrados** | PlayerOnRequestQuestLineBaseEvent |
+| **Dependencies** | Player:sendQuestLine() system |
+
+### Curva de Aprendizado
+
+**Trivial:** Uma linha. Padrão request-response básico.
+
+### Interação com Quest System
+
+Este callback é parte da quest infrastructure:
+
+```
+Quest Log UI
+    ↓
+Client: REQUEST_QUEST_LINE {questId}
+    ↓
+playerOnRequestQuestLine(player, questId)  [THIS CALLBACK]
+    ↓
+player:sendQuestLine(questId)
+    ↓
+[Quest data retrieval, validation, formatting]
+    ↓
+Client: QUEST_LINE_DATA packet
+    ↓
+Quest Log UI Updates
+```
+
+### Variações Potenciais
+
+| Caso | Comportamento |
+|------|--------------|
+| **Não Descoberta** | Quest não aparece (sem dados) |
+| **Descoberta Incompleta** | Dados parciais (apenas meta, sem objectives) |
+| **Ativa** | Dados completos + progresso |
+| **Completa** | Dados + completion markers + rewards |
+| **Abandonada** | Dados + "ABANDONED" marker |
+
+### Melhorias Potenciais
+
+- [ ] Adicionar validação de permissão (player pode ver quest?)
+- [ ] Implementar rate limiting (client não spam requests)
+- [ ] Adicionar caching de dados de quest (performance)
+- [ ] Log de solicitações para analytics
+- [ ] Suporte a quest branches/choices
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Simple request-response implementation

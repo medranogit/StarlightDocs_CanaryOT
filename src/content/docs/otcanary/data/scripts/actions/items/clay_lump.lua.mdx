@@ -1,0 +1,235 @@
+---
+title: clay_lump.lua
+description: Sistema probabilístico de queimação de argila com achievements
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="clay_lump.lua" icon="star">
+Script de ação Lua que implementa sistema de crafting de argila com chances variáveis e tracking de achievements.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/clay_lump.lua`
+
+Item de crafting que queima argila em figurina com 4 chances diferentes: sucesso perfeito (1.1%), sucesso bom (9.42%), sucesso comum (24.86%), falha (64.61%). Achievements para sucesso máximo.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `clay_lump.lua` implementa sistema probabilístico de queimação de argila. Cada uso gera número aleatório 0-100 e seleciona outcome baseado em range. Sucesso transforma item em figurina (10423-10425); falha remove item. Descrição dinâmica com nome do player. Achievement "Clay Fighter" e "Clay to Fame" progresso.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define config com 4 outcomes]
+    ├─ 0.0-1.1% (1.1% chance)
+    │   ├─ transformId: 10425 (Brog Titan)
+    │   ├─ achievement: true
+    │   └─ description: com |PLAYERNAME|
+    ├─ 1.1-10.52% (9.42% chance)
+    │   ├─ transformId: 10424 (Unrecognized)
+    │   └─ description: com |PLAYERNAME|
+    ├─ 10.52-35.38% (24.86% chance)
+    │   ├─ transformId: 10423 (Bad quality)
+    │   └─ description: com |PLAYERNAME|
+    └─ 35.38-100% (64.61% chance)
+        ├─ remove: true
+        └─ sound: "Aw man. That did not work out too well."
+    ↓
+[Create clayLump Action]
+    ↓
+[onUse function]
+    ├─ randomChance = random() * 100
+    ├─ For each config item
+    │   ├─ If randomChance in range
+    │   │   ├─ sendMagicEffect(POFF)
+    │   │   ├─ If remove: item:remove()
+    │   │   ├─ Else: item:transform(transformId)
+    │   │   ├─ If sound: player:say()
+    │   │   ├─ If description: setDescription(gsub)
+    │   │   ├─ If achievement: addAchievementProgress()
+    │   │   └─ break
+    └─ return true
+```
+
+## Variáveis Globais
+
+### config (local array)
+
+```lua
+local config = {
+	{ chance = { 0.0, 1.1 }, transformId = 10425, description = "...", achievement = true },
+	{ chance = { 1.1, 10.52 }, transformId = 10424, description = "..." },
+	{ chance = { 10.52, 35.38 }, transformId = 10423, description = "..." },
+	{ chance = { 35.38, 100.0 }, remove = true, sound = "Aw man. That did not work out too well." },
+}
+```
+
+Configuração de outcomes com ranges probabilísticos.
+
+**Estrutura:**
+- chance: table com min/max (inclusive min, exclusive max)
+- transformId: item para sucesso (ou remove: true para falha)
+- description: texto dinâmico com placeholder |PLAYERNAME|
+- achievement: true para ativar achievements
+- sound: mensagem de falha
+
+## Funções
+
+### clayLump.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que executa queimação de argila.
+
+**Parâmetros:**
+- player: Creature player
+- item: Argila sendo queimada
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo de Execução:**
+
+```lua
+1. randomChance = math.random() * 100
+   └─ Número 0.0 a 100.0
+
+2. For _, itemConfig in ipairs(config)
+   ├─ If randomChance >= min AND < max
+   │   ├─ sendMagicEffect(POFF)
+   │   ├─ Transform ou Remove
+   │   ├─ Say (se sound config)
+   │   ├─ SetDescription (se config)
+   │   ├─ AddAchievement (se config)
+   │   └─ break
+   └─ Next config
+
+3. return true
+```
+
+**Implementação:**
+
+```lua
+function clayLump.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local randomChance = math.random() * 100
+	for _, itemConfig in ipairs(config) do
+		if randomChance >= itemConfig.chance[1] and randomChance < itemConfig.chance[2] then
+			item:getPosition():sendMagicEffect(CONST_ME_POFF)
+
+			if itemConfig.remove then
+				item:remove()
+			else
+				item:transform(itemConfig.transformId)
+			end
+
+			if itemConfig.sound then
+				player:say(itemConfig.sound, TALKTYPE_MONSTER_SAY, false, player)
+			end
+
+			if itemConfig.description then
+				item:setDescription(itemConfig.description:gsub("|PLAYERNAME|", player:getName()))
+			end
+
+			if itemConfig.achievement then
+				player:addAchievement("Clay Fighter")
+				player:addAchievementProgress("Clay to Fame", 5)
+			end
+			break
+		end
+	end
+	return true
+end
+```
+
+## Constantes e Probabilidades
+
+| Outcome | Range | Chance | Result | Item ID |
+|---------|-------|--------|--------|---------|
+| Perfeito | 0.0-1.1 | 1.10% | Brog Titan | 10425 |
+| Bom | 1.1-10.52 | 9.42% | Desconhecido | 10424 |
+| Ruim | 10.52-35.38 | 24.86% | Qualidade baixa | 10423 |
+| Falha | 35.38-100 | 64.61% | Remove | - |
+
+## Fluxo de Operação
+
+```
+[Player usa argila]
+    ↓
+[randomChance = random(0-100)]
+    ↓
+[Loop configs até encontrar range]
+    ↓
+[Encontrou outcome?]
+    ├─ SIM → executar
+    │   ├─ Magic effect POFF
+    │   ├─ Transform ou Remove
+    │   ├─ Play sound (se falha)
+    │   ├─ Set description dinâmica
+    │   └─ Award achievements (se sucesso máximo)
+    └─ Não → continue
+    ↓
+[return true]
+```
+
+## Descrição Dinâmica
+
+**Placeholder Substitution:**
+
+```lua
+item:setDescription(itemConfig.description:gsub("|PLAYERNAME|", player:getName()))
+```
+
+String.gsub substitui |PLAYERNAME| pelo nome real do player na descrição.
+
+**Efeito**: Cada figurina tem descrição personalizada com quem criou.
+
+## Achievements
+
+### Clay Fighter (unlock)
+
+Desbloqueado apenas com sucesso perfeito (1.1% chance).
+
+### Clay to Fame (progress)
+
+Progride 5 pontos por cada sucesso (não apenas perfeito).
+
+**Nota**: Apenas sucesso máximo (10425) ativa achievements.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Sistema probabilístico com ranges discretos
+2. Ordem de iteração afeta seleção
+3. String.gsub para substituição dinâmica
+4. Conditional chains para múltiplos outcomes
+5. Achievement unlock vs progress tracking
+6. Efeito mágico como feedback visual
+
+**Responsabilidades:**
+1. Gerar número aleatório 0-100
+2. Encontrar range que aplica
+3. Executar transformação ou remoção
+4. Definir descrição com nome do player
+5. Emitir feedback (som se falha)
+6. Award achievements (se perfeito)
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 48 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 10422  
+**Outcomes**: 4 (sucesso máximo, bom, ruim, falha)  
+**Chance Sucesso**: 35.38%  
+**Chance Perfeiça**: 1.10%
+</Card>
+
+<Aside type="note">
+Crafting probabilístico com descrições dinâmicas. Sucesso máximo (1.1%) integra achievements. Falha (64.61%) remove item com feedback sonoro. Descrição personalizada com nome do player.
+</Aside>

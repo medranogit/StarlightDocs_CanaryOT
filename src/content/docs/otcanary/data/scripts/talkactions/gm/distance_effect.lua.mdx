@@ -1,0 +1,135 @@
+---
+title: Distance Effect
+description: Comando GM para enviar efeito mágico a distância na direção que o jogador está olhando
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `distance_effect.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Enviar efeito mágico a distância |
+| **Comando** | `/distanceeffect <effect_id>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | ID do efeito (numérico positivo) |
+| **Separador** | Espaço |
+| **Distância Padrão** | 7 blocos |
+| **Cálculo de Direção** | DIRECTION_NORTH/SOUTH/EAST/WEST |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/distance_effect.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este comando projeta efeito mágico a 7 blocos na direção para a qual o jogador está olhando. Usa `player:getDirection()` para determinar direção (DIRECTION_NORTH decremente Y, EAST incrementa X, SOUTH incrementa Y, WEST decremente X), calcula posição alvo, e envia effet via `sendDistanceEffect(target)`. Requer ID de efeito válido e positivo. Versão simplificada sem parâmetro de distância (fixo em 7).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `distance_effect.lua` implementa um comando TalkAction (`/distanceeffect`) que projetar efeitos mágicos a distância na direção para a qual o jogador está orientado. O sistema valida o parâmetro de ID do efeito (deve ser numérico e positivo), obtém a posição e direção atual do jogador, calcula a posição alvo 7 blocos adiante na direção corrente (norte/sul/leste/oeste), e envia o efeito mágico entre posição inicial e alvo.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local magicEffect = TalkAction("/distanceeffect")
+
+-- 2. Função Principal (onSay)
+function magicEffect.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro obrigatório
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Conversão e validação de ID de efeito
+    local effect = tonumber(param)
+    if effect ~= nil and effect > 0 then
+        -- Obter posição atual
+        local playerPos = player:getPosition()
+        
+        -- Obter direção (DIRECTION_NORTH, EAST, SOUTH, WEST)
+        local direction = player:getDirection()
+        
+        -- Criar posição alvo (cópia da posição inicial)
+        local targetPos = Position(playerPos.x, playerPos.y, playerPos.z)
+        
+        -- Distância fixa em 7 blocos
+        local distance = 7
+        
+        -- Calcular nova posição alvo baseada em direção
+        if direction == DIRECTION_NORTH then
+            targetPos.y = targetPos.y - distance  -- Move Y para cima (norte)
+        elseif direction == DIRECTION_EAST then
+            targetPos.x = targetPos.x + distance  -- Move X para direita (leste)
+        elseif direction == DIRECTION_SOUTH then
+            targetPos.y = targetPos.y + distance  -- Move Y para baixo (sul)
+        elseif direction == DIRECTION_WEST then
+            targetPos.x = targetPos.x - distance  -- Move X para esquerda (oeste)
+        end
+        
+        -- Enviar efeito mágico de posição inicial até alvo
+        player:getPosition():sendDistanceEffect(targetPos, effect)
+    end
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+magicEffect:separator(" ")
+magicEffect:groupType("gamemaster")
+magicEffect:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **magicEffect.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/distanceeffect` é utilizado. Projeta efeito mágico a 7 blocos na direção do jogador.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavras do comando (`/distanceeffect`)
+- `param` (string): **[OBRIGATÓRIO]** ID do efeito (numérico positivo)
+
+**Validações:**
+1. **Parâmetro vazio:** Envia `"Command param required."` e retorna
+2. **Efeito inválido:** Se `tonumber(param)` falhar ou efeito &lt;= 0, comando ignorado silenciosamente
+
+**Fluxo de Execução:**
+1. Registra comando em log via `logCommand(player, words, param)`
+2. Valida parâmetro e converte para número
+3. Obtém posição atual do jogador: `playerPos = player:getPosition()`
+4. Obtém direção atual: `direction = player:getDirection()`
+5. Cria posição alvo com mesmo X, Y, Z: `Position(playerPos.x, playerPos.y, playerPos.z)`
+6. **Calcula deslocamento de 7 blocos baseado em direção:**
+   - `DIRECTION_NORTH`: `targetPos.y -= 7` (norte no mapa)
+   - `DIRECTION_EAST`: `targetPos.x += 7` (leste no mapa)
+   - `DIRECTION_SOUTH`: `targetPos.y += 7` (sul no mapa)
+   - `DIRECTION_WEST`: `targetPos.x -= 7` (oeste no mapa)
+7. Envia efeito: `player:getPosition():sendDistanceEffect(targetPos, effect)`
+
+**Fluxo de Direções (Mapa 2D):**
+```
+        NORTH (Y-7)
+            ↑
+WEST (X-7) ← Player → EAST (X+7)
+            ↓
+        SOUTH (Y+7)
+```
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `distance_effect.lua` é um utilitário GM para testar e demonstrar efeitos mágicos a distância. Implementação que mapeia direção do jogador para cálculo cartesiano, projeta efeito 7 blocos adiante, útil para testes visuais e demonstrações. Sem customização de distância (fixa em 7) ou efeitos cumulativos, ideal para administração leve.

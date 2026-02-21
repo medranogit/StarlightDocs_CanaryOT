@@ -1,0 +1,197 @@
+---
+title: Looktype
+description: Comando GM para alterar aparência visual (looktype) do jogador com validação de tipos inválidos
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `looktype.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Alterar aparência (looktype) |
+| **Comando** | `/looktype <id>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | ID numérico do looktype |
+| **Separador** | Espaço |
+| **Range Válido** | 0-1468 |
+| **Tipos Inválidos** | Tabela de ~300+ IDs blacklist |
+| **Validação** | Regex numérico + range + blacklist |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/looktype.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando robusto com validação em 3 camadas. Tabela `invalidTypes` contém ~300+ IDs que não podem ser aparências válidas (ordenados para busca). Valida parâmetro com `param:match("%d")` para garantir numérico, verifica range 0-1468, e usa `table.contains()` para checar blacklist antes de aplicar. Obtém outfit atual, altera campo lookType, e reaplica com `setOutfit()`. Feedback diferenciado para cada tipo de erro (não numérico, fora do range, blacklist).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `looktype.lua` implementa um comando TalkAction (`/looktype`) que permite gamemasters personalizar aparência visual de jogadores. O sistema mantém tabela extensa de tipos inválidos (~300+ IDs), valida entrada com regex numérico, verifica range 0-1468, consulta blacklist via `table.contains()`, obtém outfit atual, modifica campo lookType, e reaplica via `setOutfit()`. Validação robusta em múltiplas camadas com mensagens de erro específicas.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Tabela de Validação: Tipos de Looktype Inválidos (Ordenados)
+local invalidTypes = {
+    1, 135, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174,
+    175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191,
+    -- ... 300+ IDs mais ~
+    1462,  -- Último na tabela
+}
+
+-- 2. Instanciação do TalkAction
+local looktype = TalkAction("/looktype")
+
+-- 3. Função Principal (onSay)
+function looktype.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Validação de entrada numérica com regex
+    if param:match("%d") then
+        -- Converter para número
+        local lookType = tonumber(param)
+        
+        -- Validação em multiplas camadas:
+        -- 1. Range: 0-1468
+        -- 2. Blacklist: não estar em invalidTypes
+        if lookType >= 0 and lookType < 1469 and not table.contains(invalidTypes, lookType) then
+            -- Obter outfit atual
+            local playerOutfit = player:getOutfit()
+            
+            -- Alteraraparência
+            playerOutfit.lookType = lookType
+            
+            -- Reaplica outfit
+            player:setOutfit(playerOutfit)
+        else
+            -- Tipo invalid (fora de range ou blacklist)
+            player:sendCancelMessage("A look type with that id does not exist.")
+        end
+        
+        return true
+    else
+        -- Parâmetro não é numérico
+        player:sendCancelMessage("Looktype must be a numerical value.")
+        return true
+    end
+end
+
+-- 4. Configuração de Registro
+looktype:separator(" ")
+looktype:groupType("gamemaster")
+looktype:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **looktype.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/looktype` é utilizado. Altera aparência visual do jogador.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando
+- `words` (string): Palavras do comando (`/looktype`)
+- `param` (string): **[OBRIGATÓRIO]** ID numérico do looktype (0-1468)
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Validação Numérica (Regex):**
+   ```lua
+   if param:match("%d") then
+       -- Continua processamento
+   else
+       -- Retorna: "Looktype must be a numerical value."
+   end
+   ```
+   - Padrão regex `"%d"` verifica se contém pelo menos um dígito
+
+4. **Conversão para Número:**
+   ```lua
+   local lookType = tonumber(param)
+   ```
+
+5. **Validação de Range e Blacklist:**
+   ```lua
+   if lookType >= 0 and lookType < 1469 and 
+      not table.contains(invalidTypes, lookType) then
+       -- Válido: procede
+   else
+       -- Inválido: retorna erro
+   end
+   ```
+   - Condições:
+     - `lookType >= 0` - Mínimo zero
+     - `lookType < 1469` - Máximo 1468
+     - `not table.contains(invalidTypes, lookType)` - Não está em blacklist
+
+6. **Aplicação de Aparência:**
+   ```lua
+   local playerOutfit = player:getOutfit()      -- Obter outfit atual
+   playerOutfit.lookType = lookType              -- Alterar lookType
+   player:setOutfit(playerOutfit)                -- Reaplica
+   ```
+
+**Mensagens de Erro Diferenciadas:**
+
+| Condição | Mensagem |
+|---|---|
+| Parâmetro vazio | "Command param required." |
+| Não numérico | "Looktype must be a numerical value." |
+| Fora de range ou blacklist | "A look type with that id does not exist." |
+| Sucesso | Sem mensagem (outfit alterado) |
+
+**Exemplos de Uso:**
+```
+/looktype 136       -- Valido: aplica aparência 136
+/looktype 0         -- Inválido: 0 está em blacklist
+/looktype abc       -- Inválido: não numérico
+/looktype 2000      -- Inválido: > 1468
+```
+
+**Estrutura de invalidTypes:**
+
+Tabela de ~300+ IDs inválidos, ordenada para eficiência:
+- Começa em 1 (aparência nada)
+- Inclui ranges 135-191, 700-831, 1000+ (criaturas/efeitos inválidos)
+- Total de ~300 IDs que não funcionam como outfits
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+### **Operação de Outfit**
+
+| Propriedade | Descrição |
+|---|---|
+| `lookType` | ID da aparência (humano, elf, dwarf, etc) |
+| `lookHead` | Cor da cabeça (0-255) |
+| `lookBody` | Cor do corpo (0-255) |
+| `lookLegs` | Cor das pernas (0-255) |
+| `lookFeet` | Cor dos pés (0-255) |
+| `lookAddons` | Nível de addons (0-3) |
+| `lookMount` | ID da montaria |
+
+---
+
+## 📌 Resumo
+
+O arquivo `looktype.lua` é utilitário de customização visual robusto. Implementação com validação em 3 camadas (numérico, range, blacklist), tabela extensa de tipos inválidos para prevenir aplicação de IDs quebrados, e aplicação segura de outfit. Essencial para GMs permitir testes de aparências, criar eventos visuais, ou resolver problemas de renderização. Design defensivo previne aplicação de estados inválidos que causariam crashes de cliente.

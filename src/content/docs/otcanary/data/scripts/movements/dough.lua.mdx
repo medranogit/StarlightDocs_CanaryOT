@@ -1,0 +1,336 @@
+---
+title: "Movement - dough.lua"
+description: "Sistema de transformação de massa ao adicionar em fornos específicos"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `dough.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (additem) |
+| **Event Name** | `dough.onAddItem` |
+| **Função Registrada** | `onAddItem(moveitem, tileitem, position)` |
+| **Linhas de Código** | 24 |
+| **Complexidade** | Trivial |
+| **Status** | Base implementation |
+
+**Descrição:**
+Sistema de culinária que transforma massa/biscoito em seu produto final ao adicionar em fornos quentes. Usa tabela de mapeamento para vincular itens brutos com itens cozidos.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/dough.lua
+```
+
+**Requisitos:**
+- Tabela de transformação hardcoded
+- 2 pares de itens (crú → cozido):
+  - 3604 → 3600 (biscoito crú → assado)
+  - 6276 → 6277 (massa → pão)
+- 4 fornos monitorados: 2535, 2537, 2539, 2541
+- Sistema de efeito visual
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Culinária com Mapeamento Direto**
+
+Este script implementa um **sistema de crafting com forno**:
+
+1. **Precondição:** Forno (tile específica)
+2. **Ação:** Adicionar matéria-prima (crú)
+3. **Transformação:** Item transforma para cozido
+4. **Efeito:** Magia vermelha (calor)
+
+**Tabela de Transformação:**
+```
+3604 (biscoito crú)  → 3600 (biscoito assado)
+6276 (massa crú)     → 6277 (pão)
+```
+
+**Fluxo:**
+```
+Jogador tem: biscoito crú (3604)
+Coloca em: forno (2535)
+  ├─ Validação: ID 3604 em tabela? Sim
+  ├─ Transform: 3604 → 3600
+  ├─ Efeito: magia vermelha (calor do forno)
+  └─ Resultado: biscoito assado
+```
+
+**Padrão:** Diferente de bakery simples - aqui requer item específico em forno específico.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `dough.lua` implementa um sistema de culinária com mapeamento direto:
+
+- **Tabela de Transformação:** 2 pares item → resultado
+- **Validação de Item:** Verifica se item está na tabela
+- **Transformação:** Converte crú em cozido
+- **Efeito Visual:** Emite magia vermelha (calor)
+- **Cobertura:** 4 fornos diferentes
+
+### Arquitetura
+
+Tabela + callback de validação e transformação:
+
+```
+local pastries = {
+	[3604] = 3600,
+	[6276] = 6277,
+}
+
+Jogador adiciona item em forno
+  └─ onAddItem(item, forno, posição)
+     ├─ if pastries[moveitem.itemid]
+     │  ├─ transform(pastryId)
+     │  ├─ sendMagicEffect(HITBYFIRE)
+     │  └─ return true
+     └─ else return true (ignora)
+```
+
+### Fluxo Lógico Resumido
+
+| Item | Forno | Ação | Resultado |
+|---|---|---|---|
+| **3604** | 2535-2541 | Transforma | 3600 ✅ |
+| **6276** | 2535-2541 | Transforma | 6277 ✅ |
+| **Outro** | 2535-2541 | Sem ação | Ignora ❌ |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Tabela de Transformação
+
+```lua
+local pastries = {
+	[3604] = 3600,
+	[6276] = 6277,
+}
+```
+
+**Propósito:** Mapeia itens crús para seus produtos cozidos.
+
+| Item Crú | Item Cozido | Nome |
+|---|---|---|
+| 3604 | 3600 | Biscoito |
+| 6276 | 6277 | Pão |
+
+**Estrutura:** `[itemid_crú] = itemid_cozido`
+
+---
+
+### Instanciação do MoveEvent
+
+```lua
+local dough = MoveEvent()
+```
+
+**Propósito:** Cria instância de MoveEvent para culinária.
+
+---
+
+### Callback onAddItem
+
+```lua
+function dough.onAddItem(moveitem, tileitem, position)
+	local pastryId = pastries[moveitem.itemid]
+	if not pastryId then
+		return true
+	end
+
+	moveitem:transform(pastryId)
+	position:sendMagicEffect(CONST_ME_HITBYFIRE)
+	return true
+end
+```
+
+**Propósito:** Executado ao adicionar item em forno. Transforma se for item válido.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `moveitem` | Item | Item sendo adicionado (do inventário) |
+| `tileitem` | Item | A tile/forno (não usado) |
+| `position` | Position | Posição do forno |
+
+**Fluxo Lógico:**
+
+1. **Lookup:** Busca `moveitem.itemid` em tabela `pastries`
+   - Se não encontrado: `pastryId = nil`, retorna true (ignora)
+   - Se encontrado: `pastryId = valor`, continua
+2. **Transforma Item:** `moveitem:transform(pastryId)` (crú → cozido)
+3. **Efeito Visual:** `position:sendMagicEffect(CONST_ME_HITBYFIRE)` (fogo)
+4. **Retorna:** true (sempre, sucesso ou ignorado)
+
+---
+
+### Registração do Evento
+
+```lua
+dough:type("additem")
+dough:id(2535, 2537, 2539, 2541)
+dough:register()
+```
+
+| Método | Valor | Significado |
+|---|---|---|
+| `:type("additem")` | additem | Dispara ao adicionar item |
+| `:id(2535, 2537, 2539, 2541)` | IDs | 4 fornos monitorados |
+| `:register()` | - | Registra evento |
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `pastries` | table | Arquivo | Tabela de mapeamento crú → cozido |
+| `dough` | MoveEvent | Arquivo | Instância do evento |
+| `pastryId` | number \| nil | Função | Resultado da lookup na tabela |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Tabela de Mapeamento
+
+```lua
+local pastries = {
+	[3604] = 3600,
+	[6276] = 6277,
+}
+
+local pastryId = pastries[moveitem.itemid]
+```
+
+**Benefício:** Fácil manutenção e adição de novos items sem mudar lógica.
+
+### Padrão 2: Validação de Tabela
+
+```lua
+if not pastryId then
+	return true
+end
+```
+
+**Benefício:** Early return evita processamento desnecessário.
+
+### Padrão 3: Efeito Visual de Feedback
+
+```lua
+position:sendMagicEffect(CONST_ME_HITBYFIRE)
+```
+
+**Benefício:** Jogador vê feedback imediato de transformação.
+
+---
+
+## 🤖 Documentação das Funções
+
+### dough.onAddItem(moveitem, tileitem, position)
+
+Callback executado ao adicionar item em forno. Transforma item se for matéria culinária válida.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `moveitem` | Item | Item sendo adicionado |
+| `tileitem` | Item | A tile/forno |
+| `position` | Position | Posição do forno |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre (item transformado ou ignorado) |
+
+**Validações:**
+
+1. **Se item em tabela:** Transforma
+2. **Se item não em tabela:** Ignora
+
+**Exemplo:**
+
+```lua
+-- Jogador adiciona biscoito crú (3604) em forno (2535)
+dough.onAddItem(cookieRaw, forno2535, pos)
+-- pastryId = pastries[3604] = 3600
+-- moveitem:transform(3600)
+-- position:sendMagicEffect(HITBYFIRE)
+-- Retorna true → biscoito assado
+
+-- Jogador adiciona pão (999) em forno
+dough.onAddItem(bread, forno, pos)
+-- pastryId = pastries[999] = nil
+-- Retorna true → sem ação (item ignorado)
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Cozinhar Biscoito
+
+```lua
+-- Jogador com biscoito crú (3604)
+-- Coloca em forno (2535)
+-- Resultado: Biscoito assado (3600), efeito visual
+```
+
+### Caso 2: Assar Pão
+
+```lua
+-- Jogador com massa (6276)
+-- Coloca em forno (2537)
+-- Resultado: Pão (6277), efeito de fogo
+```
+
+### Caso 3: Item Não Culinário
+
+```lua
+-- Jogador com espada
+-- Coloca em forno
+-- Resultado: Sem ação, ignora
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Fornos:** 2535, 2537, 2539, 2541
+- **Items Crús:** 3604, 6276
+- **Items Cozidos:** 3600, 6277
+- **Magic Effect:** CONST_ME_HITBYFIRE
+- **MoveEvent API:** [events/movements](../movements)
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | MoveEvent (additem) |
+| **Sistema** | Culinária com mapeamento |
+| **Pares Transformação** | 2 (biscoito, pão) |
+| **Fornos Monitorados** | 4 (2535, 2537, 2539, 2541) |
+| **Validação** | Tabela lookup |
+| **Efeito** | CONST_ME_HITBYFIRE |
+| **Padrão** | Early return + tabela de mapeamento |

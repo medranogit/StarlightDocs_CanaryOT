@@ -1,0 +1,234 @@
+---
+title: carrot_cake.lua
+description: Bolo de cenoura com buff de distance skill
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="carrot_cake.lua" icon="star">
+Script de ação Lua que implementa consumível com buff de atributo de distância.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/carrot_cake.lua`
+
+Item consumível que aplica buff de distance skill (distância) com +10. Buff dura 1 hora com cooldown de 10 minutos compartilhado. Item ID 9087.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `carrot_cake.lua` implementa item de buff temático que aumenta distance skill do player em 10 pontos por 1 hora. Utiliza Condition system do game engine com parâmetros de atributo. Compartilha cooldown com outras special foods (special-foods-cooldown).
+
+**Estrutura de Funcionalidades**
+
+```
+[Define distanceCondition (pre-compilado)]
+    ├─ CONDITION_ATTRIBUTES type
+    ├─ CONDITION_PARAM_SUBID: JeanPierreDistance
+    ├─ CONDITION_PARAM_BUFF_SPELL: 1
+    ├─ CONDITION_PARAM_TICKS: 3.600.000ms (1h)
+    ├─ CONDITION_PARAM_SKILL_DISTANCE: +10
+    └─ CONDITION_PARAM_FORCEUPDATE: true
+    ↓
+[Create carrotCake Action]
+    ↓
+[onUse function]
+    ├─ Check exhaustion: special-foods-cooldown
+    │   ├─ SIM → "You need to wait..." + return true
+    │   └─ NÃO → continuar
+    ├─ player:addCondition(distanceCondition)
+    ├─ sendTextMessage: "You feel more focused."
+    ├─ player:say("Mmmm.", TALKTYPE_MONSTER_SAY)
+    ├─ sendMagicEffect: CONST_ME_MAGIC_RED
+    ├─ setExhaustion: 10 minutos
+    ├─ Remove item
+    └─ return true
+    ↓
+[Register Action on item ID 9087]
+```
+
+## Variáveis Globais
+
+### distanceCondition (local)
+
+```lua
+local distanceCondition = Condition(CONDITION_ATTRIBUTES)
+distanceCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreDistance)
+distanceCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+distanceCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+distanceCondition:setParameter(CONDITION_PARAM_SKILL_DISTANCE, 10)
+distanceCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+```
+
+Condition pré-compilada aplicada ao player.
+
+**Parâmetros:**
+- CONDITION_ATTRIBUTES: Tipo de condição (atributos)
+- CONDITION_PARAM_SUBID: Identificador JeanPierreDistance
+- CONDITION_PARAM_BUFF_SPELL: Indica como spell buff (1)
+- CONDITION_PARAM_TICKS: 3.600.000ms = 1 hora exata
+- CONDITION_PARAM_SKILL_DISTANCE: Bônus de +10 ao skill distance
+- CONDITION_PARAM_FORCEUPDATE: Force UI refresh (true)
+
+## Funções
+
+### carrotCake.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback acionado ao consumir bolo.
+
+**Parâmetros:**
+- player: Creature player
+- item: Bolo sendo consumido
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo de Execução:**
+
+```lua
+1. hasExhaustion("special-foods-cooldown")?
+   ├─ SIM → "You need to wait..."
+   └─ NÃO → continuar
+   
+2. addCondition(distanceCondition)
+   └─ Aplica buff de +10 distance
+   
+3. sendTextMessage: "You feel more focused."
+   
+4. player:say("Mmmm.", TALKTYPE_MONSTER_SAY)
+   
+5. sendMagicEffect(CONST_ME_MAGIC_RED)
+   
+6. setExhaustion: 10 minutos
+   
+7. item:remove(1) + return true
+```
+
+**Implementação:**
+
+```lua
+function carrotCake.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true
+	end
+
+	player:addCondition(distanceCondition)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You feel more focused.")
+	player:say("Mmmm.", TALKTYPE_MONSTER_SAY)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+	item:remove(1)
+	return true
+end
+```
+
+## Constantes e Parâmetros Condition
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| CONDITION_ATTRIBUTES | type | Tipo condition |
+| CONDITION_PARAM_SUBID | JeanPierreDistance | Identificador |
+| CONDITION_PARAM_BUFF_SPELL | 1 | Indica buff spell |
+| CONDITION_PARAM_TICKS | 3.600.000 | 1 hora em ms |
+| CONDITION_PARAM_SKILL_DISTANCE | 10 | Bônus ao skill |
+| CONDITION_PARAM_FORCEUPDATE | true | Força refresh UI |
+
+## Condition System
+
+### Aplicação de Buff
+
+```lua
+player:addCondition(distanceCondition)
+```
+
+Aplica condition pré-compilada ao player.
+
+**Efeito**: Player recebe +10 ao skill de distância imediatamente.
+
+**Duração**: 3.600.000 milissegundos = 3.600 segundos = 60 minutos = 1 hora.
+
+**Tipo**: "Buff" com força visual (FORCEUPDATE).
+
+### Impacto no Jogo
+
+- Distance skill aumentado em 10 pontos
+- Válido para 1 hora (3600s)
+- Stack com outros buffs se não conflita
+- Atualiza UI automaticamente
+
+## Fluxo de Operação
+
+```
+[Player usa bolo 9087]
+    ↓
+[Cooldown special-foods-cooldown ativo?]
+    ├─ SIM → "You need to wait..." (return true)
+    └─ NÃO → continuar
+    ↓
+[player:addCondition(distanceCondition)]
+    ├─ Aplica condição
+    └─ +10 ao distance skill por 1h
+    ↓
+[Mensagem: "You feel more focused."]
+    ↓
+[player:say("Mmmm.")]
+    └─ Emote visível
+    ↓
+[sendMagicEffect(CONST_ME_MAGIC_RED)]
+    └─ Efeito visual vermelho
+    ↓
+[setExhaustion("special-foods-cooldown", 600s)]
+    └─ Bloqueia outras special foods por 10min
+    ↓
+[item:remove(1) + return true]
+```
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Condition system para buffs de atributo
+2. Pré-compilação de conditions (otimização)
+3. CONDITION_PARAM_TICKS em milissegundos
+4. CONDITION_PARAM_SKILL_DISTANCE como modificador
+5. Cooldown compartilhado entre special foods
+6. FORCEUPDATE força refresh visual
+
+**Responsabilidades:**
+1. Verificar cooldown special-foods antes de usar
+2. Aplicar condition distanceCondition
+3. Enviar mensagem temática ("feel more focused")
+4. Emitir emote ("Mmmm")
+5. Enviar efeito visu mágico
+6. Setar cooldown 10 min
+7. Consumir item
+
+## Comparação com Recursos Similares
+
+| Item | Type | Buff | Duração | Effects |
+|------|------|------|---------|---------|
+| blessed_steak | Mana | +max mana | Instantâneo | Red, Chomp |
+| blueberry_cupcake | Mana | +max mana | Instantâneo | Mmmm (só) |
+| carrot_cake | Distance | +10 skill | 1 hora | Red, More Focused |
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 26 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 9087  
+**Buff Duration**: 1 hora  
+**Cooldown**: 10 minutos (compartilhado)  
+**Skill Boosted**: Distance +10  
+**Consumível**: Sim
+</Card>
+
+<Aside type="note">
+Item de buff que aumenta distance skill. Utiliza condition system com pré-compilação. Cooldown compartilhado com outras special foods. Efeito visual e emote para feedback ao player.
+</Aside>

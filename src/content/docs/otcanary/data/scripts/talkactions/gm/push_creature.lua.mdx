@@ -1,0 +1,215 @@
+---
+title: Push Creature
+description: Comando GM para teleportar criatura/jogador para posição livre mais próxima do GM
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `push_creature.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Teleportar criatura |
+| **Comando** | `/c <creature_name>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Nome da criatura |
+| **Separador** | Espaço |
+| **Localização Alvo** | Posição livre mais próxima do GM |
+| **Efeitos** | CONST_ME_POFF + CONST_ME_TELEPORT |
+| **Ghost Mode** | Detecta e não exibe efeitos |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/push_creature.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que teleporta criatura/jogador para posição livre próxima do GM. Busca criatura por nome, obtém posição livre via `getClosestFreePosition(player:getPosition(), false)` que retorna tile desocupada mais próxima do GM. Valida se newPosition.x == 0 (erro). Teleporta via `creature:teleportTo()` e envia 2 efeitos (POFF na origem, TELEPORT no destino) se não-ghost. Sem guild/acesso check, afeta qualquer criatura.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `push_creature.lua` implementa um comando TalkAction (`/c`) que permite gamemasters teleportar criaturas (NPCs, monstros, jogadores) para posição livre mais próxima do próprio GM. O sistema busca criatura por nome, obtém posição livre via `getClosestFreePosition()`, valida deslocamento, executa teleportação com efeitos visuais condicionados a ghost mode. Ferramenta versátil de reposicionamento com lógica de busca inteligente.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local pushCreature = TalkAction("/c")
+
+-- 2. Função Principal (onSay)
+function pushCreature.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Buscar criatura por nome
+    local creature = Creature(param)
+    if not creature then
+        player:sendCancelMessage("A creature with that name could not be found.")
+        return true
+    end
+    
+    -- Obter posição antiga (para efeito)
+    local oldPosition = creature:getPosition()
+    
+    -- Buscar posição livre mais próxima da posição do GM
+    -- false = buscar em walkable tiles apenas
+    local newPosition = creature:getClosestFreePosition(player:getPosition(), false)
+    
+    -- Validação: posição encontrada
+    -- Se não encontrada: x == 0
+    if newPosition.x == 0 then
+        player:sendCancelMessage("You can not teleport " .. creature:getName() .. ".")
+        return true
+    elseif creature:teleportTo(newPosition) then
+        -- Teleportação bem-sucedida
+        
+        -- Enviar efeitos se não em ghost mode
+        if not creature:isInGhostMode() then
+            -- Efeito na posição antiga
+            oldPosition:sendMagicEffect(CONST_ME_POFF)
+            -- Efeito na posição nova
+            newPosition:sendMagicEffect(CONST_ME_TELEPORT)
+        end
+    end
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+pushCreature:separator(" ")
+pushCreature:groupType("gamemaster")
+pushCreature:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **pushCreature.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/c` é utilizado. Teleporta criatura para posição livre próxima ao GM.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando (GM)
+- `words` (string): Palavras do comando (`/c`)
+- `param` (string): **[OBRIGATÓRIO]** Nome da criatura a teleportar
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Busca de Criatura:**
+   ```lua
+   local creature = Creature(param)
+   ```
+   - Busca por nome (case-sensitive)
+   - Afeta NPCs, monstros, e jogadores
+   - Se não encontrada: retorna "A creature with that name could not be found."
+
+4. **Obtenção de Posição Antiga:**
+   ```lua
+   local oldPosition = creature:getPosition()
+   ```
+   - Armazena para efeito de partida
+
+5. **Busca de Posição Livre:**
+   ```lua
+   local newPosition = creature:getClosestFreePosition(player:getPosition(), false)
+   ```
+   - Algoritmo busca tile desocupada mais próxima ao GM
+   - Parâmetro false = apenas walkable tiles (não paredes)
+   - Retorna Position com x == 0 se não encontrada
+
+6. **Validação de Posição:**
+   ```lua
+   if newPosition.x == 0 then
+       player:sendCancelMessage("You can not teleport " .. creature:getName() .. ".")
+       return true
+   ```
+   - Se x == 0: posição inválida/não encontrada (ex: GM cercado)
+
+7. **Teleportação:**
+   ```lua
+   elseif creature:teleportTo(newPosition) then
+       -- Sucesso: enviar efeitos
+   ```
+   - Executa teleportação
+   - Só entra em bloco se teleportação retorna true
+
+8. **Efeitos Visuais (Condicional):**
+   ```lua
+   if not creature:isInGhostMode() then
+       oldPosition:sendMagicEffect(CONST_ME_POFF)          -- Desaparecimento
+       newPosition:sendMagicEffect(CONST_ME_TELEPORT)      -- Aparecimento
+   end
+   ```
+   - Se criatura está visível: mostra 2 efeitos
+   - Se criatura é ghost: sem efeitos
+
+**Exemplo de Uso:**
+
+```
+/c Rat1                    -- Teleporta "Rat1" ao lado do GM
+/c PlayerName              -- Teleporta jogador
+
+Resultado:
+- Criatura desaparece com POFF
+- Criatura aparece com TELEPORT
+- Localizada em tile walkable livre próxima ao GM
+```
+
+**Cenários de Erro:**
+
+| Cenário | Mensagem |
+|---|---|
+| Parâmetro vazio | "Command param required." |
+| Criatura não encontrada | "A creature with that name could not be found." |
+| Sem espaço livre | "You can not teleport `` `{name}` ``." |
+| Teleportação falha | Sem ação adicional |
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Creature(name)` | Busca criatura por nome |
+| `creature:getPosition()` | Obtém Position atual |
+| `creature:getClosestFreePosition(targetPos, allowNonWalking)` | Busca tile livre próxima |
+| `creature:teleportTo(position)` | Teleporta, retorna bool |
+| `creature:isInGhostMode()` | Verifica se invisível |
+| `position:sendMagicEffect(id)` | Envia efeito mágico |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+### **Busca de Posição Livre**
+
+**Método:** `creature:getClosestFreePosition(targetPosition, allowNonWalking)`
+
+**Parâmetros:**
+- `targetPosition` (Position): Referência (GM quer próximo a si)
+- `allowNonWalking` (boolean): true = qualquer tile, false = apenas walktables
+
+**Retorno:**
+- Position com x/y/z se encontrada
+- Position com x == 0 se não encontrada
+
+**Algoritmo:** Busca em espiral concêntrica expandindo raio até encontrar tile livre
+
+---
+
+## 📌 Resumo
+
+O arquivo `push_creature.lua` é ferramenta de reposicionamento versátil. Implementação que busca criatura, localiza posição livre inteligentemente, valida disponibilidade de espaço, executa teleportação com duplo efeito visual, e respeita ghost mode. Essencial para GMs organizar monstros, reposicionar NPCs, ou deslocar jogadores problemáticos rapidamente. Design simples mas poderoso, priorizando eficiência de busca de espaço livre.

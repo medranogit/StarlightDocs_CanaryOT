@@ -1,0 +1,416 @@
+---
+title: "Spell/Rune - stone_shower.lua"
+description: "Runa que causa chuva de pedras em área 3x3 com dano terra escalável"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `stone_shower.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 116 |
+| **ID do Item (runeId)** | 3175 |
+| **Level Requerido** | 28 |
+| **Magic Level Requerido** | 4 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_EARTHDAMAGE |
+| **Área** | 3x3 Circle (9 tiles) |
+| **Cooldown** | 2s |
+| **Cargas** | 4 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Bloqueio** | Não (creatures passam) |
+| **Agressividade** | Sim |
+| **Requer Target** | Não |
+| **PZ Locked** | Não |
+| **Linhas de Código** | 36 |
+| **Complexidade** | Médium-Alto |
+
+**Descrição:**
+Runa que causa chuva de pedras em área 3x3 com dano terra escalável. Primeira AoE de terra disponível. Sem needTarget permite auto-cast. Sem bloqueio (creatures passam) facilita movimento. Fórmula escalável moderada (1/2.6 MLvl). Cargas moderadas (4) indicam poder tático em área.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/stone_shower.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(116)
+rune:runeId(3175)
+rune:level(28)
+rune:magicLevel(4)
+rune:group("attack")
+rune:allowFarUse(true)
+rune:charges(4)
+rune:isBlocking(false)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Chuva de Pedras em Área 3x3**
+
+Esta runa implementa um **sistema de AoE terra com escalabilidade**:
+
+1. **Primeira AoE Terra:**
+   - Área 3x3 = 9 tiles
+   - Até 9 targets simultâneos
+   - Dano terra spread
+
+2. **Fórmula Escalável (Moderado):**
+   - min = (level/5) + (maglevel*1) + 6
+   - max = (level/5) + (maglevel*2.6) + 16
+   - Crescimento suave + bônus fixo
+
+3. **Sem Target Requerido:**
+   - Auto-cast permitido
+   - Apenas posição
+   - Controle fácil
+
+4. **Sem Bloqueio:**
+   - isBlocking: false
+   - Creatures passam
+   - Movimento fluido
+
+**Fórmula Visual:**
+```
+level 28, mlvl 4:
+  min = 5.6 + 4 + 6 = 15.6
+  max = 5.6 + 10.4 + 16 = 32
+
+level 60, mlvl 15:
+  min = 12 + 15 + 6 = 33
+  max = 12 + 39 + 16 = 67
+```
+
+**Diferencial:** Primeira AoE terra + escalável = área tática!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `stone_shower` oferece AoE tática:
+
+- **Dano:** COMBAT_EARTHDAMAGE escalável moderado
+- **Fórmula:** (level/5) + (maglevel*1/2.6) + bônus
+- **Área:** 3x3 Circle (9 tiles)
+- **Bloqueio:** Não (passagem)
+- **Cargas:** 4
+
+### Arquitetura
+
+Combat com área 3x3:
+
+```
+local combat = Combat()
+├─ Type: EARTHDAMAGE
+├─ Effect: STONES
+├─ Distance: EARTH
+├─ Area: CIRCLE3X3
+└─ Callback: onGetFormulaValues
+
+onGetFormulaValues()
+└─ min/max escalável
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_STONES)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_EARTH)
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+```
+
+**Propósito:** Combat com área 3x3.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_EARTHDAMAGE | Dano terra |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_STONES | Efeito pedras |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_EARTH | Projétil terra |
+| `Area` | AREA_CIRCLE3X3 | 3x3 círculo (9 tiles) |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, magicLevel)
+	local min = (level / 5) + (magicLevel * 1) + 6
+	local max = (level / 5) + (magicLevel * 2.6) + 16
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano escalável área.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `magicLevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (magicLevel * 1) + 6
+max = (level / 5) + (magicLevel * 2.6) + 16
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 1.0 (moderado)
+- Maglevel max: 2.6 (crescimento)
+- Bônus: 6/16 (suporta escalabilidade)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 28 | 4 | 16 | 32 |
+| 50 | 10 | 28 | 52 |
+| 80 | 20 | 48 | 88 |
+| 100 | 30 | 60 | 114 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Chuva de pedras ativada |
+| `false` | Position falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com área 3x3 |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Área 3x3
+
+```lua
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+```
+
+**Benefício:** 9 tiles = múltiplos targets.
+
+### Padrão 2: Fórmula Escalável
+
+```lua
+local min = (level / 5) + (magicLevel * 1) + 6
+local max = (level / 5) + (magicLevel * 2.6) + 16
+```
+
+**Benefício:** Crescimento progressivo com level.
+
+### Padrão 3: Sem Target
+
+```lua
+-- needTarget não definido
+```
+
+**Benefício:** Auto-cast permitido.
+
+### Padrão 4: Sem Bloqueio
+
+```lua
+rune:isBlocking(false)
+```
+
+**Benefício:** Passagem livre, movimento tático.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, magicLevel)
+
+**Descrição:** Calcula dano área de terra escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `magicLevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(player, 50, 10)
+// min = 10 + 10 + 6 = 26
+// max = 10 + 26 + 16 = 52
+// Retorna: -26, -52
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Lança chuva de pedras em 3x3.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Position central |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Chuva lançada |
+| `false` | Position falhou |
+
+**Efeito:**
+- Projétil terra viaja
+- Impacto STONES
+- Dano area 3x3 (9 tiles)
+- Até 9 targets simultâneos
+- Creatures passam (livres)
+
+**Exemplo:**
+
+```lua
+-- Mago nível 50, MLvl 10
+rune.onCastSpell(mago, centerVariant, false)
+// Auto-cast (sem needTarget)
+// Projétil terra
+// Chega no centro
+// Explode em 3x3
+// Cada criatura: -26 a -52 dano
+// Creatures passam livremente
+// Resultado: Área completa!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: AoE Inicial
+
+```lua
+-- Mago primeira AoE de terra
+// Stone shower = primeira opção área
+// Escalabilidade progressiva
+```
+
+### Caso 2: Multitarget
+
+```lua
+-- Grupo de 5+ inimigos
+// 3x3 cobre tantos
+// Dano distribuído
+```
+
+### Caso 3: Movimento Livre
+
+```lua
+-- isBlocking: false
+// Creatures passam
+// Combate fluido, tático
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_EARTHDAMAGE
+- **Areas:** AREA_CIRCLE3X3
+- **Effects:** CONST_ME_STONES, CONST_ANI_EARTH
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | AoE chuva de pedras |
+| **Dano Type** | COMBAT_EARTHDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*1)+6, max=(lvl/5)+(mlvl*2.6)+16 |
+| **Area** | 3x3 Circle (9 tiles) |
+| **Cargas** | 4 |
+| **Distancia** | Sim (allowFarUse) |
+| **Bloqueio** | Não (passagem) |
+| **Target** | Não requerido |
+| **Level** | 28 (mid) |
+| **MLvl** | 4 |
+| **Padrão** | AoE escalonado + sem target |

@@ -1,0 +1,457 @@
+---
+title: "Spell/Rune - convince_creature.lua"
+description: "Runa que convence monstros em summons, com verificação de convencibilidade e limite de controle"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `convince_creature.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 12 |
+| **ID do Item (runeId)** | 3177 |
+| **Level Requerido** | 16 |
+| **Magic Level Requerido** | 5 |
+| **Grupo** | support |
+| **Cooldown** | 2s |
+| **Cargas** | 1 |
+| **Range** | Requer target |
+| **Linhas de Código** | 59 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Runa que convence monstros em summons controláveis. Valida se monstro é convencível, verifica limite de controle (máximo 2), calcula custo de mana dinâmico, e aplica flag de convencimento permanente.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/convince_creature.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(12)
+rune:runeId(3177)
+rune:level(16)
+rune:magicLevel(5)
+rune:needTarget(true)
+rune:group("support")
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Convencimento de Monstros com Validação Rigorosa**
+
+Esta runa implementa um **sistema de convencimento com múltiplas camadas de proteção**:
+
+1. **Validação de Criaturas:**
+   - Deve ser monstro (isMonster)
+   - Deve ser convencível (isConvinceable)
+   - Não pode ser summon de outro player
+
+2. **Validação de Flags:**
+   - Flag CanConvinceAll: bypass todas as verificações
+   - Flag HasInfiniteMana: isento de custo mana
+
+3. **Limite de Summons:**
+   - Máximo 2 (mesmo que animate_dead)
+   - Flag CanConvinceAll ignora this
+
+4. **Custo Dinâmico:**
+   - Cada monstro tem manaCost específico
+   - Validação antes de deduzir
+
+**Fluxo:**
+```
+Aponta runa em monstro
+├─ Valida tipo (é monstro?)
+├─ Valida convencibilidade
+├─ Valida master (se summon, rejeita)
+├─ Valida limite summons (< 2)
+├─ Calcula mana cost (dinâmico)
+├─ Valida mana disponível
+├─ Deduz mana
+└─ Define como summon
+```
+
+**Diferencial:** Sistema robusto para evitar abuso (muitos summons, mana infinita).
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `convince_creature` oferece convencimento controlado:
+
+- **Alvo:** Monstros convencíveis
+- **Limite:** Máximo 2 summons por jogador
+- **Custo:** Mana dinâmica por tipo de monstro
+- **Restrições:** Flags de permissão, PZ safety
+
+### Arquitetura
+
+Cascata de 5 validações → custo mana → summon assignment:
+
+```
+onCastSpell(creature, variant, isHotkey)
+├─ Validação 1: Alvo é monstro
+├─ Validação 2: Monstro é convencível OU flag CanConvinceAll
+├─ Validação 3: Monstro não é summon de outro player
+├─ Validação 4: < 2 summons (ou flag CanConvinceAll)
+├─ Validação 5: Mana suficiente (ou flag HasInfiniteMana)
+├─ Deduz mana
+├─ Assign summon
+└─ Efeito MAGIC_BLUE
+```
+
+### Fluxo Lógico Resumido
+
+| Etapa | Tipo | Resultado |
+|---|---|---|
+| **Pega Target** | Validação | Monster ou nil |
+| **Valida Tipo** | Validação | isMonster() |
+| **Valida Convencível** | Validação | isConvinceable() |
+| **Valida Master** | Validação | Não é summon/owned |
+| **Valida Limit** | Validação | getSummons() < 2 |
+| **Calcula Mana** | Cálculo | getManaCost() do type |
+| **Valida Mana** | Validação | getMana() >= cost |
+| **Deduz Mana** | Ação | addMana(-cost), addManaSpent |
+| **Assign Summon** | Ação | setSummon(target) |
+| **Efeito** | Feedback | MAGIC_BLUE sucesso, POFF falha |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, variant, isHotkey)
+	local target = Creature(variant:getNumber())
+	if not target or not target:isMonster() then
+		creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local monsterType = target:getType()
+	if not creature:hasFlag(PlayerFlag_CanConvinceAll) then
+		if not monsterType:isConvinceable() or (target:getMaster() and target:getMaster():getName():lower() ~= "a carved stone tile") then
+			creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+			creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+			return false
+		end
+
+		if #creature:getSummons() >= 2 then
+			creature:sendCancelMessage("You cannot control more creatures.")
+			creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+			return false
+		end
+	end
+
+	local manaCost = target:getType():getManaCost()
+	if creature:getMana() < manaCost and not creature:hasFlag(PlayerFlag_HasInfiniteMana) then
+		creature:sendCancelMessage(RETURNVALUE_NOTENOUGHMANA)
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	creature:addMana(-manaCost)
+	creature:addManaSpent(manaCost)
+	creature:setSummon(target)
+	creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+	return true
+end
+```
+
+**Propósito:** Handler principal da runa ao conjuração.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Jogador conjurando a runa |
+| `variant` | Variant | Alvo (monster ID) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Monstro convencido, summon added |
+| `false` | Validação falhou |
+
+**Fluxo Detalhado:**
+
+1. **Converte Target:** `Creature(variant:getNumber())`
+   - Extrai creature ID do variant
+   - Busca criatura no servidor
+
+2. **Validação 1 - Tipo:**
+   ```lua
+   if not target or not target:isMonster() then
+       -- Falha: não é monstro
+   end
+   ```
+   - Target deve existir
+   - Target deve ser monstro (não player, NPC, summon)
+
+3. **Pega MonsterType:** `target:getType()`
+   - Acessa propriedades estáticas do tipo
+
+4. **Validação 2 - Convencibilidade (sem flag CanConvinceAll):**
+   ```lua
+   if not creature:hasFlag(PlayerFlag_CanConvinceAll) then
+       if not monsterType:isConvinceable() or (target:getMaster() ...) then
+           -- Falha
+       end
+   end
+   ```
+   - Se flag CanConvinceAll: bypass tudo
+   - Senão:
+     - Monstro deve ser convencível (isConvinceable)
+     - Monstro não pode ter master (summon próprio/alheio)
+     - Exception: master "a carved stone tile" é permitido (fake death)
+
+5. **Validação 3 - Limite de Summons:**
+   ```lua
+   if #creature:getSummons() >= 2 then
+       -- Falha: já tem 2 summons
+   end
+   ```
+   - Máximo 2 summons
+   - Flag CanConvinceAll ignora this
+
+6. **Cálculo Mana:**
+   ```lua
+   local manaCost = target:getType():getManaCost()
+   ```
+   - Cada tipo de monstro tem custo diferente
+   - Dinâmico por tipo
+
+7. **Validação 4 - Mana:**
+   ```lua
+   if creature:getMana() < manaCost and not creature:hasFlag(PlayerFlag_HasInfiniteMana) then
+       -- Falha: mana insuficiente
+   end
+   ```
+   - Flag HasInfiniteMana: bypass
+   - Senão: validate mana >= cost
+
+8. **Deduz Mana:**
+   ```lua
+   creature:addMana(-manaCost)
+   creature:addManaSpent(manaCost)
+   ```
+   - Reduz mana atual
+   - Incrementa mana gasta (para stats)
+
+9. **Assign Summon:**
+   ```lua
+   creature:setSummon(target)
+   ```
+   - Define creature como master do target
+   - Target agora obedece ordens
+
+10. **Efeito Sucesso:**
+    ```lua
+    creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+    return true
+    ```
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `target` | Creature | Função | Monstro a convidar |
+| `monsterType` | MonsterType | Função | Tipo do monstro |
+| `manaCost` | number | Função | Custo mana dinâmico |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Cascata de Validações
+
+```lua
+if not target or not target:isMonster() then
+	-- Early return
+end
+
+if not creature:hasFlag(PlayerFlag_CanConvinceAll) then
+	if not monsterType:isConvinceable() or ... then
+		-- Falha
+	end
+end
+
+if #creature:getSummons() >= 2 then
+	-- Falha
+end
+
+if creature:getMana() < manaCost and not creature:hasFlag(...) then
+	-- Falha
+end
+```
+
+**Benefício:** Múltiplas camadas de validação com early returns.
+
+### Padrão 2: Flag Bypass
+
+```lua
+if not creature:hasFlag(PlayerFlag_CanConvinceAll) then
+	-- Validação detalhada
+end
+
+if creature:getMana() < manaCost and not creature:hasFlag(PlayerFlag_HasInfiniteMana) then
+	-- Validação com bypass
+end
+```
+
+**Benefício:** Admin/staff podem usar flags para bypass específico.
+
+### Padrão 3: Custo Dinâmico
+
+```lua
+local manaCost = target:getType():getManaCost()
+```
+
+**Benefício:** Cada monstro pode ter custo diferente (balanceamento).
+
+### Padrão 4: Dedução com Tracking
+
+```lua
+creature:addMana(-manaCost)
+creature:addManaSpent(manaCost)
+```
+
+**Benefício:** Tracking de mana gasta para estatísticas.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, variant, isHotkey)
+
+**Descrição:** Convence monstro em summon controlável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `variant` | Variant | Monstro target (ID) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Monstro convencido, summon adicionado |
+| `false` | Falha (tipo, convencibilidade, limit, mana) |
+
+**Validações:**
+- **Tipo:** Deve ser monstro (isMonster)
+- **Convencibilidade:** isConvinceable() ou flag CanConvinceAll
+- **Master:** Não pode ser summon alheio
+- **Limit:** < 2 summons (ou flag CanConvinceAll)
+- **Mana:** Suficiente ou flag HasInfiniteMana
+
+**Efeito:**
+- **Sucesso:** MAGIC_BLUE, monstro agora segue ordens
+- **Falha:** POFF, mensagem de erro específica
+
+**Exemplo:**
+
+```lua
+-- Jogador aponta runa em goblin
+rune.onCastSpell(player, goblinVariant, false)
+// Valida: é monstro? Sim
+// Valida: convencível? Sim
+// Valida: < 2 summons? Sim
+// Calcula mana cost (ex: 100)
+// Deduz 100 mana
+// Goblin agora summon do player
+// Resultado: Goblin segue ordens, ataca inimigos do player
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Convencimento Normal
+
+```lua
+-- Mago nível 16, MLvl 5 aponta runa em troll
+// Valida convencibilidade
+// Troll é convencível, sem master
+// Mana cost 150, player tem 200
+// Mana deduzida, troll become summon
+// Resultado: Troll agora defende mago
+```
+
+### Caso 2: Limite de Summons
+
+```lua
+-- Mago já tem 2 summons (troll + goblin)
+// Tenta convicer 3º (orc)
+// Validação: #summons >= 2
+// Bloqueia com mensagem "cannot control more creatures"
+```
+
+### Caso 3: Mana Insuficiente
+
+```lua
+-- Mago tem 80 mana
+-- Tenta convicer monstro com custo 150
+// Validação: 80 < 150
+// Bloqueia com mensagem "not enough mana"
+```
+
+### Caso 4: Monstro Não-Convencível
+
+```lua
+-- Paladin aponta em boss immune
+// boss:isConvinceable() = false
+// Bloqueia, POFF effect
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Monster API:** Creature, MonsterType
+- **Flags:** PlayerFlag_CanConvinceAll, PlayerFlag_HasInfiniteMana
+- **Methods:** isMonster(), isConvinceable(), getManaCost(), getSummons()
+- **Summon System:** setSummon(), getMaster()
+- **Magic Effects:** CONST_ME_MAGIC_BLUE, CONST_ME_POFF
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Convence monstro em summon |
+| **Validações** | 4 camadas (tipo, convencibilidade, limit, mana) |
+| **Limite Summons** | 2 por jogador |
+| **Custo Mana** | Dinâmico por tipo monstro |
+| **Flags** | CanConvinceAll, HasInfiniteMana |
+| **Efeito Sucesso** | MAGIC_BLUE + monstro controlado |
+| **Efeito Falha** | POFF + mensagem específica |
+| **Padrão** | Cascata + flags + custo dinâmico |

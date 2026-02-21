@@ -1,0 +1,117 @@
+---
+title: Clean
+description: Comando GM para remover itens espalhados no chão do mapa
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `clean.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Limpar itens do mapa |
+| **Comando** | `/clean` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Não |
+| **Separador** | Espaço |
+| **Função Auxiliar** | `cleanMap()` (externa) |
+| **Retorno** | Quantidade de itens removidos |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/clean.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando simples que invoca função externa `cleanMap()` que remove do mapa todos os itens espalhados no chão. Função `cleanMap()` retorna quantidade de itens removidos para feedback ao GM. Mensagem inclui pluralização (item/items) baseada em contagem. Útil para manutenção de servidor, limpeza após eventos ou testes, remoção de spam de itens. Sem parâmetros de seleção, age globalmente em todo mapa.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `clean.lua` implementa um comando TalkAction (`/clean`) que permite gamemasters limpar todos os itens espalhados no chão do mapa. O sistema invoca função externa `cleanMap()` que realiza remoção completa, captura o total de itens removidos, e fornece feedback com mensagem pluralizada ("item" ou "items"). Comando simples sem parâmetros adicionais ou seleções granulares, atuando globalmente no servidor.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local clean = TalkAction("/clean")
+
+-- 2. Função Principal (onSay)
+function clean.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Executar limpeza global do mapa
+    local itemCount = cleanMap()
+    
+    -- Feedback condicional: pluralização baseada em contagem
+    if itemCount ~= 0 then
+        -- Verificar singular/plural
+        local plural = itemCount > 1 and "s" or ""
+        local message = "Cleaned " .. itemCount .. " item" .. plural .. " from the map."
+        
+        -- Enviar mensagem de administrador
+        player:sendTextMessage(MESSAGE_ADMINISTRATOR, message)
+    end
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+clean:separator(" ")
+clean:groupType("gamemaster")
+clean:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **clean.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/clean` é utilizado. Limpa itens do mapa inteiro.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavras do comando (`/clean`)
+- `param` (string): Parâmetros adicionais (não utilizado)
+
+**Fluxo de Execução:**
+1. Registra comando em log via `logCommand(player, words, param)`
+2. Executa limpeza: `itemCount = cleanMap()`
+   - Função externa que remove todos os itens do mapa
+   - Retorna quantidade de itens removidos (número inteiro)
+3. **Feedback Condicional:**
+   - Se `itemCount ~= 0`:
+     - Detecta pluralização: `plural = itemCount > 1 and "s" or ""`
+     - Monta mensagem: `"Cleaned X item[s] from the map."`
+     - Envia via `MESSAGE_ADMINISTRATOR`
+   - Se `itemCount == 0`:
+     - Nenhuma mensagem (nada para limpar)
+
+**Mensagens Geradas:**
+```
+Cleaned 1 item from the map.     -- singular
+Cleaned 5 items from the map.    -- plural
+```
+
+**Tipo de Mensagem:** `MESSAGE_ADMINISTRATOR` (aparece em cor de administrador)
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+### **cleanMap() [Função Externa]**
+
+**Descrição:** Função global que remove todos os itens do mapa (implementação externa não visível neste arquivo).
+
+**Retorno:** `number` - Quantidade de itens removidos
+
+**Escopo:** Global, definida em arquivo core do servidor
+
+---
+
+## 📌 Resumo
+
+O arquivo `clean.lua` é um comando GM simples para manutenção de servidor. Implementação direta que invoca `cleanMap()` e fornece feedback com pluralização automática. Útil para limpeza após eventos, testes, ou acúmulo inadvertido de itens no chão. Sem filtros ou seleção granular, age globalmente mantendo eficiência operacional do servidor.

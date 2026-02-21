@@ -1,0 +1,428 @@
+---
+title: send_first_items.lua
+description: CreatureEvent "SendFirstItems" que distribui primeiro set de items por vocation ao novo player.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="send_first_items.lua" icon="pencil">
+Listener de login que distribui items iniciais por vocation.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/player/send_first_items.lua`
+
+**Linhas:** 93 | **Event:** CreatureEvent "SendFirstItems" | **Tipo:** onLogin Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener que distribui items iniciais. Possui config table com 6 vocações (NONE, SORCERER, DRUID, PALADIN, KNIGHT, MONK), cada uma com items diretos e container items (dentro de backpack). Obtém targetVocation da config, valida primeiro login (lastLoginSaved == 0). Se sim: adiciona items diretos (equipment), cria backpack (2854), adiciona items dentro do backpack. Padrão simples de equip distribuition por vocation.
+
+### Estrutura de Funcionalidades
+
+```
+CONFIG: 6 vocations
+  ├─ VOCATION_NONE:
+  │   └─ container: rope, shovel
+  │
+  ├─ VOCATION_SORCERER:
+  │   ├─ items: spellbook, wand, robe, hat, legs, boots, scarf
+  │   └─ container: rope, shovel, 10x mana potion
+  │
+  ├─ VOCATION_DRUID:
+  │   ├─ items: spellbook, snakebite rod, robe, hat, legs, boots, scarf
+  │   └─ container: rope, shovel, 10x mana potion
+  │
+  ├─ VOCATION_PALADIN:
+  │   ├─ items: shield, spear, cloak, legs, boots, scarf, helmet
+  │   └─ container: rope, shovel, 10x health potion, bow, 50x arrows
+  │
+  ├─ VOCATION_KNIGHT:
+  │   ├─ items: shield, steel axe, armor, helmet, legs, boots, scarf
+  │   └─ container: jagged sword, mace, rope, shovel, 10x health potion
+  │
+  └─ VOCATION_MONK:
+      ├─ items: jo staff, armor, helmet, legs, boots, scarf
+      └─ container: shield, rope, shovel, 10x health potion
+
+EVENT: "SendFirstItems"
+  └─ onLogin(player)
+      ├─ targetVocation = config[vocationId]
+      ├─ Validação: targetVocation exists && firstLogin?
+      │   └─ NÃO → return true
+      │
+      ├─ if targetVocation.items:
+      │   └─ for each item: player:addItem(id, count)
+      │
+      ├─ backpack = player:addItem(2854) [backpack item ID]
+      │   └─ if not backpack: return true
+      │
+      ├─ if targetVocation.container && backpack:
+      │   └─ for each item: backpack:addItem(id, count)
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| config | table | Config de items por vocation |
+| sendFirstItems | CreatureEvent | Listener de login |
+
+### Config Structure
+
+```lua
+config = {
+	[VOCATION.ID] = {
+		items = { {itemId, count}, ... },      -- Equipamento direto
+		container = { {itemId, count}, ... }   -- Items dentro de backpack
+	}
+}
+```
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Player fazendo login |
+
+### Item IDs
+
+| ItemID | Nome | Tipo |
+|--------|------|------|
+| 2854 | Backpack | Container (8 slots) |
+| 3003 | Rope | Tool |
+| 3457 | Shovel | Tool |
+| 5710 | Light Shovel | Tool |
+| 3059 | Spellbook | Book |
+| 3074 | Wand of Vortex | Wand (Sorcerer) |
+| 3066 | Snakebite Rod | Rod (Druid) |
+| 7991 | Magician's Robe | Armor (Casters) |
+| 7992 | Mage Hat | Helmet (Casters) |
+| 3425 | Dwarven Shield | Shield |
+| 3277 | Spear | Weapon |
+| 3571 | Ranger's Cloak | Armor (Paladin) |
+| 8095 | Ranger Legs | Armor (Paladin) |
+| 3372 | Brass Legs | Armor (Knight/Monk) |
+| 3552 | Leather Boots | Armor |
+| 3572 | Scarf | Armor |
+| 7773 | Steel Axe | Weapon (Knight) |
+| 3359 | Brass Armor | Armor (Knight/Monk) |
+| 3354 | Brass Helmet | Helmet (Knight/Monk) |
+| 50171 | Jo Staff | Weapon (Monk) |
+| 7774 | Jagged Sword | Weapon (Knight container) |
+| 3327 | Daramanian Mace | Weapon (Knight container) |
+| 3350 | Bow | Weapon (Paladin container) |
+| 3447 | Arrow | Ammo (x50) |
+| 266 | Health Potion | Consumable |
+| 268 | Mana Potion | Consumable |
+| 3374 | Legion Helmet | Helmet (Paladin) |
+
+### Vocation Constants
+
+| Vocation | ID | Items | Container |
+|----------|----|----|-----------|
+| NONE | 0 | - | rope, shovel |
+| SORCERER | 1 | 7 items | 3 items |
+| DRUID | 2 | 7 items | 3 items |
+| PALADIN | 3 | 7 items | 5 items |
+| KNIGHT | 4 | 7 items | 5 items |
+| MONK | 5 | 6 items | 4 items |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local config = {
+	[VOCATION.ID.NONE] = {
+		container = {
+			{ 3003, 1 },     -- rope
+			{ 3457, 1 },     -- shovel
+		},
+	},
+
+	[VOCATION.ID.SORCERER] = {
+		items = {
+			{ 3059, 1 },     -- spellbook
+			{ 3074, 1 },     -- wand of vortex
+			{ 7991, 1 },     -- magician's robe
+			{ 7992, 1 },     -- mage hat
+			{ 3362, 1 },     -- studded legs
+			{ 3552, 1 },     -- leather boots
+			{ 3572, 1 },     -- scarf
+		},
+		container = {
+			{ 3003, 1 },     -- rope
+			{ 5710, 1 },     -- light shovel
+			{ 268, 10 },     -- mana potion (x10)
+		},
+	},
+
+	[VOCATION.ID.DRUID] = {
+		items = {
+			{ 3059, 1 },     -- spellbook
+			{ 3066, 1 },     -- snakebite rod
+			{ 7991, 1 },     -- magician's robe
+			{ 7992, 1 },     -- mage hat
+			{ 3362, 1 },     -- studded legs
+			{ 3552, 1 },     -- leather boots
+			{ 3572, 1 },     -- scarf
+		},
+		container = {
+			{ 3003, 1 },     -- rope
+			{ 5710, 1 },     -- light shovel
+			{ 268, 10 },     -- mana potion (x10)
+		},
+	},
+
+	[VOCATION.ID.PALADIN] = {
+		items = {
+			{ 3425, 1 },     -- dwarven shield
+			{ 3277, 1 },     -- spear
+			{ 3571, 1 },     -- ranger's cloak
+			{ 8095, 1 },     -- ranger legs
+			{ 3552, 1 },     -- leather boots
+			{ 3572, 1 },     -- scarf
+			{ 3374, 1 },     -- legion helmet
+		},
+		container = {
+			{ 3003, 1 },     -- rope
+			{ 5710, 1 },     -- light shovel
+			{ 266, 10 },     -- health potion (x10)
+			{ 3350, 1 },     -- bow
+			{ 3447, 50 },    -- arrows (x50)
+		},
+	},
+
+	[VOCATION.ID.KNIGHT] = {
+		items = {
+			{ 3425, 1 },     -- dwarven shield
+			{ 7773, 1 },     -- steel axe
+			{ 3359, 1 },     -- brass armor
+			{ 3354, 1 },     -- brass helmet
+			{ 3372, 1 },     -- brass legs
+			{ 3552, 1 },     -- leather boots
+			{ 3572, 1 },     -- scarf
+		},
+		container = {
+			{ 7774, 1 },     -- jagged sword
+			{ 3327, 1 },     -- daramanian mace
+			{ 3003, 1 },     -- rope
+			{ 5710, 1 },     -- light shovel
+			{ 266, 10 },     -- health potion (x10)
+		},
+	},
+
+	[VOCATION.ID.MONK] = {
+		items = {
+			{ 50171, 1 },    -- jo staff
+			{ 3359, 1 },     -- brass armor
+			{ 3354, 1 },     -- brass helmet
+			{ 3372, 1 },     -- brass legs
+			{ 3552, 1 },     -- leather boots
+			{ 3572, 1 },     -- scarf
+		},
+		container = {
+			{ 3425, 1 },     -- dwarven shield
+			{ 3003, 1 },     -- rope
+			{ 5710, 1 },     -- light shovel
+			{ 266, 10 },     -- health potion (x10)
+		},
+	},
+}
+
+local sendFirstItems = CreatureEvent("SendFirstItems")
+
+function sendFirstItems.onLogin(player)
+	-- Obter config para vocation
+	local targetVocation = config[player:getVocation():getId()]
+	
+	-- Validação: config exist && first login?
+	if not targetVocation or player:getLastLoginSaved() ~= 0 then
+		return true
+	end
+
+	-- Adicionar items diretos
+	if targetVocation.items then
+		for i = 1, #targetVocation.items do
+			player:addItem(
+				targetVocation.items[i][1],    -- itemId
+				targetVocation.items[i][2]     -- count
+			)
+		end
+	end
+
+	-- Criar backpack
+	local backpack = player:addItem(2854)
+	if not backpack then
+		return true
+	end
+
+	-- Adicionar items dentro do backpack
+	if targetVocation.container then
+		for i = 1, #targetVocation.container do
+			backpack:addItem(
+				targetVocation.container[i][1],   -- itemId
+				targetVocation.container[i][2]    -- count
+			)
+		end
+	end
+	return true
+end
+
+sendFirstItems:register()
+```
+
+### Árvore de Decisão
+
+```
+Player faz login (novo)
+  │
+  ├─ targetVocation = config[vocationId]
+  │   └─ Lookup na config
+  │
+  ├─ targetVocation exists && lastLoginSaved == 0?
+  │   ├─ NÃO → return true (skip, não é novo)
+  │   └─ SIM → Continua (é primeiro login)
+  │
+  ├─ ========== ADICIONAR ITEMS DIRETOS ==========
+  │  ├─ if targetVocation.items:
+  │  │   └─ for each {itemId, count}:
+  │  │       └─ player:addItem(itemId, count)
+  │  │           (equipamento direto)
+  │
+  ├─ ========== CRIAR BACKPACK ==========
+  │  ├─ backpack = player:addItem(2854)
+  │  │   └─ Cria backpack na inventory
+  │  │
+  │  └─ backpack exists?
+  │      ├─ NÃO → return true (erro)
+  │      └─ SIM → Continua
+  │
+  ├─ ========== ADICIONAR ITEMS NO BACKPACK ==========
+  │  └─ if targetVocation.container:
+  │      └─ for each {itemId, count}:
+  │          └─ backpack:addItem(itemId, count)
+  │              (items dentro do backpack)
+  │
+  └─ return true
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onLogin**: Callback disparado ao fazer login
+- **First Login Detection**: lastLoginSaved == 0
+- **Vocation Lookup**: config[vocationId] from global table
+- **Equipment Distribution**: addItem direto para player
+- **Container Items**: addItem dentro de backpack
+- **Backpack**: Item ID 2854, 8 slots
+- **Item Count**: `{itemId, count}` tuple pattern
+- **Conditional Items**: Vocations específicas com equipamento apropriado
+
+### Responsabilidades do Handler
+
+1. **Lookup**: targetVocation da config
+2. **Validate**: Vocation exists && first login?
+3. **Equipment**: Adicionar items diretos
+4. **Container**: Criar backpack
+5. **Check**: Backpack criado com sucesso?
+6. **Fill**: Adicionar items dentro do backpack
+7. **Return**: true (sucesso)
+
+---
+
+## Patterns e Implementação
+
+### Padrão First Login Detection
+
+Detectar novo player:
+
+```lua
+if not targetVocation or player:getLastLoginSaved() ~= 0 then
+	return true
+end
+```
+
+### Padrão Vocation-based Config Lookup
+
+Lookup por ID de vocation:
+
+```lua
+local targetVocation = config[player:getVocation():getId()]
+```
+
+### Padrão Item Distribution Loop
+
+Distribuir items por loop:
+
+```lua
+if targetVocation.items then
+	for i = 1, #targetVocation.items do
+		player:addItem(
+			targetVocation.items[i][1],    -- itemId
+			targetVocation.items[i][2]     -- count
+		)
+	end
+end
+```
+
+### Padrão Container with Items
+
+Backpack com items:
+
+```lua
+local backpack = player:addItem(2854)
+if not backpack then
+	return true
+end
+
+if targetVocation.container then
+	for i = 1, #targetVocation.container do
+		backpack:addItem(
+			targetVocation.container[i][1],
+			targetVocation.container[i][2]
+		)
+	end
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: send_first_items.lua" icon="star">
+Análise de listener de primeiro login item distribution. Demonstra vocation-based config lookup e container item handling.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: First login item distribution by vocation | Complexidade: Trivial-Média
+</Aside>

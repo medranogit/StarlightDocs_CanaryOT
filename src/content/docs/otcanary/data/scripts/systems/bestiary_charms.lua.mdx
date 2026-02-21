@@ -1,0 +1,349 @@
+---
+title: Bestiary Charms
+description: Sistema de charms do bestiary com 17 configurações de efeitos ofensivos, defensivos e passivos acionáveis em combate
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `bestiary_charms.lua` |
+| **Tipo de Sistema** | Configuração de charms (bestiary) |
+| **Total de Charms** | 17 (8 ofensivos, 5 defensivos, 4 passivos) |
+| **Estrutura Principal** | Tabela `charms` com índices numéricos (1-17) |
+| **Categorias** | CHARM_MAJOR, CHARM_MINOR |
+| **Tipos** | CHARM_OFFENSIVE, CHARM_DEFENSIVE, CHARM_PASSIVE |
+| **Pontos Format** | Tripla (nível 1, nível 2, nível 3) |
+| **Chance Format** | Tripla (nível 1%, nível 2%, nível 3%) |
+| **Damage Types** | Physical, Fire, Earth, Ice, Energy, Death, Holy |
+| **Mechanics** | Chance-based triggers em combate + efeitos visuais |
+
+## 📍 Caminho Original
+
+```
+data/scripts/systems/bestiary_charms.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este arquivo define apenas configurações de charms - não contém lógica de aplicação. Cada charm é uma entrada na tabela com propriedades que descrevem seu comportamento. Charms ofensivos causam dano (5% do HP inicial) quando triggerados. Charms defensivos protegem ou contram ataques. Passivos oferecem bônus permanentes. Os pontos representam custo de bestiary para ativar cada nível (1, 2 ou 3). A chance varia por nível do charm ativado. O format tripla permite balanceamento de progressão (custo vs efeito).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `bestiary_charms.lua` implementa sistema configurável de 17 charms do bestiary com efeitos ofensivos, defensivos e passivos aplicáveis em combate via probabilidade. É repositório de definições puro - não contém lógica de aplicação, apenas dados estruturados. Os charms variam desde ofensivos (Wound, Enflame, Poison, Freeze, Zap, Curse, Divine Wrath com dano 5% HP) passivos (Low Blow +8% crit, Bless -10% XP loss) e defensivos (Parry reflect, Dodge full dodge, Adrenaline Burst +speed, Numb paralyze, Cleanse immunity, Cripple paralyze enemy). A implementação utiliza tabela simples com campos padrão: name, description, category, type, chance (tripla por nível), points (tripla por nível), efeitos visuais. Padrão de 3 níveis de ativação com custo/benefício escalado.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Tabela Global de Charms
+local charms = {
+    -- Formato por entrada:
+    [ID] = {
+        name = "Nome do Charm",
+        description = "Descrição detalhada do efeito",
+        
+        -- Categorização
+        category = CHARM_MAJOR | CHARM_MINOR,
+        type = CHARM_OFFENSIVE | CHARM_DEFENSIVE | CHARM_PASSIVE,
+        
+        -- Campos ofensivos (se aplicável)
+        damageType = COMBAT_PHYSICALDAMAGE | COMBAT_FIREDAMAGE | ...,
+        percent = 5, -- % do HP inicial como dano
+        messageServerLog = true,
+        effect = CONST_ME_HITAREA, -- efeito visual
+        
+        -- Campos defensivos (se aplicável)
+        messageCancel = "Mensagem ao trigger",
+        effect = CONST_ME_EXPLOSIONAREA,
+        
+        -- Campos comuns
+        chance = { level1%, level2%, level3% },
+        points = { level1_cost, level2_cost, level3_cost },
+    },
+}
+
+-- 2. Definições de 17 Charms
+-- 2.1 Ofensivos: Wound, Enflame, Poison, Freeze, Zap, Curse, Divine Wrath
+-- 2.2 Defensivos: Cripple, Parry, Dodge, Adrenaline Burst, Numb, Cleanse
+-- 2.3 Passivos: Bless, Scavenge, Gut, Low Blow
+```
+
+## 📊 Estrutura de Campos
+
+| Campo | Tipo | Descrição | Exemplos |
+|---|---|---|---|
+| `name` | string | Nome do charm | "Wound", "Dodge" |
+| `description` | string | Descrição longa do efeito | "Triggers on a creature..." |
+| `category` | constant | CHARM_MAJOR ou CHARM_MINOR | CHARM_MAJOR (mais caro) |
+| `type` | constant | Tipo de charm (role) | CHARM_OFFENSIVE, CHARM_DEFENSIVE, CHARM_PASSIVE |
+| `damageType` | constant | Tipo de dano (ofensivos) | COMBAT_PHYSICALDAMAGE, COMBAT_FIREDAMAGE, etc |
+| `percent` | number | % do HP inicial como dano | 5 |
+| `chance` | table(3) | Chance por nível (%) | `{ 5, 10, 11 }` |
+| `points` | table(3) | Custo bestiary por nível | `{ 240, 360, 1200 }` |
+| `messageServerLog` | boolean | Log no servidor | true |
+| `messageCancel` | string | Mensagem ao trigger | "You parried an attack..." |
+| `effect` | constant | Efeito visual | CONST_ME_HITAREA, CONST_ME_POFF |
+
+## 🎯 Catálogo de Charms
+
+### Charms Ofensivos (8 total)
+
+| ID | Nome | Tipo Dano | Chance (%) | Points (L1/L2/L3) | Efeito Visual |
+|---|---|---|---|---|---|
+| 1 | Wound | Physical | 5/10/11 | 240/360/1200 | HITAREA |
+| 2 | Enflame | Fire | 5/10/11 | 400/600/2000 | HITBYFIRE |
+| 3 | Poison | Earth | 5/10/11 | 240/360/1200 | GREEN_RINGS |
+| 4 | Freeze | Ice | 5/10/11 | 320/480/1600 | ICEATTACK |
+| 5 | Zap | Energy | 5/10/11 | 320/480/1600 | ENERGYHIT |
+| 6 | Curse | Death | 5/10/11 | 360/540/1800 | SMALLCLOUDS |
+| 17 | Divine Wrath | Holy | 5/10/11 | 600/900/3000 | HOLYDAMAGE |
+
+**Mecânica Ofensiva:**
+- Triggerada quando caster ataca creature
+- Causa 5% do HP inicial como dano do tipo específico
+- Efeito visual única vez por trigger
+
+### Charms Defensivos (5 total)
+
+| ID | Nome | Efeito | Chance (%) | Points (L1/L2/L3) |
+|---|---|---|---|---|
+| 7 | Cripple | Paralyza inimigo 10s | 6/9/12 | 100/150/225 |
+| 8 | Parry | Reflete dano 100% | 5/10/11 | 400/600/2000 |
+| 9 | Dodge | Evita 100% do dano | 5/10/11 | 240/360/1200 |
+| 10 | Adrenaline Burst | Speed +X por 10s | 6/9/12 | 100/150/225 |
+| 11 | Numb | Paralyza inimigo 10s | 6/9/12 | 100/150/225 |
+| 12 | Cleanse | Remove 1 debuff | 6/9/12 | 100/150/225 |
+
+**Mecânica Defensiva:**
+- Triggerada quando caster recebe dano
+- Oferece proteção ou contrapeso imediato
+- Duração fixa (10s para paralyze/speed)
+
+### Charms Passivos (4 total)
+
+| ID | Nome | Efeito | Chance (%) | Points (L1/L2/L3) |
+|---|---|---|---|---|
+| 13 | Bless | Reduz XP loss 10% | 6/9/12 | 100/150/225 |
+| 14 | Scavenge | +% chance skin/dust | 60/90/120 | 100/150/225 |
+| 15 | Gut | +20% creature products | 6/9/12 | 100/150/225 |
+| 16 | Low Blow | +8% critical hit chance | 4/8/9 | 800/1200/4000 |
+
+**Mecânica Passiva:**
+- Aplicado continuamente sem trigger
+- Bônus permanente enquanto charm ativo
+- Não requer chance de sucesso
+
+## 🤖 Documentação das Definições
+
+### Charm 1: Wound (Ofensivo)
+
+**Descrição:** Triggers on a creature with a certain chance and deals 5% of its initial hit points as physical damage once.
+
+**Configuração:**
+- **Category**: CHARM_MAJOR
+- **Type**: CHARM_OFFENSIVE
+- **Damage Type**: COMBAT_PHYSICALDAMAGE
+- **Percent**: 5
+- **Chance**: 5% (L1), 10% (L2), 11% (L3)
+- **Points**: 240 (L1), 360 (L2), 1200 (L3)
+- **Effect**: CONST_ME_HITAREA
+- **Server Log**: true
+
+---
+
+### Charm 2: Enflame (Ofensivo)
+
+**Descrição:** Triggers on a creature with a certain chance and deals 5% of its initial hit points as fire damage once.
+
+**Configuração:**
+- **Category**: CHARM_MAJOR
+- **Type**: CHARM_OFFENSIVE
+- **Damage Type**: COMBAT_FIREDAMAGE
+- **Percent**: 5
+- **Chance**: 5% (L1), 10% (L2), 11% (L3)
+- **Points**: 400 (L1), 600 (L2), 2000 (L3)
+- **Effect**: CONST_ME_HITBYFIRE
+- **Server Log**: true
+
+---
+
+### Charm 3: Poison (Ofensivo)
+
+**Descrição:** Triggers on a creature with a certain chance and deals 5% of its initial hit points as earth damage once.
+
+**Configuração:**
+- **Category**: CHARM_MAJOR
+- **Type**: CHARM_OFFENSIVE
+- **Damage Type**: COMBAT_EARTHDAMAGE
+- **Points**: 240 (L1), 360 (L2), 1200 (L3)
+- **Effect**: CONST_ME_GREEN_RINGS
+
+---
+
+### Charm 4-6: Freeze, Zap, Curse (Ofensivos)
+
+Mesmo padrão que Wound/Enflame/Poison mas com tipos de dano diferentes (Ice, Energy, Death) e custos variados.
+
+---
+
+### Charm 7: Cripple (Defensivo-Ofensivo)
+
+**Descrição:** Cripples the creature with a certain chance and paralyzes it for 10 seconds.
+
+**Configuração:**
+- **Category**: CHARM_MINOR
+- **Type**: CHARM_OFFENSIVE (na verdade defensivo - triggerado quando player é atacado)
+- **Chance**: 6% (L1), 9% (L2), 12% (L3)
+- **Points**: 100 (L1), 150 (L2), 225 (L3)
+- **Message**: "You crippled a monster. (cripple charm)"
+- **Duration**: 10 segundos (paralyze)
+
+---
+
+### Charm 8: Parry (Defensivo)
+
+**Descrição:** Any damage taken is reflected to the aggressor with a certain chance.
+
+**Configuração:**
+- **Category**: CHARM_MAJOR
+- **Type**: CHARM_DEFENSIVE
+- **Chance**: 5% (L1), 10% (L2), 11% (L3)
+- **Points**: 400 (L1), 600 (L2), 2000 (L3)
+- **Message**: "You parried an attack. (parry charm)"
+- **Effect**: CONST_ME_EXPLOSIONAREA
+- **Reflections**: 100% do dano recebido
+
+---
+
+### Charm 9: Dodge (Defensivo)
+
+**Descrição:** Dodges an attack with a certain chance without taking any damage at all.
+
+**Configuração:**
+- **Category**: CHARM_MAJOR
+- **Type**: CHARM_DEFENSIVE
+- **Chance**: 5% (L1), 10% (L2), 11% (L3)
+- **Points**: 240 (L1), 360 (L2), 1200 (L3)
+- **Message**: "You dodged an attack. (dodge charm)"
+- **Effect**: CONST_ME_POFF
+- **Damage Reduction**: 100% (evita completamente)
+
+---
+
+### Charm 10: Adrenaline Burst (Defensivo)
+
+**Descrição:** Bursts of adrenaline enhance your reflexes with a certain chance after you get hit and let you move faster for 10 seconds.
+
+**Configuração:**
+- **Category**: CHARM_MINOR
+- **Type**: CHARM_DEFENSIVE
+- **Chance**: 6% (L1), 9% (L2), 12% (L3)
+- **Points**: 100 (L1), 150 (L2), 225 (L3)
+- **Message**: "Your movements where bursted. (adrenaline burst charm)"
+- **Duration**: 10 segundos
+- **Effect**: Speed boost (magnitude não especificada na config)
+
+---
+
+### Charm 11: Numb (Defensivo)
+
+**Descrição:** Numbs the creature with a certain chance after its attack and paralyzes the creature for 10 seconds.
+
+**Configuração:**
+- **Category**: CHARM_MINOR
+- **Type**: CHARM_DEFENSIVE
+- **Chance**: 6% (L1), 9% (L2), 12% (L3)
+- **Points**: 100 (L1), 150 (L2), 225 (L3)
+- **Message**: "You numbed a monster. (numb charm)"
+- **Duration**: 10 segundos
+
+---
+
+### Charm 12: Cleanse (Defensivo)
+
+**Descrição:** Cleanses you from within with a certain chance after you get hit and removes one random active negative status effect and temporarily makes you immune against it.
+
+**Configuração:**
+- **Category**: CHARM_MINOR
+- **Type**: CHARM_DEFENSIVE
+- **Chance**: 6% (L1), 9% (L2), 12% (L3)
+- **Points**: 100 (L1), 150 (L2), 225 (L3)
+- **Message**: "You purified an attack. (cleanse charm)"
+- **Effect**: Remove 1 debuff aleatório + imunidade temporária
+
+---
+
+### Charm 13: Bless (Passivo)
+
+**Descrição:** Blesses you and reduces skill and xp loss by 10% when killed by the chosen creature.
+
+**Configuração:**
+- **Category**: CHARM_MINOR
+- **Type**: CHARM_PASSIVE
+- **Percent**: 10 (redução de loss)
+- **Chance**: 6% (L1), 9% (L2), 12% (L3)
+- **Points**: 100 (L1), 150 (L2), 225 (L3)
+- **Triggered**: Sempre ativo contra creature específica
+
+---
+
+### Charm 14: Scavenge (Passivo)
+
+**Descrição:** Enhances your chances to successfully skin/dust a skinnable/dustable creature.
+
+**Configuração:**
+- **Category**: CHARM_MINOR
+- **Type**: CHARM_PASSIVE
+- **Chance**: 60% (L1), 90% (L2), 120% (L3)
+- **Points**: 100 (L1), 150 (L2), 225 (L3)
+- **Mechanic**: Bonus chance em extração de recursos
+
+---
+
+### Charm 15: Gut (Passivo)
+
+**Descrição:** Gutting the creature yields 20% more creature products.
+
+**Configuração:**
+- **Category**: CHARM_MINOR
+- **Type**: CHARM_PASSIVE
+- **Percent**: 20 (bônus em produtos)
+- **Chance**: 6% (L1), 9% (L2), 12% (L3)
+- **Points**: 100 (L1), 150 (L2), 225 (L3)
+
+---
+
+### Charm 16: Low Blow (Passivo)
+
+**Descrição:** Adds 8% critical hit chance to attacks with critical hit weapons.
+
+**Configuração:**
+- **Category**: CHARM_MAJOR
+- **Type**: CHARM_PASSIVE
+- **Chance**: 4% (L1), 8% (L2), 9% (L3)
+- **Points**: 800 (L1), 1200 (L2), 4000 (L3) - Mais caro que MINOR
+- **Effect**: +8% crit chance (passivo)
+
+---
+
+### Charm 17: Divine Wrath (Ofensivo)
+
+**Descrição:** Triggers on a creature with a certain chance and deals 5% of its initial hit points as holy damage once.
+
+**Configuração:**
+- **Category**: CHARM_MAJOR
+- **Type**: CHARM_OFFENSIVE
+- **Damage Type**: COMBAT_HOLYDAMAGE
+- **Percent**: 5
+- **Chance**: 5% (L1), 10% (L2), 11% (L3)
+- **Points**: 600 (L1), 900 (L2), 3000 (L3)
+- **Effect**: CONST_ME_HOLYDAMAGE
+- **Server Log**: true
+
+## 📌 Resumo
+
+**Bestiary Charms** é sistema de configuração puro com 17 charms distintos divididos em 3 tipos: (1) Ofensivos (8 charms causando 5% HP dano + efeito visual), (2) Defensivos (5 charms protegendo/contrapesando ataques com paralyze/dodge/reflect), (3) Passivos (4 charms oferecendo bônus permanentes como +crit, +loot, -XP loss). Cada charm tem 3 níveis de ativação (L1/L2/L3) com custo de bestiary points e chance de trigger escalada. Category CHARM_MAJOR é mais caro que CHARM_MINOR. Charms ofensivos têm danos variados (Physical, Fire, Earth, Ice, Energy, Death, Holy) todos a 5% HP inicial. Defensivos oferecem proteção variada com duração de 10 segundos em combate. Passivos aplicam continuamente sem trigger.
+
+A implementação segue padrão de tabela de configuração puro, diferenciando-se por: (1) 17 charms distintos, (2) tripla de níveis com escalagem de custo/benefício, (3) 8 tipos de dano ofensivo, (4) 6 defensivos únicos, (5) 4 passivos escalados.

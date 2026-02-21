@@ -1,0 +1,178 @@
+---
+title: Server Save
+description: Comando GOD para salvar servidor inmediatamente ou agendado
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | save.lua |
+| **Tipo de Sistema** | Server Save Management (GOD) |
+| **Funcionalidade Principal** | Salvar servidor |
+| **Comando** | /save |
+| **Requisito** | Acesso de God |
+| **Separador** | Espaço |
+| **Modo** | Imediato ou agendado |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/save.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /save sem param: save imediato (saveServer, SaveHirelings). /save `<minutos>`: agenda save em N minutos via addEvent com delay em ms (minutos * 60 * 1000). Usa savingEvent global para rastrear. stopEvent() cancela anterior se existir.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo save.lua implementa comando versátil de server save. Dispõe de save imediato ou agendado via delay em minutos, suporta cancelamento de save anterior, chama saveServer() e SaveHirelings(). Ferramenta essencial de server persistence.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Variáveis Locais**
+
+```lua
+local savingEvent = 0    -- Rastreia evento agendado (0 = nenhum)
+```
+
+---
+
+### **TalkAction /save**
+
+```lua
+local save = TalkAction("/save")
+
+function save.onSay(player, words, param)
+	-- create log
+	logCommand(player, words, param)
+
+	if isNumber(param) then
+		-- Modo agendado: param = minutos
+		stopEvent(savingEvent)                          -- Cancela anterior
+		local delay = tonumber(param) * 60 * 1000      -- Converte para ms
+		savingEvent = addEvent(function()
+			saveServer()                                -- Salva servidor
+			SaveHirelings()                             -- Salva hirelings
+		end, delay, delay)
+	else
+		-- Modo imediato: sem param ou param inválido
+		saveServer()
+		SaveHirelings()
+		player:sendTextMessage(MESSAGE_ADMINISTRATOR, "Server has been saved.")
+	end
+	return true
+end
+
+save:separator(" ")
+save:groupType("god")
+save:register()
+```
+
+**Comando:**
+```
+/save                       -- Save imediato
+/save 5                     -- Agenda save em 5 minutos
+/save 30                    -- Agenda save em 30 minutos
+```
+
+## **Modos de Operação**
+
+### **Save Imediato (sem parâmetro)**
+
+```
+/save
+
+Fluxo:
+1. Valida isNumber(param) = false
+2. Chama saveServer()
+3. Chama SaveHirelings()
+4. Feedback: "Server has been saved."
+
+Resultado:
+- Servidor salvo imediatamente
+- Dados de hirelings salvos
+- Mensagem de confirmação ao GM
+```
+
+---
+
+### **Save Agendado (com delay em minutos)**
+
+```
+/save 10
+
+Fluxo:
+1. Valida isNumber(param) = true
+2. stopEvent(savingEvent) - cancela save anterior
+3. Calcula delay: 10 * 60 * 1000 = 600.000 ms
+4. addEvent() agenda save em 600s (10 minutos)
+5. savingEvent armazena evento ID
+6. Após 10 minutos:
+   - saveServer()
+   - SaveHirelings()
+
+Resultado:
+- Save agendado para 10 minutos
+- Se /save é chamado novamente:
+  - Save anterior cancelado
+  - Novo delay criado
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /save
+
+Resultado:
+- Servidor salvo imediatamente
+- Feedback: "Server has been saved."
+
+---
+
+GM: /save 5
+
+Resultado:
+- Save agendado para 5 minutos
+- Sem feedback visual
+- Após 5 minutos: saveServer() + SaveHirelings()
+
+---
+
+GM: /save 30
+GM: /save 10  (chamado após 2 minutos)
+
+Resultado:
+- Save de 30 minutos cancelado
+- Novo save agendado em 10 minutos
+- Anterior perdido
+```
+
+---
+
+**Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `isNumber(str)` | Valida número |
+| `tonumber(str)` | Converte número |
+| `stopEvent(eventId)` | Cancela evento |
+| `addEvent(func, delay, interval)` | Agenda evento |
+| `saveServer()` | Salva servidor |
+| `SaveHirelings()` | Salva hirelings |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+
+**Constantes:**
+- `MESSAGE_ADMINISTRATOR`
+
+---
+
+## 📌 Resumo
+
+O arquivo save.lua é ferramenta simples de server save management. Implementação com save imediato/agendado, cancelamento automático de anterior, logging. Essencial para GMs persistir dados. Design minimalista focado em acessibilidade.

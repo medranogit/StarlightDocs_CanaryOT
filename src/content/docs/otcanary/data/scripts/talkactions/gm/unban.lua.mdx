@@ -1,0 +1,223 @@
+---
+title: Unban
+description: Comando GM para remover banimento de conta e IP de um jogador
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `unban.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Desbanir conta e IP |
+| **Comando** | `/unban <playername>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Nome do jogador |
+| **Separador** | Espaço |
+| **Banco de Dados** | Tabelas `account_bans`, `ip_bans` |
+| **Integração** | Webhook Discord + Logging |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/unban.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que desbanir via remoção de banco de dados. Query busca jogador por nome, extrai `account_id` e `lastip`, execs async DELETE em ambas tabelas de ban (account_bans e ip_bans). Free resultId logo após. Webhook auditoria + logger.info. Uso de async query para não bloquear. Silenciosamente ignora jogadores não encontrados (resultId == false retorna sem ação).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `unban.lua` implementa um comando TalkAction (`/unban`) que remove banimentos de conta e IP no banco de dados. O sistema busca jogador por nome, extrai `account_id` e último IP, executa async DELETE em tabelas `account_bans` e `ip_bans`, envia webhook Discord para auditoria, e registra em logs. Ferramenta completa de desbaneito com rastreamento.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local unban = TalkAction("/unban")
+
+-- 2. Função Principal (onSay)
+function unban.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Buscar jogador e extrair dados
+    local resultId = db.storeQuery(
+        "SELECT `account_id`, `lastip` FROM `players` " ..
+        "WHERE `name` = " .. db.escapeString(param)
+    )
+    
+    -- Validação: jogador não encontrado
+    if resultId == false then
+        return true  -- Silencioso
+    end
+    
+    -- Extrair account_id e IP
+    local accountId = Result.getNumber(resultId, "account_id")
+    local lastIp = Result.getNumber(resultId, "lastip")
+    
+    -- Executar bans removals (async para não bloquear)
+    db.asyncQuery(
+        "DELETE FROM `account_bans` WHERE `account_id` = " .. accountId
+    )
+    db.asyncQuery(
+        "DELETE FROM `ip_bans` WHERE `ip` = " .. lastIp
+    )
+    
+    -- Liberar recurso de query
+    Result.free(resultId)
+    
+    -- Construir mensagem
+    local text = param .. " has been unbanned."
+    
+    -- Enviar mensagem ao GM
+    player:sendTextMessage(MESSAGE_ADMINISTRATOR, text)
+    
+    -- Webhook para auditoria
+    Webhook.sendMessage(
+        "Player Unbanned",
+        text .. " (by: " .. player:getName() .. ")",
+        WEBHOOK_COLOR_YELLOW,
+        announcementChannels["serverAnnouncements"]
+    )
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+unban:separator(" ")
+unban:groupType("gamemaster")
+unban:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **unban.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/unban` é utilizado. Remove banimentos de conta e IP do banco de dados.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando (GM)
+- `words` (string): Palavras do comando (`/unban`)
+- `param` (string): **[OBRIGATÓRIO]** Nome do jogador a desbanir
+
+**Formato de Comando:**
+```
+/unban PlayerName              -- Desbanir jogador
+/unban ViniPlus               -- Outro jogador
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Query de Busca:**
+   ```sql
+   SELECT `account_id`, `lastip` FROM `players` 
+   WHERE `name` = 'PlayerName'
+   ```
+   - Busca jogador por nome exato
+   - Obtém account_id e Last login IP
+
+4. **Validação de Resultado:**
+   ```lua
+   if resultId == false then
+       return true  -- Silencioso se não encontrado
+   end
+   ```
+
+5. **Extração de Dados:**
+   ```lua
+   local accountId = Result.getNumber(resultId, "account_id")
+   local lastIp = Result.getNumber(resultId, "lastip")
+   ```
+
+6. **Remoção de Banimentos (Async):**
+   ```lua
+   db.asyncQuery("DELETE FROM `account_bans` WHERE `account_id` = " .. accountId)
+   db.asyncQuery("DELETE FROM `ip_bans` WHERE `ip` = " .. lastIp)
+   ```
+   - Async para não bloquear thread principal
+   - Primeira query: remove ban de conta
+   - Segunda query: remove ban de IP
+
+7. **Limpeza de Recurso:**
+   ```lua
+   Result.free(resultId)
+   ```
+
+8. **Auditoria:**
+   - Mensagem ao GM: "PlayerName has been unbanned."
+   - Webhook Discord: auditoria com quem desbaniu
+
+**Exemplo de Execução:**
+
+```
+GM: /unban TestPlayer
+
+Resultado:
+- Query SELECT busca TestPlayer
+- Obtém account_id = 123, lastip = 192168001100
+- Async DELETE FROM account_bans WHERE account_id = 123
+- Async DELETE FROM ip_bans WHERE ip = 192168001100
+- Result.free()
+- GM vê: "TestPlayer has been unbanned."
+- Discord: "Player Unbanned - TestPlayer has been unbanned. (by: GMName)"
+```
+
+**Estrutura de Banco de Dados:**
+
+**Tabela `account_bans`:**
+```sql
+account_id  INT
+reason      VARCHAR
+banned_at   INT
+expires_at  INT
+banned_by   INT
+```
+
+**Tabela `ip_bans`:**
+```sql
+ip          INT
+reason      VARCHAR
+banned_at   INT
+expires_at  INT
+banned_by   INT
+```
+
+**Fluxo de Remoção:**
+1. Encontra account_id associado ao nome
+2. Encontra último IP do jogador
+3. Deleta todas as linhas em account_bans com esse account_id
+4. Deleta todas as linhas em ip_bans com esse IP
+
+---
+
+### **Funções de Banco de Dados Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `db.storeQuery(sql)` | Executa SELECT, retorna ID de resultado |
+| `Result.getNumber(id, field)` | Obtém número de célula |
+| `Result.free(id)` | Libera recursos de query |
+| `db.asyncQuery(sql)` | Executa INSERT/UPDATE/DELETE assincronamente |
+| `db.escapeString(str)` | Escapa string para SQL (previne injection) |
+
+---
+
+## 📌 Resumo
+
+O arquivo `unban.lua` é ferramenta de remediação de banimentos. Implementação que realiza dupla remoção (conta e IP), usa async queries para não bloquear, fornece auditoria completa, e trata silenciosamente jogadores não encontrados. Essencial para GMs remover banimentos do banco de dados quando erros ocorrem ou apelações são aceitas. Design robusto com limpeza de recursos appropriada.

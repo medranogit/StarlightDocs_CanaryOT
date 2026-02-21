@@ -1,0 +1,221 @@
+---
+title: Position
+description: Comando GM para teleportar para posição específica com validação de tile e efeitos visuais
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `position.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Teleportar para posição |
+| **Comando** | `/pos [posição]` ou `!pos [posição]` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Opcional** | Posição (vazio = mostrar atual) |
+| **Separador** | Espaço |
+| **Formatos Aceitos** | 3 formatos diferentes |
+| **Validação** | Tile + Ghost-aware |
+| **Efeito** | CONST_ME_TELEPORT se não-ghost |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/position.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando versátil que suporta 2 triggers (`/pos` e `!pos`) e 3 formatos de posição. Se param vazio: exibe posição atual formatada. Se param fornecido: converte via `param:toPosition()` (parse automático de 3 formatos), valida tile com `Tile(position)`, e teleporta com efeito TELEPORT se não-ghost. Mensagens detalhadas explicam cada formato aceito. Robusto com validações em múltiplos níveis.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `position.lua` implementa um comando TalkAction (`/pos` | `!pos`) que permite teleportação para posição específica com múltiplos formatos. O sistema suporta modo de consulta (sem param = exibir posição atual) e modo de teleportação (com validação de formato via `toPosition()`, validação de tile existente, e efeito visual se não-ghost). Três formatos diferentes aceitos com mensagens de erro educativas.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction (suporta 2 triggers)
+local position = TalkAction("/pos", "!pos")
+
+-- 2. Função Principal (onSay)
+function position.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Modo 1: Consultar posição atual (param vazio)
+    if param == "" then
+        local pos = player:getPosition()
+        -- Exibir posição formatada
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            "Your current position is: " .. pos.x .. ", " .. pos.y .. ", " .. pos.z .. ".")
+        return
+    end
+    
+    -- Modo 2: Teleportar para posição (param fornecido)
+    
+    -- Converter parâmetro para Position
+    local teleportPosition = param:toPosition()
+    
+    -- Validação 1: Parse bem-sucedido
+    if not teleportPosition then
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            "Invalid position format. Use one of the following formats: \n" ..
+            "/pos {x = ..., y = ..., z = ...}\n" ..
+            "/pos Position(..., ..., ...)\n" ..
+            "/pos x, y, z.")
+        return
+    end
+    
+    -- Validação 2: Tile válido (posição existe no mapa)
+    local tile = Tile(teleportPosition)
+    if not tile then
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            "Invalid tile or position. Send a valid position.")
+        return
+    end
+    
+    -- Teleportar
+    player:teleportTo(teleportPosition)
+    
+    -- Efeito visual (skipado se em ghost mode)
+    if not player:isInGhostMode() then
+        teleportPosition:sendMagicEffect(CONST_ME_TELEPORT)
+    end
+end
+
+-- 3. Configuração de Registro
+position:separator(" ")
+position:groupType("gamemaster")
+position:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **position.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando os comandos `/pos` ou `!pos` são utilizados. Teleporta para posição ou exibe posição atual.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando
+- `words` (string): Palavras do comando (`/pos` ou `!pos`)
+- `param` (string): Posição em um dos 3 formatos (ou vazio)
+
+**Fluxo Executivo - Modo Consulta (param vazio):**
+
+```lua
+if param == "" then
+    local pos = player:getPosition()
+    player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+        "Your current position is: " .. pos.x .. ", " .. pos.y .. ", " .. pos.z .. ".")
+    return
+end
+```
+
+- Obtém posição: `player:getPosition()`
+- Extrai coordenadas: `pos.x`, `pos.y`, `pos.z`
+- Formato saída: `"Your current position is: 100, 200, 7."`
+
+**Fluxo Executivo - Modo Teleportação:**
+
+1. **Parse de Posição:**
+   ```lua
+   local teleportPosition = param:toPosition()
+   ```
+   - Função global que converte string para Position
+   - Retorna Position se sucesso, nil se falha
+
+2. **Validação 1 - Parse:**
+   ```lua
+   if not teleportPosition then
+       -- Erro: formato inválido
+   end
+   ```
+   - Se parse falhou: exibe 3 formatos aceitos
+
+3. **Validação 2 - Tile:**
+   ```lua
+   local tile = Tile(teleportPosition)
+   if not tile then
+       -- Erro: posição inválida
+   end
+   ```
+   - Verifica se existe tile naquela posição
+   - Se não existe: posição inválida no mapa
+
+4. **Teleportação:**
+   ```lua
+   player:teleportTo(teleportPosition)
+   ```
+
+5. **Efeito Visual (Condicional):**
+   ```lua
+   if not player:isInGhostMode() then
+       teleportPosition:sendMagicEffect(CONST_ME_TELEPORT)
+   end
+   ```
+   - Se não está em ghost: mostra efeito
+   - Se está em ghost: sem efeito (invisível)
+
+**Formatos de Posição Aceitos:**
+
+| Formato | Exemplo | Descrição |
+|---|---|---|
+| Table syntax | `/pos {x = 100, y = 200, z = 7}` | Sintaxe de tabela Lua |
+| Constructor | `/pos Position(100, 200, 7)` | Função Position() |
+| CSV | `/pos 100, 200, 7` | Separado por vírgulas |
+
+**Exemplo de Uso:**
+
+```
+/pos                                  -- Consulta
+Resposta: "Your current position is: 100, 200, 7."
+
+/pos 150, 250, 8                      -- Teleporta
+(Efeto de teleporte na nova posição se visível)
+
+/pos {x = 150, y = 250, z = 8}        -- Teleporta (tabela)
+
+!pos Position(150, 250, 8)            -- Teleporta (constructor)
+```
+
+**Mensagens de Erro:**
+
+```
+"Invalid position format. Use one of the following formats: 
+/pos {x = ..., y = ..., z = ...}
+/pos Position(..., ..., ...)
+/pos x, y, z."
+
+"Invalid tile or position. Send a valid position."
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `player:getPosition()` | Retorna table Position com x, y, z |
+| `param:toPosition()` | Converte string para Position (3 formatos) |
+| `Tile(position)` | Obtém tile em posição (nil se inválido) |
+| `player:teleportTo(position)` | Teleporta ao destino |
+| `position:sendMagicEffect(id)` | Envia efeito na posição |
+
+**Retorno:** Implícito `true` (comando sempre sucede, mesmo com erros)
+
+---
+
+### **Estrutura de Position**
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `x` | number | Coordenada X (0-65535) |
+| `y` | number | Coordenada Y (0-65535) |
+| `z` | number | Andar/altura (0-15) |
+
+---
+
+## 📌 Resumo
+
+O arquivo `position.lua` é utilitário de navegação e teleportação versátil. Implementação com dois modos (consulta/teleportação), suporte a 3 formatos de entrada, validações robustas de parse e tile, e efeitos visuais inteligentes (respeitam ghost mode). Essencial para GMs navegarem rápido entre locais, com interface clara e mensagens de erro educativas. Design flexível permite múltiplas formas de entrada para máxima usabilidade.

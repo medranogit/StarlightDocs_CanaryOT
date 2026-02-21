@@ -1,0 +1,264 @@
+---
+title: "Player - on_look_in_trade.lua"
+description: "Callback de visualização de item em transação player-to-player"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `on_look_in_trade.lua` |
+| **Localização** | `data/scripts/eventcallbacks/player/` |
+| **Tipo de Script** | EventCallback |
+| **Callback Principal** | `PlayerOnLookInTradeBaseEvent` |
+| **Função Registrada** | `playerOnLookInTrade(player, partner, item, distance)` |
+| **Linhas de Código** | 6 |
+| **Complexidade** | Trivial |
+| **Status** | Base implementation |
+
+**Descrição:**
+Callback responsável por processar eventos quando um jogador visualiza um item oferecido por outro jogador durante transação. Implementa comportamento base que envia descrição do item via MESSAGE_LOOK.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/eventcallbacks/player/on_look_in_trade.lua
+```
+
+**Pré-requisitos:**
+- EventCallback API (`EventCallback` função global)
+- MESSAGE_LOOK constant
+- Item object
+- Player object
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Visualização em Trade (Look in Trade)**
+
+Quando um jogador inspeciona item de outro jogador durante transação:
+
+1. **Trigger:** playerOnLookInTrade é disparado
+2. **Processamento:** Obtém descrição do item
+3. **Ação:** Envia mensagem de "look" ao jogador
+
+**Exemplo de Flow - Trade entre Jogadores:**
+```
+Player A abrindo trade com Player B
+Player A clica em item de Player B
+  ├─ playerOnLookInTrade(Player A, Player B, item, distance)
+  ├─ description = item:getDescription(distance)
+  └─ Player A recebe: "You see [item description]"
+```
+
+**Diferença vs on_look.lua:**
+- `on_look.lua` → visualização de itens NO CHÃO ou em criaturas
+- `on_look_in_trade.lua` → visualização de itens DURANTE TRADE apenas
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `on_look_in_trade.lua` implementa o callback de visualização durante transação. Quando um jogador observa um item oferecido por outro jogador:
+
+- **Recupera descrição do item** com distância apropriada
+- **Envia mensagem** via canal MESSAGE_LOOK
+- **Simples e direto** - baseado em implementação padrão
+
+### Arquitetura
+
+O script usa um padrão simples de **message dispatch**:
+
+```
+playerOnLookInTrade (entrada)
+  ├─ item:getDescription(distance)
+  └─ player:sendTextMessage(MESSAGE_LOOK, description)
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Processamento | Saída |
+|---------|---------------|-------|
+| `player, partner, item, distance` | Recupera desc + envia | Mensagem ao jogador |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (Callback)
+
+#### **playerOnLookInTrade(player, partner, item, distance)**
+
+```lua
+function callback.playerOnLookInTrade(player, partner, item, distance)
+	player:sendTextMessage(MESSAGE_LOOK, "You see " .. item:getDescription(distance))
+end
+```
+
+**Propósito:** Entry point do callback. Envia descrição de item durante transação para jogador.
+
+**Fluxo de Execução:**
+
+1. **Entrada:** Recebe player observador, partner (outro jogador), item e distância
+2. **Processamento:** 
+   - Obtém descrição base do item via `item:getDescription(distance)`
+   - Prependa "You see "
+3. **Envio:** Transmite mensagem via MESSAGE_LOOK channel
+
+**Parâmetros:**
+- `player` - Player que está visualizando o item
+- `partner` - Player oferecendo o item
+- `item` - Item object sendo visualizado
+- `distance` - Distância da visualização (afeta descrição)
+
+**Sem retorno** - Callback é void (apenas envia mensagem)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Não há variáveis locais declaradas
+
+### Constantes Globais Referenciadas
+
+| Constante | Uso | Descrição |
+|-----------|-----|-----------|
+| `MESSAGE_LOOK` | playerOnLookInTrade | Chat message channel para "look" responses |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Message Dispatch via sendTextMessage
+
+**Técnica:** Usar sendTextMessage com channel específico para comunicação estruturada.
+
+```lua
+player:sendTextMessage(MESSAGE_LOOK, "You see " .. item:getDescription(distance))
+```
+
+**Vantagem:** Sistema de canais permite filtragem/roteamento client-side. Estruturado.
+
+**Aplicação:** Qualquer comunicação player que necessite categorização.
+
+---
+
+### Padrão 2: Distance-Aware Descriptions
+
+**Técnica:** Passar distância para getDescription(), permitindo variação de detalhe.
+
+```lua
+item:getDescription(distance)  -- Descrição pode variar conforme distância
+```
+
+**Vantagem:** Realismo. Itens distantes mostram menos detalhe. Suporta lore.
+
+**Aplicação:** Qualquer visualização de objeto que necessite contexto de proximidade.
+
+---
+
+### Padrão 3: Simple Message Concatenation
+
+**Técnica:** Usar concatenação simples para construir mensagem final.
+
+```lua
+"You see " .. item:getDescription(distance)  -- Simples, direto, legível
+```
+
+**Vantagem:** Direto, sem complexidade desnecessária. Performance ótima.
+
+**Aplicação:** Mensagens simples e estáticas sem condicional.
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Player A visualiza item de Player B durante trade
+
+```
+playerOnLookInTrade(
+  playerA,
+  playerB,
+  manaPotion,
+  distance=1
+)
+  ├─ manaPotion:getDescription(distance=1) → "a mana potion"
+  ├─ message = "You see a mana potion"
+  └─ playerA:sendTextMessage(MESSAGE_LOOK, "You see a mana potion")
+```
+
+**Resultado ao Cliente:**
+```
+[Look channel] You see a mana potion
+```
+
+---
+
+### Cenário 2: Player A visualiza item raro de Player B com distância maior
+
+```
+playerOnLookInTrade(
+  playerA,
+  playerB,
+  legendaryArmor,
+  distance=5  -- Mais longe, menos detalhe
+)
+  ├─ legendaryArmor:getDescription(distance=5) → "some legendary armor"
+  ├─ message = "You see some legendary armor"
+  └─ playerA:sendTextMessage(MESSAGE_LOOK, "You see some legendary armor")
+```
+
+**Resultado ao Cliente:**
+```
+[Look channel] You see some legendary armor
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial |
+| **Estimativa de Aprendizado** | 5 minutos |
+| **Tópicos Principais** | Message dispatch, Distance-aware descriptions, Simple concatenation |
+| **Padrões Documentados** | 3 padrões |
+| **Cenários Documentados** | 2 cenários |
+| **Funções** | 1 (playerOnLookInTrade - callback entry) |
+| **Callbacks Registrados** | PlayerOnLookInTradeBaseEvent |
+| **Dependencies** | MESSAGE_LOOK constant, Item API |
+
+### Curva de Aprendizado
+
+**Trivial:** Implementação uma-linha. Entender em ~5 minutos. Padrão message dispatch é reutilizável.
+
+### Diferenças de on_look.lua
+
+| Aspecto | on_look.lua | on_look_in_trade.lua |
+|---------|---------|------------------------|
+| **Contexto** | Itens no chão, criaturas | Items em trade apenas |
+| **Funcionalidades** | Casks, familiares, admin details | Simples descrição |
+| **Complexidade** | Médium (5 funções) | Trivial (1 entrada) |
+| **Mensagem** | Podem variar por tipo | Sempre "You see X" |
+
+### Melhorias Potenciais
+
+- [ ] Adicionar logging de items visualizados (audit trail)
+- [ ] Implementar restrictions por grupo (admin sees hidden items)
+- [ ] Adicionar pricing hints para items valiosos
+- [ ] Suportar custom trade messages
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Simple message dispatch implementation

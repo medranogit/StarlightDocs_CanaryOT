@@ -1,0 +1,310 @@
+---
+title: Test Commands
+description: Comandos GOD para testar logging e container management
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | test.lua |
+| **Tipo de Sistema** | Testing & Debug (GOD) |
+| **Funcionalidade Principal** | Test logging levels e containers |
+| **Comandos** | /testlog, !testcontainer |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula e Espaço |
+| **Parâmetros** | level+msg (testlog), remove opt (testcontainer) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/test.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Arquivo com 2 comandos diferentes. /testlog: 2 params (logLevel, message), valida info/warn/error/debug, usa `logger.{level}()`. !testcontainer: backpack inspection, opcional "remove" param, conta items/subcontainers, pode remover tudo via `item:remove()`.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo test.lua implementa 2 comandos de teste. /testlog testa logging levels (info/warn/error/debug) com mensagens customizáveis. !testcontainer inspeciona backpack, conta items/subcontainers, pode remover tudo. Ferramenta essencial de debug.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **TalkAction /testlog**
+
+```lua
+local testLog = TalkAction("/testlog")
+
+function testLog.onSay(player, words, param)
+	if param == "" then
+		player:sendCancelMessage("Log level and message required.")
+		logger.error("[testLog.onSay] - Log level and message not found")
+		return true
+	end
+
+	local split = param:split(",")
+	local logLevel = split[1]:trim():lower()
+	local message = string.trimSpace(split[2])
+
+	if message == "" then
+		player:sendCancelMessage("Log message required.")
+		return false
+	end
+
+	-- Validar e executar nível
+	if logLevel == "info" then
+		logger.info("[testLog] - {}", message)
+	elseif logLevel == "warn" then
+		logger.warn("[testLog] - {}", message)
+	elseif logLevel == "error" then
+		logger.error("[testLog] - {}", message)
+	elseif logLevel == "debug" then
+		logger.debug("[testLog] - {}", message)
+	else
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Invalid log level. Use 'info', 'warn', 'error' or 'debug'.")
+		return false
+	end
+
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Logged message [" .. message .. "] at '" .. logLevel .. "' level.")
+	return true
+end
+
+testLog:separator(" ")
+testLog:groupType("god")
+testLog:register()
+```
+
+**Comando:**
+```
+/testlog info, Starting server
+/testlog warn, Potential issue detected
+/testlog error, Critical error occurred
+/testlog debug, Debug information here
+```
+
+**Parâmetros:**
+| Param | Nome | Obrigatório | Valores |
+|---|---|---|---|
+| 1 | logLevel | SIM | info, warn, error, debug |
+| 2 | message | SIM | any string |
+
+---
+
+## **Fluxo /testlog**
+
+```
+/testlog info, Server started
+
+Fluxo:
+1. Valida param não vazio
+2. Parse split(","):
+   - logLevel = "info"
+   - message = "Server started"
+3. trim() e lower() no level
+4. Valida message não vazio
+5. Determina logger level:
+   - "info" -> logger.info()
+   - "warn" -> logger.warn()
+   - "error" -> logger.error()
+   - "debug" -> logger.debug()
+6. Executa `logger.{level}("[testLog] - {}", message)`
+7. Feedback ao executor
+
+Resultado:
+- Log enviado ao console/arquivo
+- Mensagem: "[testLog] - Server started"
+- Feedback: "Logged message [Server started] at 'info' level."
+```
+
+---
+
+### **TalkAction !testcontainer**
+
+```lua
+local containerTalkAction = TalkAction("!testcontainer")
+
+function containerTalkAction.onSay(player, words, param)
+	-- Buscar backpack
+	local container = player:getSlotItem(CONST_SLOT_BACKPACK)
+	if not container then
+		player:sendCancelMessage("Your backpack does not contain a valid container.")
+		logger.error("[!container] - Player: {} has a backpack without a valid container.", player:getName())
+		return true
+	end
+
+	-- Parâmetro: "remove" para remover tudo
+	local shouldRemove = (param and param:lower() == "remove") and true or false
+	local items = container:getItems(true)
+	local totalItems = 0
+	local totalSubContainers = 0
+
+	-- Itera items
+	for i, item in pairs(items) do
+		if shouldRemove and item then
+			item:remove()                               -- Remove item
+		end
+
+		if item:getContainer() then
+			totalSubContainers = totalSubContainers + 1
+		else
+			totalItems = totalItems + 1
+		end
+	end
+
+	-- Formatar mensagem
+	local actionMessage = shouldRemove and "removed " or "have "
+	local playerMessage = actionMessage .. totalItems .. " items and " .. totalSubContainers .. " subcontainers from your backpack."
+	local finalMessage = string.format("[!testcontainer] - Player: %s, %s items from backpack: %d, subcontainers count: %d", player:getName(), actionMessage, totalItems, totalSubContainers)
+
+	logger.info(finalMessage)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You " .. playerMessage)
+	return true
+end
+
+containerTalkAction:separator(" ")
+containerTalkAction:groupType("god")
+containerTalkAction:register()
+```
+
+**Comando:**
+```
+!testcontainer              -- Inspeciona backpack (sem remover)
+!testcontainer remove       -- Inspeciona e remove tudo
+```
+
+**Parâmetro:**
+| Param | Nome | Obrigatório | Valores |
+|---|---|---|---|
+| 1 | action | NÃO | "remove" ou vazio |
+
+---
+
+## **Fluxo !testcontainer**
+
+```
+!testcontainer
+
+Fluxo:
+1. Busca CONST_SLOT_BACKPACK
+2. Valida container válido
+3. getItems(true) = lista recursiva
+4. Loop items:
+   - Conta items (não container)
+   - Conta subcontainers
+5. Sem remover (param vazio)
+6. Feedback: "You have 15 items and 3 subcontainers from your backpack."
+
+Resultado:
+- Item count: 15
+- Subcontainer count: 3
+- Nada removido
+
+---
+
+!testcontainer remove
+
+Fluxo:
+1. Busca CONST_SLOT_BACKPACK
+2. Valida container válido
+3. getItems(true) = lista recursiva
+4. Loop items:
+   - item:remove() para cada
+   - Conta durante loop
+5. Feedback: "You removed 15 items and 3 subcontainers from your backpack."
+
+Resultado:
+- TODOS items removidos (15)
+- TODOS subcontainers removidos (3)
+- Backpack vazio
+- Log: "[!testcontainer] - Player: PlayerName, removed items from backpack: 15, subcontainers count: 3"
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /testlog info, Starting maintenance mode
+
+Fluxo:
+1. logger.info("[testLog] - Starting maintenance mode")
+2. Feedback: "Logged message [Starting maintenance mode] at 'info' level."
+
+Resultado:
+- Log arquivo/console: Starting maintenance mode
+- Nível: INFO
+
+---
+
+GM: /testlog error, Critical error in quest system
+
+Fluxo:
+1. logger.error("[testLog] - Critical error in quest system")
+2. Feedback: "Logged message [Critical error in quest system] at 'error' level."
+
+Resultado:
+- Log arquivo/console: Critical error in quest system
+- Nível: ERROR (alto priority)
+
+---
+
+GM: !testcontainer
+
+Fluxo:
+1. Inspeciona backpack
+2. Encontra 20 items, 5 subcontainers
+3. Feedback: "You have 20 items and 5 subcontainers from your backpack."
+
+Resultado:
+- Contagem visual
+- Nada removido
+
+---
+
+GM: !testcontainer remove
+
+Fluxo:
+1. Remove todos 20 items
+2. Remove todos 5 subcontainers
+3. Feedback: "You removed 20 items and 5 subcontainers from your backpack."
+
+Resultado:
+- Backpack completamente vazio
+- Log: "[!testcontainer] - Player: AdminName, removed items from backpack: 20, subcontainers count: 5"
+```
+
+---
+
+**Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `param:split(sep)` | Divide string |
+| `string:trim()` | Remove espaços |
+| `string:lower()` | Lowercase |
+| `string.trimSpace(str)` | Remove espaços |
+| `logger.info(fmt, ...)` | Log info |
+| `logger.warn(fmt, ...)` | Log warn |
+| `logger.error(fmt, ...)` | Log error |
+| `logger.debug(fmt, ...)` | Log debug |
+| `player:sendCancelMessage(msg)` | Mensagem cancel |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+| `player:getSlotItem(slot)` | Obtém item do slot |
+| `container:getItems(recursive)` | Lista items |
+| `item:remove()` | Remove item |
+| `item:getContainer()` | Valida container |
+| `player:getName()` | Obtém nome |
+| `string.format(fmt, ...)` | Formata string |
+
+**Constantes:**
+- `MESSAGE_EVENT_ADVANCE`
+- `CONST_SLOT_BACKPACK`
+
+---
+
+## 📌 Resumo
+
+O arquivo test.lua é ferramenta multi-propósito de testing. Implementação com /testlog (4 levels), !testcontainer (inspection/removal), logging integrado, feedback duplo (executor + log). Essencial para debug sistema. Design focado em testes.

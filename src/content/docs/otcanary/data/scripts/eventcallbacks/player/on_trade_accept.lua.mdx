@@ -1,0 +1,345 @@
+---
+title: "Player - on_trade_accept.lua"
+description: "Callback de aceitar trade com limpeza de UI de ferramentas"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `on_trade_accept.lua` |
+| **Localização** | `data/scripts/eventcallbacks/player/` |
+| **Tipo de Script** | EventCallback |
+| **Callback Principal** | `PlayerOnTradeAcceptBaseEvent` |
+| **Função Registrada** | `playerOnTradeAccept(player, target, item, targetItem)` |
+| **Linhas de Código** | 11 |
+| **Complexidade** | Trivial-Médium |
+| **Status** | Base implementation com cleanup |
+
+**Descrição:**
+Callback responsável por processar eventos quando um jogador aceita uma trade proposta. Realiza limpeza de UI (fecha Forge e Imbuement windows) para ambos os jogadores e retorna true para confirmar a trade.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/eventcallbacks/player/on_trade_accept.lua
+```
+
+**Pré-requisitos:**
+- EventCallback API (`EventCallback` função global)
+- Forge window system
+- Imbuement window system
+- Player method: closeForge(), closeImbuementWindow()
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Aceitar Trade (Trade Accept)**
+
+Quando um jogador aceita uma trade proposta:
+
+1. **Trigger:** Player clica "Accept Trade" button
+2. **Ambos os Lados:** playerOnTradeAccept é disparado para player E target
+3. **Cleanup:** Fecha Forge e Imbuement windows
+4. **Validação:** Retorna true para confirmar
+5. **Ação:** Trade é finalizada se ambos retornam true
+
+**Exemplo de Fluxo - Trade entre Dois Jogadores:**
+```
+Player A propõe trade com 10 gold → Sword de Player B
+Player B aceita → playerOnTradeAccept(B, A, 10gold, sword)
+  ├─ B:closeForge()
+  ├─ B:closeImbuementWindow()
+  ├─ A:closeForge()
+  ├─ A:closeImbuementWindow()
+  └─ return true
+
+Mesmas calls para Player A com parametros invertidos
+  └─ playerOnTradeAccept(A, B, sword, 10gold)
+
+Trade é executada: A perde sword, B ganha sword, etc.
+```
+
+**Diferença de on_look_in_trade.lua:**
+- `on_look_in_trade` → Visualizar item DURANTE trade (observação)
+- `on_trade_accept` → FINALIZAR trade (commit das mudanças)
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `on_trade_accept.lua` implementa o callback de aceitação de trade. Quando um jogador aceita uma trade:
+
+- **Limpa UI de ferramentas** (Forge e Imbuement windows)
+- **Executa cleanup para ambos** os jogadores envolvidos
+- **Confirma trade** retornando true
+
+### Arquitetura
+
+O script usa um padrão de **bilateral cleanup + confirmation**:
+
+```
+playerOnTradeAccept (entrada)
+  ├─ player:closeForge()
+  ├─ player:closeImbuementWindow()
+  ├─ target:closeForge()
+  ├─ target:closeImbuementWindow()
+  └─ return true (confirma trade)
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Processamento | Saída |
+|---------|---------------|-------|
+| `player, target, item, targetItem` | Cleanup bilateral | `true` (trade confirmado) |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (Callback)
+
+#### **playerOnTradeAccept(player, target, item, targetItem)**
+
+```lua
+function callback.playerOnTradeAccept(player, target, item, targetItem)
+	player:closeForge()
+	target:closeForge()
+	player:closeImbuementWindow()
+	target:closeImbuementWindow()
+	return true
+end
+```
+
+**Propósito:** Entry point do callback. Realiza cleanup de UI e confirma trade.
+
+**Fluxo de Execução:**
+
+1. **Recebimento:** Callback disparado quando player clica "Accept Trade"
+2. **Cleanup Bilateral:**
+   - `player:closeForge()` - Fecha forge do açador
+   - `target:closeForge()` - Fecha forge do alvo
+   - `player:closeImbuementWindow()` - Fecha imbuement do açador
+   - `target:closeImbuementWindow()` - Fecha imbuement do alvo
+3. **Confirmação:** Retorna `true` para indicar que trade pode proceder
+
+**Parâmetros:**
+- `player` - Player que está aceitando a trade
+- `target` - Outro player na trade (trade partner)
+- `item` - Item offered by player
+- `targetItem` - Item offered by target
+
+**Retorno:**
+- `true` - Trade é aceita e finalizada
+- `false` - Trade é rejeitada (não implementado aqui)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Não há variáveis locais declaradas
+
+### Player Methods Utilizados
+
+| Método | Descrição |
+|--------|-----------|
+| `player:closeForge()` | Fecha Forge window do jogador |
+| `player:closeImbuementWindow()` | Fecha Imbuement window do jogador |
+| `target:closeForge()` | Fecha Forge window do trade partner |
+| `target:closeImbuementWindow()` | Fecha Imbuement window do trade partner |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Bilateral State Cleanup
+
+**Técnica:** Aplicar cleanup a ambos os players da transação.
+
+```lua
+-- Cleanup player
+player:closeForge()
+player:closeImbuementWindow()
+
+-- Cleanup target (simétrico)
+target:closeForge()
+target:closeImbuementWindow()
+```
+
+**Vantagem:** Garante estado consistente em ambos. Previne UI trash.
+
+**Aplicação:** Qualquer transação multi-player (trade, duel, marriage).
+
+---
+
+### Padrão 2: Sequential Cleanup (Forge then Imbuement)
+
+**Técnica:** Executar cleanup em ordem específica (mais importante primeiro).
+
+```lua
+player:closeForge()        -- Fecha Forge (main tool)
+player:closeImbuementWindow()  -- Depois Imbuement (secondary tool)
+```
+
+**Vantagem:** Evita states inconsistentes. Ordem importa para dependencies.
+
+**Aplicação:** Quando cleanup tem dependencies (close dependent windows first).
+
+---
+
+### Padrão 3: Boolean Return for Confirmation
+
+**Técnica:** Retornar true/false para indicar sucesso ou rejeição da ação.
+
+```lua
+-- Se tudo correu bem:
+return true  -- Trade vai proceder
+
+-- Se algo errou (hipotético):
+return false  -- Trade é cancelada
+```
+
+**Vantagem:** Engine sabe se pode proceder. Simples, determinístico.
+
+**Aplicação:** Qualquer ação que necessite aprovação do callback.
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Trade simples entre Player A e Player B
+
+```
+User Action: Player A e B estão em trade, ambos clicam "Accept"
+
+Servidor:
+  playerOnTradeAccept(playerA, playerB, swordA, swordB)
+    ├─ playerA:closeForge()          → Fecha forge de A
+    ├─ playerB:closeForge()          → Fecha forge de B
+    ├─ playerA:closeImbuementWindow() → Fecha imbuement de A
+    ├─ playerB:closeImbuementWindow() → Fecha imbuement de B
+    └─ return true → Trade confirmada
+
+  playerOnTradeAccept(playerB, playerA, swordB, swordA)
+    ├─ [Mesmo cleanup bilateral]
+    └─ return true → Trade confirmada
+
+[Trade engine]:
+  Valida: Ambos retornaram true? → SIM
+  Executa:
+    ├─ Remove swordB do inventário de playerB
+    ├─ Remove swordA do inventário de playerA
+    ├─ Adiciona swordB ao inventário de playerA
+    ├─ Adiciona swordA ao inventário de playerB
+    └─ Notify: Mensagem de sucesso a ambos
+```
+
+**Resultado:** Trade finalizada com sucesso, UI limpa
+
+---
+
+### Cenário 2: Trade com Forge ainda aberto
+
+```
+Situação: Player A abriu Forge antes de clicar Accept, janela está aberta
+
+Servidor:
+  playerOnTradeAccept(playerA, playerB, ...)
+    ├─ playerA:closeForge() → Fecha forge de A (limpa UI trash)
+    ├─ playerB:closeForge()
+    ├─ playerA:closeImbuementWindow()
+    ├─ playerB:closeImbuementWindow()
+    └─ return true → Trade prossegue
+
+Client A:
+  [Forge window desaparece]
+  Trade finalizada
+```
+
+**Resultado:** Cleanup previne UI visual bugs
+
+---
+
+### Cenário 3: Trade com Imbuement window aberto
+
+```
+Situação: Player B estava testando imbuiment antes de trade
+
+Servidor:
+  playerOnTradeAccept(playerB, playerA, ...)
+    ├─ playerB:closeForge()
+    ├─ playerA:closeForge()
+    ├─ playerB:closeImbuementWindow() → Fecha (limpa window overflow)
+    ├─ playerA:closeImbuementWindow()
+    └─ return true
+
+Client B:
+  [Imbuement window fecha]
+  Trade finalizada
+```
+
+**Resultado:** Imbuement window não fica aberta após trade
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial-Médium |
+| **Estimativa de Aprendizado** | 10 minutos |
+| **Tópicos Principais** | Bilateral cleanup, State consistency, Boolean confirmation |
+| **Padrões Documentados** | 3 padrões |
+| **Cenários Documentados** | 3 cenários (simple, forge open, imbuement open) |
+| **Funções** | 1 (playerOnTradeAccept - callback entry) |
+| **Callbacks Registrados** | PlayerOnTradeAcceptBaseEvent |
+| **Dependencies** | Forge system, Imbuement system |
+
+### Curva de Aprendizado
+
+**Trivial-Médium:** 
+- Básico: Entender fluxo de trade (~5 min)
+- Intermediário: Compreender bilateral cleanup importância (~5 min)
+
+### Windows Afetadas
+
+| Window | Função | Quando fecha |
+|--------|--------|------|
+| **Forge** | Crafting/enchanting | on_trade_accept (cleanup) |
+| **Imbuement** | Item imbuement | on_trade_accept (cleanup) |
+
+**Razão:** Janelas abertas durante trade podem causar visual bugs ou UI inconsistencies após finalização.
+
+### Fluxo Completo de Trade
+
+```
+1. Proposta:  playerOnRequestTrade(initiator, target)
+2. Visualização: playerOnLookInTrade(player, partner, item, distance)
+3. Aceitação: playerOnTradeAccept(both sides) ← ESTE ARQUIVO
+4. Finalização: Trade engine executa transferência
+
+Cleanup ocorre em step 3, antes de step 4
+```
+
+### Melhorias Potenciais
+
+- [ ] Adicionar validação (ambos online, items ainda existem)
+- [ ] Implementar logging de trades (audit trail)
+- [ ] Adicionar cooldown de trade (anti-spam)
+- [ ] Suportar extensão para custom cleanup (callbacks por type)
+- [ ] Implementar quest/event tracking de trades
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Bilateral UI cleanup with confirmation

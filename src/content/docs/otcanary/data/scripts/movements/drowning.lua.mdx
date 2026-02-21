@@ -1,0 +1,519 @@
+---
+title: "Movement - drowning.lua"
+description: "Sistema de afogamento com validação de capacete aquático e condition de haste"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `drowning.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (stepin + stepout) |
+| **Event Names** | `drowning.onStepIn`, `drowning.onStepOut` |
+| **Funções Registradas** | 2 callbacks (entrada e saída de água) |
+| **Linhas de Código** | 57 |
+| **Complexidade** | Médium-Alto |
+| **Status** | Base implementation |
+
+**Descrição:**
+Sistema de afogamento que aplica dano ao entrar em água, com sistemas de proteção (capacete especial) e bônus (haste com exaustão). Ao sair, remove conditions de afogamento e velocidade.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/drowning.lua
+```
+
+**Requisitos:**
+- Sistema de Conditions (DROWN, HASTE)
+- Parâmetros de condition (PERIODONICDAMAGE, TICKS, TICKINTERVAL)
+- Sistema de exaustão ("coconut-shrimp-bake")
+- 3 capacetes de proteção: 5460, 11585, 13995
+- Sistema de validação de slot (CONST_SLOT_HEAD)
+- 12 tiles de água monitoradas
+- Efeito visual (CONST_ME_BUBBLES)
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Sistema Complexo de Afogamento com Proteção**
+
+Este script implementa um **mecanismo de água com múltiplas camadas**:
+
+**Camada 1: Afogamento Base**
+- Dano: -20 HP a cada 2 segundos
+- Ticks: -1 (permanente até remover)
+- Aplicado ao entrar em água
+
+**Camada 2: Proteção Equipada**
+- 3 capacetes especiais (5460, 11585, 13995)
+- Detecta ao entrar
+- Sem dano se equipado
+- Bonus: haste se exaustão ativa
+
+**Camada 3: Chance de Bolhas**
+- 10% de chance ao entrar (1 em 10)
+- Efeito visual de bolhas
+- Apenas sem capacete
+
+**Fluxo de Entrada (onStepIn):**
+```
+Jogador entra em água
+├─ Tem capacete especial?
+│  ├─ Sim: Tem exaustão "coconut-shrimp-bake"?
+│  │  ├─ Sim: Aplica haste
+│  │  └─ Não: sem efeito
+│  └─ Não: Continua
+├─ Random 10%?
+│  └─ Sim: Efeito de bolhas
+└─ Aplica condition de afogamento
+```
+
+**Diferencial:** Não é simples "toma dano" - tem proteção equipável!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `drowning.lua` implementa um sistema de afogamento com proteção e mecânicas de bonus:
+
+- **Dano Base:** -20 HP a cada 2 segundos
+- **Proteção:** 3 capacetes especiais eliminam dano
+- **Bonus Haste:** Se exaustão ativa + capacete + água
+- **Chance Visual:** 10% bolhas ao entrar (sem capacete)
+- **Remoção:** Ao sair, remove conditions
+
+### Arquitetura
+
+Múltiplas conditions pré-criadas + dois callbacks:
+
+```
+Condition DROWN (pré-criada)
+├─ -20 dano periódico
+├─ -1 ticks (permanente)
+└─ 2000ms intervalo
+
+Condition HASTE (pré-criada)
+├─ -1 ticks
+└─ formula(1.0, 300, 1.0, 300)
+
+onStepIn:
+  ├─ Validação de capacete
+  ├─ Validação de exaustão
+  ├─ Chance 10% bolhas
+  └─ Aplica condition
+
+onStepOut:
+  ├─ Remove DROWN
+  └─ Remove HASTE
+```
+
+### Fluxo Lógico Resumido
+
+| Cenário | Ação | Resultado |
+|---|---|---|
+| **Sem capacete** | Aplica dano | Afoga (-20 a cada 2s) |
+| **Com capacete** | Sem dano | Protegido ✅ |
+| **Capacete + Exaustão** | Aplica haste | Velocidade ⚡ |
+| **Na água** | Sai | Remove dano |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Seção 1: Criação de Conditions Globais
+
+```lua
+local condition = Condition(CONDITION_DROWN)
+condition:setParameter(CONDITION_PARAM_PERIODICDAMAGE, -20)
+condition:setParameter(CONDITION_PARAM_TICKS, -1)
+condition:setParameter(CONDITION_PARAM_TICKINTERVAL, 2000)
+
+local conditionHaste = Condition(CONDITION_HASTE)
+conditionHaste:setTicks(-1)
+conditionHaste:setFormula(1.0, 300, 1.0, 300)
+```
+
+**Propósito:** Pré-cria conditions reutilizáveis.
+
+**Condition Drown:**
+- Tipo: `CONDITION_DROWN` (afogamento)
+- Dano Periódico: `-20` HP
+- Duração: `-1` (permanente)
+- Intervalo: `2000ms` (a cada 2 segundos)
+
+**Condition Haste:**
+- Tipo: `CONDITION_HASTE` (velocidade)
+- Duração: `-1` (permanente)
+- Fórmula: `(1.0, 300, 1.0, 300)` (velocidade base)
+
+---
+
+### Seção 2: Entrada em Água (onStepIn)
+
+#### Instanciação
+
+```lua
+local drowning = MoveEvent()
+drowning:type("stepin")
+```
+
+---
+
+#### Callback onStepIn
+
+```lua
+function drowning.onStepIn(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return false
+	end
+
+	local headItem = player:getSlotItem(CONST_SLOT_HEAD)
+	if headItem and table.contains({ 5460, 11585, 13995 }, headItem:getId()) then
+		if player:hasExhaustion("coconut-shrimp-bake") then
+			player:addCondition(conditionHaste)
+		end
+
+		return true
+	elseif math.random(1, 10) == 1 then
+		position:sendMagicEffect(CONST_ME_BUBBLES)
+	end
+
+	player:addCondition(condition)
+	return true
+end
+```
+
+**Propósito:** Executado ao entrar em água. Aplica dano ou proteção conforme equipamento.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que entrou |
+| `item` | Item | A água (tile) |
+| `position` | Position | Posição da água |
+| `fromPosition` | Position | Posição anterior |
+
+**Fluxo Lógico:**
+
+1. **Validação de Jogador:** Se não é, retorna false
+2. **Busca Item na Cabeça:** `getSlotItem(CONST_SLOT_HEAD)`
+3. **Validação de Capacete Especial:**
+   - Se item na cabeça e ID em `{5460, 11585, 13995}`
+     - Valida exaustão "coconut-shrimp-bake"
+     - Se ativa: Aplica haste (velocidade aquática)
+     - Retorna true (protegido)
+4. **Chance de Bolhas (sem capacete):**
+   - Random 1 em 10 (10%)
+   - Se verdade: Efeito BUBBLES
+5. **Aplica Afogamento:** Condition de dano periódico
+6. **Retorna:** true
+
+**Capacetes Especiais:**
+- 5460, 11585, 13995 protegem de afogamento
+
+---
+
+#### Registração do onStepIn
+
+```lua
+drowning:id(5404, 5405, 5406, 5407, 5408, 5409, 5743, 5764, 8755, 8756, 8757, 9291)
+drowning:register()
+```
+
+**12 tiles de água monitoradas**
+
+---
+
+### Seção 3: Saída da Água (onStepOut)
+
+#### Instanciação e Tipo
+
+```lua
+drowning = MoveEvent()
+drowning:type("stepout")
+```
+
+---
+
+#### Callback onStepOut
+
+```lua
+function drowning.onStepOut(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return false
+	end
+
+	player:removeCondition(CONDITION_DROWN)
+	player:removeCondition(CONDITION_HASTE)
+	return true
+end
+```
+
+**Propósito:** Executado ao sair de água. Remove conditions de afogamento e haste.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu |
+| `item` | Item | A água |
+| `position` | Position | Posição da água |
+| `fromPosition` | Position | Posição anterior |
+
+**Fluxo Lógico:**
+
+1. **Validação:** Se não é jogador, retorna false
+2. **Remove Afogamento:** `removeCondition(CONDITION_DROWN)`
+3. **Remove Haste:** `removeCondition(CONDITION_HASTE)`
+4. **Retorna:** true
+
+---
+
+#### Registração do onStepOut
+
+```lua
+drowning:id(5404, 5405, 5406, 5407, 5408, 5409, 5743, 5764, 8755, 8756, 8757, 9291)
+drowning:register()
+```
+
+**Mesmos 12 IDs de água**
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `condition` | Condition | Arquivo | Condition de afogamento pré-criada |
+| `conditionHaste` | Condition | Arquivo | Condition de haste pré-criada |
+| `drowning` | MoveEvent | Arquivo | Instância de evento (redeclarada 2x) |
+
+---
+
+### Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `player` | Player | Função | Criatura convertida para jogador |
+| `headItem` | Item | Função (onStepIn) | Item equipado na cabeça |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Condition Pré-Criada
+
+```lua
+local condition = Condition(CONDITION_DROWN)
+condition:setParameter(...)
+condition:setParameter(...)
+-- ...reutilizado depois
+player:addCondition(condition)
+```
+
+**Benefício:** Condition criada uma vez, aplicada múltiplas vezes (performance).
+
+### Padrão 2: Validação em Cascata
+
+```lua
+if headItem and table.contains({...}, headItem:getId()) then
+	-- Protegido
+elseif math.random(...) == 1 then
+	-- Efeito visual
+end
+-- Afogamento padrão
+```
+
+**Benefício:** Múltiplas camadas de validação + fallback padrão.
+
+### Padrão 3: Exaustão como Gateway
+
+```lua
+if headItem and ... then
+	if player:hasExhaustion("coconut-shrimp-bake") then
+		player:addCondition(conditionHaste)
+	end
+	return true
+end
+```
+
+**Benefício:** Bônus especial (haste) requer equipamento + exaustão específica.
+
+### Padrão 4: Remoção Simétrica
+
+```lua
+function drawning.onStepIn
+	player:addCondition(condition)
+	player:addCondition(conditionHaste)
+
+function drowning.onStepOut
+	player:removeCondition(CONDITION_DROWN)
+	player:removeCondition(CONDITION_HASTE)
+```
+
+**Benefício:** onStepOut é reverso de onStepIn.
+
+---
+
+## 🤖 Documentação das Funções
+
+### drowning.onStepIn(creature, item, position, fromPosition)
+
+Callback executado ao entrar em água. Aplica afogamento ou proteção conforme equipamento.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que entrou |
+| `item` | Item | A água |
+| `position` | Position | Posição da água |
+| `fromPosition` | Position | Posição anterior |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Movimento permitido |
+| `false` | Se não é jogador |
+
+**Validações:**
+
+1. **Jogador?** Se não, retorna false
+2. **Capacete especial?** Se sim:
+   - Validação de exaustão
+   - Aplica haste se ativa
+   - Retorna true (protegido)
+3. **Random 10%?** Se sim:
+   - Efeito de bolhas
+4. **Padrão:** Aplica afogamento
+
+**Exemplo:**
+
+```lua
+-- Jogador sem capacete entra em água
+drowning.onStepIn(player, water, pos, fromPos)
+-- headItem = nil
+-- Random 10% = verdade
+-- position:sendMagicEffect(BUBBLES)
+-- player:addCondition(condition) → -20 dano a cada 2s
+-- Resultado: Afogando com efeito de bolhas
+
+-- Jogador com capacete 5460 entra em água
+drowning.onStepIn(player, water, pos, fromPos)
+-- headItem:getId() = 5460 (em lista)
+-- hasExhaustion("coconut-shrimp-bake")? Sim
+-- player:addCondition(conditionHaste)
+-- return true
+-- Resultado: Protegido + velocidade aquática
+
+-- Mesmo jogador sai
+drowning.onStepOut(player, water, pos, fromPos)
+-- removeCondition(DROWN)
+-- removeCondition(HASTE)
+-- return true
+-- Resultado: Sem dano, velocidade volta
+```
+
+---
+
+### drowning.onStepOut(creature, item, position, fromPosition)
+
+Callback executado ao sair de água. Remove conditions de afogamento e haste.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu |
+| `item` | Item | A água |
+| `position` | Position | Posição da água |
+| `fromPosition` | Position | Posição anterior |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Saída permitida |
+| `false` | Se não é jogador |
+
+**Execução:**
+
+1. **Validação:** Se não é jogador, retorna false
+2. **Remove DROWN:** Sem mais dano periódico
+3. **Remove HASTE:** Volta velocidade normal
+4. **Retorna:** true
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Afogamento Simples
+
+```lua
+-- Jogador desarmado entra em água
+-- onStepIn: Sem capacete → afogamento
+-- -20 HP a cada 2s
+-- 10% chance: efeito de bolhas
+-- Saída: onStepOut remove condition
+```
+
+### Caso 2: Proteção com Equipamento
+
+```lua
+-- Jogador com capacete 5460 entra
+-- onStepIn: Detecta capacete → sem afogamento
+-- Sem exaustão: nenhum efeito extra
+-- Saída: onStepOut sem ação (sem condition)
+```
+
+### Caso 3: Proteção + Bonus
+
+```lua
+-- Jogador com capacete 5460 + exaustão ativa
+-- onStepIn: Capacete detectado + exaustão
+-- Bonus haste aplicado (velocidade aquática)
+-- Saída: onStepOut remove haste (volta normal)
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **IDs de Capacetes:** 5460, 11585, 13995
+- **IDs de Água:** 5404-5409, 5743, 5764, 8755-8757, 9291
+- **Exaustão:** "coconut-shrimp-bake"
+- **Conditions:** CONDITION_DROWN, CONDITION_HASTE
+- **Magic Effect:** CONST_ME_BUBBLES
+- **MoveEvent API:** [events/movements](../movements)
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | MoveEvent (stepin + stepout) |
+| **Eventos** | 2 (entrada e saída) |
+| **Dano por Tick** | -20 HP |
+| **Intervalo de Dano** | 2000ms (2s) |
+| **Duração** | -1 (permanente até remover) |
+| **Capacetes de Proteção** | 3 (5460, 11585, 13995) |
+| **Bonus Haste** | Se capacete + exaustão ativa |
+| **Chance Bolhas** | 10% (sem capacete) |
+| **Tiles de Água** | 12 diferentes |
+| **Padrões** | Cascata de validação + condition pré-criada + simetria stepOut |

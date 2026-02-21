@@ -1,0 +1,261 @@
+---
+title: Svargrond Arena - Barbarian Arena System
+description: Documentação técnica do arquivo svargrond_arena.lua, que define o sistema de arenas de Svargrond com 10 pits e 3 dificuldades (Greenhorn, Scrapper, Warlord) com rewards e trophies.
+sidebar:
+  order: 7
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **svargrond_arena.lua** implementa a **Barbarian Arena de Svargrond** com sistema de:
+- 10 pits de combate (1v1 arenas)
+- 3 dificuldades progressivas
+- 30 creatures/bosses para lutar
+- 3 trophies para rewards
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/quests/svargrond_arena.lua`
+</Card>
+
+<Aside type="caution">
+**Tipo**: Arena Configuration  
+**Arquivo Size**: 348 linhas  
+**Total de Pits**: 10  
+**Dificuldades**: 3 (Greenhorn, Scrapper, Warlord)  
+**Creatures por Dificuldade**: 10 cada  
+**Padrão**: Global Config Table (SvargrondArena, PITS, ARENA)
+</Aside>
+
+## 📄 Visão Geral
+
+Svargrond Arena é um **sistema de pits/arenas** onde:
+1. 10 salas de combate (pits) independentes
+2. Cada pit pode ser usado por 1 jogador simultâneamente
+3. 3 dificuldades ascending (30 creatures total)
+4. Trophies como rewards para vencedores
+5. Preço para participar (1000, 5000, 10000 gold)
+
+## 🔧 Estrutura Principal
+
+### SvargrondArena Object
+
+```lua
+SvargrondArena = {
+  kickTime = 600,                    -- 10 minutos (timeout)
+  kickPosition = Position({ x = 32251, y = 31098, z = 6 }),
+  rewardPosition = Position({ x = 32222, y = 31080, z = 6 }),
+
+  -- Event tracking
+  kickEvents = {},       -- Timeouts agendados
+  timerEvents = {},      -- Timers nas salas
+  effectPositionCache = {},
+
+  -- Item IDs
+  itemTimer = 21464,
+  itemPillar = 1841,
+  itemTeleport = 5022,
+  itemsNotErasable = { 21464, 1841, 2181, 2182, 2183 },
+}
+```
+
+### PIT Structure
+
+```lua
+local firstPit = {
+  fromPos = { x = 32205, y = 31094, z = 7 },
+  toPos = { x = 32214, y = 31103, z = 7 },
+  center = { x = 32210, y = 31098, z = 7 },
+  pillar = { x = 32204, y = 31098, z = 7 },
+  tp = { x = 32204, y = 31098, z = 7 },
+  summon = { x = 32210, y = 31100, z = 7 },
+}
+```
+
+**Tamanho**: 9x9 tiles (fromPos to toPos)
+
+## 🗺️ 10 Pits de Arena
+
+Todos os 10 pits são **derivados automaticamente** do `firstPit`:
+
+| Pit # | Offset X | Offset Y | Coordinates | Localização |
+|-------|----------|----------|-------------|-------------|
+| 1 | 0 | 0 | (32205-214, 31094-103, 7) | Base |
+| 2 | -14 | 0 | (32191-200, 31094-103, 7) | Esquerda -1 |
+| 3 | -28 | 0 | (32177-186, 31094-103, 7) | Esquerda -2 |
+| 4 | -42 | 0 | (32163-172, 31094-103, 7) | Esquerda -3 |
+| 5 | -35 | -14 | (32170-179, 31080-89, 7) | Parte inferior-esq |
+| 6 | -21 | -14 | (32184-193, 31080-89, 7) | Parte inferior-centro |
+| 7 | -7 | -14 | (32198-207, 31080-89, 7) | Parte inferior-dir |
+| 8 | -14 | -28 | (32191-200, 31066-75, 7) | Inferior-esq -2 |
+| 9 | -28 | -28 | (32177-186, 31066-75, 7) | Inferior-esq -2 |
+| 10 | -21 | -42 | (32184-193, 31052-61, 7) | Inferior-far |
+
+**Grid Pattern**: 4 pits em linha (X), 3 rows com 4-3-3 pits
+
+## 🎮 3 Dificuldades
+
+### Dificuldade 1: Greenhorn
+
+```lua
+[1] = {
+  name = "Greenhorn",
+  price = 1000,  -- 1000 gold para participar
+  questLog = Storage.Quest.U8_0.BarbarianArena.QuestLogGreenhorn,
+  achievement = "Greenhorn",
+  creatures = {
+    "frostfur", "bloodpaw", "bovinus", "achad",
+    "colerian the barbarian", "the hairy one",
+    "axeitus headbanger", "rocky", "cursed gladiator",
+    "orcus the cruel",  -- 10 total
+  },
+}
+```
+
+- **Nível**: Iniciante
+- **Preço**: 1000 gold
+- **Creatures**: 10 (mix de humanoides e animais)
+- **Achievement**: "Greenhorn"
+- **Storage**: Quest log em específico local
+
+### Dificuldade 2: Scrapper
+
+```lua
+[2] = {
+  name = "Scrapper",
+  price = 5000,
+  questLog = Storage.Quest.U8_0.BarbarianArena.QuestLogScrapper,
+  achievement = "Scrapper",
+  creatures = {
+    "avalanche", "kreebosh the exile", "the dark dancer",
+    "the hag", "slim", "grimgor guteater", "drasilla",
+    "spirit of earth", "spirit of water", "spirit of fire",  -- 10 total
+  },
+}
+```
+
+- **Nível**: Intermediário
+- **Preço**: 5000 gold
+- **Creatures**: 10 (mix de humanoides e espíritos)
+- **Achievement**: "Scrapper"
+- **Detalhe**: 3 espíritos elementais no final
+
+### Dificuldade 3: Warlord
+
+```lua
+[3] = {
+  name = "Warlord",
+  price = 10000,
+  questLog = Storage.Quest.U8_0.BarbarianArena.QuestLogWarlord,
+  achievement = "Warlord of Svargrond",
+  creatures = {
+    "webster", "darakan the executioner", "norgle glacierbeard",
+    "the pit lord", "svoren the mad", "the masked marauder",
+    "gnorre chyllson", "fallen mooh'tah master ghar",
+    "deathbringer", "the obliverator",  -- 10 total
+  },
+}
+```
+
+- **Nível**: Elite
+- **Preço**: 10000 gold
+- **Creatures**: 10 bosses legais (The Pit Lord, The Obliverator, etc)
+- **Achievement**: "Warlord of Svargrond"
+- **Detalhe**: Todos nomes são únicos (boss-like)
+
+## 🏆 Trophy System
+
+Ao vencer dificuldade, jogador recebe trophy (item colecionável):
+
+```lua
+ARENA_TROPHY = {
+  [3264] = {  -- Storage item ID
+    trophy = 5807,
+    trophyStorage = Storage.Quest.U8_0.BarbarianArena.TrophyGreenhorn,
+    desc = "It is given to the courageous victor of the barbarian arena "
+           "in greenhorn difficulty. Awarded to %s",
+  },
+  [3265] = {
+    trophy = 5806,
+    trophyStorage = Storage.Quest.U8_0.BarbarianArena.TrophyScrapper,
+    desc = "It is given to the courageous victor of the barbarian arena "
+           "in scrapper difficulty. Awarded to %s.",
+  },
+  [3266] = {
+    trophy = 5805,
+    trophyStorage = Storage.Quest.U8_0.BarbarianArena.TrophyWarlord,
+    desc = "It is given to the courageous victor of the barbarian arena "
+           "in warlord difficulty. Awarded to %s.",
+  },
+}
+```
+
+| Dificuldade | Item ID (storage) | Trophy ID | Description |
+|-------------|-------------------|-----------|-------------|
+| Greenhorn | 3264 | 5807 | "courageous victor" |
+| Scrapper | 3265 | 5806 | "courageous victor" |
+| Warlord | 3266 | 5805 | "courageous victor" |
+
+## 🕐 Timing
+
+```lua
+kickTime = 600  -- 10 minutos
+```
+
+Se jogador não terminar arena em 10 minutos:
+1. Qualquer criatura viva é removida
+2. Jogador é kickado do pit
+3. Teleportado para `kickPosition`
+
+## 🎯 Fluxo de Operação
+
+```
+Player paga X gold (1000/5000/10000)
+  ↓
+Pit escolhido (1-10)
+  ↓
+Creature #1 summoned no pit
+  ↓
+Player vs Creature (arena fechada)
+  ↓
+Creature morre?
+  ├─ NÃO: Player morre → Kickado
+  └─ SIM: Próxima criatura (#2-10)
+  ↓
+Todo creature vencido? (10/10)
+  ├─ NÃO: Continue
+  └─ SIM: Victory!
+      ├─ Trophy dado
+      ├─ Achievement desbloqueado
+      └─ Teleportado para rewardPosition
+```
+
+## 💡 Key Storage References
+
+Todos armazenados em `Storage.Quest.U8_0.BarbarianArena.*`:
+
+- `QuestLogGreenhorn` - Tracking dificuldade 1
+- `QuestLogScrapper` - Tracking dificuldade 2
+- `QuestLogWarlord` - Tracking dificuldade 3
+- `TrophyGreenhorn` - Item colecionável
+- `TrophyScrapper` - Item colecionável
+- `TrophyWarlord` - Item colecionável
+
+## ⚠️ Items Especiais
+
+```lua
+itemsNotErasable = { 21464, 1841, 2181, 2182, 2183 }
+```
+
+Estes items **NÃO são removidos** ao fim da arena:
+- 21464: Timer item
+- 1841: Pillar (parede?)
+- 2181-2183: Unknown (provavelmente decoração/mechanic)
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Completo  
+**Arena Tier**: Barbarian (Svargrond)

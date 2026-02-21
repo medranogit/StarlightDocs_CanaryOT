@@ -1,0 +1,193 @@
+---
+title: Avatar of Steel
+description: Transformação visual premium Knight que ativa aparência de Avatar de Aço por 15 segundos com verificação de Revelation WOD - menor custo de mana
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `avatar_of_steel.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Knight / Elite Knight |
+| **Spell ID** | 264 |
+| **Mana Requerida** | 800 |
+| **Level Requerido** | 300 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração do Avatar** | 15 segundos (15.000 ms) |
+| **Cooldown Individual** | 2 horas (2 * 60 * 60 * 1000 ms) |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `uteta res eq` |
+| **Efeito Visual** | `CONST_ME_AVATAR_APPEAR` |
+| **LookType do Avatar** | 1593 |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/avatar_of_steel.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell requer que o jogador tenha completado pelo menos o stage 1 da Revelation WOD para Knight. O sistema verifica `revelationStageWOD("Avatar of Steel")` antes de permitir o cast. Se a verificação falhar, o jogador recebe mensagem `"You cannot cast this spell"` e efeito de erro `CONST_ME_POFF`. A mana de 800 é a MENOR entre todos os 4 avatars, refletindo a natureza defensiva e melee-focused do Knight.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `avatar_of_steel.lua` implementa uma transformação visual premium exclusiva para Knight e Elite Knight. É um dos quatro spells de Avatar (Light, Nature, Steel, Storm) que compartilham estrutura idêntica. O spell verifica se o jogador possui a Revelation WOD necessária, aplica uma condição de outfit que muda a aparência visual para o Avatar de Aço (lookType 1593), e programa um evento automático de recarregamento de dados após 15 segundos. Destaca-se por consumir apenas 800 de mana, o menor custo entre todos os avatars, refletindo a economia de recursos características do playstyle melee. O sistema utiliza callbacks de avatar timer e reloadData para garantir sincronização visual.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Criação da Condição de Outfit
+local condition = Condition(CONDITION_OUTFIT)
+condition:setOutfit({ lookType = 1593 })
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 3.1 Validação de Creature
+    -- 3.2 Verificação de Revelation WOD
+    -- 3.3 Configuração de Duration
+    -- 3.4 Aplicação de Outfit Condition
+    -- 3.5 Efeito Visual e Avatar Timer
+    -- 3.6 Evento Agendado de ReloadDataEvent
+    -- 3.7 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:group("support")
+spell:id(264)
+spell:name("Avatar of Steel")
+spell:words("uteta res eq")
+spell:level(300)
+spell:mana(800)
+spell:isPremium(true)
+spell:cooldown(2 * 60 * 60 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:vocation("knight;true", "elite knight;true")
+spell:hasParams(true)
+spell:isAggressive(false)
+spell:needLearn(true)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `condition` | `Condition` | Local | Objeto que encapsula a transformação visual do outfit (lookType 1593) para Avatar de Aço |
+| `spell` | `Spell` | Local | Instância do spell instantâneo que define comportamento e propriedades |
+| `creature` | `Creature/Player` | Parâmetro | Entidade que executa o cast (validada como Player) |
+| `variant` | `Variant` | Parâmetro | Parametrização do spell (não utilizada neste caso) |
+| `grade` | `Number` | Local | Resultado da verificação `revelationStageWOD("Avatar of Steel")`, onde 0 = sem acesso |
+| `duration` | `Number` | Local | Duração fixa de 15.000 ms (15 segundos) da transformação |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Verificação de Revelation WOD - Knight Specific**
+```lua
+local grade = creature:revelationStageWOD("Avatar of Steel")
+if grade == 0 then
+    creature:sendCancelMessage("You cannot cast this spell")
+    creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+    return false
+end
+```
+Validação exclusiva para "Avatar of Steel" que bloqueia Knights sem progresso Revelation.
+
+### 2. **Padrão de Condition de Outfit Melee-Focused**
+```lua
+local condition = Condition(CONDITION_OUTFIT)
+condition:setOutfit({ lookType = 1593 })
+condition:setTicks(duration)
+creature:addCondition(condition)
+```
+Aplicação de outfit que transforma o Knight em forma defensiva de aço.
+
+### 3. **Padrão de Economia de Mana**
+```
+Custos de Mana por Avatar:
+- Avatar of Steel: 800 (MENOR)
+- Avatar of Light: 1500
+- Avatar of Nature: 2200 (MAIOR)
+- Avatar of Storm: 2200 (MAIOR)
+```
+Avatar of Steel utiliza política de mana economicista, refletindo design melee.
+
+### 4. **Padrão de Sincronização Full-Stack**
+```lua
+creature:avatarTimer((os.time() * 1000) + duration)
+creature:reloadData()
+addEvent(ReloadDataEvent, duration, creature:getId())
+```
+Tripla sincronização garante transformação visual consistente durante 15 segundos.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Realiza validações, aplica a condição de outfit visual de aço e agenda o evento de recarga.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Criatura que executa o spell. DEVE ser um Player válido.
+- `variant` (Variant): Dados variáveis do spell (não utilizados neste spell).
+
+**Fluxo de Execução:**
+
+1. **Validação de Criatura** (`if not creature or not creature:isPlayer()`):
+   - Verifica se `creature` existe e é um Player
+   - Retorna `false` se validação falhar
+
+2. **Verificação de Revelation WOD** (`creature:revelationStageWOD("Avatar of Steel")`):
+   - Consulta o stage de Revelation WOD do jogador para "Avatar of Steel"
+   - Se `grade == 0` (sem acesso):
+     - Envia mensagem `"You cannot cast this spell"`
+     - Aplica efeito visual de erro `CONST_ME_POFF`
+     - Retorna `false`
+
+3. **Configuração de Duration**:
+   - Define `duration` como 15.000 ms (15 segundos)
+   - Aplica duração à condition com `condition:setTicks(duration)`
+
+4. **Aplicação de Efeitos**:
+   - Envia efeito visual `CONST_ME_AVATAR_APPEAR` na posição do jogador
+   - Adiciona condition de outfit (lookType 1593) ao jogador
+
+5. **Avatar Timer e Recarregamento**:
+   - Executa `creature:avatarTimer()` com timestamp futuro (agora + duration em ms)
+   - Executa `creature:reloadData()` para sincronização imediata
+   - Agenda `ReloadDataEvent` para executar após `duration` ms com ID do jogador
+
+6. **Retorno**:
+   - Retorna `true` (cast bem-sucedido)
+
+**Valores de Retorno:**
+- `true`: Spell executado com sucesso, mana consumida
+- `false`: Spell cancelado (falha de validação ou Revelation WOD insuficiente)
+
+**Lógica Detalhada:**
+
+O spell aplica uma condition de outfit que transforma o Knight visualmente em um Avatar de Aço (lookType 1593) durante 15 segundos. A verificação de `revelationStageWOD("Avatar of Steel")` garante que apenas Knights que completaram os requisitos de Revelation possam executar o spell.
+
+A mana de 800 é significativamente menor que os demais avatars (Light = 1500, Nature/Storm = 2200), refletindo filosofia de design melee. Knights são combatentes de linha de frente que gastam recursos em consumibles e equipamento, não em transformações caras. O custo baixo permite maior flexibilidade tática.
+
+O `avatarTimer()` registra no servidor o término exato da transformação. O `reloadData()` força sincronização imediata do cliente com novo outfit. O `addEvent(ReloadDataEvent)` agenda limpeza final para remover transformação visual ao expirar.
+
+O cooldown de 2 horas entre usos mantém coerência com as demais vocações, impedindo spam mesmo com mana barata. A transformação continua sendo recurso raro e momentoso.
+
+**Efeitos Visuais:**
+- Sucesso: `CONST_ME_AVATAR_APPEAR` (manifestação de avatar guerreiro)
+- Falha: `CONST_ME_POFF` (cancelamento de magia)
+
+**Mensagens ao Jogador:**
+- Se sem Revelation WOD: `"You cannot cast this spell"`
+
+## 📌 Resumo
+
+**Avatar of Steel** é um spell de suporte premium exclusivo para Knight (level 300+) que transforma visualmente o jogador em um Avatar de Aço (lookType 1593) por 15 segundos. A transformação requer Revelation WOD completada e consome apenas 800 de mana - o menor custo entre todos os 4 avatars, refletindo o design econômico do playstyle melee. Com cooldown de 2 horas entre usos, o spell oferece flexibilidade tática sem consumo excessivo de recursos. O sistema sincroniza o avatar através de timer, reloadData e evento agendado para garantir consistência visual.
+
+Implementação idêntica aos demais avatars, diferenciando-se na vocação (Knight), mana econômica (800), lookType visual (1593), words (`uteta res eq`) e Revelation stage ("Avatar of Steel").

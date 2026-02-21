@@ -1,0 +1,195 @@
+---
+title: Challenge
+description: Spell de suporte para Elite Knights que força alvo a atacar o conjurador via callback de challenge
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `challenge.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Elite Knight |
+| **Spell ID** | 93 |
+| **Mana Requerida** | 30 |
+| **Level Requerido** | 20 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exeta res` |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Área de Efeito** | 1x1 (AREA_SQUARE1X1) |
+| **Callback** | CALLBACK_PARAM_TARGETCREATURE -> onTargetCreature |
+| **Função de Callback** | doChallengeCreature |
+| **Auto-Target** | Não (requer alvo explícito) |
+| **Agressividade** | Não (suporte tático) |
+| **Tipo de Alvo** | Single target (1x1) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/challenge.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell utiliza sistema de callbacks para executar ação customizada. O `CALLBACK_PARAM_TARGETCREATURE` intercepta a lógica de alvo e chama `onTargetCreature` que por sua vez executa `doChallengeCreature()`. Esta função nativa força o alvo a atacar o conjurador, criando dinâmica de threat/taunt. É padrão para implementar mecanicas de threat em boss fights ou PvP tático.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `challenge.lua` implementa um mecanismo de taunt/threat para Elite Knights (level 20+) que força o alvo selecionado a atacar o conjurador. O spell cria uma instância Combat configurada para área single-target (1x1), registra um callback `CALLBACK_PARAM_TARGETCREATURE` que dispara a função `onTargetCreature`, a qual executa a função nativa `doChallengeCreature()`. Esta função engine força o alvo a considerar o Knight como alvo prioritário. A implementação demonstra padrão avançado de callbacks para interceptar e customizar comportamento padrão de spells.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat para Efeito em Área
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setArea(createCombatArea(AREA_SQUARE1X1))
+
+-- 2. Função de Callback para Alvo
+function onTargetCreature(creature, target)
+    -- 2.1 Executação de Challenge no Alvo
+    -- 2.2 Força Alvo a Atacar Conjurador
+    return doChallengeCreature(creature, target)
+end
+
+-- 3. Registro de Callback
+combat:setCallback(CALLBACK_PARAM_TARGETCREATURE, "onTargetCreature")
+
+-- 4. Instância do Spell
+local spell = Spell("instant")
+
+-- 5. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 5.1 Execução de Combat com Callbacks
+    -- 5.2 Disparo de onTargetCreature para cada alvo
+    -- 5.3 Aplicação de Challenge Logic
+    -- 5.4 Retorno de Status
+end
+
+-- 6. Configuração de Propriedades do Spell
+spell:name("Challenge")
+spell:words("exeta res")
+spell:group("support")
+spell:vocation("elite knight;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_CHALLENGE)
+spell:id(93)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(20)
+spell:mana(30)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat com área 1x1 e callback registrado |
+| `onTargetCreature` | `Function` | Local | Função callback disparada para cada alvo dentro da área |
+| `spell` | `Spell` | Local | Instância do spell instantâneo que define comportamento e propriedades |
+| `creature` | `Creature/Player` | Parâmetro (onCastSpell) | Entidade que executa o cast (Elite Knight) |
+| `variant` | `Variant` | Parâmetro (onCastSpell) | Dados variáveis contendo alvo selecionado |
+| `target` | `Creature` | Parâmetro (onTargetCreature) | Criatura alvo selecionada dentro da área |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Callback para Lógica Customizada**
+```lua
+function onTargetCreature(creature, target)
+    return doChallengeCreature(creature, target)
+end
+
+combat:setCallback(CALLBACK_PARAM_TARGETCREATURE, "onTargetCreature")
+```
+Registra callback que intercepta cada alvo (quando Combat encontra criatura na área) e executa lógica customizada antes de aplicar dano/efeito.
+
+### 2. **Padrão de Função Nativa (doChallengeCreature)**
+```lua
+return doChallengeCreature(creature, target)
+```
+Utiliza função nativa do engine `doChallengeCreature()` que implementa threat/taunt logic. Força o alvo a atacar o conjurador.
+
+### 3. **Padrão de Área Single-Target (1x1)**
+```lua
+combat:setArea(createCombatArea(AREA_SQUARE1X1))
+```
+Área quadrada 1x1 afeta apenas alvo clicado/selecionado, não spread para vizinhos.
+
+### 4. **Padrão de Spell de Ameaça (Threat)**
+```lua
+spell:level(20)
+spell:mana(30)
+spell:isAggressive(false)
+```
+Mana muito baixa (30) e level baixo (20) indicam spell não para dano direto, mas para mecânica tática/threat.
+
+### 5. **Padrão de Vocação Única (Elite Knight Only)**
+```lua
+spell:vocation("elite knight;true")
+```
+Acesso restrito a Elite Knight promotion. Knights regulares não têm acesso, forçando decisão de promotions.
+
+## 🤖 Documentação das Funções
+
+### `onTargetCreature(creature, target)`
+
+**Descrição:** Função de callback disparada quando Combat encontra alvo dentro da área. Executa lógica de challenge que força o alvo a atacar o conjurador.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Elite Knight que conjurou o spell. Será o novo alvo do inimigo.
+- `target` (Creature): Criatura dentro da área 1x1 que será alvo de challenge.
+
+**Fluxo de Execução:**
+
+1. **Invocação pelo Combat**:
+   - Combat encontra `target` dentro de área 1x1
+   - Dispara callback `onTargetCreature` registrado
+
+2. **Execução de doChallengeCreature**:
+   - Chama função nativa `doChallengeCreature(creature, target)`
+   - Força `target` a considerar `creature` (conjurador) como alvo prioritário
+
+3. **Resultado de Challenge**:
+   - Se `target` é IA (monstro): muda alvo imediatamente para `creature`
+   - Se `target` é Player: aplica debuff/efeito de forced attack
+   - Duração e intensidade dependem da implementação engine
+
+4. **Retorno**:
+   - Retorna valor booleano (sucesso da challenge)
+   - Valor influencia se Combat continua processamento
+
+5. **Efeito Secundário**:
+   - Efeito visual CONST_ME_MAGIC_BLUE é aplicado
+   - Som de cast confirma execução
+
+**Valores de Retorno:**
+- `true`: Challenge executado com sucesso
+- `false`: Alvo não elegível (player imune, etc)
+
+**Lógica Detalhada:**
+
+O spell implementa mecanismo de threat/taunt fundamental em MMOs. A função `doChallengeCreature()` é função nativa do engine que modifica estado de threat/ódio da criatura alvo. Para monstros, força imediatamente switch de alvo. Para players em PvP, cria debuff que força resposta agressiva.
+
+O callback `CALLBACK_PARAM_TARGETCREATURE` é disparado para cada criatura que Combat encontra. Isso permite execução de lógica complexa sem modificar core de Combat. A função `onTargetCreature` recebe tanto `creature` (conjurador) quanto `target` (alvo), permitindo comparação e lógica condicional se necessário.
+
+A área 1x1 garante single-target. Diferente de área maior, só afeta criatura que o conjurador selectediona explicitamente. Mana de apenas 30 é extremamente barata, permitindo uso frequente. Level 20 é acess muito cedo, mas Elite Knight promotion-only garante que é recursos terminal de vocação.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_CHALLENGE`: Som característico de taunt/challenge
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal padrão
+- Efeito visual MAGIC_BLUE confirma visualmente que challenge foi aplicado
+
+## 📌 Resumo
+
+**Challenge** é um spell de suporte tático premium exclusivo para Elite Knights (level 20+) que força o alvo selecionado a atacar o conjurador via callback de threat. O spell requer apenas 30 de mana e cooldown de 2 segundos, tornando-o extremamente acessível para uso frequente. A implementação utiliza padrão avançado de callbacks (`CALLBACK_PARAM_TARGETCREATURE`) que intercepta lógica de alvo e executa função nativa `doChallengeCreature()`. É essencial para tactics de tanking e controle de ameaça em combates grupais e boss fights, permitindo que Knights dominem dinâmica de threat em party.
+
+A implementação segue padrão avançado de callbacks, diferenciando-se por: (1) usar callback para customização não-padrão, (2) implementar threat/taunt via função nativa, (3) ser extremamente barato em mana (30), (4) estar restrito a promotion de Elite Knight, (5) oferecer mecanismo essencial para tanking em grupo.

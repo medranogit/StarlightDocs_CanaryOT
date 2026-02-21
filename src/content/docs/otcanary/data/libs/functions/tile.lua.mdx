@@ -1,0 +1,649 @@
+---
+title: "tile.lua"
+description: "Extensões da biblioteca Tile: type checking (isCreature, isItem, isTile, isContainer), relocateTo (move items/creatures), isWalkable (comprehensive walkability validation), isHouse (house detection), isPz (protection zone detection), isRopeSpot (rope climb spots). Utilities para manipulação e validação de tiles no mapa."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que estende **Lua Tile library com 8 funções**: type checking (isCreature, isItem, isTile, isContainer), relocateTo (reloca itens/criaturas), isWalkable (validação complexa de walkability), isHouse (detecção de casas), isPz (detecção de protection zone), isRopeSpot (spots para rope climb). Utilities essenciais para validação de tiles, movimento de objetos, e verificações de zona.
+
+**Caminho Original**: `data/libs/functions/tile.lua`
+
+<Aside type="tip">
+O arquivo `tile.lua` é **essential tile utilities library**. Fornece type checking, relocation de objetos, validação de walkability, detecção de casas/PZ, e rope spots. Perfeito para systems de movimento, validação de passos, detecção de zonas seguras.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **8 funções de extensão**:
+
+1. **Type Checking** (4): isCreature, isItem, isTile, isContainer
+2. **Relocation** (1): relocateTo (move items/creatures)
+3. **Validation** (1): isWalkable (complexo walkability check)
+4. **Zone Detection** (2): isHouse, isPz
+5. **Rope Spots** (1): isRopeSpot
+
+O design usa **flags and properties checking**, **thing iteration**, **fluid type detection**, **recursive property validation**, e **table lookups para rope spots**. Todas funções adicionadas ao global `Tile` class.
+
+### Estrutura de Funcionalidades
+
+```
+Tile Extensions
+├── Type Checking (4)
+│   ├── Tile.isCreature() → false
+│   ├── Tile.isItem() → false
+│   ├── Tile.isTile() → true
+│   └── Tile.isContainer() → false
+├── Movement (1)
+│   └── Tile.relocateTo(toPosition) → boolean
+│       ├── Item relocation (movable check)
+│       ├── Fluid removal
+│       └── Creature teleportation
+├── Walkability (1)
+│   └── Tile.isWalkable(pz, creature, floorchange, block, proj) → boolean
+│       ├── Ground validation
+│       ├── Solid property check
+│       ├── PZ/House check
+│       ├── Creature collision
+│       ├── Floor change validation
+│       ├── Path blocking
+│       └── Projectile blocking
+├── Zone Detection (2)
+│   ├── Tile.isHouse() → boolean
+│   └── Tile.isPz() → boolean
+└── Rope Spots (1)
+    └── Tile.isRopeSpot() → boolean
+        ├── Ground rope spots
+        └── Stacked rope spots
+```
+
+---
+
+## 🔍 Type Checking
+
+### `Tile.isCreature()` → boolean
+
+Verifica se tile é creature (sempre false).
+
+**Tipo**: Função estendida  
+**Retorna**: boolean (false)
+
+**Implementação**:
+```lua
+function Tile.isCreature(self)
+	return false
+end
+```
+
+**Nota**: Tile nunca é creature. Sempre retorna false.
+
+**Uso**:
+```lua
+local tile = Tile(position)
+if tile:isCreature() then
+	-- Nunca executa (Tile não pode ser creature)
+end
+```
+
+---
+
+### `Tile.isItem()` → boolean
+
+Verifica se tile é item (sempre false).
+
+**Tipo**: Função estendida  
+**Retorna**: boolean (false)
+
+**Nota**: Tile é container de items, não é item. Sempre false.
+
+**Uso**:
+```lua
+if tile:isItem() then
+	-- Nunca executa
+end
+```
+
+---
+
+### `Tile.isTile()` → boolean
+
+Verifica se é tile (sempre true).
+
+**Tipo**: Função estendida  
+**Retorna**: boolean (true)
+
+**Implementação**:
+```lua
+function Tile.isTile(self)
+	return true
+end
+```
+
+**Nota**: Tile sempre é tile. Sempre retorna true.
+
+**Uso**:
+```lua
+if tile:isTile() then
+	print("É um tile!")  -- Sempre executa
+end
+```
+
+---
+
+### `Tile.isContainer()` → boolean
+
+Verifica se tile é container (sempre false).
+
+**Tipo**: Função estendida  
+**Retorna**: boolean (false)
+
+**Nota**: Tile contém items, mas não é um container object. Sempre false.
+
+**Uso**:
+```lua
+if tile:isContainer() then
+	-- Nunca executa
+end
+```
+
+---
+
+## 🚚 Relocation
+
+### `Tile.relocateTo(toPosition)` → boolean
+
+Move todos items/creatures do tile para nova posição.
+
+**Tipo**: Função estendida  
+**Parâmetros**: toPosition (Position): Posição destino  
+**Retorna**: boolean (true se bem-sucedido)
+
+**Validações**:
+- Se position == toPosition: return false
+- Se destination tile não existe: return false
+
+**Lógica de Relocation**:
+```lua
+for i = self:getThingCount() - 1, 0, -1 do
+	local thing = self:getThing(i)
+	if thing then
+		if thing:isItem() then
+			if thing:getFluidType() ~= 0 then
+				thing:remove()  -- Fluids removidos
+			elseif ItemType(thing:getId()):isMovable() then
+				thing:moveTo(toPosition)  -- Items móveis movem
+			end
+		elseif thing:isCreature() then
+			thing:teleportTo(toPosition)  -- Criaturas teleportam
+		end
+	end
+end
+```
+
+**Fluxo**:
+1. Loop backward (getThingCount - 1 para 0)
+2. Se item e fluid: remove
+3. Se item e movable: move
+4. Se creature: teleport
+
+**Exemplo**:
+```lua
+local fromPos = Position(100, 100, 7)
+local toPos = Position(150, 150, 7)
+
+local fromTile = Tile(fromPos)
+if fromTile:relocateTo(toPos) then
+	print("Tile relocado com sucesso!")
+else
+	print("Falha na relocation")
+end
+```
+
+---
+
+## 🚶 Walkability Validation
+
+### `Tile.isWalkable(pz, creature, floorchange, block, proj)` → boolean
+
+Validação complexa se tile é walkable.
+
+**Tipo**: Função estendida  
+**Parâmetros**:
+- pz (boolean|nil): Check protection zone?
+- creature (boolean|nil): Check creatures?
+- floorchange (boolean|nil): Check floor changes?
+- block (boolean|nil): Check path blocking?
+- proj (boolean|nil): Check projectile blocking?
+
+**Retorna**: boolean
+
+**Validações Sequenciais**:
+
+```lua
+-- 1. Null check
+if not self then return false end
+
+-- 2. Ground existence
+if not self:getGround() then return false end
+
+-- 3. Solid properties
+if self:hasProperty(CONST_PROP_BLOCKSOLID) or 
+   self:hasProperty(CONST_PROP_BLOCKPROJECTILE) then
+	return false
+end
+
+-- 4. Immovable solid
+if self:hasProperty(CONST_PROP_IMMOVABLEBLOCKSOLID) then
+	return false
+end
+
+-- 5. PZ/House check
+if pz and (self:hasFlag(TILESTATE_HOUSE) or 
+           self:hasFlag(TILESTATE_PROTECTIONZONE)) then
+	return false
+end
+
+-- 6. Creature collision
+if creature and self:getTopCreature() ~= nil then
+	return false
+end
+
+-- 7. Floor change check
+if floorchange and self:hasFlag(TILESTATE_FLOORCHANGE) then
+	return false
+end
+
+-- 8. Path blocking
+if block then
+	if self:hasProperty(CONST_PROP_BLOCKPATH) or 
+	   self:hasProperty(CONST_PROP_IMMOVABLEBLOCKPATH) or
+	   self:hasProperty(CONST_PROP_IMMOVABLENOFIELDBLOCKPATH) or
+	   self:hasProperty(CONST_PROP_NOFIELDBLOCKPATH) then
+		return false
+	end
+	local topStackItem = self:getTopTopItem()
+	if topStackItem and topStackItem:hasProperty(CONST_PROP_BLOCKPATH) then
+		return false
+	end
+end
+
+-- 9. Projectile blocking
+if proj then
+	local items = self:getItems()
+	if #items > 0 then
+		for i = 1, #items do
+			local itemType = ItemType(items[i])
+			local blockSolid = items[i]:hasProperty(CONST_PROP_BLOCKSOLID)
+			local blockProjectile = items[i]:hasProperty(CONST_PROP_BLOCKPROJECTILE)
+			if itemType:getType() ~= ITEM_TYPE_MAGICFIELD and 
+			   not itemType:isMovable() and 
+			   (blockSolid or blockProjectile) then
+				return false
+			end
+		end
+	end
+end
+
+return true
+```
+
+**Exemplo**:
+```lua
+local tile = Tile(position)
+
+-- Check full walkability (all flags)
+if tile:isWalkable(true, true, true, true, true) then
+	print("Tile completamente walkable")
+end
+
+-- Check basic walkability (sem PZ check)
+if tile:isWalkable(false, true, false, true, true) then
+	print("Tile walkable (fora de PZ)")
+end
+
+-- Check se pode lançar spell (projectile blocking)
+if tile:isWalkable(false, false, false, false, true) then
+	print("Projectile passível")
+end
+```
+
+---
+
+## 🏠 Zone Detection
+
+### `Tile.isHouse()` → boolean
+
+Verifica se tile está em uma house.
+
+**Tipo**: Função estendida  
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+function Tile.isHouse(self)
+	local house = self:getHouse()
+	return house and true or false
+end
+```
+
+**Fluxo**:
+1. Get house via getHouse()
+2. Se house exists: return true
+3. Caso contrário: return false
+
+**Exemplo**:
+```lua
+local tile = Tile(position)
+if tile:isHouse() then
+	print("Tile está em uma house!")
+end
+```
+
+---
+
+### `Tile.isPz()` → boolean
+
+Verifica se tile está em protection zone.
+
+**Tipo**: Função estendida  
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+function Tile.isPz(self)
+	return self:hasFlag(TILESTATE_PROTECTIONZONE)
+end
+```
+
+**Fluxo**: Check flag TILESTATE_PROTECTIONZONE
+
+**Exemplo**:
+```lua
+if tile:isPz() then
+	print("Tile em PZ - PvP desabilitado")
+else
+	print("Tile fora de PZ - PvP habilitado")
+end
+```
+
+---
+
+## 🪢 Rope Spots
+
+### `Tile.isRopeSpot()` → boolean
+
+Verifica se tile é um rope spot (pode fazer rope climb).
+
+**Tipo**: Função estendida  
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+function Tile:isRopeSpot()
+	if not self then
+		return false
+	end
+
+	if not self:getGround() then
+		return false
+	end
+
+	-- Check ground item IDs
+	if table.contains(ropeSpots, self:getGround():getId()) then
+		return true
+	end
+
+	-- Check stacked items
+	for i = 1, self:getTopItemCount() do
+		local thing = self:getThing(i)
+		if thing and table.contains(specialRopeSpots, thing:getId()) then
+			return true
+		end
+	end
+
+	return false
+end
+```
+
+**Validações**:
+1. Null check
+2. Ground existence check
+3. Ground ID in ropeSpots table
+4. Loop stacked items para specialRopeSpots
+
+**Variáveis Globais Esperadas**:
+- ropeSpots (table): IDs de ground items
+- specialRopeSpots (table): IDs de special rope items
+
+**Exemplo**:
+```lua
+local tile = Tile(position)
+if tile:isRopeSpot() then
+	player:say("Você pode fazer rope climb aqui!")
+end
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Type Dispatch
+
+```lua
+local handleObject = function(tile)
+	if tile:isCreature() then
+		-- Handle creature
+	elseif tile:isItem() then
+		-- Handle item
+	elseif tile:isTile() then
+		print("É um tile!")
+	elseif tile:isContainer() then
+		-- Handle container
+	end
+end
+
+handleObject(Tile(position))
+```
+
+---
+
+### Padrão 2: Safe Tile Relocation
+
+```lua
+function safeTileRelocate(fromPos, toPos)
+	local fromTile = Tile(fromPos)
+	if not fromTile then
+		return false, "Source tile não existe"
+	end
+	
+	local toTile = Tile(toPos)
+	if not toTile then
+		return false, "Destination tile não existe"
+	end
+	
+	if fromTile:relocateTo(toPos) then
+		return true, "Relocation bem-sucedido"
+	else
+		return false, "Relocation falhou"
+	end
+end
+
+local success, msg = safeTileRelocate(Position(100, 100, 7), Position(150, 150, 7))
+print(msg)
+```
+
+---
+
+### Padrão 3: Comprehensive Walkability Check
+
+```lua
+function canPlayerWalk(tile, skipPzCheck)
+	-- Full validation: PZ, creatures, floor changes, blocking, projectiles
+	-- skipPzCheck pode permitir PZ se verdadeiro
+	return tile:isWalkable(
+		not skipPzCheck,  -- pz check
+		true,             -- creature check
+		true,             -- floorchange check
+		true,             -- block check
+		true              -- projectile check
+	)
+end
+
+if canPlayerWalk(Tile(position)) then
+	player:move(position)
+end
+```
+
+---
+
+### Padrão 4: Zone Detection
+
+```lua
+function getZoneType(tile)
+	if tile:isPz() then
+		return "protection_zone"
+	elseif tile:isHouse() then
+		return "house"
+	else
+		return "wilderness"
+	end
+end
+
+print(getZoneType(Tile(position)))  -- "protection_zone", "house", ou "wilderness"
+```
+
+---
+
+### Padrão 5: Movement with Validation
+
+```lua
+function moveCreatureSafe(creature, toPos)
+	local toTile = Tile(toPos)
+	if not toTile then
+		creature:say("Posição inválida!")
+		return false
+	end
+	
+	-- Check walkability (sem PZ check por padrão)
+	if not toTile:isWalkable(false, true, true, true, false) then
+		creature:say("Não é possível andar nesse tile!")
+		return false
+	end
+	
+	creature:moveTo(toPos)
+	return true
+end
+```
+
+---
+
+### Padrão 6: Rope Spot Detection with Climbing
+
+```lua
+function tryRopeClimb(creature, direction)
+	local currentPos = creature:getPosition()
+	local ropePos = Position(currentPos.x + direction.x, currentPos.y + direction.y, currentPos.z + direction.z)
+	
+	local ropeTile = Tile(ropePos)
+	if ropeTile:isRopeSpot() then
+		-- Climb up or down
+		local newZ = currentPos.z - 1  -- Climbing up (Z diminui)
+		creature:moveTo(Position(ropePos.x, ropePos.y, newZ))
+		return true
+	else
+		creature:say("Sem rope spot para escalar!")
+		return false
+	end
+end
+```
+
+---
+
+### Padrão 7: Zone-Aware NPC Interaction
+
+```lua
+function interactWithNPC(player, npc)
+	local npcTile = Tile(npc:getPosition())
+	
+	if npcTile:isPz() then
+		player:say("I am in a Protection Zone. Trade disabled.")
+		return false
+	elseif npcTile:isHouse() then
+		if not playerOwnHouse(player, npc:getPosition()) then
+			player:say("This is a private house!")
+			return false
+		end
+	end
+	
+	-- Proceed with NPC interaction
+	return true
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Função |
+|----------|-----------|--------|
+| **Type Identity** | Verifica tipo de tile | isCreature, isItem, isTile, isContainer |
+| **Relocation Logic** | Move items/creatures para novo tile | relocateTo |
+| **Ground Validation** | Verifica existência de ground | isWalkable (passo 2) |
+| **Property Checking** | Valida flags/properties | isWalkable (steps 3-9) |
+| **Collision Detection** | Detecta colisão com creatures | isWalkable (creature param) |
+| **Fluid Handling** | Remove fluidos em relocation | relocateTo |
+| **Zone Detection** | Detecta houses/PZ | isHouse, isPz |
+| **Rope Spot Tables** | Tabelas de rope spot IDs | ropeSpots, specialRopeSpots |
+| **Backward Iteration** | Loop reverse para relocation | relocateTo (getThingCount-1 a 0) |
+| **Projectile Blocking** | Valida bloqueio de spell | isWalkable (proj param) |
+
+### Padrões Identificados
+
+1. **Multi-Parameter Validation**: isWalkable com 5 booleans para granular control
+2. **Relocation Pipeline**: Item → Fluid check → Movable check → Teleport/Move
+3. **Tier Checking**: Null → Ground → Properties → Flags → Creatures
+4. **Rope Spot Logic**: Ground check → ID lookup → Stacked items check
+5. **Zone Detection**: Flags para house/PZ determination
+
+### Responsabilidades
+
+- **Type Checking**: Identify tile vs creature vs item
+- **Movement**: Relocate objects with type-specific handling
+- **Validation**: Comprehensive walkability checking
+- **Zone Detection**: Identify protection zones and houses
+- **Climbing**: Support rope spot detection for vertical movement
+
+---
+
+## 📚 Conclusão
+
+O arquivo `tile.lua` estende **Lua Tile library com utilities essenciais** para manipulação e validação de tiles. Type checking, relocation com tipo-specific handling (fluids remem, items movem, creatures teleportam), validação complexa de walkability (9 checks), detecção de zones (casas/PZ), e rope spots para climbing. Core para sistemas de movimento, validação de passos, detecção de obstáculos, e zone-aware gameplay mechanics.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 118/118 (100%)  
+**Funções Principais**: 8  
+**Funções Adicionadas a**: Global `Tile` class  
+**Categorias**: Type Checking (4), Movement (1), Validation (1), Zone Detection (2), Rope Spots (1)  
+**Validações**: 9-step walkability check, null checks, property validation, flag checking  
+**Exemplos Práticos**: 7  
+**Configuração Esperada**: ropeSpots e specialRopeSpots tables (globais)  
+**Complexidade**: Type Checking (trivial), relocateTo (médio), isWalkable (complexo)
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Todos funções tipo checking (isCreature, isItem, isContainer) retornam false; isTile retorna true. relocateTo itera backward (getThingCount-1 a 0) para evitar index issues ao remover items. isWalkable é função mais complexa com 9 validações sequenciais - early return em cada falha. Fluids são automaticamente removidos em relocateTo (fluid type != 0). Rope spots dependem de tabelas globais ropeSpots/specialRopeSpots que devem ser configuradas. isHouse usa ternary (house and true or false) para conversão. Tile sempre tem ground antes de checks; sem ground = false walkability.
+</Aside>

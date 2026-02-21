@@ -1,0 +1,206 @@
+---
+title: ferumbras_amulet.lua
+description: Amuleto dual-state com restauração aleatória
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="ferumbras_amulet.lua" icon="star">
+Script de ação Lua que implementa amuleto temático com dois estados e restauração probabilística.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/ferumbras_amulet.lua`
+
+Amuleto dual-state (22767 cheio, 22768 vazio) que restaura 1000 HP ou 1000 mana aleatoriamente (50% cada). Requer equipado no slot necklace. Após uso, transforma para vazio com decay timer. Item ID 22767 (cheio) e 22768 (vazio/recarregando).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `ferumbras_amulet.lua` implementa amuleto temático com dois handlers para dois estados. Estado cheio (22767) permite restaurar 1000 HP ou 1000 mana com 50% chance cada, requer estar equipado no slot necklace. Após uso, transforma em vazio (22768) iniciando decay para regeneração. Estado vazio rejeita uso enquanto recarrega.
+
+**Estrutura de Funcionalidades**
+
+```
+[Create ferumbrasAscendantAmulet Action]
+    ↓
+[onUse function]
+    ├─ Get amulet from CONST_SLOT_NECKLACE
+    ├─ If not equipped or not same item
+    │   └─ "You need to equip the amulet..."
+    │   └─ return true
+    ├─ If itemid == 22767 (cheio)
+    │   ├─ random(2) == 1?
+    │   │   ├─ SIM (50%): addHealth(1000)
+    │   │   │   └─ "...you was healed."
+    │   │   └─ NÃO (50%): addMana(1000)
+    │   │       └─ "...you was restored."
+    │   ├─ item:transform(22768)
+    │   ├─ item:decay()
+    │   └─ sendMagicEffect(MAGIC_BLUE)
+    └─ Else if itemid == 22768 (vazio)
+        └─ "You are tired of the last use..."
+        └─ return true
+```
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| 22767 | ID | Amuleto cheio |
+| 22768 | ID | Amuleto vazio/recarregando |
+| 1000 | integer | HP ou mana restaurados |
+| CONST_SLOT_NECKLACE | constant | Slot equipamento |
+| CONST_ME_MAGIC_BLUE | constant | Efeito mágico |
+
+## Funções
+
+### ferumbrasAscendantAmulet.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que restaura vida/mana aleatoriamente.
+
+**Parâmetros:**
+- player: Creature player
+- item: Amuleto sendo usado
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. amulet = player:getSlotItem(CONST_SLOT_NECKLACE)
+
+2. If amulet != item
+   ├─ sendTextMessage: "You need to equip the amulet..."
+   └─ return true
+
+3. If item.itemid == 22767 (cheio)
+   ├─ random(2) == 1?
+   │   ├─ SIM (50%): 
+   │   │   ├─ addHealth(1000, true, true)
+   │   │   └─ "...you was healed."
+   │   └─ NÃO (50%):
+   │       ├─ addMana(1000, true, true)
+   │       └─ "...you was restored."
+   ├─ item:transform(22768)
+   ├─ item:decay()
+   ├─ sendMagicEffect(MAGIC_BLUE)
+   └─ return true
+
+4. Elseif item.itemid == 22768 (vazio)
+   ├─ "You are tired of the last use..."
+   └─ return true
+```
+
+**Implementação:**
+
+```lua
+function ferumbrasAscendantAmulet.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local amulet = player:getSlotItem(CONST_SLOT_NECKLACE)
+	if amulet ~= item then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to equip the amulet to try use it.")
+		return true
+	end
+
+	if item.itemid == 22767 then
+		if math.random(2) == 1 then
+			player:addHealth(1000, true, true)
+			player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Magical sparks whirl around the amulet as you use it and you was healed.")
+		else
+			player:addMana(1000, true, true)
+			player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Magical sparks whirl around the amulet as you use it and you was restored.")
+		end
+
+		item:transform(22768)
+		item:decay()
+		player:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+	elseif item.itemid == 22768 then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You are tired of the last use of the amulet, you must wait for the recharge.")
+	end
+	return true
+end
+```
+
+## Item States
+
+### Estado Cheio (ID 22767)
+
+- Ativo e usável
+- Restaura 1000 HP ou 1000 mana (50% cada)
+- Emite efeito mágico azul
+- Transforma para vazio após uso
+
+### Estado Vazio (ID 22768)
+
+- Recarregando
+- Rejeita uso
+- Entra em decay timer
+- Volta para 22767 após decay
+
+## Fluxo de Operação
+
+```
+[Player usa amuleto equipado]
+    ↓
+[Está equipado no necklace slot?]
+    ├─ NÃO → "You need to equip..." (return)
+    └─ SIM → continuar
+    ↓
+[ID == 22767 (cheio)?]
+    ├─ SIM → continuar
+    └─ NÃO (22768) → "You are tired..." (return)
+    ↓
+[random(2) == 1?]
+    ├─ SIM (50%): addHealth(1000) + "healed"
+    └─ NÃO (50%): addMana(1000) + "restored"
+    ↓
+[item:transform(22768)] [vazio]
+    ↓
+[item:decay()] [inicia timer]
+    ↓
+[sendMagicEffect(MAGIC_BLUE)]
+    ↓
+[return true]
+```
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Dual state handlers (cheio/vazio)
+2. Validação slot equipamento
+3. Probabilidade 50/50 com random(2)
+4. Restauração exata (1000 HP ou mana)
+5. Transform + decay para regeneração
+6. Efeito mágico como feedback
+7. Mensagens dinâmicas por outcome
+
+**Responsabilidades:**
+1. Validar amuleto está equipado
+2. Verificar estado atual (cheio/vazio)
+3. Aplicar restauração aleatória
+4. Transformar para estado vazio
+5. Iniciar decay timer
+6. Emitir efeito visual
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler - dual state)  
+**Tamanho**: 33 linhas  
+**Função**: 1 (onUse)  
+**Item IDs**: 2 (22767, 22768)  
+**Restauração**: 1000 HP/Mana  
+**Chance**: 50/50 cada  
+**Efeito**: MAGIC_BLUE  
+**Requer**: Equipado no necklace slot
+</Card>
+
+<Aside type="note">
+Amuleto dual-state que restaura 1000 HP ou mana aleatoriamente. Requer estar equipado. Entra em decay após uso. Feedback "healed" vs "restored" baseado probabilidade.
+</Aside>

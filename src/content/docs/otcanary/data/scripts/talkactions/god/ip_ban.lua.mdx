@@ -1,0 +1,272 @@
+---
+title: IP Ban Management
+description: Comando GOD para banir IP de jogadores por 7 dias
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | ip_ban.lua |
+| **Tipo de Sistema** | Account Ban Management (GOD) |
+| **Funcionalidade Principal** | Banir IP de jogador |
+| **Comando** | /ipban PlayerName |
+| **Requisito** | Acesso de God |
+| **Separador** | Espaço |
+| **Duração** | 7 dias (configurável) |
+| **Banco de Dados** | ip_bans table |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/ip_ban.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando de IP ban que busca player no banco via SELECT. Obtém lastip da database. Se player online, obtém IP atual via getIp() e remove jogador. Valida se IP já banido (SELECT 1 FROM ip_bans). Insere na table ip_bans com (ip, reason, banned_at, expires_at, banned_by). Calcula expiry = agora + (ipBanDays * 86400). Usa db.storeQuery, db.escapeString.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo ip_ban.lua implementa comando TalkAction (/ipban) que bane IP de jogadores. O sistema busca player na database, detecta IP (online ou lastip), valida duplicatas, insere em ip_bans table com timestamp e duração (7 dias), logging automático. Ferramenta de account ban management.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local ipBanDays = 7
+
+local ipBan = TalkAction("/ipban")
+
+function ipBan.onSay(player, words, param)
+	-- create log
+	logCommand(player, words, param)
+	
+	-- Validação: parâmetro vazio
+	if param == "" then
+		player:sendCancelMessage("Command param required.")
+		return true
+	end
+	
+	-- Buscar player no banco
+	local resultId = db.storeQuery("SELECT `name`, `lastip` FROM `players` WHERE `name` = " .. db.escapeString(param))
+	if resultId == false then
+		return true
+	end
+	
+	-- Obter dados
+	local targetName = Result.getString(resultId, "name")
+	local targetIp = Result.getNumber(resultId, "lastip")
+	Result.free(resultId)
+	
+	-- Se player online, obter IP atual e remover
+	local targetPlayer = Player(param)
+	if targetPlayer then
+		targetIp = targetPlayer:getIp()
+		targetPlayer:remove()
+	end
+	
+	-- Validação: IP inválido
+	if targetIp == 0 then
+		return true
+	end
+	
+	-- Validação: IP já banido?
+	resultId = db.storeQuery("SELECT 1 FROM `ip_bans` WHERE `ip` = " .. targetIp)
+	if resultId ~= false then
+		player:sendTextMessage(MESSAGE_ADMINISTRATOR, targetName .. "  is already IP banned.")
+		Result.free(resultId)
+		return true
+	end
+	
+	-- Inserir novo ban
+	local timeNow = os.time()
+	db.query("INSERT INTO `ip_bans` (`ip`, `reason`, `banned_at`, `expires_at`, `banned_by`) VALUES (" .. targetIp .. ", '', " .. timeNow .. ", " .. timeNow + (ipBanDays * 86400) .. ", " .. player:getGuid() .. ")")
+	player:sendTextMessage(MESSAGE_ADMINISTRATOR, targetName .. "  has been IP banned.")
+	return true
+end
+
+ipBan:separator(" ")
+ipBan:groupType("god")
+ipBan:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **ipBan.onSay(player, words, param)**
+
+**Descrição:** Função callback que bane IP de jogador.
+
+**Parâmetros:**
+- `param` (string): Nome do jogador
+
+**Formato de Comando:**
+```
+/ipban TestPlayer                  -- Bane IP do jogador
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   ```lua
+   logCommand(player, words, param)
+   ```
+
+2. **Validação de Parâmetro Vazio:**
+   ```lua
+   if param == "" then
+       player:sendCancelMessage("Command param required.")
+       return true
+   end
+   ```
+
+3. **Buscar Player na Database:**
+   ```lua
+   local resultId = db.storeQuery("SELECT `name`, `lastip` FROM `players` WHERE `name` = " .. db.escapeString(param))
+   if resultId == false then
+       return true
+   end
+   
+   local targetName = Result.getString(resultId, "name")
+   local targetIp = Result.getNumber(resultId, "lastip")
+   Result.free(resultId)
+   ```
+   - Query SELECT name, lastip
+   - Escapa parâmetro (SQL injection prevention)
+   - Obtém target name e last IP usado
+
+4. **Detectar IP Atual:**
+   ```lua
+   local targetPlayer = Player(param)
+   if targetPlayer then
+       targetIp = targetPlayer:getIp()
+       targetPlayer:remove()
+   end
+   ```
+   - Se player online: overwrite targetIp com IP atual
+   - Remove jogador (kick)
+
+5. **Validação de IP:**
+   ```lua
+   if targetIp == 0 then
+       return true
+   end
+   ```
+   - Se IP = 0 (inválido): abort silencioso
+
+6. **Validação de IP Duplicado:**
+   ```lua
+   resultId = db.storeQuery("SELECT 1 FROM `ip_bans` WHERE `ip` = " .. targetIp)
+   if resultId ~= false then
+       player:sendTextMessage(MESSAGE_ADMINISTRATOR, targetName .. "  is already IP banned.")
+       Result.free(resultId)
+       return true
+   end
+   ```
+   - Busca se IP já está banido
+   - Se sim: "... is already IP banned."
+
+7. **Inserir Ban:**
+   ```lua
+   local timeNow = os.time()
+   db.query("INSERT INTO `ip_bans` (`ip`, `reason`, `banned_at`, `expires_at`, `banned_by`) VALUES (" .. targetIp .. ", '', " .. timeNow .. ", " .. timeNow + (ipBanDays * 86400) .. ", " .. player:getGuid() .. ")")
+   ```
+
+   **INSERT Estrutura:**
+   ```
+   ip: targetIp (obtido acima)
+   reason: '' (vazio)
+   banned_at: unix timestamp atual
+   expires_at: agora + (7 * 86400 segundos) = 7 dias
+   banned_by: GUID do GM que banniu
+   ```
+
+8. **Feedback:**
+   ```lua
+   player:sendTextMessage(MESSAGE_ADMINISTRATOR, targetName .. "  has been IP banned.")
+   ```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /ipban TestPlayer
+
+Fluxo:
+1. SELECT name, lastip FROM players WHERE name = 'TestPlayer'
+   -> targetName = "TestPlayer"
+   -> targetIp = 123456 (exemplo)
+
+2. TestPlayer online? 
+   -> Sim: targetIp = Player.getIp() (IP atual)
+   -> Player.remove() (kick)
+
+3. IP já banido?
+   -> Não: continua
+
+4. INSERT INTO ip_bans
+   -> ip: 123456
+   -> reason: '' (sem motivo)
+   -> banned_at: agora
+   -> expires_at: agora + 604800 (7 dias)
+   -> banned_by: GM GUID
+
+Resultado:
+- GM vê: "TestPlayer has been IP banned."
+- TestPlayer ejected do servidor
+- IP 123456 bloqueado por 7 dias
+```
+
+---
+
+**Variáveis Globais**
+
+```lua
+local ipBanDays = 7
+```
+
+**Configuração:** Duração do ban em dias. Ajuste para mudar período.
+
+---
+
+**Estrutura da Tabela ip_bans**
+
+```sql
+CREATE TABLE IF NOT EXISTS `ip_bans` (
+    `ip` INT UNSIGNED NOT NULL,
+    `reason` TEXT DEFAULT '',
+    `banned_at` INT UNSIGNED NOT NULL,
+    `expires_at` INT UNSIGNED NOT NULL,
+    `banned_by` INT UNSIGNED NOT NULL,
+    PRIMARY KEY (`ip`)
+);
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `db.storeQuery(query)` | SELECT query |
+| `db.escapeString(str)` | Escape SQL |
+| `Result.getString(id, col)` | Obtém string |
+| `Result.getNumber(id, col)` | Obtém número |
+| `Result.free(id)` | Libera resultado |
+| `Player(name)` | Busca player online |
+| `player:getIp()` | Obtém IP atual |
+| `player:remove()` | Remove jogador |
+| `player:getGuid()` | Obtém GUID |
+| `db.query(query)` | Executa INSERT/UPDATE |
+| `os.time()` | Timestamp Unix |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo ip_ban.lua é ferramenta de account ban management. Implementação com busca em database (handle online/offline), validações (IP inválido, já banido), INSERT com duração, SQL injection protection. Essencial para GMs banir contas problemáticas, prevenir smurf accounts. Design robusto com 7 dias configurável.

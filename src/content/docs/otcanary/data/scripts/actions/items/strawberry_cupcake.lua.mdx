@@ -1,0 +1,210 @@
+---
+title: strawberry_cupcake.lua
+description: Item consumível que restaura 100% da vida máxima com cooldown próprio de 10 minutos.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="strawberry_cupcake.lua" icon="pencil">
+Comida especial com full heal e cooldown único não compartilhado.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/strawberry_cupcake.lua`
+
+**Linhas:** 15 | **ID do Item:** 28485 | **Tipo:** Action Handler
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa consumível que restaura 100% da vida máxima com cooldown próprio "strawberry-cupcake-cooldown" (10 min). Diferencia-se de outras comidas por usar cooldown individual ao invés de compartilhado. Inclui validação de cooldown, efeito visual, emote e mensagem customizada.
+
+### Estrutura de Funcionalidades
+
+```
+strawberryCupcake (Action)
+  ├─ onUse(player, item, fromPosition, target, toPosition, isHotkey)
+  │   ├─ hasExhaustion("strawberry-cupcake-cooldown")? → bloqueia
+  │   ├─ addHealth(getMaxHealth()) → full restoration
+  │   ├─ Mensagem: "Your health has been refilled."
+  │   ├─ Emote: "Mmmm."
+  │   ├─ setExhaustion(10 * 60) → cooldown próprio
+  │   ├─ item:remove(1)
+  │   └─ return true
+  └─ register() → ID 28485
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| strawberryCupcake | Action | Objeto handler para cupcake |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | Valor | Descrição |
+|------|-------|-----------|
+| ID Item | 28485 | Trigger para handler |
+| Cooldown | strawberry-cupcake-cooldown | Identificador único (não compartilhado) |
+| Duração Cooldown | 10*60 | 600 segundos = 10 minutos |
+| Healing | 100% MaxHP | Restaura toda a vida |
+| Efeito | Nenhum visual (apenas mensagem) | Sem efeito mágico |
+| Emote | Mmmm. | Fala do jogador |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function strawberryCupcake.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação de cooldown próprio
+	if player:hasExhaustion("strawberry-cupcake-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true  -- Item NÃO removido
+	end
+
+	-- Full heal
+	player:addHealth(player:getMaxHealth())
+	
+	-- Feedback ao jogador
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your health has been refilled.")
+	player:say("Mmmm.", TALKTYPE_MONSTER_SAY)
+	
+	-- Ativar cooldown próprio
+	player:setExhaustion("strawberry-cupcake-cooldown", 10 * 60)
+	
+	-- Consumir item
+	item:remove(1)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa strawberry_cupcake (28485)
+  │
+  ├─ hasExhaustion("strawberry-cupcake-cooldown")?
+  │   ├─ SIM → Bloqueado
+  │   │   ├─ Message: "You need to wait..."
+  │   │   ├─ Item NÃO removido
+  │   │   └─ return true
+  │   │
+  │   └─ NÃO → Continua...
+  │
+  ├─ Full Heal:
+  │   └─ addHealth(getMaxHealth())
+  │
+  ├─ Feedback:
+  │   ├─ Message: "Your health has been refilled."
+  │   └─ Emote: "Mmmm."
+  │
+  ├─ Cooldown Próprio:
+  │   └─ setExhaustion(10 min)
+  │
+  ├─ Consumir:
+  │   └─ item:remove(1)
+  │
+  └─ return true
+```
+
+### Cooldown Próprio vs Compartilhado
+
+```
+Strawberry Cupcake (PRÓPRIO):
+  └─ "strawberry-cupcake-cooldown"
+     └─ Afeta SÓ este item
+
+Versus Rotworm Stew (COMPARTILHADO):
+  └─ "special-foods-cooldown"
+     └─ Afeta múltiplas comidas
+     └─ Usar rotworm stew bloqueia strawberry cupcake (se compartilhado)
+```
+
+Neste script, cada comida com seu sistema tem cooldown independente.
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Cooldown Próprio**: "strawberry-cupcake-cooldown" é específico deste item
+- **Full Heal Pattern**: `player:addHealth(player:getMaxHealth())`
+- **hasExhaustion()**: Verifica se em cooldown
+- **setExhaustion()**: Ativa cooldown de X segundos
+- **Return True Sem Consumir**: Se cooldown bloqueia, não remove item
+- **Emote Customizado**: "Mmmm." diferente de "Gulp."
+- **No Visual Effect**: Apenas mensagem, sem efeito mágico
+- **Always Returns True**: Operação não falha
+
+### Responsabilidades do Handler
+
+1. **Validar cooldown**: hasExhaustion("strawberry-cupcake-cooldown")
+2. **Rejeitar se em cooldown**: Return true sem remover
+3. **Restaurar vida**: addHealth(getMaxHealth())
+4. **Enviar mensagem**: Feedback de restauração
+5. **Emote**: "Mmmm." audível
+6. **Ativar cooldown**: setExhaustion(10 min)
+7. **Consumir item**: remove(1)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Full Heal com Cooldown Próprio
+
+Este script demonstra comida com cooldown individual:
+
+```lua
+if player:hasExhaustion("strawberry-cupcake-cooldown") then
+	return true
+end
+
+player:addHealth(player:getMaxHealth())
+player:setExhaustion("strawberry-cupcake-cooldown", 10 * 60)
+```
+
+### Comparação: Strawberry Cupcake vs Rotworm Stew
+
+| Aspecto | Strawberry | Rotworm |
+|---------|---|---|
+| ID | 28485 | 9079 |
+| Healing | 100% MaxHP | 100% MaxHP |
+| Cooldown | Próprio (strawberry) | Compartilhado (foods) |
+| Emote | Mmmm. | Gulp. |
+| Efeito | Nenhum | MAGIC_RED |
+
+Ambas full heal, mas cooldown diferente permite usar uma enquanto a outra está em cooldown.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: strawberry_cupcake.lua" icon="star">
+Análise de full heal com cooldown próprio (não compartilhado). Diferencia-se de outras comidas por sistema de cooldown individual.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Full heal com cooldown próprio | Complexidade: Baixa
+</Aside>

@@ -1,0 +1,236 @@
+---
+title: level_door.lua
+description: Sistema de portas com validação de nível de personagem
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="level_door.lua" icon="star">
+Script de ação Lua que implementa sistema de portas com validação de nível mínimo necessário.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/doors/level_door.lua`
+
+Script que registra handlers de portas com restrição de nível baseadas em LevelDoorTable. Acesso bloqueado para players abaixo do nível necessário.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `level_door.lua` implementa um sistema de portas com validação de nível mínimo. Quando um player tenta usar uma porta, seu actionid determina o nível necessário via fórmula: actionid - 1000. Portas fornecem acesso controlado a áreas progressivas do mapa.
+
+**Estrutura Fundamental**
+
+```
+[Load LevelDoorTable]
+    ↓
+[Extract doorIds]
+    ↓
+[Create levelDoor Action]
+    ↓
+[onUse function]
+    ├─ Check if door exists in table
+    ├─ Validate: player.level >= actionid - 1000
+    ├─ Pass validation
+    │   ├─ Open transform + sound
+    │   └─ Teleport player
+    └─ Fail validation
+        └─ "Only the worthy may pass." message
+    ↓
+[Register Action on all doorIds]
+```
+
+## Variáveis Globais
+
+### doorIds (local array)
+
+```lua
+local doorIds = {}
+```
+
+Array contendo todos os IDs únicos de portas (abertas + fechadas) para registrar a ação.
+
+**Preenchimento**:
+```lua
+for index, value in ipairs(LevelDoorTable) do
+  if not table.contains(doorIds, value.openDoor) then
+    table.insert(doorIds, value.openDoor)
+  end
+  if not table.contains(doorIds, value.closedDoor) then
+    table.insert(doorIds, value.closedDoor)
+  end
+end
+```
+
+Itera LevelDoorTable, extrai openDoor e closedDoor, evita duplicatas.
+
+### LevelDoorTable (global, externa)
+
+Tabela global esperada:
+
+```lua
+LevelDoorTable = {
+  {
+    openDoor = 7000,     -- ID quando aberta
+    closedDoor = 7001    -- ID quando fechada
+  },
+  { openDoor = 7002, closedDoor = 7003 },
+  -- ... mais portas
+}
+```
+
+## Funções
+
+### levelDoor.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback principal acionado quando player usa a porta.
+
+**Parâmetros:**
+- player: Creature player
+- item: Item da porta
+- fromPosition: Posição origin
+- target: Target (pode ser nil)
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo Lógico:**
+
+```
+1. Iterar LevelDoorTable procurando closedDoor:
+   ├─ Encontrou?
+   │   ├─ item.actionid > 0?
+   │   │   ├─ player.level >= (actionid - 1000)?
+   │   │   │   ├─ SIM → Transform + Som + Teleport → return true
+   │   │   │   └─ NÃO → "Only the worthy may pass." → return true
+   │   │   └─ actionid <= 0? → continue (sem validação)
+   │   └─ Não encontrou → continue
+   └─ Final → return true
+```
+
+**Bloco 1: Level Validation and Door Opening**
+
+```lua
+for index, value in ipairs(LevelDoorTable) do
+  if value.closedDoor == item.itemid then
+    if item.actionid > 0 and player:getLevel() >= item.actionid - 1000 then
+      item:transform(value.openDoor)
+      item:getPosition():sendSingleSoundEffect(SOUND_EFFECT_TYPE_ACTION_OPEN_DOOR)
+      player:teleportTo(toPosition, true)
+      return true
+    else
+      player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Only the worthy may pass.")
+      return true
+    end
+  end
+end
+```
+
+Valida level, abre porta com sound e teleporta. Mensagem de rejeição se não passar.
+
+**Bloco 2: Creature Check (não implementado, apenas return)**
+
+```lua
+if Creature.checkCreatureInsideDoor(player, toPosition) then
+  return true
+end
+return true
+```
+
+Fallback seguro.
+
+## Fórmula de Nível
+
+**Cálculo de Nível Mínimo:**
+
+```
+minimum_level = itemid.actionid - 1000
+```
+
+Exemplos:
+
+| actionid | Nível Mínimo | Descrição |
+|----------|-------------|-----------|
+| 1000 | 0 | Sem restrição (actionid - 1000 = 0) |
+| 1010 | 10 | Nível 10+ permitido |
+| 1050 | 50 | Nível 50+ permitido |
+| 1100 | 100 | Nível 100+ permitido |
+
+**Implementação:**
+
+```lua
+item.actionid > 0 and player:getLevel() >= item.actionid - 1000
+```
+
+Se actionid for 0 ou negativo, validação é skipped (sem restrição).
+
+## Fluxo de Operação
+
+```
+[Player clica na porta]
+    ↓
+[Door found in LevelDoorTable?]
+    ├─ SIM → próximo
+    └─ NÃO → return true (no-op)
+    ↓
+[item.actionid > 0?]
+    ├─ SIM → Validar nível
+    │   ├─ player.level >= (actionid - 1000)?
+    │   │   ├─ SIM → Open + Sound + Teleport
+    │   │   └─ NÃO → "Only the worthy may pass." message
+    │   └─ return true
+    └─ NÃO → return true (sem validação, porta aberta)
+```
+
+## Mensagens de Erro
+
+| Condição | Mensagem | Type |
+|----------|----------|------|
+| Level insuficiente | "Only the worthy may pass." | MESSAGE_EVENT_ADVANCE |
+
+### MESSAGE_EVENT_ADVANCE
+
+Tipo de mensagem que aparece em cor destaque para o player (notificações de eventos importantes).
+
+## Diferenças com custom_door.lua
+
+| Aspecto | custom_door | level_door |
+|---------|------------|-----------|
+| Restrição | Nenhuma | Nível mínimo |
+| Validação | Creature check | Level + Creature |
+| Teleport | Não | Sim |
+| Msg Rejeição | Nenhuma | "Only the worthy..." |
+| actionid | Ignorado | Usado para cálculo |
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Validação de nível via actionid (actionid - 1000)
+2. Portas são closed, transformam para open ao validar
+3. Teleport automático após passar validação
+4. Mensagens de rejeição para level baixo
+5. actionid menor que 1000 (`actionid <= 0`) desativa validação
+
+**Responsabilidades:**
+1. Manter LevelDoorTable com openDoor e closedDoor
+2. Extrair doorIds únicos para registrar
+3. Validar player.level >= actionid - 1000
+4. Emitir efeito sonoro na abertura
+5. Teleportar player para toPosition se passou
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 38 linhas  
+**Funções**: 1 (onUse)  
+**Variáveis**: 1 local (doorIds)  
+**Tabelas Externas**: LevelDoorTable (obrigatória)
+</Card>
+
+<Aside type="note">
+Script implementando portas com restrição de nível. Requer LevelDoorTable com openDoor e closedDoor. Usa actionid como chave para cálculo de nível necessário. Teleporta automaticamente ao abrir porta (diferente de custom_door que não teleporta).
+</Aside>

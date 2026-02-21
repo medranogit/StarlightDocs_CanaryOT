@@ -1,0 +1,172 @@
+---
+title: blueberry_cupcake.lua
+description: Cupcake de mirtilo com recarga de mana e cooldown próprio
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="blueberry_cupcake.lua" icon="star">
+Script de ação Lua que implementa cupcake consumível com restauração de mana e cooldown específico.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/blueberry_cupcake.lua`
+
+Item consumível que restaura mana máxima com cooldown próprio de 10 minutos. Item ID 28484 com emote "Mmmm" e sem efeito visual.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `blueberry_cupcake.lua` implementa poção temática de mana sem efeitos visuais, apenas com emote de satisfação. Diferencia-se do blessed_steak por possuir exhaustion key própria (blueberry-cupcake-cooldown) em vez de compartilhada. Estrutura idêntica ao blessed_steak adaptada para temática de mirtilo.
+
+**Estrutura de Funcionalidades**
+
+```
+[Create blueberryCupcake Action]
+    ↓
+[onUse function]
+    ├─ Check exhaustion: blueberry-cupcake-cooldown
+    │   ├─ SIM → "You need to wait..." + return true
+    │   └─ NÃO → continuar
+    ├─ addMana(getMaxMana())
+    ├─ sendTextMessage: "Your mana has been refilled."
+    ├─ player:say("Mmmm.", TALKTYPE_MONSTER_SAY)
+    ├─ setExhaustion: 10 minutos
+    ├─ Remove item
+    └─ return true
+    ↓
+[Register Action on item ID 28484]
+```
+
+## Funções
+
+### blueberryCupcake.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback acionado ao consumir cupcake.
+
+**Parâmetros:**
+- player: Creature player
+- item: Cupcake sendo consumido
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se acionado por hotkey
+
+**Fluxo de Execução:**
+
+```lua
+1. hasExhaustion("blueberry-cupcake-cooldown")?
+   ├─ SIM → enviar mensagem de espera
+   └─ NÃO → prosseguir
+   
+2. addMana(getMaxMana())
+   └─ Restaura mana máxima
+   
+3. sendTextMessage: "Your mana has been refilled."
+   
+4. player:say("Mmmm.", TALKTYPE_MONSTER_SAY)
+   
+5. setExhaustion em 10 minutos (600s)
+   
+6. item:remove(1) + return true
+```
+
+**Implementação Completa:**
+
+```lua
+function blueberryCupcake.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if player:hasExhaustion("blueberry-cupcake-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true
+	end
+
+	player:addMana(player:getMaxMana())
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your mana has been refilled.")
+	player:say("Mmmm.", TALKTYPE_MONSTER_SAY)
+	player:setExhaustion("blueberry-cupcake-cooldown", 10 * 60)
+	item:remove(1)
+	return true
+end
+```
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| blueberryCupcake | Action | Instância de Action |
+| blueberry-cupcake-cooldown | string | Chave exclusiva de exhaustion |
+| 10 * 60 | integer | Duração em segundos (600s) |
+| MESSAGE_EVENT_ADVANCE | constant | Tipo de mensagem |
+| TALKTYPE_MONSTER_SAY | constant | Tipo de fala |
+
+## Diferenças vs blessed_steak.lua
+
+| Aspecto | blessed_steak | blueberry_cupcake |
+|--------|---------------|-------------------|
+| Cooldown Key | special-foods-cooldown | blueberry-cupcake-cooldown |
+| Compartilhado | Sim (todas special foods) | Não (apenas este item) |
+| Efeito Mágico | CONST_ME_MAGIC_RED | Nenhum |
+| Emote | "Chomp." | "Mmmm." |
+| Item ID | 9086 | 28484 |
+| Mana Restaurada | Máxima | Máxima |
+
+Cooldown independente permite uso enquanto aguarda outras special foods.
+
+## Fluxo de Operação
+
+```
+[Player usa cupcake 28484]
+    ↓
+[hasExhaustion check?]
+    ├─ SIM → mensagem de espera (return true)
+    └─ NÃO → prosseguir
+    ↓
+[Restaurar mana máxima]
+    ↓
+[Enviar mensagem: "Your mana has been refilled."]
+    ↓
+[player:say("Mmmm.")]
+    └─ Apenas emote, sem efeito visual
+    ↓
+[setExhaustion em 600 segundos]
+    └─ Próximo uso disponível em 10 min
+    ↓
+[item:remove(1) + return true]
+```
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Cooldown independente vs compartilhado
+2. Exhaustion keys temáticas por item
+3. Restauração mana 100% do máximo
+4. Emote sem efeitos visuais
+5. Validação de cooldown como primeira ação
+
+**Responsabilidades:**
+1. Verificar exhaustion antes de processar
+2. Restaurar mana máxima
+3. Enviar mensagem de feedback
+4. Emitir emote temático
+5. Setar novo cooldown independente
+6. Remover 1 unidade do item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 18 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 28484  
+**Cooldown**: 10 minutos (excl.)  
+**Efeito Visual**: Nenhum  
+**Consumível**: Sim
+</Card>
+
+<Aside type="note">
+Variação temática de blessed_steak com cooldown exclusivo. Sem efeitos mágicos visuais, apenas emote. Útil para players que precisam de mana mas querem cooldown independente de outras special foods.
+</Aside>

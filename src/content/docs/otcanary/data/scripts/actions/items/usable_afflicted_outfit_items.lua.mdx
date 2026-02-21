@@ -1,0 +1,436 @@
+---
+title: usable_afflicted_outfit_items.lua
+description: Sistema complexo de 3 paths para unlock/addon de outfit Afflicted com validação de premium e 6-item cost.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="usable_afflicted_outfit_items.lua" icon="pencil">
+Handler multi-path com validação de premium, outfit addons e custo de 6 items.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/usable_afflicted_outfit_items.lua`
+
+**Linhas:** 52 | **IDs dos Items:** 8 (12551-12556, 12786, 12787) | **Tipo:** Action Handler com Multi-Path Logic
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema complexo de 3 caminhos distintos (paths) para o outfit Afflicted:
+- **Path 1** (ID 12786): Addon máscara - requer outfit 430/431 já desbloqueado
+- **Path 2** (ID 12787): Addon sino - requer outfit 430/431 já desbloqueado 
+- **Path 3** (IDs 12551-12556): Unlock outfit completo - requer 6 items específicos
+
+Todas as paths exigem premium, incluem validação de outfit e achievement "Beak Doctor" +2.
+
+### Estrutura de Funcionalidades
+
+```
+HANDLER:
+  └─ usableOutfit.onUse()
+      ├─ isPremium() check global (bloqueia se não premium)
+      │
+      ├─ if item.id == 12786:
+      │   └─ PATH 1: Addon Máscara
+      │       ├─ hasOutfit(430) ou hasOutfit(431)?
+      │       ├─ addOutfitAddon(430, 2) + addOutfitAddon(431, 2)
+      │       ├─ Achievement: +2 "Beak Doctor"
+      │       └─ item:remove(1)
+      │
+      ├─ elseif item.id == 12787:
+      │   └─ PATH 2: Addon Sino
+      │       ├─ hasOutfit(430) ou hasOutfit(431)?
+      │       ├─ addOutfitAddon(430, 1) + addOutfitAddon(431, 1)
+      │       ├─ Achievement: +2 "Beak Doctor"
+      │       └─ item:remove(1)
+      │
+      └─ else:
+          └─ PATH 3: Unlock Outfit (12551-12556)
+              ├─ Loop verificar 6 items (getItemCount < 1?)
+              ├─ Remover 6 items
+              ├─ Outfit 430/431: addOutfit()
+              ├─ Outfit 430/431 Addon 1+2: addOutfitAddon()
+              ├─ Achievement: +2 "Beak Doctor"
+              └─ item:remove(1)
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| usableOutfit | Action | Objeto handler principal |
+
+---
+
+## Funções Locais
+
+| Função | Objetivo |
+|--------|----------|
+| getPremiumMultiplier() | Retorna valor 1 ou 2x (não usada aqui, context only) |
+
+---
+
+## Constantes e Parâmetros
+
+### Item IDs
+
+| ID | Nome | Path | Função |
+|----|------|------|--------|
+| 12551 | Afflicted Claw | Path 3 | Unlock outfit (item 1/6) |
+| 12552 | Afflicted Tail | Path 3 | Unlock outfit (item 2/6) |
+| 12553 | Plaguesmith Source | Path 3 | Unlock outfit (item 3/6) |
+| 12554 | Plaguesmith Wing | Path 3 | Unlock outfit (item 4/6) |
+| 12555 | Plaguesmith Head | Path 3 | Unlock outfit (item 5/6) |
+| 12556 | Plaguesmith Claw | Path 3 | Unlock outfit (item 6/6) |
+| 12786 | Afflicted Mask | Path 1 | Addon tipo 2 (máscara) |
+| 12787 | Afflicted Bell | Path 2 | Addon tipo 1 (sino) |
+
+### Outfit Constants
+
+| Outfit ID | Gênero | Tipo |
+|-----------|--------|------|
+| 430 | Female | Afflicted (corpo feminino) |
+| 431 | Male | Afflicted (corpo masculino) |
+
+### Addon Types
+
+| Tipo | Nome | ID Item |
+|------|------|---------|
+| 1 | Plague Bell | 12787 |
+| 2 | Plague Mask | 12786 |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local afflictedMaskId = 12786
+local afflictedBellId = 12787
+local afflictedOutfitIds = { 12551, 12552, 12553, 12554, 12555, 12556 }
+
+function usableOutfit.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação global: Premium obrigatório
+	if not player:isPremium() then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "This item requires a premium account.")
+		return true
+	end
+
+	-- Outfit base (430 = female, 431 = male, sempre adiciona ambas)
+	local outfit = player:getSex() == PLAYERSEX_FEMALE and 430 or 431
+
+	-- ============= PATH 1: ADDON MÁSCARA =============
+	if item:getID() == afflictedMaskId then
+		-- Validação: Outfit já desbloqueado?
+		if not player:hasOutfit(outfit) then
+			player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+			  "You need to unlock the Afflicted outfit first.")
+			return true
+		end
+
+		-- Aplicar addon tipo 2 (máscara)
+		player:addOutfitAddon(430, 2)
+		player:addOutfitAddon(431, 2)
+		
+		-- Achievement
+		player:addAchievementProgress("Beak Doctor", 2)
+		
+		-- Feedback
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+		  "You have unlocked a new mask addon for the Afflicted outfit.")
+		
+		-- Consumir item
+		item:remove(1)
+		return true
+	end
+
+	-- ============= PATH 2: ADDON SINO =============
+	if item:getID() == afflictedBellId then
+		-- Validação: Outfit já desbloqueado?
+		if not player:hasOutfit(outfit) then
+			player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+			  "You need to unlock the Afflicted outfit first.")
+			return true
+		end
+
+		-- Aplicar addon tipo 1 (sino)
+		player:addOutfitAddon(430, 1)
+		player:addOutfitAddon(431, 1)
+		
+		-- Achievement
+		player:addAchievementProgress("Beak Doctor", 2)
+		
+		-- Feedback
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+		  "You have unlocked a new bell addon for the Afflicted outfit.")
+		
+		-- Consumir item
+		item:remove(1)
+		return true
+	end
+
+	-- ============= PATH 3: UNLOCK OUTFIT =============
+	-- (Se não é mask ou bell, tenta unlock)
+	
+	-- Validação: Verificar se tem todos os 6 items
+	for _, itemId in ipairs(afflictedOutfitIds) do
+		if player:getItemCount(itemId) < 1 then
+			player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+			  "You need all Afflicted outfit pieces to unlock it.")
+			return true
+		end
+	end
+
+	-- Remover os 6 items
+	for _, itemId in ipairs(afflictedOutfitIds) do
+		player:removeItem(itemId, 1)
+	end
+
+	-- Adicionar outfit (ambos os gêneros)
+	if player:getSex() == PLAYERSEX_FEMALE then
+		player:addOutfit(430)
+	else
+		player:addOutfit(431)
+	end
+
+	-- Adicionar ambos os addons (tipo 1 + 2)
+	player:addOutfitAddon(430, 1)
+	player:addOutfitAddon(430, 2)
+	player:addOutfitAddon(431, 1)
+	player:addOutfitAddon(431, 2)
+
+	-- Achievement
+	player:addAchievementProgress("Beak Doctor", 2)
+
+	-- Feedback
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+	  "You have unlocked the Afflicted outfit and all its addons!")
+
+	-- Item consumido (qualquer um dos 6)
+	item:remove(1)
+	return true
+end
+```
+
+### Árvore de Decisão (3 Paths)
+
+```
+Jogador ativa item afflicted (12551-12787)
+  │
+  ├─ isPremium()?
+  │   └─ NÃO → Bloqueado
+  │       ├─ Message: "requires premium"
+  │       ├─ item NÃO consumido
+  │       └─ return true
+  │
+  └─ SIM → Continua...
+      │
+      ├─ outfit = getSex() == FEMALE ? 430 : 431
+      │
+      ├─ item.id == 12786? (MASK)
+      │   │
+      │   ├─ SIM → PATH 1: Addon Máscara
+      │   │   ├─ hasOutfit(outfit)?
+      │   │   │   ├─ NÃO → Message: "need to unlock first"
+      │   │   │   └─ return (bloqueado)
+      │   │   │
+      │   │   ├─ SIM → Continua
+      │   │   ├─ addOutfitAddon(430, 2)
+      │   │   ├─ addOutfitAddon(431, 2)
+      │   │   ├─ Achievement: "Beak Doctor" +2
+      │   │   ├─ Message: "unlocked mask addon"
+      │   │   ├─ item:remove(1)
+      │   │   └─ return true
+      │   │
+      │   └─ NÃO → Continua...
+      │
+      ├─ item.id == 12787? (BELL)
+      │   │
+      │   ├─ SIM → PATH 2: Addon Sino
+      │   │   ├─ hasOutfit(outfit)?
+      │   │   │   ├─ NÃO → Message: "need to unlock first"
+      │   │   │   └─ return (bloqueado)
+      │   │   │
+      │   │   ├─ SIM → Continua
+      │   │   ├─ addOutfitAddon(430, 1)
+      │   │   ├─ addOutfitAddon(431, 1)
+      │   │   ├─ Achievement: "Beak Doctor" +2
+      │   │   ├─ Message: "unlocked bell addon"
+      │   │   ├─ item:remove(1)
+      │   │   └─ return true
+      │   │
+      │   └─ NÃO → Continua...
+      │
+      └─ PATH 3: Unlock Outfit (12551-12556)
+          │
+          ├─ Loop 6 items: getItemCount < 1?
+          │   ├─ SIM (falta algum) → Message: "need all pieces"
+          │   ├─ return (bloqueado)
+          │   └─ NÃO (tem todos) → Continua
+          │
+          ├─ Loop remover 6 items: removeItem(id, 1)
+          │
+          ├─ Adicionar outfit:
+          │   └─ if female: addOutfit(430)
+          │   └─ else: addOutfit(431)
+          │
+          ├─ Adicionar addons (1+2 em ambos):
+          │   ├─ addOutfitAddon(430, 1)
+          │   ├─ addOutfitAddon(430, 2)
+          │   ├─ addOutfitAddon(431, 1)
+          │   └─ addOutfitAddon(431, 2)
+          │
+          ├─ Achievement: "Beak Doctor" +2
+          │
+          ├─ Message: "unlocked outfit and all addons"
+          │
+          ├─ item:remove(1) (qualquer dos 6)
+          │
+          └─ return true
+```
+
+### Gender-Based Outfit Selection
+
+```
+getSex() == PLAYERSEX_FEMALE:
+  ├─ outfit = 430 (Afflicted feminino)
+  └─ addOutfit(430)
+
+getSex() != PLAYERSEX_FEMALE (male):
+  ├─ outfit = 431 (Afflicted masculino)
+  └─ addOutfit(431)
+
+Ambos paths aplicam a AMBAS as outfits (430 + 431):
+  ├─ addOutfitAddon(430, type)
+  └─ addOutfitAddon(431, type)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Premium Mandatory**: isPremium() no início bloqueia tudo
+- **Multi-Path Handler**: 3 branches distintas em 1 função
+- **Outfit Addons**: addOutfitAddon() incrementa addon selecionado
+- **Gender Detection**: getSex() determina outfit base (mas ambas aplicadas)
+- **6-Item Cost**: Loop de validação + loop de remoção
+- **hasOutfit()**: Verifica se outfit já está desbloqueado
+- **Achievement Progress**: addAchievementProgress() para tracking
+- **Outfit + Addons**: Unlock completo = outfit + addon 1 + addon 2
+
+### Responsabilidades do Handler
+
+**Fase Global:**
+1. Validar premium: isPremium()
+2. Detectar gênero: getSex()
+3. Aplicar outfit base
+
+**Path 1 (Máscara):**
+4. Validar outfit existe: hasOutfit()
+5. Adicionar addon tipo 2: addOutfitAddon(430, 2) + (431, 2)
+6. Achievement: +2
+7. Consumir item
+
+**Path 2 (Sino):**
+8. Validar outfit existe: hasOutfit()
+9. Adicionar addon tipo 1: addOutfitAddon(430, 1) + (431, 1)
+10. Achievement: +2
+11. Consumir item
+
+**Path 3 (Outfit):**
+12. Validar 6 items: getItemCount() >= 1 para todos
+13. Remover 6 items: removeItem(id, 1) em loop
+14. Adicionar outfit: addOutfit(430 ou 431)
+15. Adicionar addons: 1+2 em ambos os gêneros
+16. Achievement: +2
+17. Consumir item (qualquer um dos 6)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Multi-Path
+
+Este script demonstra 3 caminhos em 1 handler:
+
+```lua
+-- PATH 1
+if item:getID() == afflictedMaskId then
+	-- Lógica máscara
+	return true
+end
+
+-- PATH 2
+if item:getID() == afflictedBellId then
+	-- Lógica sino
+	return true
+end
+
+-- PATH 3 (else implícito)
+-- Lógica outfit unlock
+return true
+```
+
+### Padrão 6-Item Cost
+
+Validação + remoção:
+
+```lua
+-- Validação
+for _, itemId in ipairs(afflictedOutfitIds) do
+	if player:getItemCount(itemId) < 1 then
+		return true  -- Falha silenciosa
+	end
+end
+
+-- Remoção
+for _, itemId in ipairs(afflictedOutfitIds) do
+	player:removeItem(itemId, 1)
+end
+```
+
+### Padrão Outfit Addon
+
+Aplicação em ambos os gêneros:
+
+```lua
+player:addOutfitAddon(430, 2)  -- Feminino + tipo 2
+player:addOutfitAddon(431, 2)  -- Masculino + tipo 2
+```
+
+### Comparação: Afflicted vs Familiar Systems
+
+| Aspecto | Afflicted (12xxx) | Familiar |
+|---------|---|---|
+| Paths | 3 (2 addons + 1 outfit) | 1 (unlock) |
+| Premium | Obrigatório | Não requerido |
+| Multi-Item Cost | 6 items | 1-5 items |
+| Gender Handling | getSex() base, ambas aplicadas | Não tem gender |
+| Addons | 2 tipos (1 + 2) | 0-2 dependendo |
+| Achievement | Beak Doctor | Familiar próprias |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: usable_afflicted_outfit_items.lua" icon="star">
+Análise de sistema multi-path complexo com 3 caminhos distintos (2 addons + 1 unlock), validação premium obrigatória, outfit addons, gênero e custo de 6 items. Maior complexidade da Batch 8.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Multi-path outfit system com 6-item cost | Complexidade: Média-Alta
+</Aside>

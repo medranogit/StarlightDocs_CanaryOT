@@ -1,0 +1,258 @@
+---
+title: "Event Callbacks - Usage Guide"
+description: "Guia completo de uso do sistema EventCallback"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# Event Callback Usage Guide
+
+O sistema `EventCallback` é uma forma de vincular dinamicamente funções C++ para serem acionadas por eventos específicos dentro do jogo. É uma forma elegante e flexível de adicionar comportamento customizado em várias partes da aplicação.
+
+---
+
+## 📋 Tipos de Event Callback
+
+Event callbacks estão disponíveis para várias categorias de entidades do jogo, como `Creature`, `Player`, `Party` e `Monster`.
+
+### Anotações de Tipo de Retorno
+
+Cada função é prefixada com `(bool)`, `(void)` ou `(ReturnValue)`. Esta anotação indica o tipo de retorno esperado da função:
+
+- **`(bool)`**: A função deve retornar um valor booleano (`true` ou `false`). O valor de retorno pode afetar o fluxo do programa no lado C++. Por exemplo, se a função retorna `false`, a execução da função associada no lado C++ é imediatamente interrompida.
+
+- **`(void)`**: A função não retorna nenhum valor. Apenas realiza uma ação e depois termina.
+
+- **`(ReturnValue)`**: A função deve retornar um valor enum `ReturnValue`. Qualquer valor diferente de `RETURNVALUE_NOERROR` interrompe a execução de callbacks posteriores.
+
+---
+
+## 🎯 Funções Disponíveis
+
+### Creature Callbacks
+
+| Assinatura | Tipo | Descrição |
+|---|---|---|
+| `creatureOnChangeOutfit` | `(bool)` | Quando criatura muda aparência |
+| `creatureOnAreaCombat` | `(ReturnValue)` | Quando criatura entra em área de combate |
+| `creatureOnTargetCombat` | `(ReturnValue)` | Quando criatura toma alvo em combate |
+| `creatureOnDrainHealth` | `(void)` | Quando criatura perde health |
+| `creatureOnCombat` | `(void)` | Quando criatura está em combate |
+
+### Party Callbacks
+
+| Assinatura | Tipo | Descrição |
+|---|---|---|
+| `partyOnJoin` | `(bool)` | Quando jogador entra em party |
+| `partyOnLeave` | `(bool)` | Quando jogador sai de party |
+| `partyOnDisband` | `(bool)` | Quando party é dissolvida |
+| `partyOnShareExperience` | `(void)` | Quando experience é compartilhada |
+
+### Player Callbacks
+
+| Assinatura | Tipo | Descrição |
+|---|---|---|
+| `playerOnBrowseField` | `(bool)` | Quando jogador navega campo |
+| `playerOnLook` | `(void)` | Quando jogador observa algo |
+| `playerOnLookInBattleList` | `(void)` | Quando jogador observa em battle list |
+| `playerOnLookInTrade` | `(void)` | Quando jogador observa item em trade |
+| `playerOnLookInShop` | `(bool)` | Quando jogador observa item em shop |
+| `playerOnMoveItem` | `(bool)` | Quando jogador move item |
+| `playerOnItemMoved` | `(void)` | Depois que item é movido |
+| `playerOnChangeZone` | `(void)` | Quando jogador muda zone |
+| `playerOnChangeHazard` | `(void)` | Quando hazard level muda |
+| `playerOnMoveCreature` | `(bool)` | Quando jogador move criatura |
+| `playerOnReportRuleViolation` | `(void)` | Quando jogador reporta violação |
+| `playerOnReportBug` | `(void)` | Quando jogador reporta bug |
+| `playerOnTurn` | `(bool)` | Quando jogador gira |
+| `playerOnTradeRequest` | `(bool)` | Quando solicitação de trade é feita |
+| `playerOnTradeAccept` | `(bool)` | Quando jogador aceita trade |
+| `playerOnGainExperience` | `(void)` | Quando jogador ganha experience |
+| `playerOnLoseExperience` | `(void)` | Quando jogador perde experience |
+| `playerOnGainSkillTries` | `(void)` | Quando jogador ganha skill tries |
+| `playerOnRemoveCount` | `(void)` | Quando item é removido |
+| `playerOnRequestQuestLog` | `(void)` | Quando quest log é requisitado |
+| `playerOnRequestQuestLine` | `(void)` | Quando quest específica é requisitada |
+| `playerOnStorageUpdate` | `(void)` | Quando storage KV é atualizado |
+| `playerOnCombat` | `(void)` | Quando jogador está em combate |
+| `playerOnInventoryUpdate` | `(void)` | Quando inventário é atualizado |
+| `playerOnRotateItem` | `(bool)` | Quando jogador rotaciona item |
+| `playerOnWalk` | `(void)` | Quando jogador caminha |
+| `playerOnThink` | `(void)` | Tick de think do jogador |
+
+### Monster Callbacks
+
+| Assinatura | Tipo | Descrição |
+|---|---|---|
+| `monsterOnDropLoot` | `(void)` | Quando monstro deixa loot |
+| `monsterPostDropLoot` | `(void)` | Depois que loot é dropado |
+
+### Zone Callbacks
+
+| Assinatura | Tipo | Descrição |
+|---|---|---|
+| `zoneBeforeCreatureEnter` | `(bool)` | Antes que criatura entre em zone |
+| `zoneBeforeCreatureLeave` | `(bool)` | Antes que criatura saia de zone |
+| `zoneAfterCreatureEnter` | `(void)` | Depois que criatura entra em zone |
+| `zoneAfterCreatureLeave` | `(void)` | Depois que criatura sai de zone |
+
+### Map Callbacks
+
+| Assinatura | Tipo | Descrição |
+|---|---|---|
+| `mapOnLoad` | `(void)` | Quando mapa é carregado |
+
+---
+
+## 💡 Uso de Event Callbacks
+
+Para usar o sistema `EventCallback`, você primeiro precisa criar uma instância de `EventCallback`, depois definir as funções que deseja acionar em eventos específicos. Uma vez feito, registre seu callback para torná-lo ativo.
+
+Abaixo estão exemplos para cada categoria de entidades do jogo:
+
+### Creature Callback
+
+```lua
+local callback = EventCallback("UniqueCallbackName")
+
+function callback.creatureOnAreaCombat(creature, tile, isAggressive)
+	-- comportamento customizado quando criatura entra em combate
+	return RETURNVALUE_NOERROR
+end
+
+callback:register()
+```
+
+### Player Callback
+
+```lua
+local callback = EventCallback("UniqueCallbackName")
+
+function callback.playerOnLook(player, inspectedThing, inspectedPosition, lookDistance)
+	-- comportamento customizado quando jogador observa algo
+end
+
+callback:register()
+```
+
+### Party Callback
+
+```lua
+local callback = EventCallback("UniqueCallbackName")
+
+function callback.partyOnJoin(party, player)
+	-- comportamento customizado quando jogador entra em party
+end
+
+callback:register()
+```
+
+### Monster Callback
+
+```lua
+local callback = EventCallback("UniqueCallbackName")
+
+function callback.monsterOnDropLoot(monster, corpse)
+	logger.info("Monster {} has corpse {}", monster:getName(), corpse:getName())
+end
+
+callback:register()
+```
+
+---
+
+## 🔄 Event Callbacks Booleanos
+
+Alguns event callbacks retornam um valor booleano. O valor de retorno desempenha um papel crucial na determinação do fluxo do programa no lado C++.
+
+Se o callback retorna `false`, a execução da função associada no lado C++ é interrompida imediatamente. Isso permite usar Lua scripting para introduzir condições customizadas para a execução de funções C++.
+
+### Exemplo de Boolean Event Callback
+
+```lua
+local callback = EventCallback("UniqueCallbackName")
+
+function callback.playerOnMoveItem(player, item, count, fromPos, toPos, fromCylinder, toCylinder)
+	if item:getId() == ITEM_PARCEL then
+		-- Comportamento customizado quando jogador move encomenda
+		return false
+	end
+	return true
+end
+
+callback:register()
+```
+
+<Aside type="tip">
+Neste exemplo, quando um jogador move um item, a função verifica se o item é uma encomenda (parcel) e aplica comportamento customizado, retornando `false` para impossibilitar o movimento, interrompendo a função associada no lado C++.
+</Aside>
+
+---
+
+## 📊 Event Callbacks ReturnValue
+
+Alguns event callbacks retornam um valor enum, neste caso, enum `ReturnValue`. Se o retorno for diferente de `RETURNVALUE_NOERROR`, interrompe a execução dos callbacks seguintes.
+
+### Exemplo de ReturnValue Event Callback
+
+```lua
+local callback = EventCallback()
+
+function callback.creatureOnAreaCombat(creature, tile, isAggressive)
+	-- Se criatura não é agressiva, interrompe execução da função C++
+	if not isAggressive then
+		return RETURNVALUE_NOTPOSSIBLE
+	end
+
+	-- Comportamento customizado quando criatura agressiva entra em combate
+	return RETURNVALUE_NOERROR
+end
+
+callback:register()
+```
+
+<Aside type="tip">
+Neste exemplo, quando uma criatura não-agressiva entra em uma área de combate, a função `creatureOnAreaCombat` retorna `RETURNVALUE_NOTPOSSIBLE`, interrompendo a função associada no lado C++.
+</Aside>
+
+---
+
+## 🔗 Múltiplos Callbacks para o Mesmo Evento
+
+Você pode definir múltiplos callbacks para o mesmo tipo de evento. Isso permite encapsular diferentes comportamentos em callbacks separados, tornando seu código mais modular e fácil de gerenciar.
+
+Também permite usar o mesmo callback em diferentes partes de seus scripts Lua. Todos os callbacks registrados para um evento específico são acionados quando esse evento ocorre.
+
+### Exemplo 1: Primeiro Comportamento
+
+```lua
+local example1 = EventCallback("UniqueCallbackName1")
+
+function example1.creatureOnAreaCombat(creature, tile, isAggressive)
+	-- comportamento customizado 1 quando criatura entra em combate
+end
+
+example1:register()
+```
+
+### Exemplo 2: Segundo Comportamento
+
+```lua
+local example2 = EventCallback("UniqueCallbackName2")
+
+function example2.creatureOnAreaCombat(creature, tile, isAggressive)
+	-- comportamento customizado 2 quando criatura entra em combate
+end
+
+example2:register()
+```
+
+<Aside type="tip">
+Quando o evento `creatureOnAreaCombat` ocorre, **ambos** os callbacks serão executados. Isso permite múltiplas camadas de lógica para o mesmo evento, cada uma isolada em seu próprio callback registrado.
+</Aside>
+
+---
+
+**Atualizado em:** February 20, 2026  
+**Formato:** MDX/Astro  
+**Status:** ✅ Documentação completa convertida de Markdown

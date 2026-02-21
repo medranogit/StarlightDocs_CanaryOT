@@ -1,0 +1,281 @@
+---
+title: sandscourge_figurine.lua
+description: Figurinha para desbloquear familiar Sandscourge exclusiva de Paladin com validações de vocação e level/premium.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="sandscourge_figurine.lua" icon="pencil">
+Item de familiar class-exclusive para Paladinos com validações encadeadas.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/sandscourge_figurine.lua`
+
+**Linhas:** 24 | **ID do Item:** 35590 | **Looktype:** 1366 | **Tipo:** Action Handler
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa figurinha que desbloqueia o familiar Sandscourge, exclusivo para Paladinos. Inclui três validações sequenciais: vocação (PALADIN), nível (200+) OU premium, e verificação de duplication. Usa setFamiliarLooktype() + addFamiliar() para ativar o familiar.
+
+### Estrutura de Funcionalidades
+
+```
+sandscourgeFigurine (Action)
+  ├─ Validação 1: vocação == PALADIN?
+  │   └─ NÃO → reject
+  │
+  ├─ Validação 2: level 200+ OR premium?
+  │   └─ NÃO → reject (silencioso)
+  │
+  ├─ Validação 3: looktype ainda não definido?
+  │   └─ Sim → setFamiliarLooktype(1366)
+  │
+  ├─ Validação 4: não tem familiar 1366?
+  │   ├─ SIM → addFamiliar(1366) + mensagem
+  │   └─ NÃO → mensagem "already have"
+  │
+  ├─ Consumir: item:remove(1)
+  └─ register() → ID 35590
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| sandscourgeFigurine | Action | Objeto handler para a figurinha |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | ID | Descrição |
+|------|-------|-----------|
+| Figurinha Sandscourge | 35590 | ID do item para trigger |
+| Looktype Sandscourge | 1366 | Looktype visual do familiar |
+| Vocação Requerida | PALADIN | Base ID da vocação |
+| Nível Mínimo | 200 | Sem premium |
+| Mensagem Vocação | "Only paladins..." | Se não é paladin |
+| Mensagem Sucesso | "You have summoned a Sandscourge." | Primeiro familiar adicionado |
+| Mensagem Duplication | "You already have a Sandscourge." | Já tem o familiar |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function sandscourgeFigurine.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação 1: Vocação obrigatória
+	if player:getVocation():getBaseId() ~= VOCATION.BASE_ID.PALADIN then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Only paladins can use this item.")
+		return true  -- Item NÃO removido
+	end
+	
+	-- Validação 2: Level 200+ OU Premium
+	if player:getLevel() < 200 and not player:isPremium() then
+		return true  -- Rejeição silenciosa se não passa
+	end
+	
+	-- Validação 3: Definir looktype se não está definido
+	if player:getFamiliarLooktype() == 0 then
+		player:setFamiliarLooktype(1366) -- Sandscourge looktype
+	end
+	
+	-- Validação 4: Adicionar familiar ou avisar se já tem
+	if not player:hasFamiliar(1366) then
+		player:addFamiliar(1366) -- Sandscourge looktype
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have summoned a Sandscourge.")
+	else
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You already have a Sandscourge.")
+	end
+	
+	-- Consumir item sempre
+	item:remove(1)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa sandscourge_figurine (35590)
+  │
+  ├─ getVocation():getBaseId() == PALADIN?
+  │   ├─ NÃO → Message "Only paladins can use this item."
+  │   │         Item NÃO removido
+  │   │         return true
+  │   │
+  │   └─ SIM → Continua...
+  │
+  ├─ getLevel() < 200 AND NOT isPremium()?
+  │   ├─ SIM → Return true (rejeição silenciosa)
+  │   │         Item NÃO removido
+  │   │
+  │   └─ NÃO (200+ ou premium) → Continua...
+  │
+  ├─ getFamiliarLooktype() == 0?
+  │   └─ SIM → setFamiliarLooktype(1366)
+  │
+  ├─ hasFamiliar(1366)?
+  │   ├─ NÃO → addFamiliar(1366)
+  │   │         Message "You have summoned a Sandscourge."
+  │   │
+  │   └─ SIM → Message "You already have a Sandscourge."
+  │
+  ├─ Remover item:
+  │   └─ item:remove(1)
+  │
+  └─ return true
+```
+
+### Validação Encadeada
+
+```
+Ordem de verificações:
+
+1° - Vocação (HARD STOP)
+    └─ Se NÃO paladin: reject + mensagem + item permanece
+
+2° - Level/Premium (SOFT STOP)
+    └─ Se <200 AND não premium: reject silencioso + item permanece
+
+3° - Looktype (SETUP)
+    └─ Se não definido: define para 1366
+
+4° - Duplication (GUARD)
+    └─ Verifica hasFamiliar(1366) antes de adicionar
+```
+
+### Padrão de Error Handling
+
+```
+Vocação Inválida:
+  ├─ Mensagem explícita: "Only paladins..."
+  ├─ Item NÃO removido
+  └─ Early return true
+
+Level/Premium Insuficiente:
+  ├─ Nenhuma mensagem (silencioso)
+  ├─ Item NÃO removido
+  └─ Early return true (silencioso)
+
+Duplication Check:
+  ├─ Não bloqueia (permite adicionar multiplos)
+  ├─ Mas verifica hasFamiliar() antes
+  └─ Mensagem diferente se já tem
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Class-Exclusive**: Validação de `getVocation():getBaseId()` para restricão vocacional
+- **Level OR Premium**: Lógica `<200 AND NOT premium` (equivalente a `>=200 OR premium`)
+- **Silent Rejection**: Return true sem mensagem para rejeições secundárias
+- **getFamiliarLooktype()**: Retorna 0 se nenhum looktype está definido
+- **setFamiliarLooktype()**: Define o visual do familiar antes de adicionar
+- **hasFamiliar()**: Verifica se jogador já tem este familiar específico
+- **addFamiliar()**: Adiciona novo familiar (combina com setFamiliarLooktype)
+- **Item Always Removed**: item:remove(1) ocorre em TODOS os paths (sucesso ou falha com silent)
+
+### Responsabilidades do Handler
+
+1. **Validar vocação**: getVocation():getBaseId() == PALADIN
+2. **Rejeitar se inválido**: Retornar com mensagem clara
+3. **Validar level/premium**: Level 200+ OU isPremium()
+4. **Rejeitar se insuficiente**: Retornar silenciosamente
+5. **Definir looktype**: setFamiliarLooktype(1366) se não está definido
+6. **Verificar duplication**: hasFamiliar(1366) antes de adicionar
+7. **Adicionar ou avisar**: addFamiliar() ou mensagem "already have"
+8. **Consumir item**: item:remove(1) sempre
+
+---
+
+## Patterns e Implementação
+
+### Padrão Class-Exclusive Familiar
+
+Este script demonstra validação de familiar exclusivo:
+
+```lua
+-- Verificação vocacional
+if player:getVocation():getBaseId() ~= VOCATION.BASE_ID.PALADIN then
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Only paladins can use this item.")
+	return true
+end
+
+-- Verificação level/premium
+if player:getLevel() < 200 and not player:isPremium() then
+	return true  -- Silencioso
+end
+
+-- Ativar familiar
+if not player:hasFamiliar(1366) then
+	player:addFamiliar(1366)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have summoned a Sandscourge.")
+end
+```
+
+### Comparação: Sandscourge (Paladin) vs Snowbash (Knight)
+
+| Aspecto | Sandscourge | Snowbash |
+|---------|---|---|
+| Vocação | PALADIN | KNIGHT |
+| Looktype | 1366 | 1365 |
+| ID Item | 35590 | 35589 |
+| Level Mínimo | 200 OR Premium | 200 OR Premium |
+| Mensagem Sucesso | "You have summoned a Sandscourge." | "You have summoned a Snowbash." |
+| Validações | Idênticas | Idênticas |
+
+Padrão replicado para diferentes vocações.
+
+### Validação Level OU Premium
+
+```
+Interpretação atual:
+  └─ if getLevel() < 200 AND NOT isPremium() then reject
+
+Equivalência:
+  └─ if getLevel() >= 200 OR isPremium() then allow
+
+Matrixu de Verdade:
+  Level 200+ | Premium | Resultado
+  --- | --- | ---
+  Sim | Sim | ✅ Allow
+  Sim | Não | ✅ Allow
+  Não | Sim | ✅ Allow
+  Não | Não | ❌ Reject
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: sandscourge_figurine.lua" icon="star">
+Análise de familiar exclusivo de Paladin com validações encadeadas (vocação obrigatória, level/premium condicional, duplication check). Padrão class-exclusive bem-documentado.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Class-exclusive familiar com validações | Complexidade: Baixa-Média
+</Aside>

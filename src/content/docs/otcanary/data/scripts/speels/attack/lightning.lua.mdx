@@ -1,0 +1,408 @@
+---
+title: "Spell - lightning.lua"
+description: "Spell de relâmpago para sorcerers level 55 com escalabilidade magic-level EXTREMA"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `lightning.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 149 |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 55 |
+| **Mana Requerida** | 60 |
+| **Words** | exori amp vis |
+| **Alcance** | 4 |
+| **Área** | Single target |
+| **Cooldown** | 8s |
+| **GroupCooldown** | 2s / 8s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level EXTREMA (2.2-3.4 coef - MAX!) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_LIGHTNING |
+| **Distance Effect** | CONST_ANI_ENERGY |
+| **Requer Target/Direction** | Sim (needCasterTargetOrDirection) |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 33 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de relâmpago premium para sorcerers nível 55 (end-game). Dano energia escalável magic-level EXTREMAMENTE ALTO (2.2-3.4 coef - MÁXIMO!). 60 mana (expensive!). Range 4 (muito ranged!). Targeting flexível. Cooldown 8s (long!). Late-game power spell!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/lightning.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack", "special")
+spell:id(149)
+spell:name("Lightning")
+spell:words("exori amp vis")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_LIGHTNING)
+spell:level(55)
+spell:mana(60)
+spell:isPremium(true)
+spell:range(4)
+spell:needCasterTargetOrDirection(true)
+spell:blockWalls(true)
+spell:cooldown(8 * 1000)
+spell:groupCooldown(2 * 1000, 8 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Relâmpago - Power Spell Magic-Level EXTREMA End-Game**
+
+Este spell implementa um sistema de power ranged com escalabilidade magic-level MÁXIMA:
+
+1. **Magic-Level EXTREMAMENTE Alto:**
+   - min = (level/5) + (maglevel × 2.2) + 12
+   - max = (level/5) + (maglevel × 3.4) + 21
+   - Coef MÁXIMOS (2.2-3.4!)
+
+2. **End-Game Late Sorcerer:**
+   - Level 55 (HIGH!)
+   - 60 mana (expensive!)
+   - Premium only
+   - Cooldown 8s (long!)
+
+3. **Energia Premium:**
+   - COMBAT_ENERGYDAMAGE
+   - Distance effect ENERGY
+   - Range 4 (MUITO ranged!)
+   - Targeting flexível
+
+4. **Power Scaling:**
+   - Level 55 = players muito experientes
+   - Magic-level 2.2-3.4 = escalabilidade máxima
+   - Bônus 12/21 = significativo
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 55, mlvl 20:
+  min = 11 + 44 + 12 = 67
+  max = 11 + 68 + 21 = 100
+
+Sorcerer lvl 55, mlvl 50:
+  min = 11 + 110 + 12 = 133
+  max = 11 + 170 + 21 = 202
+```
+
+**Diferencial:** Power spell energia end-game magic-level MÁXIMA!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `lightning` oferece dano energia EXTREMAMENTE escalável:
+
+- **Dano:** COMBAT_ENERGYDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel × 2.2/3.4) (MÁXIMA!)
+- **Mana:** 60 (expensive)
+- **Level:** 55 (end-game)
+- **Range:** 4 (muito ranged)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: ENERGYDAMAGE
+├─ Effect: ENERGYAREA
+├─ Distance Effect: ENERGY
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max magic-level MÁXIMA
+
+spell.onCastSpell(creature, var)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
+```
+
+**Propósito:** Combat de dano energia distance.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ENERGYDAMAGE | Dano energia |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ENERGYAREA | Efeito energia área |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ENERGY | Projétil energia |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 2.2) + 12
+	local max = (level / 5) + (maglevel * 3.4) + 21
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano energia EXTREMAMENTE escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 2.2) + 12
+max = (level / 5) + (maglevel * 3.4) + 21
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 2.2 (MÁXIMO!)
+- Maglevel max: 3.4 (MÁXIMO!)
+- Bônus: 12/21 (significativo)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 55 | 20 | 67 | 100 |
+| 55 | 30 | 78 | 123 |
+| 55 | 50 | 133 | 202 |
+| 100 | 50 | 183 | 252 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Lightning ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback magic |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Magic-Level EXTREMAMENTE Alta
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 2.2) + 12
+	local max = (level / 5) + (maglevel * 3.4) + 21
+	return -min, -max
+end
+```
+
+**Benefício:** Dano escala EXTREMAMENTE com magic level!
+
+### Padrão 2: End-Game Premium Power
+
+```lua
+spell:isPremium(true)
+spell:level(55)
+spell:mana(60)
+spell:cooldown(8 * 1000)
+```
+
+**Benefício:** Premium exclusive late-game power!
+
+### Padrão 3: Targeting Flexível + Range Extra
+
+```lua
+spell:range(4)
+spell:needCasterTargetOrDirection(true)
+```
+
+**Benefício:** Range 4 (muito safeDamage!)
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano energia EXTREMAMENTE escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(sorcerer, 55, 30)
+// min = 11 + 66 + 12 = 89
+// max = 11 + 102 + 21 = 134
+// Retorna: -89, -134
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura relâmpago em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Target ou direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Lightning ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 55+
+- 60 mana
+- Target ou direction
+- Premium account
+- Cooldown 8s (long!)
+
+**Efeito:**
+- Efeito energia área
+- Projétil energia
+- Dano magic-level EXTREMA
+- Range 4 tiles
+- Bloqueia walls
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: End-Game Power Sorcerer
+
+```lua
+-- Novo Sorcerer lvl 55+ premium
+// Lightning = power spell final
+// Magic-level MÁXIMA escalabilidade
+// 60 mana expensive = strategic
+```
+
+### Caso 2: Premium Sorcerer Training
+
+```lua
+-- Premium sorcerer farming late-game
+// Lightning = power damage
+// Range 4 = muito safe
+// 8s CD = cooldown equilibrado
+// Escalabilidade MÁXIMA
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_ENERGYDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Effects:** CONST_ME_ENERGYAREA, CONST_ANI_ENERGY
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Power spell relâmpago |
+| **Dano Type** | COMBAT_ENERGYDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*2.2)+12, max=(lvl/5)+(mlvl*3.4)+21 |
+| **Mana** | 60 (expensive) |
+| **Range** | 4 (muito ranged!) |
+| **Level** | 55 (end-game) |
+| **Cooldown** | 8s (long) |
+| **Premium** | Sim |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | Magic-level MÁXIMA + premium + end-game |

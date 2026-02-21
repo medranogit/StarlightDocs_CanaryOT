@@ -1,0 +1,248 @@
+---
+title: Monster Management
+description: Comando GOD para criar/gerenciar monstros com forge support
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | manage_monster.lua |
+| **Tipo de Sistema** | Monster Management (GOD) |
+| **Funcionalidade Principal** | Criar monstros em batch |
+| **Comandos** | /m, /setmonstername |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Suporte Forge** | Fiendish/Influenced |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/manage_monster.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /m cria monstros com 5 parâmetros opcionais (name, count, forge, radius, force). Se count > 1: createCreaturesAround (spiral radius, batch creation). Se count = 1: single create. createCreaturesAround: itera radius (1..maxRadius), verifica tiles, cria monsters, aplica forge (SetFiendish, SetInfluenced, CheckDustLevel). /setmonstername: busca monstros ao redor (Game.getSpectators) e seta nome.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo manage_monster.lua implementa sistema avançado de monster creation com 2 comandos. Dispõe de single/batch creation, spiral radius pattern, forge integration (fiendish/influenced), name setting, validações de spawnability. Ferramenta poderosa de monster population management.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Função Local createCreaturesAround**
+
+```lua
+local function createCreaturesAround(player, maxRadius, creatureName, creatureCount, creatureForge, forceCreateMonsters)
+	local playerPosition = player:getPosition()
+	local createdCreatureCount = 0
+	local sendMessage = false
+	local canSetFiendish, canSetInfluenced, influencedLevel = CheckDustLevel(creatureForge, player)
+	
+	-- Spiral radius: 1, 2, 3, ... até maxRadius
+	for radius = 1, maxRadius do
+		if createdCreatureCount >= creatureCount then
+			break
+		end
+		
+		-- Procura em quadrado ao redor
+		local minX, maxX = playerPosition.x - radius, playerPosition.x + radius
+		local minY, maxY = playerPosition.y - radius, playerPosition.y + radius
+		for dx = minX, maxX do
+			for dy = minY, maxY do
+				-- Só cria nas bordas (não interior)
+				if (dx == minX or dx == maxX or dy == minY or dy == maxY) and createdCreatureCount < creatureCount then
+					local checkPosition = Position(dx, dy, playerPosition.z)
+					local tile = Tile(checkPosition)
+					if tile and not tile:hasProperty(CONST_PROP_IMMOVABLEBLOCKSOLID) then
+						local monster = Game.createMonster(creatureName, checkPosition, false, forceCreateMonsters)
+						if monster then
+							createdCreatureCount = createdCreatureCount + 1
+							monster:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+							playerPosition:sendMagicEffect(CONST_ME_MAGIC_RED)
+							
+							-- Aplicar forge se possível
+							if creatureForge and monster:isForgeable() then
+								local monsterType = monster:getType()
+								if canSetFiendish then
+									SetFiendish(monsterType, playerPosition, player, monster)
+								end
+								if canSetInfluenced then
+									SetInfluenced(monsterType, monster, player, influencedLevel)
+								end
+							elseif not sendMessage then
+								sendMessage = true
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	
+	if sendMessage then
+		player:sendCancelMessage("Only allowed monsters can be fiendish or influenced.")
+	end
+end
+```
+
+**Fluxo:**
+1. Parse criatura, count, forge, radius
+2. Loop raio 1 até maxRadius (spiral)
+3. Em cada raio: verifica bordas do quadrado
+4. Valida tile (solid check)
+5. Cria monster em posição válida
+6. Aplica forge se isForgeable()
+7. Feedback de erro se forja não permitida
+
+---
+
+### **TalkAction /m**
+
+```lua
+local createMonster = TalkAction("/m")
+
+function createMonster.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Monster name param required.")
+		return true
+	end
+	
+	local playerPosition = player:getPosition()
+	local splitParams = param:split(",")
+	local monsterName = splitParams[1]
+	local monsterCount = tonumber(splitParams[2] or 1)
+	local monsterForge = splitParams[3] and splitParams[3]:trimSpace() or nil
+	local spawnRadius = tonumber(splitParams[4] or 5)
+	local forceCreate = splitParams[5] and true or false
+	
+	if monsterCount > 1 then
+		createCreaturesAround(player, spawnRadius, monsterName, monsterCount, monsterForge, forceCreate)
+		return true
+	end
+	
+	-- Single creation
+	local monster = Game.createMonster(monsterName, playerPosition)
+	if monster then
+		local canSetFiendish, canSetInfluenced, influencedLevel = CheckDustLevel(monsterForge, player)
+		monster:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+		playerPosition:sendMagicEffect(CONST_ME_MAGIC_RED)
+		
+		if monsterForge and not monster:isForgeable() then
+			player:sendCancelMessage("Only allowed monsters can be fiendish or influenced.")
+			return true
+		end
+		
+		local monsterType = monster:getType()
+		if canSetFiendish then
+			SetFiendish(monsterType, playerPosition, player, monster)
+		end
+		if canSetInfluenced then
+			SetInfluenced(monsterType, monster, player, influencedLevel)
+		end
+	else
+		player:sendCancelMessage("There is not enough room.")
+		playerPosition:sendMagicEffect(CONST_ME_POFF)
+	end
+	return true
+end
+
+createMonster:separator(" ")
+createMonster:groupType("god")
+createMonster:register()
+```
+
+**Comando:**
+```
+/m Rat                                 -- 1 rat
+/m Demon, 5                           -- 5 demons, radius 5
+/m Dragon, 3, fiendish                -- 3 dragons fiendish
+/m Balrog, 10, fiendish, 10           -- 10 balrogs, radius 10
+/m Boss, 1, influenced, 5, true       -- Force creation
+```
+
+**Parâmetros:**
+| Param | Nome | Default | Tipo |
+|---|---|---|---|
+| 1 | monsterName | (obrigatório) | string |
+| 2 | monsterCount | 1 | number |
+| 3 | monsterForge | nil | string ("fiendish"/"influenced") |
+| 4 | spawnRadius | 5 | number |
+| 5 | forceCreate | false | boolean |
+
+---
+
+### **TalkAction /setmonstername**
+
+```lua
+local setMonsterName = TalkAction("/setmonstername")
+
+function setMonsterName.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Command param required.")
+		return true
+	end
+	
+	local splitParams = param:split(",")
+	local newMonsterName = splitParams[1]
+	local spectators, spectator = Game.getSpectators(player:getPosition(), false, false, 4, 4, 4, 4)
+	
+	-- Itera monstros ao redor
+	for i = 1, #spectators do
+		spectator = spectators[i]
+		if spectator:isMonster() then
+			spectator:setName(newMonsterName)
+		end
+	end
+	return true
+end
+
+setMonsterName:separator(" ")
+setMonsterName:groupType("god")
+setMonsterName:register()
+```
+
+**Comando:** `/setmonstername NewName`
+
+**Fluxo:**
+1. Game.getSpectators (raio 4x4)
+2. Itera spectators
+3. Se isMonster: setName(newMonsterName)
+4. Silencioso (sem feedback)
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `tonumber(str)` | Converte número |
+| `Position(x, y, z)` | Cria posição |
+| `Tile(position)` | Obtém tile |
+| `tile:hasProperty(prop)` | Valida propriedade |
+| `Game.createMonster(name, pos, bool, bool)` | Cria monster |
+| `player:getPosition()` | Posição do GM |
+| `monster:isForgeable()` | Pode ser forjado |
+| `monster:getType()` | Obtém tipo |
+| `monster:getPosition()` | Posição |
+| `SetFiendish(type, pos, player, monster)` | Marca fiendish |
+| `SetInfluenced(type, monster, player, level)` | Marca influenced |
+| `CheckDustLevel(forge, player)` | Valida dust |
+| `Game.getSpectators(pos, ...)` | Obtém criaturas |
+| `creature:isMonster()` | Valida monster |
+| `creature:setName(name)` | Seta nome |
+
+---
+
+## 📌 Resumo
+
+O arquivo manage_monster.lua é sistema avançado de monster management. Implementação com spiral radius pattern, batch creation, forge integration (fiendish/influenced), force flag, name setter. Essencial para GMs popuar áreas dinamicamente. Design robusto com validações de forgeability.

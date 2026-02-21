@@ -1,0 +1,293 @@
+---
+title: wheel_scrolls.lua
+description: 5 scrolls de Wheel of Destiny com level 51+ requirement, wheelUnlockScroll() e pontos variáveis (3-20).
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="wheel_scrolls.lua" icon="pencil">
+Handler com level validation e wheel system unlock com points progression.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/wheel_scrolls.lua`
+
+**Linhas:** 28 | **IDs dos Items:** 5 (43946-43950) | **Tipo:** Action Handler com Level Gate
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema de 5 scrolls para Wheel of Destiny progression. Cada scroll requer level 51+ e oferece 3-20 pontos conforme tipo (abridged a advanced). Usa wheelUnlockScroll() pré-compilada do servidor para unlock. Valida se jogador já decifraram o mesmo scroll (prevent duplicate). Sem cooldown, sem achievement, apenas progression points.
+
+### Estrutura de Funcionalidades
+
+```
+PROMOTION SCROLLS (5 tipos):
+  ├─ 43946 (Abridged) → 3 pontos
+  ├─ 43947 (Basic) → 5 pontos
+  ├─ 43948 (Revised) → 9 pontos
+  ├─ 43949 (Extended) → 13 pontos
+  └─ 43950 (Advanced) → 20 pontos
+
+HANDLER:
+  └─ scroll.onUse()
+      ├─ getLevel() < 51?
+      │   └─ SIM → Bloqueado (message)
+      ├─ scrollData = promotionScrolls[item.getId()]
+      ├─ wheelUnlockScroll(scrollData.name)?
+      │   ├─ NÃO (já decifraram) → Message
+      │   ├─ SIM → Continua
+      ├─ Message: "gained X points"
+      ├─ item:remove(1)
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| promotionScrolls | table | 5 scrolls com name, points, itemName |
+| scroll | Action | Objeto handler |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Promotion Scrolls Table
+
+| Item ID | Scroll Nome | Puntos | Nome Exibido |
+|---------|-----------|--------|---|
+| 43946 | abridged | 3 | abridged promotion scroll |
+| 43947 | basic | 5 | basic promotion scroll |
+| 43948 | revised | 9 | revised promotion scroll |
+| 43949 | extended | 13 | extended promotion scroll |
+| 43950 | advanced | 20 | advanced promotion scroll |
+
+### Requirements
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| Min Level | 51 | Level requirement |
+| System | Wheel of Destiny | Progresso no wheel |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local promotionScrolls = {
+	[43946] = { name = "abridged", points = 3, itemName = "abridged promotion scroll" },
+	[43947] = { name = "basic", points = 5, itemName = "basic promotion scroll" },
+	[43948] = { name = "revised", points = 9, itemName = "revised promotion scroll" },
+	[43949] = { name = "extended", points = 13, itemName = "extended promotion scroll" },
+	[43950] = { name = "advanced", points = 20, itemName = "advanced promotion scroll" },
+}
+
+local scroll = Action()
+
+function scroll.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: Level 51+
+	if player:getLevel() < 51 then
+		player:sendTextMessage(MESSAGE_LOOK, "Only a hero of level 51 or above can decipher this scroll.")
+		return true
+	end
+
+	-- Obter informação do scroll
+	local scrollData = promotionScrolls[item:getId()]
+	
+	-- Validação: Já decifraram?
+	if not player:wheelUnlockScroll(scrollData.name) then
+		player:sendTextMessage(MESSAGE_LOOK, "You have already deciphered this scroll.")
+		return true
+	end
+
+	-- Sucesso: ganhou pontos
+	player:sendTextMessage(MESSAGE_LOOK, "You have gained " .. scrollData.points .. " promotion points for the Wheel of Destiny by deciphering the " .. scrollData.itemName .. ".")
+	
+	-- Consumir scroll
+	item:remove(1)
+	return true
+end
+
+-- Registrar todos os IDs
+for id in pairs(promotionScrolls) do
+	scroll:id(id)
+end
+
+scroll:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador decifera promotion scroll
+  │
+  ├─ getLevel() < 51?
+  │   ├─ SIM → Bloqueado
+  │   │   ├─ Message: "Only a hero of level 51..."
+  │   │   ├─ Item NÃO consumido
+  │   │   └─ return true
+  │   │
+  │   └─ NÃO (level >= 51) → Continua
+  │
+  ├─ scrollData = promotionScrolls[itemId]
+  │
+  ├─ wheelUnlockScroll(scrollData.name)?
+  │   ├─ NÃO (já decifraram) → Bloqueado
+  │   │   ├─ Message: "already deciphered"
+  │   │   ├─ Item NÃO consumido
+  │   │   └─ return true
+  │   │
+  │   └─ SIM (primeira vez) → Sucesso
+  │
+  ├─ Message: "gained X points... Wheel of Destiny"
+  │
+  ├─ item:remove(1)
+  │   └─ Consumir scroll
+  │
+  └─ return true
+```
+
+### Wheel Unlock Function
+
+```
+wheelUnlockScroll(scrollData.name) é pré-compilada no servidor:
+  ├─ Retorna true se unlock bem-sucedido (primeira vez)
+  ├─ Retorna false se já foi decifrante (lógica de prevenção)
+  └─ Internamente: atualiza wheel progression + points
+
+Nomes para wheelUnlockScroll:
+  ├─ "abridged" (3 points)
+  ├─ "basic" (5 points)
+  ├─ "revised" (9 points)
+  ├─ "extended" (13 points)
+  └─ "advanced" (20 points)
+```
+
+### Progression Example
+
+```
+Player nivel 50: Tenta usar abridged scroll
+  └─ getLevel() < 51? SIM
+  └─ Message: "Only a hero of level 51..."
+  └─ return true (sem consumir)
+
+Player nivel 51 com 0 points: Usa abridged scroll
+  ├─ getLevel() < 51? NÃO
+  ├─ wheelUnlockScroll("abridged") = true (primeira vez)
+  ├─ Message: "gained 3 points"
+  ├─ Wheel progression: +3 points
+  ├─ item:remove(1)
+  └─ return true
+
+Player nivel 51 tenta abridged novamente:
+  ├─ getLevel() < 51? NÃO
+  ├─ wheelUnlockScroll("abridged") = false (já decifrante)
+  ├─ Message: "already deciphered"
+  ├─ Item NÃO consumido
+  └─ return true
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Level Gate**: getLevel() < 51 obrigatório
+- **wheelUnlockScroll()**: Pré-compilada unlock function
+- **Return Pattern**: false = já decifrante, true = sucesso
+- **Points Scalation**: 3 até 20 conforme tipo
+- **Duplicate Prevention**: wheelUnlockScroll retorna false se repetido
+- **No Achievement**: Sem sistema de achievement
+- **MESSAGE_LOOK**: Tipo de mensagem para scroll/look
+- **String Concatenation**: Mensagem dinâmica com pontos
+
+### Responsabilidades do Handler
+
+1. **Validar level**: getLevel() < 51
+2. **Rejeitar nível baixo**: Message + return true (sem consumir)
+3. **Obter scroll data**: promotionScrolls[itemId]
+4. **Unlock wheel**: wheelUnlockScroll(name)
+5. **Verificar resultado**: false = já decifrante
+6. **Rejeitar duplicado**: Message + return true (sem consumir)
+7. **Success message**: "gained X points"
+8. **Consumir**: item:remove(1)
+9. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Level Gate
+
+Validação de level:
+
+```lua
+if player:getLevel() < 51 then
+	player:sendTextMessage(MESSAGE_LOOK, "Only a hero of level 51 or above...")
+	return true
+end
+```
+
+### Padrão wheelUnlockScroll
+
+Unlock com prevenção de duplicado:
+
+```lua
+if not player:wheelUnlockScroll(scrollData.name) then
+	player:sendTextMessage(MESSAGE_LOOK, "You have already deciphered this scroll.")
+	return true
+end
+```
+
+### Padrão Message Dinâmica
+
+Construção com concatenation:
+
+```lua
+player:sendTextMessage(MESSAGE_LOOK, 
+  "You have gained " .. scrollData.points .. 
+  " promotion points for the Wheel of Destiny by deciphering the " .. 
+  scrollData.itemName .. ".")
+```
+
+### Comparação: Wheel Scrolls vs Promotion System
+
+| Aspecto | Wheel Scrolls | Other Progression |
+|---------|---|---|
+| System | Wheel of Destiny | Generic |
+| Level Gate | 51+ | Variável |
+| Points | 3-20 | Variável |
+| Unlock | wheelUnlockScroll | Custom |
+| Duplication | Prevenido | Variável |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: wheel_scrolls.lua" icon="star">
+Análise de system com level gate, wheel unlock function e progression points. Demonstra prevenção de duplication com wheelUnlockScroll() return check.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Level gate com wheel progression | Complexidade: Baixa-Média
+</Aside>

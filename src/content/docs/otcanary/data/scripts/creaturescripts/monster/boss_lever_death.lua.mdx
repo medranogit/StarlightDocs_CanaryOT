@@ -1,0 +1,350 @@
+---
+title: boss_lever_death.lua
+description: CreatureEvent "BossLeverOnDeath" que gerencia zona de boss com timeout, refresh e remoção de jogadores após derrota.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="boss_lever_death.lua" icon="pencil">
+Listener de morte de boss com gerenciamento de zona e eventos schedulados.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/monster/boss_lever_death.lua`
+
+**Linhas:** 42 | **Event:** CreatureEvent "BossLeverOnDeath" | **Tipo:** onDeath Listener Boss
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener de morte de boss com sistema de zona. Ao boss morrer: obtem nome do boss, constrói zone key ("boss." + toKey(name)), lookup zone e BossLever config via name. Se BossLever.timeoutEvent existe: cancela. Se timeAfterKill > 0: envia mensagem avizando tempo, assinala novo event que refresha zona e remove players após timeout (milliseconds). Chama onDeathForDamagingPlayers com callback de screenshot. Padrão complexo com zona management e event scheduling.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT: "BossLeverOnDeath"
+  └─ onDeath(creature)
+      ├─ Validação: creature exists?
+      │   └─ NÃO → return true
+      │
+      ├─ name = creature:getName()
+      ├─ key = "boss." .. toKey(name)
+      │   └─ Constrói zone key
+      │
+      ├─ zone = Zone(key)
+      │   └─ Lookup: Zone da boss
+      │
+      ├─ Validação: zone exists?
+      │   └─ NÃO → return true
+      │
+      ├─ bossLever = BossLever[name:lower()]
+      │   └─ Lookup: Config de boss
+      │
+      ├─ Validação: bossLever exists?
+      │   └─ NÃO → return true
+      │
+      ├─ Event cancelation:
+      │   ├─ if bossLever.timeoutEvent:
+      │   │   └─ stopEvent(timeoutEvent)
+      │   │       bossLever.timeoutEvent = nil
+      │
+      ├─ If timeAfterKill > 0:
+      │   ├─ zone:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Boss defeated. X seconds to leave.")
+      │   └─ bossLever.timeoutEvent = addEvent(
+      │       function(zn)
+      │           zn:refresh()
+      │           zn:removePlayers()
+      │       end,
+      │       timeAfterKill * 1000,  -- Convertendo para ms
+      │       zone
+      │   )
+      │
+      ├─ onDeathForDamagingPlayers(creature, callback)
+      │   └─ Iterate players que deram dano
+      │       └─ player:takeScreenshot(SCREENSHOT_TYPE_BOSSDEFEATED)
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| onBossDeath | CreatureEvent | Listener de morte |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| BossLever | table | Tabela global de config de bosses |
+| Zone | classe | Sistema de zonas |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| creature | Monster | Boss que morreu |
+
+### BossLever Config
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| timeAfterKill | número | Segundos até refresh |
+| timeoutEvent | número | ID do evento schedulado |
+
+### Zone Operations
+
+| Operação | Tipo | Descrição |
+|----------|------|-----------|
+| zone:refresh() | método | Recarrega zona |
+| zone:removePlayers() | método | Remove todos os players |
+| zone:sendTextMessage() | método | Envia mensagem na zona |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local onBossDeath = CreatureEvent("BossLeverOnDeath")
+
+function onBossDeath.onDeath(creature)
+	-- Validação: creature exists?
+	if not creature then
+		return true
+	end
+
+	-- Construir zone key
+	local name = creature:getName()
+	local key = "boss." .. toKey(name)
+	local zone = Zone(key)
+
+	-- Validação: zone exists?
+	if not zone then
+		return true
+	end
+
+	-- Lookup: BossLever config
+	local bossLever = BossLever[name:lower()]
+	
+	-- Validação: bossLever exists?
+	if not bossLever then
+		return true
+	end
+
+	-- ========== CANCELAR TIMEOUT ANTERIOR ==========
+	if bossLever.timeoutEvent then
+		stopEvent(bossLever.timeoutEvent)
+		bossLever.timeoutEvent = nil
+	end
+
+	-- ========== NOVO TIMEOUT (Se configurado) ==========
+	if bossLever.timeAfterKill > 0 then
+		-- Enviar mensagem avizando
+		zone:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+			"The " .. name .. " has been defeated. You have " .. 
+			bossLever.timeAfterKill .. " seconds to leave the room.")
+		
+		-- Schedulr evento de refresh/remoção
+		bossLever.timeoutEvent = addEvent(
+			function(zn)
+				zn:refresh()
+				zn:removePlayers()
+			end,
+			bossLever.timeAfterKill * 1000,  -- Convertendo segundos para ms
+			zone
+		)
+	end
+
+	-- ========== SCREENSHOT PARA DAMAGERS ==========
+	onDeathForDamagingPlayers(creature, function(creature, player)
+		player:takeScreenshot(SCREENSHOT_TYPE_BOSSDEFEATED)
+	end)
+	
+	return true
+end
+
+onBossDeath:register()
+```
+
+### Árvore de Decisão
+
+```
+Boss morre
+  │
+  ├─ creature exists?
+  │   ├─ NÃO → return true (erro silencioso)
+  │   └─ SIM → Continua
+  │
+  ├─ Construir zone key:
+  │   ├─ name = creature:getName()
+  │   ├─ key = "boss." .. toKey(name)
+  │   │   └─ Exemplo: "boss.demon"
+  │   └─ zone = Zone(key)
+  │
+  ├─ zone exists?
+  │   ├─ NÃO → return true (zona não existe)
+  │   └─ SIM → Continua
+  │
+  ├─ bossLever = BossLever[name:lower()]
+  │   └─ Lookup: Config de boss
+  │
+  ├─ bossLever exists?
+  │   ├─ NÃO → return true (config não existe)
+  │   └─ SIM → Continua
+  │
+  ├─ ========== CANCELAR EVENTO ANTERIOR ==========
+  │  └─ if bossLever.timeoutEvent:
+  │      ├─ stopEvent(timeoutEvent)
+  │      │   └─ Cancela timer anterior
+  │      └─ timeoutEvent = nil
+  │
+  ├─ ========== NOVO EVENTO DE TIMEOUT ==========
+  │  └─ if timeAfterKill > 0:
+  │      │
+  │      ├─ zone:sendTextMessage()
+  │      │   └─ "The [boss] defeated. X seconds to leave."
+  │      │
+  │      └─ addEvent(
+  │          function(zn)
+  │              zn:refresh()
+  │              zn:removePlayers()
+  │          end,
+  │          timeAfterKill * 1000,  -- ms
+  │          zone
+  │      )
+  │      └─ Schedula refresh+remoção após timeout
+  │
+  ├─ ========== SCREENSHOT ==========
+  │  └─ onDeathForDamagingPlayers(creature, callback)
+  │      └─ for each damaging player:
+  │          └─ player:takeScreenshot(BOSSDEFEATED)
+  │
+  └─ return true (sucesso)
+```
+
+### Event Scheduling Detail
+
+```lua
+-- Adicionar evento com 3 argumentos:
+-- 1: Função anônima (closure)
+-- 2: Delay em milliseconds
+-- 3: Argumento passado (zone)
+
+addEvent(
+	function(zn)  -- zn = zone (passado como argumento)
+		zn:refresh()        -- Recarrega zona
+		zn:removePlayers()  -- Remove todos players
+	end,
+	bossLever.timeAfterKill * 1000,  -- Converter para ms
+	zone  -- Argumento passado à função
+)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Zone System**: Zonas com metadata e operações
+- **toKey()**: Converte nome para chave (normalizado)
+- **BossLever Table**: Config external de bosses
+- **addEvent()**: Scheduler de eventos com delay
+- **stopEvent()**: Cancelar evento ativo
+- **Closure**: Função anônima com acesso externo
+- **ms Conversion**: * 1000 para converter segundos
+- **sendTextMessage()**: Mensagem na zona
+- **onDeathForDamagingPlayers()**: Iterate players que deram dano
+- **takeScreenshot()**: Tirar screenshot (achievement)
+
+### Responsabilidades do Handler
+
+1. **Validar**: creature + zone + bossLever exists?
+2. **Cancelar**: stopEvent(anterior timeoutEvent)
+3. **Enviar**: Mensagem de derrota
+4. **Schedule**: addEvent com refresh + removePlayers
+5. **Screenshot**: onDeathForDamagingPlayers callback
+6. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Zone Key Construction
+
+Construir chave de zona:
+
+```lua
+local key = "boss." .. toKey(name)
+local zone = Zone(key)
+```
+
+### Padrão Event Cancellation
+
+Cancelar evento anterior:
+
+```lua
+if bossLever.timeoutEvent then
+	stopEvent(bossLever.timeoutEvent)
+	bossLever.timeoutEvent = nil
+end
+```
+
+### Padrão Event Scheduling com Closure
+
+Schedulr evento com argumento:
+
+```lua
+bossLever.timeoutEvent = addEvent(
+	function(zn)
+		zn:refresh()
+		zn:removePlayers()
+	end,
+	bossLever.timeAfterKill * 1000,  -- ms
+	zone
+)
+```
+
+### Padrão Damaging Players Callback
+
+Iterar players com dano:
+
+```lua
+onDeathForDamagingPlayers(creature, function(creature, player)
+	player:takeScreenshot(SCREENSHOT_TYPE_BOSSDEFEATED)
+end)
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: boss_lever_death.lua" icon="star">
+Análise de listener de morte de boss com zona management. Demonstra Zone system, event scheduling, closures e screenshot callbacks.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Boss death with zone management and event scheduling | Complexidade: Alta
+</Aside>

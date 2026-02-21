@@ -1,0 +1,319 @@
+---
+title: "Script Lib - create_functions.lua"
+description: "Biblioteca de criação de funções getter/setter para tipos nativos"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `create_functions.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Library/Setup |
+| **Responsabilidade** | Criar getter/setter functions para tipos nativos |
+| **Linhas de Código** | 3 |
+| **Tipos Afetados** | MonsterType, NpcType, Spell |
+| **Complexidade** | Trivial |
+| **Status** | Setup bootstrap (sem implementação local) |
+
+**Descrição:**
+Script de setup que chamaFunções de criação de getter/setter dinâmicos para tipos nativos do engine C++. Implementa auto-geração de métodos de acesso (`get*` / `set*`) baseado em padrão de metatable do Lua, permitindo que tipos nativos exponham propriedades de forma consistente e idiomática em Lua.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/create_functions.lua
+```
+
+**Tipo de Carregamento:** Executado durante inicialização (antes de scripts de jogo)
+
+**Pré-requisitos:**
+- Função C++ nativa: `createFunctions()` (implementada no engine)
+- Tipos nativos: `MonsterType`, `NpcType`, `Spell` (classes C++ exported)
+- Metatable system do Lua
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de Create Functions (Auto-Generated Accessors)**
+
+Em linguagens como Lua com engine C++, propriedades nativas não têm getters/setters automáticos. Esta biblioteca resolve isso:
+
+**Sem createFunctions:**
+```lua
+-- Impossível acessar propriedade diretamente
+monsterType->getName()  -- X Erro: sem suporte Lua
+```
+
+**Com createFunctions:**
+```lua
+-- Auto-gerado: getter
+local name = monsterType:getName()
+
+-- Auto-gerado: setter
+monsterType:setName("New Name")
+```
+
+**Como Funciona:**
+```
+createFunctions(MonsterType)
+  ├─ Itera propriedades de MonsterType (C++)
+  ├─ Para cada prop: cria método get*Prop()
+  ├─ Para cada prop: cria método set*Prop() se mutável
+  └─ Adiciona à metatable do tipo
+```
+
+**Resultado:** Interface consistente para todos tipos nativos
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `create_functions.lua` é um **setup bootstrap** que gera automaticamente:
+
+- **Getter functions:** Para ler propriedades de tipos nativos
+- **Setter functions:** Para modificar propriedades de tipos nativos
+- **Nomeação idiomática:** Segue padrões Lua (`get*`, `set*`)
+
+### Arquitetura
+
+Script usa padrão de **declarative initialization**:
+
+```lua
+createFunctions(Type1)  -- Gera getters/setters para Type1
+createFunctions(Type2)  -- Gera getters/setters para Type2
+createFunctions(Type3)  -- Gera getters/setters para Type3
+```
+
+Cada chamada modifica a metatable do tipo nativo, adicionando novos métodos.
+
+### Fluxo Lógico Resumido
+
+| Tipo | Ação | Resultado |
+|------|------|-----------|
+| **MonsterType** | `createFunctions()` | Métodos `getName()`, `setName()`, etc |
+| **NpcType** | `createFunctions()` | Métodos `getName()`, `setName()`, etc |
+| **Spell** | `createFunctions()` | Métodos `getName()`, `setCastSound()`, etc |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Operação 1: createFunctions(MonsterType)
+
+```lua
+createFunctions(MonsterType)
+```
+
+**Propósito:** Gera getters/setters para MonsterType (tipos de monstros).
+
+**Efeito:**
+
+- Para cada propriedade de MonsterType (ex: `name`, `health`, `experience`):
+  - Cria método `getPropertyName()` - readonly accessor
+  - Cria método `setPropertyName()` se mutável - write accessor
+
+**Exemplo de Métodos Gerados:**
+```lua
+local monster = MonsterType("Minotaur")
+monster:getName()              -- Getter para name
+monster:getHealth()            -- Getter para health
+monster:getExperience()        -- Getter para experience
+monster:setHealth(200)         -- Setter para health (se mutável)
+```
+
+**Propriedades Típicas:**
+- `name` - Nome do tipo
+- `description` - Descrição
+- `health` - HP base
+- `experience` - XP ao matar
+- `corpseId` - ID do corpse
+- `speed` - Velocidade de movimento
+- `outfit` - Aparência visual
+
+---
+
+### Operação 2: createFunctions(NpcType)
+
+```lua
+createFunctions(NpcType)
+```
+
+**Propósito:** Gera getters/setters para NpcType (tipos de NPCs).
+
+**Efeito:** Similar ao MonsterType, mas com propriedades específicas de NPC.
+
+**Exemplo de Métodos Gerados:**
+```lua
+local npc = NpcType("Elane")
+npc:getName()                  -- Getter para name
+npc:setGreeting("Greetings")   -- Setter para greeting text
+npc:getFarewell("Farewell")    -- Getter para farewell text
+```
+
+**Propriedades Típicas:**
+- `name` - Nome do NPC
+- `greeting` - Texto de saudação
+- `farewell` - Texto de despedida
+- `outfit` - Aparência visual
+- `speed` - Velocidade de movimento
+
+---
+
+### Operação 3: createFunctions(Spell)
+
+```lua
+createFunctions(Spell)
+```
+
+**Propósito:** Gera getters/setters para Spell (tipos de magias).
+
+**Efeito:** Gera accessors para propriedades de feitiço.
+
+**Exemplo de Métodos Gerados:**
+```lua
+local spell = Spell("Fireball")
+spell:getName()                -- Getter para name
+spell:getManaCost()            -- Getter para mana necessário
+spell:setCastSound(123)        -- Setter para som de cast
+spell:getLevel()               -- Getter para level requerido
+```
+
+**Propriedades Típicas:**
+- `name` - Nome da spell
+- `manaCost` - Mana requerido
+- `level` - Level mínimo
+- `castSound` - ID do som de cast
+- `effect` - Efeito visual (magic effect ID)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Funções Globais Utilizadas
+
+| Função | Origem | Descrição |
+|--------|--------|-----------|
+| `createFunctions()` | Engine C++ | Gera getters/setters para tipo nativo |
+
+### Tipos Afetados
+
+| Tipo | Módulo | Descrição |
+|------|--------|-----------|
+| `MonsterType` | Core Engine | Tipo de monstro |
+| `NpcType` | Core Engine | Tipo de NPC |
+| `Spell` | Core Engine | Tipo de feitiço |
+
+### Métodos Auto-Gerados (Exemplos)
+
+**MonsterType Methods:**
+- `getName()`, `setName()`
+- `getHealth()`, `setHealth()`
+- `getExperience()`, `setExperience()`
+- `getOutfit()`, `setOutfit()`
+- `getSpeed()`, `setSpeed()`
+
+**NpcType Methods:**
+- `getName()`, `setName()`
+- `getGreeting()`, `setGreeting()`
+- `getFarewell()`, `setFarewell()`
+- `getOutfit()`, `setOutfit()`
+- `getSpeed()`, `setSpeed()`
+
+**Spell Methods:**
+- `getName()`, `setName()`
+- `getManaCost()`, `setManaCost()`
+- `getLevel()`, `setLevel()`
+- `getCastSound()`, `setCastSound()`
+- `getEffect()`, `setEffect()`
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Reflection-Based Accessor Generation
+
+**Técnica:** Usar reflexão/introspection para gerar métodos automaticamente.
+
+```lua
+-- Sem createFunctions:
+monsterType1:getName()  -- Possível (nativo)
+-- E dezenas de outras chamadas nativas
+
+-- Com createFunctions:
+-- Todas as propriedades têm getters/setters consistentes
+monsterType:getName()
+monsterType:setName()
+```
+
+**Vantagem:**
+- Evita código boilerplate (DRY principle)
+- Interface consistente para todos tipos
+- Fácil manutenção (novo property → novo accessor automático)
+
+**Aplicação:** Qualquer binding C++/Lua com múltiplas propriedades.
+
+---
+
+### Padrão 2: Declarative Type Setup
+
+**Técnica:** Listar tipos a serem processados de forma clara.
+
+```lua
+createFunctions(MonsterType)
+createFunctions(NpcType)
+createFunctions(Spell)
+```
+
+**Vantagem:**
+- Explícito: claro quais tipos foram modificados
+- Manutenível: adicionar tipo é trivial
+- Sem magia: setup visível
+
+**Aplicação:** Inicialização de tipos nativos em bindings.
+
+---
+
+### Padrão 3: Bootstrap Timing
+
+**Técnica:** Executar setup no início do Lua boot, antes de scripts de jogo.
+
+```
+core.lua (setup scripts)
+  ├─ create_functions.lua ← Executa AQUI (tipos pronto para usar)
+  │  └─ Popula metatables
+  └─ game scripts
+     └─ Usam tipos com getters/setters
+```
+
+**Vantagem:**
+- Tipos estão prontos quando scripts de jogo rodam
+- Evita race conditions (setup antes de uso)
+- Centralizado (um lugar para manutenção)
+
+**Aplicação:** Inicialização do engine Lua.
+
+---
+
+## 📈 Impacto de Performance
+
+### Memory Overhead
+- **Baixo:** Uma cópia de método por tipo (não por instância)
+- Metatables são compartilhadas
+
+### Execution Speed
+- **Setup (uma vez):** ~1ms para criar todos os accessors
+- **Runtime:** Sem overhead (métodos são nativos C++)
+
+### Escalabilidade
+- Linear com número de tipos e propriedades
+- Típico: ~10-20 tipos × ~20-30 properties = ~200-600 métodos criados

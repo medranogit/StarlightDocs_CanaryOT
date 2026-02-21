@@ -1,0 +1,561 @@
+---
+title: "Spell - great_energy_beam.lua"
+description: "Spell de raio energia para sorcerers level 29 com WOD dual formula"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `great_energy_beam.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant - COMPLEXA) |
+| **ID do Spell** | 23 |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 29 |
+| **Mana Requerida** | 110 |
+| **Words** | exevo gran vis lux |
+| **Alcance** | -1 (direction) |
+| **Área** | Dual: BEAM8 (normal) / BEAM10 (WOD!) |
+| **Cooldown** | 6s |
+| **GroupCooldown** | 2s + 6s |
+| **Premium** | Não |
+| **Fórmula** | Magic-level (4-7 coef) com WOD amplify |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_GREAT_ENERGY_BEAM |
+| **Requer Direction** | Sim (needDirection) |
+| **Bloqueia Walls** | Sim |
+| **WOD System** | instantSkillWOD("Beam Mastery") - dual formula! |
+| **Linhas de Código** | 42 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Spell complexa de raio energia para sorcerers nível 29 (early-mid). Sistema WOD dual formula com callback separados (normal + WOD). Magic-level escalável alto (4-7 coef). Beam8 (normal) vs Beam10 (WOD ampliado!). instantSkillWOD("Beam Mastery") check dinâmico. 110 mana. Direction required. Early access premium spell!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/great_energy_beam.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack", "greatbeams")
+spell:id(23)
+spell:name("Great Energy Beam")
+spell:words("exevo gran vis lux")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_GREAT_ENERGY_BEAM)
+spell:level(29)
+spell:mana(110)
+spell:isPremium(false)
+spell:needDirection(true)
+spell:blockWalls(true)
+spell:cooldown(6 * 1000)
+spell:groupCooldown(2 * 1000, 6 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Raio Energia Grandioso - Dual Formula WOD Ampliada**
+
+Este spell implementa um sistema COMPLEXA de beam energia com dual formula WOD:
+
+1. **Dual Formula Function:**
+   - formulaFunction: base cálculo
+   - Usada por (normal) e (WOD)
+   - onGetFormulaValues: normal BEAM8
+   - onGetFormulaValuesWOD: WOD BEAM10
+
+2. **Dual Combat Factory:**
+   - createCombat(area, combatFunc)
+   - Parametrizada por area e função
+   - combat: BEAM8 normal
+   - combatWOD: BEAM10 ampliado!
+
+3. **WOD Skill Check Dinâmico:**
+   - instantSkillWOD("Beam Mastery")
+   - Retorna true/false
+   - TRUE: combatWOD + BEAM10
+   - FALSE: combat + BEAM8
+
+4. **Early-Mid Sorcerer:**
+   - Level 29 (cedo!)
+   - 110 mana
+   - Não-premium
+   - Cooldown 6s
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 29, mlvl 8:
+  Normal (BEAM8):
+    min = 5.8 + 32 = 37.8
+    max = 5.8 + 56 = 61.8
+
+  WOD (BEAM10):
+    min = 5.8 + 32 = 37.8
+    max = 5.8 + 56 = 61.8
+    (mesma fórmula, area maior!)
+
+Sorcerer lvl 40, mlvl 15:
+  Normal (BEAM8):
+    min = 8 + 60 = 68
+    max = 8 + 105 = 113
+
+  WOD (BEAM10):
+    min = 8 + 60 = 68
+    max = 8 + 105 = 113
+    (area BEAM10 significativamente maior!)
+```
+
+**Diferencial:** Energia early WOD skill-based dual beam!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `great_energy_beam` oferece dano energia escalável com WOD dual formula:
+
+- **Dano:** COMBAT_ENERGYDAMAGE magic-level
+- **Fórmula:** (level/5) + (mlvl × 4 / 7) (alta!)
+- **Mana:** 110
+- **Level:** 29 (early-mid)
+- **Sistema:** WOD dual combats (BEAM8 vs BEAM10)
+
+### Arquitetura (COMPLEXA!)
+
+```
+formulaFunction(player, level, maglevel)
+└─ Cálculo base compartilhado
+
+onGetFormulaValues (normal)
+├─ Chama formulaFunction
+└─ Retorna min/max
+
+onGetFormulaValuesWOD (WOD)
+├─ Chama formulaFunction
+└─ Retorna min/max (mesma!)
+
+createCombat(area, combatFunc)
+├─ Factory parametrizada
+├─ Seta area dinamicamente
+└─ Retorna combat
+
+combat = createCombat(BEAM8, "onGetFormulaValues")
+combatWOD = createCombat(BEAM10, "onGetFormulaValuesWOD")
+
+spell.onCastSpell(creature, var)
+├─ instantSkillWOD("Beam Mastery") check
+├─ TRUE: combatWOD:execute() (BEAM10!)
+└─ FALSE: combat:execute() (BEAM8)
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Local: formulaFunction
+
+```lua
+local function formulaFunction(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 4)
+	local max = (level / 5) + (maglevel * 7)
+	return -min, -max
+end
+```
+
+**Propósito:** Função base compartilhada para ambas formulas.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Sorcerer |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 4)
+max = (level / 5) + (maglevel * 7)
+```
+
+---
+
+### Função Global: onGetFormulaValues (Normal)
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	return formulaFunction(player, level, maglevel)
+end
+```
+
+**Propósito:** Callback para BEAM8 normal.
+
+---
+
+### Função Global: onGetFormulaValuesWOD (WOD)
+
+```lua
+function onGetFormulaValuesWOD(player, level, maglevel)
+	return formulaFunction(player, level, maglevel)
+end
+```
+
+**Propósito:** Callback para BEAM10 WOD ampliado.
+
+**Nota:** Usa MESMA fórmula que normal, mas area é maior (BEAM10)!
+
+---
+
+### Função Local: createCombat (Factory)
+
+```lua
+local function createCombat(area, combatFunc)
+	local initCombat = Combat()
+	initCombat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, combatFunc)
+	initCombat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+	initCombat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYAREA)
+	initCombat:setArea(createCombatArea(area))
+	return initCombat
+end
+```
+
+**Propósito:** Factory parametrizada para criar combats.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `area` | Area | BEAM8 ou BEAM10 |
+| `combatFunc` | string | "onGetFormulaValues" ou "onGetFormulaValuesWOD" |
+
+**Retorno:** Combat customizado.
+
+**Uso:**
+```lua
+local combat = createCombat(AREA_BEAM8, "onGetFormulaValues")
+local combatWOD = createCombat(AREA_BEAM10, "onGetFormulaValuesWOD")
+```
+
+---
+
+### Variáveis Globais: combat & combatWOD
+
+```lua
+local combat = createCombat(AREA_BEAM8, "onGetFormulaValues")
+local combatWOD = createCombat(AREA_BEAM10, "onGetFormulaValuesWOD")
+```
+
+**Propósito:** Dois combats para dual formula.
+
+| Nome | Type | Area | Callback | Uso |
+|---|---|---|---|---|
+| `combat` | Combat | BEAM8 | onGetFormulaValues | Normal |
+| `combatWOD` | Combat | BEAM10 | onGetFormulaValuesWOD | WOD skill |
+
+---
+
+### Função Global: spell.onCastSpell (COMPLEXA!)
+
+```lua
+function spell.onCastSpell(creature, var)
+	local player = creature:getPlayer()
+	if not creature or not player then
+		return false
+	end
+	return player:instantSkillWOD("Beam Mastery") and 
+	       combatWOD:execute(creature, var) or 
+	       combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler complexo com WOD skill selection.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Direction |
+
+**Lógica:**
+1. Valida creature/player
+2. Checa instantSkillWOD("Beam Mastery")
+3. TRUE: executa combatWOD (BEAM10!)
+4. FALSE: executa combat (BEAM8)
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Beam lançado |
+| `false` | Validação falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `formulaFunction` | function | Local | Base shared |
+| `onGetFormulaValues` | function | Global | Callback normal |
+| `onGetFormulaValuesWOD` | function | Global | Callback WOD |
+| `createCombat` | function | Local | Factory |
+| `combat` | Combat | Arquivo | BEAM8 normal |
+| `combatWOD` | Combat | Arquivo | BEAM10 WOD |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em spell.onCastSpell):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Creature player |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Shared Formula Function
+
+```lua
+local function formulaFunction(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 4)
+	local max = (level / 5) + (maglevel * 7)
+	return -min, -max
+end
+
+function onGetFormulaValues(player, level, maglevel)
+	return formulaFunction(player, level, maglevel)
+end
+
+function onGetFormulaValuesWOD(player, level, maglevel)
+	return formulaFunction(player, level, maglevel)
+end
+```
+
+**Benefício:** Reutilização código, DRY principle!
+
+### Padrão 2: Parametrized Combat Factory
+
+```lua
+local function createCombat(area, combatFunc)
+	local initCombat = Combat()
+	initCombat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, combatFunc)
+	initCombat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+	initCombat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYAREA)
+	initCombat:setArea(createCombatArea(area))
+	return initCombat
+end
+```
+
+**Benefício:** Reduz duplicação, cria combats parametrizados!
+
+### Padrão 3: WOD Skill Check Ternário
+
+```lua
+return player:instantSkillWOD("Beam Mastery") and 
+       combatWOD:execute(creature, var) or 
+       combat:execute(creature, var)
+```
+
+**Benefício:** Seleção elegante WOD skill!
+
+### Padrão 4: Dual Beam Areas
+
+```lua
+local combat = createCombat(AREA_BEAM8, "onGetFormulaValues")
+local combatWOD = createCombat(AREA_BEAM10, "onGetFormulaValuesWOD")
+```
+
+**Benefício:** Normal (8) vs WOD ampliado (10)!
+
+---
+
+## 🤖 Documentação das Funções
+
+### formulaFunction(player, level, maglevel)
+
+**Descrição:** Calcula dano energia base compartilhado.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Sorcerer |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+---
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Callback para BEAM8 normal.
+
+**Wrapper para:** formulaFunction
+
+---
+
+### onGetFormulaValuesWOD(player, level, maglevel)
+
+**Descrição:** Callback para BEAM10 WOD.
+
+**Wrapper para:** formulaFunction (mesma!)
+
+---
+
+### createCombat(area, combatFunc)
+
+**Descrição:** Factory parametrizado para criação combats.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `area` | Area | BEAM8 ou BEAM10 |
+| `combatFunc` | string | Callback function name |
+
+**Retorno:** Combat customizado.
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Lança beam energia com WOD skill selection.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Beam lançado |
+| `false` | Validação falhou |
+
+**Requisitos:**
+- Level 29+
+- 110 mana
+- Direction required
+- Cooldown 6s
+
+**Efeito:**
+- instantSkillWOD("Beam Mastery") = FALSE: BEAM8 (normal)
+- instantSkillWOD("Beam Mastery") = TRUE: BEAM10 (WOD!)
+- Mesmo dano, area diferente
+- Efeito energia ampliado WOD
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 40, MLvl 15, sem Beam Mastery
+spell.onCastSpell(sorcerer, directionVariant)
+// instantSkillWOD("Beam Mastery") = false
+// Usa combat (BEAM8)
+// Dano: -68 a -113
+// Area BEAM8 normal
+// Resultado: Raio energia normal!
+
+-- Sorcerer lvl 40, MLvl 15, com Beam Mastery
+spell.onCastSpell(sorcerer, directionVariant)
+// instantSkillWOD("Beam Mastery") = true
+// Usa combatWOD (BEAM10!)
+// Dano: -68 a -113 (mesmo!)
+// Area BEAM10 ampliado!
+// Resultado: Raio energia WOD ampliado!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Early Energy Beam
+
+```lua
+-- Novo Sorcerer lvl 29
+// Great Energy Beam = primeiros beams energia
+// BEAM8 normal
+// Magic-level escalação
+```
+
+### Caso 2: WOD Beam Mastery
+
+```lua
+-- Sorcerer com Beam Mastery WOD
+// Great Energy Beam = BEAM10 ampliado!
+// instantSkillWOD check automático
+// Area significativamente maior
+```
+
+### Caso 3: Skill Progression
+
+```lua
+-- Sorcerer farming Beam Mastery
+// Sem skill: BEAM8 normal
+// Com skill: BEAM10 ampliado
+// Upgrade visual claro
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat, Combat Factory Pattern
+- **Damage:** COMBAT_ENERGYDAMAGE
+- **Callbacks:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **WOD:** instantSkillWOD("Beam Mastery")
+- **Areas:** AREA_BEAM8, AREA_BEAM10
+- **Padrão:** Factory + Shared Formula + Ternary Selection
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant - Complexa) |
+| **Função** | Beam energia dual formula |
+| **Dano Type** | COMBAT_ENERGYDAMAGE |
+| **Fórmula** | (lvl/5) + (mlvl × 4/7) |
+| **Mana** | 110 |
+| **Area** | BEAM8 (normal) vs BEAM10 (WOD!) |
+| **Level** | 29 (early!) |
+| **Cooldown** | 6s |
+| **Premium** | Não |
+| **Magic-Level** | Alta (4-7 coef) |
+| **WOD** | instantSkillWOD("Beam Mastery") |
+| **Direction** | Sim (needDirection) |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | Dual formula + factory + shared function + ternary selection |

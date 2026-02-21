@@ -1,0 +1,283 @@
+---
+title: white_deer_death.lua
+description: CreatureEvent "WhiteDeerDeath" que cria novos monsters por chance (30% Enraged, 100% Desperate) com mensagens.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="white_deer_death.lua" icon="pencil">
+Listener de morte que cria novos monsters por chance com visual effect.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/monster/white_deer_death.lua`
+
+**Linhas:** 25 | **Event:** CreatureEvent "WhiteDeerDeath" | **Tipo:** onDeath Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener de morte para White Deer que cria novos monsters por chance. Possui config table com chance (30% Enraged, 100% Desperate), nome do monster e mensagem. Ao morrer: valida se é monster sem master, gera random 1-100, itera config até encontrar chance válida, cria monster na posição, envia magic effect TELEPORT, boss diz mensagem correspondente. Padrão de transformation com probabilidade cumulativa.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT: "WhiteDeerDeath"
+  └─ onDeath(creature, corpse, killer, mostDamageKiller, lastHitUnjustified, mostDamageUnjustified)
+      ├─ config = [
+      │   { chance = 30, monster = "Enraged White Deer", message = "..." },
+      │   { chance = 100, monster = "Desperate White Deer", message = "..." }
+      │ ]
+      │
+      ├─ Validação: targetMonster:getMaster()?
+      │   ├─ SIM → return true (tem master, pula)
+      │   └─ NÃO → Continua (wild monster)
+      │
+      ├─ chance = math.random(100)  -- 1-100
+      │   └─ Gera número aleatório
+      │
+      ├─ for i = 1, #config:
+      │   ├─ if chance <= config[i].chance:
+      │   │   ├─ spawnMonster = Game.createMonster(config[i].monster, position, true, true)
+      │   │   ├─ spawnMonster:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+      │   │   ├─ targetMonster:say(config[i].message)
+      │   │   └─ break (para aqui)
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| config | table | Configuração de spawn chances |
+| whiteDeerDeath | CreatureEvent | Listener de morte |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| Game.createMonster | função | Cria monster no mundo |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Config Table Structure
+
+```lua
+{
+	{ chance = 30, monster = "Enraged White Deer", message = "..." },
+	{ chance = 100, monster = "Desperate White Deer", message = "..." }
+}
+```
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| chance | número | Chance cumulativa (0-100) |
+| monster | string | Nome do monster a criar |
+| message | string | Mensagem que boss fala |
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| creature | Monster | White Deer que morreu |
+| corpse | Item | Corpo deixado |
+| killer | Player | Assassino |
+| mostDamageKiller | Player | Player com mais dano |
+| lastHitUnjustified | bool | Last hit injustificado |
+| mostDamageUnjustified | bool | Most damage injustificado |
+
+### Constants
+
+| Constante | Descrição |
+|-----------|-----------|
+| CONST_ME_TELEPORT | Magic effect de teleporte |
+| TALKTYPE_MONSTER_SAY | Tipo de fala (monster say) |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local config = {
+	{ chance = 30, monster = "Enraged White Deer", message = "The white deer summons all his strength and turns to fight!" },
+	{ chance = 100, monster = "Desperate White Deer", message = "The white deer desperately tries to escape!" },
+}
+
+local whiteDeerDeath = CreatureEvent("WhiteDeerDeath")
+
+function whiteDeerDeath.onDeath(creature, corpse, killer, mostDamageKiller, lastHitUnjustified, mostDamageUnjustified)
+	local targetMonster = creature:getMonster()
+	if not targetMonster or targetMonster:getMaster() then
+		return true
+	end
+
+	local chance = math.random(100)
+	for i = 1, #config do
+		if chance <= config[i].chance then
+			local spawnMonster = Game.createMonster(config[i].monster, targetMonster:getPosition(), true, true)
+			if spawnMonster then
+				spawnMonster:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+				targetMonster:say(config[i].message, TALKTYPE_MONSTER_SAY)
+			end
+			break
+		end
+	end
+	return true
+end
+
+whiteDeerDeath:register()
+```
+
+### Árvore de Decisão
+
+```
+White Deer morre
+  │
+  ├─ targetMonster = creature:getMonster()
+  │   └─ Obtem monster data
+  │
+  ├─ targetMonster exists && not:getMaster()?
+  │   ├─ NÃO (nulo ou tem master) → return true (pula)
+  │   └─ SIM (wild monster) → Continua
+  │
+  ├─ chance = math.random(100)
+  │   └─ Número aleatório 1-100
+  │
+  ├─ for i = 1 to #config:
+  │   │
+  │   ├─ chance <= config[i].chance?
+  │   │   │
+  │   │   ├─ SIM:
+  │   │   │   │
+  │   │   │   ├─ spawnMonster = Game.createMonster(...)
+  │   │   │   │   └─ Cria novo monster
+  │   │   │   │
+  │   │   │   ├─ if spawnMonster:
+  │   │   │   │   │
+  │   │   │   │   ├─ sendMagicEffect(TELEPORT)
+  │   │   │   │   │   └─ Efeito visual
+  │   │   │   │   │
+  │   │   │   │   └─ targetMonster:say(message)
+  │   │   │   │       └─ Boss fala
+  │   │   │   │
+  │   │   │   └─ break (FIM DO LOOP)
+  │   │   │
+  │   │   └─ NÃO: Tenta próximo
+  │
+  └─ return true (sucesso)
+```
+
+### Cumulative Probability Example
+
+```
+chance = 45:
+  i=1: 45 <= 30? NÃO → próxima
+  i=2: 45 <= 100? SIM → Spawn "Desperate White Deer"
+
+chance = 20:
+  i=1: 20 <= 30? SIM → Spawn "Enraged White Deer"
+
+chance = 100:
+  i=1: 100 <= 30? NÃO → próxima
+  i=2: 100 <= 100? SIM → Spawn "Desperate White Deer"
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onDeath**: Callback disparado ao morrer
+- **creature:getMonster()**: Obtem monster data
+- **getMaster()**: Valida se tem dono (summon)
+- **math.random(100)**: Número aleatório 1-100
+- **Cumulative Probability**: Chance cumulativa (não exclusiva)
+- **Game.createMonster()**: Cria novo monster no mundo
+- **getPosition()**: Obtem position do monster
+- **sendMagicEffect()**: Envia efeito mágico
+- **creature:say()**: Boss fala mensagem
+
+### Responsabilidades do Handler
+
+1. **Validar**: É wild monster (sem master)?
+2. **Gerar**: Número aleatório 1-100
+3. **Iterar**: Config table até match
+4. **Criar**: Game.createMonster()
+5. **Efeito**: Teleport magic effect
+6. **Falar**: Boss diz mensagem
+7. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Cumulative Probability
+
+Loop com chance cumulativa:
+
+```lua
+local chance = math.random(100)
+for i = 1, #config do
+	if chance <= config[i].chance then
+		-- Ação
+		break
+	end
+end
+```
+
+### Padrão Monster Validation
+
+Validar se é wild monster:
+
+```lua
+local targetMonster = creature:getMonster()
+if not targetMonster or targetMonster:getMaster() then
+	return true
+end
+```
+
+### Padrão Monster Creation with Effect
+
+Criar monster com efeito visual:
+
+```lua
+local spawnMonster = Game.createMonster(config[i].monster, targetMonster:getPosition(), true, true)
+if spawnMonster then
+	spawnMonster:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+	targetMonster:say(config[i].message, TALKTYPE_MONSTER_SAY)
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: white_deer_death.lua" icon="star">
+Análise de listener de morte com transformation by chance. Demonstra cumulative probability, monster creation e magic effects.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Monster transformation with cumulative probability | Complexidade: Média
+</Aside>

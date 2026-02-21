@@ -1,0 +1,193 @@
+---
+title: Ultimate Light
+description: Spell de luz máxima para Druids e Sorcerers com duração recorde de 33 minutos 10 segundos e nível de luz 8
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `ultimate_light.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Druid / Elder Druid / Sorcerer / Master Sorcerer |
+| **Spell ID** | 75 |
+| **Mana Requerida** | 140 |
+| **Level Requerido** | 26 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração da Luz** | 33 minutos 10 segundos (1990 segundos = 1.990.000 ms) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utevo vis lux` |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (suporte utilitário) |
+| **Nível de Luz** | 8 (máximo, idêntico a Great Light) |
+| **Cor da Luz** | 215 (amarelo/branco) |
+| **Durabilidade** | MEGA - exploração sem recast |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/ultimate_light.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell é idêntico a Great Light em nível de luz (8) e cor (215) mas com duração MEGA: (60 * 33 + 10) * 1000 = 1.990.000 ms = 33 minutos 10 segundos. A mana é apenas 140, incrivelmente baixa para duração tão massiva (60x mais longa que Light de 6 minutos). Premium-only + level 26 oferece acesso cedo para premium players. Permite exploração longa sem recast. Handler é simples - apenas combat:execute().
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `ultimate_light.lua` implementa fonte de luz máxima com duração recorde para Druids e Sorcerers (level 26+) que aplica condition de luz level 8 (máximo) por 33 minutos 10 segundos com mana extremamente baixa (140). É versão ultimate de Great Light, oferecendo duração 60x mais longa com mana apenas 2.3x maior. O spell cria condition de luz com parâmetros idênticos a Great Light mas com duração massiva calculada em millisegundos (60 * 33 + 10) * 1000, executa combat, aplica efeito visual. A implementação demonstra padrão minimalista idêntico a Great Light com parâmetro de duração escalado.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat com Efeito Visual
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+
+-- 2. Criação de Condition de Luz Máxima
+local condition = Condition(CONDITION_LIGHT)
+condition:setParameter(CONDITION_PARAM_LIGHT_LEVEL, 8)
+condition:setParameter(CONDITION_PARAM_LIGHT_COLOR, 215)
+condition:setParameter(CONDITION_PARAM_TICKS, (60 * 33 + 10) * 1000)
+combat:addCondition(condition)
+
+-- 3. Instância do Spell
+local spell = Spell("instant")
+
+-- 4. Função de Cast Principal
+function spell.onCastSpell(creature, var)
+    -- 4.1 Execução de Combat (aplica condition de luz)
+    -- 4.2 Retorno de Status
+end
+
+-- 5. Configuração de Propriedades do Spell
+spell:name("Ultimate Light")
+spell:words("utevo vis lux")
+spell:group("support")
+spell:vocation("druid;true", "elder druid;true", "sorcerer;true", "master sorcerer;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_ULTIMATE_LIGHT)
+spell:id(75)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(26)
+spell:mana(140)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat com condition e efeito visual |
+| `condition` | `Condition` | Local | Condition de CONDITION_LIGHT nível 8 |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Druid/Sorcerer que executa o spell |
+| `var` | `Variant` | Parâmetro | Dados variáveis (self target) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Duração Calculada**
+```lua
+condition:setParameter(CONDITION_PARAM_TICKS, (60 * 33 + 10) * 1000)
+```
+Calcula explicitamente: 60 * 33 + 10 = 1990 segundos (33:10 minutos).
+
+### 2. **Padrão de Condition com Múltiplos Parâmetros** 
+```lua
+local condition = Condition(CONDITION_LIGHT)
+condition:setParameter(CONDITION_PARAM_LIGHT_LEVEL, 8)
+condition:setParameter(CONDITION_PARAM_LIGHT_COLOR, 215)
+condition:setParameter(CONDITION_PARAM_TICKS, ...)
+combat:addCondition(condition)
+```
+Idêntico a Great Light, apenas duração diferente.
+
+### 3. **Padrão de Handler Minimalista**
+```lua
+function spell.onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+```
+Sem lógica adicional - apenas delegação ao combat.
+
+### 4. **Padrão de Nível Light Máximo**
+```lua
+condition:setParameter(CONDITION_PARAM_LIGHT_LEVEL, 8)
+```
+Nível 8 é máximo possível (idêntico a Great Light).
+
+### 5. **Padrão de Premium-Only Acesso Cedo**
+```lua
+spell:level(26)
+spell:isPremium(true)
+```
+Level apenas 26, mas premium-only - offer early access to subscribers.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, var)`
+
+**Descrição:** Função principal de execução do spell. Aplica condition de luz máxima com duração recorde.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Druid/Sorcerer que executa o spell.
+- `var` (Variant): Dados variáveis (self target).
+
+**Fluxo de Execução:**
+
+1. **Execução de Combat**:
+   - `combat:execute(creature, var)`
+   - Aplica CONDITION_LIGHT ao creature
+
+2. **Aplicação de Condition de Luz**:
+   - Nível: 8 (máximo)
+   - Cor: 215 (amarelo/branco)
+   - Duration: 1.990.000 ms (33 minutos 10 segundos)
+
+3. **Efeito Visual**:
+   - CONST_ME_MAGIC_BLUE na posição do caster
+   - Confirma visualmente que spell foi castado
+
+4. **Retorno**:
+   - Retorna `true` (light aplicada, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Light condition aplicada, mana de 140 consumida
+
+**Lógica Detalhada:**
+
+O spell implementa fixture de luz permanente para exploração longa. A duração de 33:10 minutos permite exploração sustentada de todo um dungeon sem recast.
+
+A mana de 140 é absurdamente baixa para duração tão massiva. Comparação:
+- Light (level 6): 20 mana, 6:10 min = 3.33 min/mana
+- Great Light (level 8): 60 mana, 11:35 min = 0.193 min/mana
+- Ultimate Light (level 8): 140 mana, 33:10 min = 0.237 min/mana
+
+Ultimate Light oferece similar efficiency a Great Light mas com 3x+ duração, tornando valor extremo.
+
+O nível 8 é máximo, idêntico a Great Light. A cor 215 é padrão para luz mágica.
+
+A mana de 140 permite uso frequente mesmo para level 26, tornando spell accessible cedo.
+
+O premium-only indica recurso de subscription, oferecendo advantage significativo a subscribers vs f2p (que ficam em Light de 6:10 min).
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_ULTIMATE_LIGHT`: Som característico
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+
+## 📌 Resumo
+
+**Ultimate Light** é um spell de suporte premium para Druids e Sorcerers (level 26+) que aplica source de luz máxima (nível 8, cor 215) por 33 minutos 10 segundos. O spell requer apenas 140 de mana e cooldown de 2 segundos. É versão ultimate de Great Light, oferecendo 60x+ duração para apenas 2.3x mana, tornando value proposition extrema. A implementação é minimalista idêntica a Great Light com duração escalada. É ferramenta essencial para exploração longa em dungeons, oferecendo iluminação máxima sustentada sem recast frequente.
+
+A implementação segue padrão minimalista de condition, diferenciando-se por: (1) duração recorde (33:10 minutos), (2) nível máximo (8), (3) mana baixa (140), (4) acesso cedo premium (level 26), (5) efficiency extrema em minutos/mana.

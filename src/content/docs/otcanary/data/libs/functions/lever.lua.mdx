@@ -1,0 +1,672 @@
+---
+title: "lever.lua"
+description: "Lever class for boss room management providing position-based teleportation, condition validation, cooldown management, and multi-player group handling with callback support."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que implementa sistema de alavancas para salas de chefe. Fornece classe `Lever` reutilizável para gerenciar teleportação em lote de grupos de jogadores entre posições, validação de condições pré-teleportação, gerenciamento de cooldown de chefe, e callbacks customizáveis para executar lógica pós-teleportação.
+
+<Aside type="tip">
+O arquivo `lever.lua` é um **builder pattern elegante** para construir lógica complexa de teleportação sem hardcoding. Combinado com boss_lever.lua (factory), fornece solução completa para salas de chefe com múltiplos jogadores e refresco de acesso.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O arquivo `lever.lua` implementa uma **classe Lever reutilizável** usando **metatable pattern** para factory. Diferentemente de scripts estáticos em eventos/actions, Lever é **object-oriented** e permite criar múltiplas instâncias independentes.
+
+O workflow típico é:
+1. **Criar instância**: `local lever = Lever()`
+2. **Configurar**: `lever:setPositions(...)`, `lever:setCondition(...)`
+3. **Executar**: `lever:checkPositions()` → `lever:checkConditions()` → `lever:teleportPlayers()`
+
+### Estrutura de Funcionalidades
+
+```
+Lever Class (Factory via Metatable)
+├── Initialization
+│   └── Lever() → instância com defaults
+├── Configuration Methods
+│   ├── setPositions(positions) → void
+│   ├── setCondition(func) → void
+│   ├── setTeleportPlayerFunc(func) → void
+│   └── addPlayer(player) → void
+├── Getter Methods
+│   ├── getPositions() → table
+│   ├── getInfoPositions() → table
+│   ├── getPlayers() → table
+│   ├── getCondition(...) → any
+│   └── getTeleportPlayerFunc(...) → any
+├── Execution Flow
+│   ├── checkPositions() → table (reúne dados)
+│   ├── checkConditions() → boolean (valida todos)
+│   └── teleportPlayers() → void (executa)
+├── Cooldown Management
+│   ├── setCooldownAllPlayers(bossName, value) → void
+│   └── canUseLever(player, bossName, timeToFightAgain) → boolean
+└── Utility Methods
+    └── executeOnPlayers(func) → void
+```
+
+---
+
+## 🏗️ Inicialização e Factory
+
+### `Lever()` - Factory Constructor
+
+Cria nova instância de Lever com valores padrão.
+
+**Tipo**: Factory via Metatable  
+**Parâmetros**: Nenhum  
+**Retorna**: tabela Lever (instância)
+
+**Implementação**:
+```lua
+Lever = {}
+setmetatable(Lever, {
+    __call = function(self)
+        local lever_data = {
+            positions = {},
+            info_positions = nil,
+            players = {},
+            condition = function()
+                return true
+            end,
+            teleport_player_func = function()
+                return true
+            end,
+        }
+        return setmetatable(lever_data, { __index = Lever })
+    end,
+})
+```
+
+**Exemplo**:
+```lua
+-- Criar nova instância
+local lever = Lever()
+
+-- Cada instância é independente
+local lever2 = Lever()
+lever:setPositions(pos1)
+lever2:setPositions(pos2)
+-- lever e lever2 têm posições diferentes
+```
+
+**Valores Padrão**:
+- `positions = {}`: array vazio
+- `info_positions = nil`: será preenchido por `checkPositions()`
+- `players = {}`: array vazio
+- `condition()`: função que retorna true (aceita todos)
+- `teleport_player_func()`: função vazia retornando true
+
+---
+
+## ⚙️ Métodos de Configuração
+
+### `Lever.setPositions(self, positions)`
+
+Define array de posições e teleports para a alavanca.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `self` (Lever): Instância
+- `positions` (table): Array de tabelas de posição
+
+**Retorna**: nil
+
+**Estrutura de Posição**:
+```lua
+{
+    pos = Position(x, y, z),              -- Onde o jogador está
+    teleport = Position(x1, y1, z1),      -- Onde teleportar
+    effect = CONST_ME_TELEPORT,           -- Efeito (opcional)
+}
+```
+
+**Exemplos**:
+```lua
+local lever = Lever()
+
+-- Teleportar grupo para sala de boss (2 posições)
+lever:setPositions({
+    {
+        pos = Position(1000, 1000, 7),
+        teleport = Position(900, 900, 8),
+        effect = CONST_ME_TELEPORT,
+    },
+    {
+        pos = Position(1002, 1000, 7),
+        teleport = Position(902, 900, 8),
+        effect = CONST_ME_TELEPORT,
+    },
+})
+
+-- Teleportar single player (auto-wraps em table)
+lever:setPositions({pos = Position(100, 100, 7), teleport = Position(100, 100, 8)})
+```
+
+**Comportamento**:
+- Se `positions` é tabela: usa direto
+- Se `positions` é simples: wraps em `{positions}`
+- Efeito padrão: `CONST_ME_TELEPORT`
+
+---
+
+### `Lever.setCondition(self, func)`
+
+Define função de validação que deve retornar true para todos jogadores prosseguirem.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `self` (Lever): Instância
+- `func` (function): Função que recebe creature e retorna boolean
+
+**Retorna**: nil
+
+**Exemplo**:
+```lua
+local lever = Lever()
+
+-- Condição: apenas jogadores level 100+
+lever:setCondition(function(creature)
+    if creature and creature:isPlayer() then
+        return creature:getLevel() >= 100
+    end
+    return false
+end)
+
+-- Condição com validação de storage
+lever:setCondition(function(creature)
+    if not creature or not creature:isPlayer() then return false end
+    return creature:getStorageValue(STORAGE_QUEST) == 1
+end)
+```
+
+**Semântica**:
+- Se **qualquer** jogador falha condição: **nenhum** teleporta
+- Útil para garantir que grupo está completo e pronto
+- Erros retornam mensagem ao jogador
+
+---
+
+### `Lever.setTeleportPlayerFunc(self, func)`
+
+Define callback que executa após cada jogador ser teleportado.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `self` (Lever): Instância
+- `func` (function): Função que recebe jogador como parâmetro
+
+**Retorna**: nil
+
+**Exemplos**:
+```lua
+local lever = Lever()
+
+-- Executar ação pós-teleportação
+lever:setTeleportPlayerFunc(function(player)
+    if player then
+        player:say("Good luck!", TALKTYPE_MONSTER_SAY)
+        player:addMana(500)  -- Heal antes de entrar
+    end
+end)
+
+-- Chain de ações
+lever:setTeleportPlayerFunc(function(player)
+    if not player then return end
+    
+    -- Dar buff temporário
+    player:addBuff(CONDITION_BUFF)
+    
+    -- Log
+    print(player:getName() .. " entered boss room")
+    
+    -- Iniciar evento
+    addEvent(function()
+        if player:isPlayer() then
+            Game.broadcastMessage(player:getName() .. " entered the boss room")
+        end
+    end, 1000)
+end)
+```
+
+---
+
+### `Lever.addPlayer(self, player)`
+
+Adiciona jogador ao array interno (geralmente chamado por `checkPositions()`).
+
+**Tipo**: Method  
+**Parâmetros**:
+- `self` (Lever): Instância
+- `player` (Player): Jogador a adicionar
+
+**Retorna**: nil
+
+**Implementação**:
+```lua
+function Lever.addPlayer(self, player)
+    if player and player:isPlayer() then
+        table.insert(self.players, player)
+    end
+end
+```
+
+---
+
+## 📊 Métodos de Leitura
+
+### `Lever.getPositions(self)`
+
+Retorna array de posições configuradas.
+
+**Tipo**: Method  
+**Retorna**: table (array de posições)
+
+---
+
+### `Lever.getInfoPositions(self)`
+
+Retorna informações detalhadas coletadas por `checkPositions()`.
+
+**Tipo**: Method  
+**Retorna**: table ou nil
+
+**Estrutura Retornada**:
+```lua
+{
+    {
+        tile = Tile,
+        creature = Creature,
+        teleport = Position,
+        effect = number,
+        item = table,
+        ground = Item,
+        actionID = number,
+        uniqueID = number,
+        condition = boolean,  -- Adicionado por checkConditions()
+    },
+    ...
+}
+```
+
+---
+
+### `Lever.getPlayers(self)`
+
+Retorna array de jogadores coletados.
+
+**Tipo**: Method  
+**Retorna**: table (array de Players)
+
+---
+
+## 🔄 Métodos de Execução
+
+### `Lever.checkPositions(self)`
+
+Amostra todas as posições, coleta creatures e informações dos tiles.
+
+**Tipo**: Method  
+**Parâmetros**: `self` (Lever)  
+**Retorna**: table (array de info) ou nil se erro
+
+**Implementação Core**:
+```lua
+function Lever:checkPositions()
+    local positions = self:getPositions()
+    if not positions then
+        error("Positions: not setted")
+        return nil
+    end
+    local array = {}
+    for i, v in pairs(positions) do
+        local tile = Tile(v.pos)
+        local creature = tile:getBottomCreature()
+        local item = tile:getItems()
+        local ground = tile:getGround()
+        local actionID = ground:getActionId()
+        local uniqueID = ground:getUniqueId()
+        self:addPlayer(creature)
+        table.insert(array, {
+            tile = tile,
+            creature = creature,
+            teleport = v.teleport,
+            effect = v.effect or CONST_ME_TELEPORT,
+            item = item,
+            ground = ground,
+            actionID = actionID,
+            uniqueID = uniqueID,
+        })
+    end
+    self.info_positions = array
+    return array
+end
+```
+
+**Exemplo**:
+```lua
+local lever = Lever()
+lever:setPositions({...})
+
+local info = lever:checkPositions()
+if not info then
+    print("Error collecting positions")
+    return false
+end
+
+print("Found " .. #info .. " positions")
+```
+
+---
+
+### `Lever.checkConditions(self)`
+
+Valida condição para todos creatures encontrados.
+
+**Tipo**: Method  
+**Parâmetros**: `self` (Lever)  
+**Retorna**: boolean (true se todos passam, false se algum falha)
+
+**Exemplo**:
+```lua
+local lever = Lever()
+lever:setPositions({...})
+lever:setCondition(function(creature)
+    return creature and creature:isPlayer() and creature:getLevel() >= 100
+end)
+
+lever:checkPositions()
+if not lever:checkConditions() then
+    -- Algum jogador não passou na condição
+    return false
+end
+-- Prosseguir
+```
+
+---
+
+### `Lever.teleportPlayers(self)`
+
+Teleporta todos os jogadores para suas posições de destino.
+
+**Tipo**: Method  
+**Parâmetros**: `self` (Lever)  
+**Retorna**: nil
+
+**Implementação**:
+```lua
+function Lever.teleportPlayers(self)
+    local info = self:getInfoPositions()
+    if not info then
+        return false
+    end
+
+    for i, v in pairs(info) do
+        local player = v.creature
+        if player then
+            player:teleportTo(v.teleport)
+            player:getPosition():sendMagicEffect(v.effect or CONST_ME_TELEPORT)
+            self:getTeleportPlayerFunc(player)
+        end
+    end
+end
+```
+
+---
+
+## 🎯 Gerenciamento de Cooldown
+
+### `Lever.setCooldownAllPlayers(self, bossName, value)`
+
+Define cooldown de chefe para todos jogadores do grupo.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `self` (Lever): Instância
+- `bossName` (string): Nome do chefe
+- `value` (number): Cooldown em horas
+
+**Retorna**: nil
+
+**Exemplo**:
+```lua
+-- Após vencer chefe, reseta para 24h
+lever:setCooldownAllPlayers("Demon Boss", 24)
+```
+
+---
+
+### `Lever.canUseLever(self, player, bossName, timeToFightAgain)`
+
+Valida se jogador ou grupo pode enfrentar chefe (sem cooldown ativo).
+
+**Tipo**: Method  
+**Parâmetros**:
+- `self` (Lever): Instância
+- `player` (Player): Jogador que usa a alavanca
+- `bossName` (string): Nome do chefe
+- `timeToFightAgain` (number): Tempo em horas para mensagem
+
+**Retorna**: boolean (true se pode usar, false se alguém tem cooldown)
+
+**Implementação**:
+```lua
+function Lever.canUseLever(self, player, bossName, timeToFightAgain)
+    local info = self:getInfoPositions()
+    for _, v in pairs(info) do
+        local newPlayer = v.creature
+        if newPlayer and not newPlayer:canFightBoss(bossName) then
+            player:sendTextMessage(MESSAGE_EVENT_ADVANCE,
+                "You or a member in your team have to wait " .. timeToFightAgain .. 
+                " hours to face " .. bossName .. " again!")
+            newPlayer:getPosition():sendMagicEffect(CONST_ME_POFF)
+            return false
+        end
+    end
+    return true
+end
+```
+
+**Exemplo**:
+```lua
+if not lever:canUseLever(player, "Demon Boss", 24) then
+    return false
+end
+-- Permitir levar para boss
+```
+
+---
+
+## 🔧 Métodos Auxiliares
+
+### `Lever.executeOnPlayers(self, func)`
+
+Executa função para cada jogador no lever.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `self` (Lever): Instância
+- `func` (function): Função que recebe player
+
+**Retorna**: nil
+
+**Exemplo**:
+```lua
+-- Dar item a todos jogadores
+lever:executeOnPlayers(function(player)
+    if player then
+        player:addItem(2160)  -- Gold coin
+    end
+end)
+
+-- Heal todos antes de entrar
+lever:executeOnPlayers(function(player)
+    if player then
+        player:addHealth(player:getMaxHealth())
+        player:addMana(player:getMaxMana())
+    end
+end)
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Workflow Completo
+
+```lua
+local function bossLeverCallback(lever_uid, player)
+    local lever = Lever()
+    
+    -- Configurar posições
+    lever:setPositions({
+        {pos = Position(1000, 1000, 7), teleport = Position(900, 900, 8)},
+        {pos = Position(1002, 1000, 7), teleport = Position(902, 900, 8)},
+    })
+    
+    -- Configurar condições
+    lever:setCondition(function(creature)
+        if not creature or not creature:isPlayer() then return false end
+        return creature:getLevel() >= 100
+    end)
+    
+    -- Configurar callback pós-entrada
+    lever:setTeleportPlayerFunc(function(creature)
+        if creature and creature:isPlayer() then
+            creature:say("Good luck!", TALKTYPE_MONSTER_SAY)
+        end
+    end)
+    
+    -- Executar workflow
+    lever:checkPositions()
+    
+    if not lever:canUseLever(player, "Boss Name", 24) then
+        return false
+    end
+    
+    if not lever:checkConditions() then
+        player:sendCancelMessage("Not all members meet requirements")
+        return false
+    end
+    
+    lever:teleportPlayers()
+    lever:setCooldownAllPlayers("Boss Name", 24)
+    
+    return true
+end
+```
+
+### Padrão 2: Integração com Boss Room Limpo
+
+```lua
+local function enterBossRoom(player, positions)
+    local lever = Lever()
+    lever:setPositions(positions)
+    lever:setCondition(function(c) return c and c:isPlayer() end)
+    
+    -- Limpar sala antes de entrar
+    lever:setTeleportPlayerFunc(function(creature)
+        if creature and creature:isPlayer() then
+            -- Boss room setup
+            Game.broadcastMessage(creature:getName() .. " entered boss room!")
+        end
+    end)
+    
+    lever:checkPositions()
+    if not lever:checkConditions() then return false end
+    lever:teleportPlayers()
+    
+    return true
+end
+```
+
+### Padrão 3: Validação Antes de Tudo
+
+```lua
+local function safeLeverEnter(player, bossName, positions)
+    local lever = Lever()
+    lever:setPositions(positions)
+    
+    -- Step 1: Validar grupo está pronto
+    lever:checkPositions()
+    
+    if not lever:checkConditions() then
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Group not ready")
+        return false
+    end
+    
+    -- Step 2: Validar cooldown
+    if not lever:canUseLever(player, bossName, 24) then
+        return false
+    end
+    
+    -- Step 3: Executar
+    lever:teleportPlayers()
+    lever:setCooldownAllPlayers(bossName, 24)
+    
+    return true
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+1. **Factory Pattern via Metatable**: `__call` metamethod para criar instâncias
+2. **Builder Pattern**: Configuração sequencial (setPositions → setCondition → execute)
+3. **Callback Pattern**: Customização via funções passadas como parâmetros
+4. **Group Validation**: Validar todos antes de executar qualquer um
+
+### Padrões Identificados
+
+- **Method Chaining**: `lever:setPositions()`, `lever:setCondition()`, etc
+- **Lazy Evaluation**: `checkPositions()` coleta dados sob demanda
+- **Fail-Fast**: Se condição falha, ninguém teleporta
+- **Cleanup**: `addPlayer()` automaticamente chamado por `checkPositions()`
+
+### Responsabilidades por Fase
+
+| Fase | Método | Responsabilidade |
+|------|--------|------------------|
+| Config | setPositions, setCondition | Preparar parâmetros |
+| Coleta | checkPositions | Reúne creatures e tiles |
+| Validação | checkConditions | Valida requisitos |
+| Cooldown | canUseLever | Verifica refresco |
+| Execução | teleportPlayers | Teletransporta todos |
+| Pós-ação | setTeleportPlayerFunc | Callbacks customizados |
+
+---
+
+## 📚 Conclusão
+
+O arquivo `lever.lua` implementa um **sistema de alavanca reutilizável e elegante** que abstrai lógica complexa de teleportação em lote atrás de interface simples e configurável. Seu design com **factory pattern** permite criar múltiplas instâncias independentes, enquanto **callbacks** fornecem extensibilidade sem poluir código base.
+
+A validação **all-or-nothing** garante que grupos não sejam parcialmente teleportados, mantendo integridade de salas de boss. O suporte a cooldown integrado elimina necessidade de gerenciar manualmente em scripts separados.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 230/230 (100%)  
+**Metodologia**: Factory Pattern (Metatable)  
+**Métodos Documentados**: 17  
+**Categorias**: 6 (Config, Getters, Execution, Cooldown, Utility)  
+**Padrões de Projeto**: 4 (Factory, Builder, Callback, All-Or-Nothing)  
+**Exemplos Práticos**: 12+
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Ao estender Lever, manter padrão de setters/getters para consistência. Callbacks devem ser idempotentes (seguros chamar múltiplas vezes). Sempre chamar `checkPositions()` antes de `checkConditions()` para garantir `info_positions` está preenchido.
+</Aside>

@@ -1,0 +1,334 @@
+---
+title: Reward Chest
+description: Sistema de boss death rewards com scoring multi-participante, stamina checking, loot factoring, bosstiary scaling e gem atelier integration
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `reward_chest.lua` |
+| **Tipo de Sistema** | Boss death event rewards (complex scoring) |
+| **Events** | BossDeath (calc reward), BossParticipation (tracking), LoginBossPlayer (registration), BossThink (periodic reset) |
+| **Estrutura de Scores** | Damage out + Damage in + Healing normalizados e escalados |
+| **Scaling Factor** | Participantes^(1/3) + performance multiplier |
+| **Bosstiary Bonus** | +boss bonus % por slot assignment |
+| **Boosted Boss** | Extra rolls baseado em boosted boss config |
+| **Stamina Check** | Ignora stamina atualmente (comentado), futuro check |
+| **Global Tracking** | _G.GlobalBosses[bossId] para estatísticas persistentes |
+| **Online/Offline** | Suporta ambos players e offline players |
+
+## 📍 Caminho Original
+
+```
+data/scripts/systems/reward_chest.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este sistema é complexo - trackeia dano/cura em bosses, calcula scores baseado em contribuição relativa, escala loot por número de participantes + performance, aplica bosstiary bonuses, Gem Atelier loot generation, múltiplos rolls por stamina fator randômico. BossDeath event gera reward chest, BossParticipation tracks durante fight, LoginBossPlayer registra evento, BossThink reseta periodicamente. GlobalBosses armazena `[bossId]` com `playerId → {damageOut, damageIn, healing, playerId}`. Score normalizado 0-1 via média de damageOut/totalDamageOut + damageIn/totalDamageIn + healing/totalHealing dividido por 3. Loot factor = 1 dividido por participants elevado a 1/3, multiplicado por (1 + lootFactor) elevado a (score/expectedScore).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `reward_chest.lua` implementa sistema sofisticado de boss death rewards com scoring multi-participante, stamina checking, loot factoring, bosstiary scaling e gem atelier integration. É conjunto de 4 CreatureEvents (BossDeath, BossParticipation, LoginBossPlayer, BossThink) que trabalham juntos para track dano/healing, calcular contributions, gerar loot baseado em score e performance, aplicar bonuses para slots bosses e boosted boss, suportar offline players. O sistema normaliza scores (0-1) via contribuição relativa, escala loot inversamente por participantes (cubic root) e exponencialmente por performance, aplica bosstiary slot bonus (+X% por slot assignment), Gem Atelier generation, múltiplos rolls baseado em stamina. Implementação demonstra padrão avançado de scoring + factoring com offline support.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- ====== EVENT 1: BOSS DEATH ======
+
+local bossDeath = CreatureEvent("BossDeath")
+
+function bossDeath.onDeath(creature, corpse, killer, mostDamageKiller, lastHitUnjustified, mostDamageUnjustified)
+    -- 1. Validações (não summons, não players, valida boss)
+    -- 2. Criação de corpse container se necessário
+    -- 3. Registração de reward container
+    -- 4. Obtenção de stats da GlobalBosses
+    
+    -- 5. Cálculo de Scores
+    -- 5.1 Agregação de damageMap + GlobalBosses stats
+    -- 5.2 Normalização de scores (0-1)
+    -- 5.3 Sorting por score
+    
+    -- 6. Distribuição de Loot
+    -- 6.1 Cálculo de lootFactor (scaling)
+    -- 6.2 Bosstiary bonus (slot1, slot2, boosted)
+    -- 6.3 Determina rolls (inteiro ou fração com randomização)
+    -- 6.4 Gem Atelier loot generation
+    -- 6.5 monsterType:getBossReward() para cada roll
+    -- 6.6 Adição ao reward container
+    
+    -- 7. Mensagens
+    -- 7.1 Online player: colored message se client > 1200
+    -- 7.2 Stamina check (futuro, comentado)
+    -- 7.3 Offline player: auto-save
+    
+    -- 8. Cleanup
+    -- 8.1 _G.GlobalBosses[bossId] = nil
+end
+
+-- ====== EVENT 2: BOSS PARTICIPATION ======
+
+local bossParticipation = CreatureEvent("BossParticipation")
+
+function bossParticipation.onHealthChange(creature, attacker, primaryDamage, ...)
+    -- 1. Verificação de GlobalBosses (se vazio, skip)
+    -- 2. Validação de creature/attacker
+    -- 3. Validação de inBossFight()
+    
+    -- 4. Tracking de Dano
+    -- 4.1 Update stats playerId
+    -- 4.2 Se cura: adiciona à healerStats (mesmo que atacador)
+    -- 4.3 Se dano do boss: adiciona a damageIn
+    
+    -- 5. Propagação de valores de dano
+    return primaryDamage, primaryType, secondaryDamage, secondaryType
+end
+
+-- ====== EVENT 3: LOGIN BOSS PLAYER ======
+
+local loginBossPlayer = CreatureEvent("LoginBossPlayer")
+
+function loginBossPlayer.onLogin(player)
+    player:registerEvent("BossDeath")
+    return true
+end
+
+-- ====== EVENT 4: BOSS THINK ======
+
+local bossThink = CreatureEvent("BossThink")
+
+function bossThink.onThink(creature, interval)
+    -- 1. Validação de creature
+    -- 2. ResetAndSetTargetList(creature) - reseta targets periodicamente
+end
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `creature` | `Creature` | Parâmetro | Creature/Boss que morre |
+| `corpse` | `Container` | Parâmetro/Local | Container do corpse |
+| `killer` | `Creature` | Parâmetro | Creature que deu killing blow |
+| `bossId` | `number` | Local | ID único do boss |
+| `rewardId` | `number` | Local | ID do reward container |
+| `_G.GlobalBosses` | `table` | Global | Tracking [bossId] with key guid to `{stats}` |
+| `damageMap` | `table` | Local | creature:getDamageMap() com dano total por player |
+| `scores` | `table` | Local | Array de score objects `{player, guid, damageOut, damageIn, healing, score}` |
+| `totalDamageOut` | `number` | Local | Soma total de dano saindo (min 0.1) |
+| `totalDamageIn` | `number` | Local | Soma total de dano entrando (min 0.1) |
+| `totalHealing` | `number` | Local | Soma total de healing (min 0.1) |
+| `participants` | `number` | Local | Contagem de participantes ativos |
+| `score` | `number` | Local | Score normalizado 0-1 |
+| `expectedScore` | `number` | Local | Score base esperado (1/participants) |
+| `lootFactor` | `number` | Local | Multiplicador de loot (scaling por participantes + performance) |
+| `rolls` | `number` | Local | Número de rolls para getBossReward |
+| `isBoostedBoss` | `boolean` | Local | Se boss é boosted do dia |
+| `bossRaceIds` | `table` | Local | Array [slot1BossId, slot2BossId] do player |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Cálculo de Score Normalizado**
+
+```lua
+local score = (con.damageOut / totalDamageOut) + (con.damageIn / totalDamageIn) + (con.healing / totalHealing)
+con.score = score / 3  -- Normaliza 0-1
+```
+
+Score = média de 3 contribuições percentuais (dano saíndo, dano entrando, cura).
+
+### 2. **Padrão de Loot Factor Escalado**
+
+```lua
+local lootFactor = 1
+lootFactor = lootFactor / participants ^ (1 / 3)  -- Scaledown por participants
+lootFactor = lootFactor * (1 + lootFactor) ^ (con.score / expectedScore)  -- Scale up por performance
+```
+
+Reduz loot se muitos participantes (cubic root), aumenta se player outperforma expected score exponencialmente.
+
+### 3. **Padrão de Bosstiary Slot Bonus**
+
+```lua
+local rolls = 1
+if isBoss and monsterType:raceId() ~= 0 then
+    if monsterType:raceId() == player:getSlotBossId(1) then
+        rolls = rolls + player:getBossBonus(1) / 100.0
+    elseif monsterType:raceId() == player:getSlotBossId(2) then
+        rolls = rolls + player:getBossBonus(2) / 100.0
+    else
+        rolls = rolls + configManager.getNumber(configKeys.BOOSTED_BOSS_LOOT_BONUS) / 100
+    end
+end
+```
+
+Bonus rolls baseado em slot1, slot2, ou boosted assignment.
+
+### 4. **Padrão de Roll Probabilístico**
+
+```lua
+if math.random(0, 100) < (rolls % 1) * 100 then
+    rolls = math.ceil(rolls)
+else
+    rolls = math.floor(rolls)
+end
+```
+
+Se rolls tem fração (e.g., 1.7), 70% chance de ceil, 30% chance de floor.
+
+### 5. **Padrão de Offline Player Support**
+
+```lua
+if con.player then
+    -- Online player: send message
+    player:sendTextMessage(MESSAGE_LOOT, lootMessage)
+else
+    -- Offline player: create and save
+    player = Game.getOfflinePlayer(con.guid)
+    player:save()
+end
+```
+
+Verifica se online, senão cria offline player e salva.
+
+## 🤖 Documentação das Funções
+
+### **BossDeath Event Handler**
+
+**Descrição:** Event principal que calcula scores, determina loot factor, gera rewards, aplica bosstiary bonus.
+
+**Parâmetros:**
+- `creature` (Creature): Boss que morreu
+- `corpse` (Container): Container corpse
+- `killer` (Creature): Killer (não usado)
+- `mostDamageKiller` (Creature): Maior dano dealer
+- `lastHitUnjustified` (boolean): Hit unjustified
+- `mostDamageUnjustified` (boolean): Damage unjustified
+
+**Fluxo:**
+
+1. **Validações**:
+   - Rejeita summons (`creature:getMaster()`)
+   - Rejeita players
+   - Valida boss via `monsterType:isRewardBoss()`
+
+2. **Corpse Setup**:
+   - Se corpse não é container: cria novo bag
+   - `corpse:registerReward()` para storage reward ID
+
+3. **Obtenção de Stats**:
+   - `damageMap = creature:getDamageMap()` (total damage por player durante lifetime)
+   - `info = _G.GlobalBosses[bossId]` (stats específicos de boss)
+   - Combina ambas fontes
+
+4. **Cálculo de Scores**:
+   - Agregação: damageOut, damageIn, healing
+   - Normalização: (prop_out + prop_in + prop_healing) / 3 = score (0-1)
+   - Sorting por score descending
+
+5. **Determinação de Participantes**:
+   - Conta scores não-zero (participantes ativos)
+
+6. **Loop de Distribuição de Loot**:
+   - Para cada score:
+     - `lootFactor = 1 / participants^(1/3) * (1 + lootFactor)^(score/expectedScore)`
+     - Determina rolls com bosstiary bonus
+     - Determina fração via `math.random()`
+     - Gera Gem Atelier loot via `creature:generateGemAtelierLoot()`
+     - Chama `monsterType:getBossReward(lootFactor, isFirst, isExtra, playerLoot, player)` por cada roll
+     - Adiciona itens ao reward via `reward:addRewardBossItems(playerLoot)`
+
+7. **Mensagens**:
+   - Online: Colored message (se client > 1200) com lista de items
+   - Boss bonus indicator se rolls > 1
+   - Stamina check (comentado, futuro)
+   - Offline: Auto-save via `player:save()`
+
+8. **Cleanup**:
+   - `_G.GlobalBosses[bossId] = nil` (libera memory)
+
+---
+
+### **BossParticipation Event Handler**
+
+**Descrição:** Tracks dano/healing durante boss fight em onHealthChange.
+
+**Parâmetros:**
+- `creature` (Creature): Boss
+- `attacker` (Creature): Atacador
+- `primaryDamage` (number): Dano primário
+- `primaryType` (constant): Tipo de dano
+- `secondaryDamage` (number): Dano secundário
+- `secondaryType` (constant): Tipo secundário
+
+**Fluxo:**
+
+1. **Validações**:
+   - Se GlobalBosses vazio: return (skip)
+   - Se creature/attacker nil: return (skip)
+   - Se creature não em boss fight: return (skip)
+
+2. **Tracking de Dano Saindo**:
+   - Se attacker é boss (stats.bossId == attackerId):
+     - `stats.damageIn += primaryDamage`
+
+3. **Tracking de Cura**:
+   - Se primaryType é HEALING e attacker é player e não é caster:
+     - Lookup/cria healerStats para attacker guid
+     - `healerStats.healing += primaryDamage`
+
+4. **Retorno**:
+   - Propagação de valores originais (no modification)
+
+---
+
+### **LoginBossPlayer Event Handler**
+
+**Descrição:** Registra BossDeath event ao fazer login.
+
+**Parâmetros:**
+- `player` (Player): Player que fez login
+
+**Fluxo:**
+- `player:registerEvent("BossDeath")`
+- Retorna `true`
+
+---
+
+### **BossThink Event Handler**
+
+**Descrição:** Reseta target lists periodicamente.
+
+**Parâmetros:**
+- `creature` (Creature): Boss
+- `interval` (number): Milliseconds desde último think
+
+**Fluxo:**
+- Validação creature exist
+- `ResetAndSetTargetList(creature)` - funçãohelperpara limpar targets
+
+---
+
+### **Helper Functions (não em arquivo mas referenciadas)**
+
+**GetPlayerStats(bossId, guid, create)**
+- Obtém ou cria stats para player em boss
+
+**ResetAndSetTargetList(creature)**
+- Reseta target list do boss (chamado em death e think)
+
+**Score Calculation: (damageOut/totalOut + damageIn/totalIn + healing/totalHealing) / 3**
+- Normaliza 3 métricasem média simples 0-1
+
+**Loot Factor: 1 / participants^(1/3) * (1 + lootFactor)^(score/expectedScore)**
+- Reduz por cubic root de participantes
+- Aumenta exponencialmente por overperformance
+
+## 📌 Resumo
+
+Reward Chest é sistema sofisticado de boss death rewards com 4 CreatureEvents integrados: BossDeath calc rewards, BossParticipation track dano/cura, LoginBossPlayer register, BossThink periodic reset. Implementação calcula contribution scores normalizados entre 0 e 1 via média de damageOut %, damageIn %, healing %, escala loot inversamente por participants (cubic root) e exponencialmente por performance relativa. Aplica bosstiary bonuses para slot1/slot2/boosted assignments, determina rolls probabilisticamente, gera Gem Atelier loot, suporta online/offline players com stamina checking. GlobalBosses tracks bossId com guid para stats persistentemente. Padrão avançado de scoring e scaling demonstra sistema end-game complexo com múltiplos fatores de balanceamento.
+
+A implementação segue padrão avançado de event-driven reward distribution, diferenciando-se por: 4 events integrados, normalized 0 a 1 scoring, cubic root scale factor, exponential performance multiplier, bosstiary bonus application, probabilistic rolls, online/offline dual support, Gem Atelier integration.

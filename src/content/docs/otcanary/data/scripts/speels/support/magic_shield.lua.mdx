@@ -1,0 +1,218 @@
+---
+title: Magic Shield
+description: Spell de suporte para Druids e Sorcerers que cria manashield com fórmula baseada em level e magic level com bônus WOD
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `magic_shield.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Druid / Elder Druid / Sorcerer / Master Sorcerer |
+| **Spell ID** | 44 |
+| **Mana Requerida** | 50 |
+| **Level Requerido** | 14 |
+| **Status Premium** | Não (acesso livre) |
+| **Duração do Shield** | 180 segundos (180.000 ms) = 3 minutos |
+| **Cooldown Individual** | 14 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utamo vita` |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (buff defensivo) |
+| **Fórmula Shield** | 300 + 7.6 * level + 7 * magic level |
+| **Bônus WOD** | x1.25 se WHEEL_GRADE_REGULAR ou superior |
+| **Cap Shield** | Limitado a maxMana |
+| **Integração WOD** | upgradeSpellsWOD("Magic Shield") |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/magic_shield.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell calcula valor de shield dinamicamente baseado em fórmula: base 300 + 7.6 per level + 7 per magic level. Se player tem Wheel de Destiny em grau WHEEL_GRADE_REGULAR ou superior no spell "Magic Shield", shield é multiplicado por 1.25. O valor final é capped ao maxMana do player. Cooldown individual longo (14s) vs grupo curto (2s) força planejamento de uso. A condition é criada e aplicada manualmente antes de executar combat (não no combat direto).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `magic_shield.lua` implementa manashield escalável para Druids e Sorcerers (level 14+) que calcula valor de shield dinamicamente baseado em fórmula de level e magic level com bônus opcional do Wheel de Destiny. É um dos poucos spells que calcula valor de condition manualmente dentro do cast ao invés de usar valor fixo. O spell obtém player, consulta Wheel de Destiny, calcula shield via fórmula (300 + 7.6*level + 7*magic), aplica bônus 1.25x se Wheel ativo, capa ao maxMana, cria condition, aplica, e executa combat visual. A implementação demonstra padrão avançado de cálculo dinâmico com integração WOD.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat (apenas efeito visual)
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, var)
+    -- 3.1 Criação de Condition
+    -- 3.2 Obtenção de Player
+    -- 3.3 Consulta de Wheel de Destiny
+    -- 3.4 Cálculo de Shield com Fórmula
+    -- 3.5 Aplicação de Bônus WOD
+    -- 3.6 Cap ao MaxMana
+    -- 3.7 Setagem do Shield na Condition
+    -- 3.8 Aplicação de Condition
+    -- 3.9 Execução de Combat (efeito visual)
+    -- 3.10 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:name("Magic Shield")
+spell:words("utamo vita")
+spell:group("support")
+spell:vocation("druid;true", "elder druid;true", "sorcerer;true", "master sorcerer;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_MAGIC_SHIELD)
+spell:id(44)
+spell:cooldown(14 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(14)
+spell:mana(50)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat (apenas efeito visual) |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Druid/Sorcerer que executa o spell |
+| `var` | `Variant` | Parâmetro | Dados variáveis (não utilizados - self target) |
+| `condition` | `Condition` | Local | Condition de MANASHIELD criada manualmente |
+| `player` | `Player` | Local | Conversão de creature para Player (para acesso a level, magic level) |
+| `grade` | `number` | Local | Nível de Wheel upgrade para "Magic Shield" |
+| `shield` | `number` | Local | Valor calculado de shield baseado em fórmula |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Cálculo Dinâmico em Cast**
+```lua
+local shield = 300 + 7.6 * player:getLevel() + 7 * player:getMagicLevel()
+```
+Calcula shield dinamicamente no momento de cast, não valor fixo.
+
+### 2. **Padrão de Bônus WOD Condicional**
+```lua
+local grade = player:upgradeSpellsWOD("Magic Shield")
+if grade >= WHEEL_GRADE_REGULAR then
+    shield = shield * 1.25
+end
+```
+Consulta Wheel e aplica 25% bônus se grade suficiente.
+
+### 3. **Padrão de Cap ao MaxMana**
+```lua
+condition:setParameter(CONDITION_PARAM_MANASHIELD, math.min(player:getMaxMana(), shield))
+```
+Shield não pode exceder maxMana do player.
+
+### 4. **Padrão de Condition Manual Pré-Cast**
+```lua
+local condition = Condition(CONDITION_MANASHIELD)
+condition:setParameter(CONDITION_PARAM_TICKS, 180000)
+...
+creature:addCondition(condition)
+return combat:execute(creature, var)
+```
+Condition é criada e aplicada antes de combat, não integrada no combat.
+
+### 5. **Padrão de Cooldown Discrepante**
+```lua
+spell:cooldown(14 * 1000)
+spell:groupCooldown(2 * 1000)
+```
+Cooldown individual longo (14s) vs grupo curto (2s).
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, var)`
+
+**Descrição:** Função principal de execução do spell. Calcula e aplica manashield com fórmula dinâmica e bônus WOD.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Druid ou Sorcerer que executa o spell.
+- `var` (Variant): Dados variáveis (não utilizados - self target).
+
+**Fluxo de Execução:**
+
+1. **Criação de Condition**:
+   - Cria `condition = Condition(CONDITION_MANASHIELD)`
+   - Seta duração: `CONDITION_PARAM_TICKS = 180000` (3 minutos)
+
+2. **Obtenção de Conversão Player**:
+   - `player = creature:getPlayer()`
+   - Permite acesso a getLevel() e getMagicLevel()
+
+3. **Consulta de Wheel de Destiny**:
+   - `grade = player:upgradeSpellsWOD("Magic Shield")`
+   - Obtém nível de upgrade (0 = nenhum, 1+ = gradual)
+
+4. **Cálculo de Shield com Fórmula**:
+   - `shield = 300 + 7.6 * player:getLevel() + 7 * player:getMagicLevel()`
+   - Base 300, +7.6 por level, +7 por magic level
+   - Linear scaling com atributos
+
+5. **Aplicação de Bônus WOD**:
+   - Se `grade >= WHEEL_GRADE_REGULAR`:
+     - `shield = shield * 1.25` (25% bônus)
+   - Se grade < regular: sem bônus
+
+6. **Cap ao MaxMana**:
+   - `math.min(player:getMaxMana(), shield)`
+   - Shield nunca excede mana máxima
+
+7. **Setagem do Shield na Condition**:
+   - `condition:setParameter(CONDITION_PARAM_MANASHIELD, ...)`
+   - Aplica valor calculado à condition
+
+8. **Aplicação de Condition**:
+   - `creature:addCondition(condition)`
+   - Condition é adicionada ao creature
+
+9. **Execução de Combat**:
+   - `combat:execute(creature, var)`
+   - Aplica apenas efeito visual (CONST_ME_MAGIC_BLUE)
+
+10. **Retorno**:
+    - Retorna `true` (cast bem-sucedido, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Shield aplicado, mana de 50 consumida
+
+**Lógica Detalhada:**
+
+O spell implementa manashield escalável com fórmula que cresce com progressão do player. A base de 300 oferece proteção inicial, e os multiplicadores (7.6, 7) permitem crescimento significativo conforme player avança.
+
+O bônus WOD de 25% é incentivo para investir em Wheel - players investindo Wheel ganham shield 25% maior. Sem Wheel: baseline. Com Wheel: +25%.
+
+A cap ao maxMana é crítica - previne que shield exceda total de mana do player (mana nunca pode ser negativa).
+
+A duração de 180 segundos (3 minutos) é padrão para buffs defensivos. Cooldown individual de 14s força planejamento - player não pode manter shield constantemente mesmo se solo. Cooldown de grupo de 2s significa que em grupo de players com magic shield, cada um espera 14s, depois próximo pode recast após 2s (para sincronização).
+
+A aplicação manual de condition antes de combat é incomum - oferece mais controle. Combat é usado apenas para efeito visual, não para condition application.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_MAGIC_SHIELD`: Som característico
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+
+## 📌 Resumo
+
+**Magic Shield** é um spell de suporte gratuito para Druids e Sorcerers (level 14+) que cria manashield com valor calculado dinamicamente via fórmula (300 + 7.6*level + 7*magic) capped ao maxMana e modificado por Wheel de Destiny (1.25x se WHEEL_GRADE_REGULAR+). O spell requer 50 de mana e cooldown individual de 14 segundos (2s em grupo). A duração é 3 minutos. A implementação calcula shield manualmente no momento de cast, consulta Wheel dinamicamente, aplica condition separada antes de combat visual. É ferramenta defensiva essencial para mages, permitindo absorver dano antes que mana verdadeira seja subtraída. O scaling com level + magic level garante que shield cresce com progressão do player.
+
+A implementação segue padrão de cálculo dinâmico com integração WOD, diferenciando-se por: (1) fórmula de shield calculada em cast, (2) escalagem com level+magic, (3) bônus WOD condicional (1.25x), (4) cap ao maxMana, (5) condition manual pré-cast, (6) cooldown individual longo (14s).

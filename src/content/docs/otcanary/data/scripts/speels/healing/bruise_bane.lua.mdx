@@ -1,0 +1,363 @@
+---
+title: "Spell - bruise_bane.lua"
+description: "Spell de cura e remoção de paralyze para knights level 1 entry"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `bruise_bane.lua` |
+| **Localização** | `data/scripts/spells/healing/` |
+| **Tipo de Script** | Spell (Instant) |
+| **Tipo** | Healing/Dispel Combat |
+| **Vocações** | Knight, Elite Knight |
+| **Level Requerido** | 1 |
+| **Mana Requerida** | 10 |
+| **Soul Requerida** | Nenhuma |
+| **Words** | exura infir ico |
+| **Grupo** | healing |
+| **Spell ID** | 170 |
+| **Cooldown** | 1s |
+| **GroupCooldown** | 1s |
+| **Premium** | Não |
+| **Agressivo** | Não |
+| **Self Target** | Sim |
+| **Tipo Combat** | Healing + Dispel CONDITION_PARALYZE |
+| **Efeito Visual** | CONST_ME_MAGIC_BLUE |
+| **Som de Casting** | SOUND_EFFECT_TYPE_SPELL_BRUISE_BANE |
+| **Linhas de Código** | 35 |
+| **Complexidade** | Simples |
+
+**Descrição:**
+Spell entry-level de cura e remoção de paralisia para knights nível 1. Sistema Combat com cura baseada em fórmula (level * 0.2 + magicLevel * 1.795) até +5. Remove CONDITION_PARALYZE. 10 mana (muito baixo!). Cooldown 1s. Spell ID 170. Sons especial cura bruise_bane. Knight exclusive. Spell de cura entry PARALYZE DISPEL!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/healing/bruise_bane.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:name("Bruise Bane")
+spell:words("exura infir ico")
+spell:group("healing")
+spell:vocation("knight;true", "elite knight;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_BRUISE_BANE)
+spell:id(170)
+spell:cooldown(1000)
+spell:groupCooldown(1000)
+spell:level(1)
+spell:mana(10)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:needLearn(false)
+spell:isPremium(false)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Cura Bruise Bane - Entry-Level Knight Paralyze Dispel**
+
+Este spell implementa um sistema healing + dispel de paralyze:
+
+1. **Cura Healing Entry:**
+   - Level 1 (ENTRY!)
+   - 10 mana (muito baixo!)
+   - Fórmula healing: (level * 0.2 + magicLevel * 1.795) até +5
+   - Cura entry knight base!
+
+2. **Dispel Paralyze:**
+   - Remove CONDITION_PARALYZE
+   - 1s cooldown (rápido!)
+   - Self target (cura self)
+   - Combat healing system!
+
+3. **Knight Exclusive Entry:**
+   - Knight + Elite Knight (2 vocações)
+   - Grupo healing
+   - Não agressivo
+   - Spell cura paralyze entry knight!
+
+4. **Tipo Combat:**
+   - Combat system com callback
+   - Efeito visual: CONST_ME_MAGIC_BLUE
+   - Som especial bruise_bane
+   - Dispel healing combo!
+
+**Uso Típico:**
+```
+Knight lvl 1+
+// Bruise Bane = entry healing paralyze dispel
+// Remove paralyze e cura damage
+// 10 mana = muito baixo!
+// 1s cooldown = rápido!
+// Healing skillpoint knight exclusive entry
+```
+
+**Diferencial:** Cura entry knight com paralyze dispel simultâneo!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `bruise_bane` oferece cura healing + dispel de paralyze:
+
+- **Tipo:** Healing/Dispel Combat
+- **Spell ID:** 170
+- **Dispel:** CONDITION_PARALYZE
+- **Mana:** 10 (muito baixo!)
+- **Level:** 1 (entry)
+- **Fórmula Healing:** (level * 0.2 + magicLevel * 1.795) até +5
+- **Cooldown:** 1s (rápido!)
+- **Tipo Combat:** Healing + Dispel
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ setParameter(COMBAT_PARAM_TYPE, COMBAT_HEALING)
+├─ setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+├─ setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+├─ setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+└─ setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+
+local spell = Spell("instant")
+├─ onCastSpell(creature, variant)
+│  └─ return combat:execute(creature, variant)
+└─ Configuração spell
+   ├─ group: healing
+   ├─ mana: 10
+   └─ vocation: knight exclusive
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+```
+
+**Propósito:** Instância do sistema Combat para healing + dispel.
+
+**Tipo:** Combat
+
+**Parâmetros Configurados:**
+- COMBAT_PARAM_TYPE: COMBAT_HEALING
+- COMBAT_PARAM_EFFECT: CONST_ME_MAGIC_BLUE
+- COMBAT_PARAM_DISPEL: CONDITION_PARALYZE
+- COMBAT_PARAM_AGGRESSIVE: false
+
+---
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell de cura.
+
+**Tipo:** Instant (sem cast time)
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(_player, level, magicLevel)
+	local min = (level * 0.2 + magicLevel * 1.795)
+	local max = (level * 0.2 + magicLevel * 1.795) + 5
+	return min, max
+end
+```
+
+**Propósito:** Calcula valores de healing baseado em level + magic level.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `_player` | Player | Caster (não utilizado) |
+| `level` | Integer | Level do player |
+| `magicLevel` | Integer | Magic level do player |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `min` | Healing mínimo |
+| `max` | Healing máximo (+5) |
+
+**Fórmula de Healing:**
+```
+min = level * 0.2 + magicLevel * 1.795
+max = level * 0.2 + magicLevel * 1.795 + 5
+Range = [min, max]
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, variant)
+	return combat:execute(creature, variant)
+end
+```
+
+**Propósito:** Executa sistema Combat healing + dispel.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster |
+| `variant` | Variant | Target variant |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Healing + dispel executado |
+| `false` | Falha execução |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância Combat healing |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Combat Healing + Dispel Entry
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_HEALING)
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+```
+
+**Benefício:** Combine healing + dispel em um único combat action!
+
+### Padrão 2: Knight Exclusive Entry Level
+
+```lua
+spell:vocation("knight;true", "elite knight;true")
+spell:level(1)
+spell:group("healing")
+```
+
+**Benefício:** Knight exclusive entry-level healing!
+
+### Padrão 3: Custos Muito Baixos Entry
+
+```lua
+spell:mana(10)
+spell:cooldown(1000)
+spell:groupCooldown(1000)
+```
+
+**Benefício:** Custos muito baixos (mana 10) para entry-level!
+
+### Padrão 4: Callback Fórmula Dinâmica
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+**Benefício:** Healing dinâmico baseado em level + magic level!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(_player, level, magicLevel)
+
+**Descrição:** Calcula healing cure baseado em level + magic level.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `_player` | Player | Caster (não utilizado) |
+| `level` | Integer | Level do player |
+| `magicLevel` | Integer | Magic level do player |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `min` | Healing mínimo: level * 0.2 + magicLevel * 1.795 |
+| `max` | Healing máximo: level * 0.2 + magicLevel * 1.795 + 5 |
+
+**Exemplo de Cálculo:**
+```lua
+-- Knight lvl 1, magic lvl 0
+-- min = 1 * 0.2 + 0 * 1.795 = 0.2 ≈ 0
+-- max = 0.2 + 5 = 5.2 ≈ 5
+
+-- Knight lvl 50, magic lvl 15
+-- min = 50 * 0.2 + 15 * 1.795 = 10 + 26.925 = 36.925
+-- max = 36.925 + 5 = 41.925
+```
+
+### spell.onCastSpell(creature, variant)
+
+**Descrição:** Executa healing + paralyze dispel para o caster.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight ou Elite Knight |
+| `variant` | Variant | Target variant |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Healing + dispel executado |
+| `false` | Falha execução |
+
+**Requisitos:**
+- Level 1+
+- 10 mana
+
+**Exemplo de Uso:**
+```lua
+// Ao lançar "exura infir ico"
+-- combat:execute(creature, variant)
+-- Cura healing value baseado em fórmula
+-- Remove CONDITION_PARALYZE
+-- Displays CONST_ME_MAGIC_BLUE effect
+-- Cooldown 1s aplicado
+```
+
+---
+
+## 📌 Resumo
+
+**Bruise Bane** é um spell de cura entry-level knight exclusive que oferece healing + remoção de paralyze. Com 10 mana (muito baixo!) e level 1 (entry), implementa fórmula dinâmica healing (level * 0.2 + magicLevel * 1.795) até +5. Cooldown rápido 1s, self target, grupo healing, som especial SOUND_EFFECT_TYPE_SPELL_BRUISE_BANE. Usa Combat system com dispel CONDITION_PARALYZE - spell essencial para knights em paralyze emergencies!

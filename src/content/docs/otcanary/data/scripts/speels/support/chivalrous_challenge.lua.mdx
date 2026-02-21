@@ -1,0 +1,289 @@
+---
+title: Chivalrous Challenge
+description: Spell de cadeia para Knights que faz challenge em múltiplos monstros ranged, mudando distância de ataque e criando threat
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `chivalrous_challenge.lua` |
+| **Tipo de Spell** | Spell chain/cascade (Support) |
+| **Vocação** | Knight / Elite Knight |
+| **Spell ID** | 237 |
+| **Mana Requerida** | 80 |
+| **Level Requerido** | 150 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração do Challenge** | 12 segundos (12.000 ms) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exeta amp res` |
+| **Efeito Visual Chain** | `CONST_ME_CHIVALRIOUS_CHALLENGE` |
+| **Targets Padrão** | 5 monstros |
+| **Max Distância Chain** | 6 quadrados |
+| **Auto-Target** | Não (requer alvo em área) |
+| **Agressividade** | Não (suporte/threat) |
+| **Filtro** | Exclui reward bosses |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/chivalrous_challenge.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell utiliza sistema avançado de callbacks em cadeia (chain effect). O `CALLBACK_PARAM_CHAINPICKER` determina quais alvos são elegíveis, `CALLBACK_PARAM_CHAINVALUE` define quantos targets e distância, e `CALLBACK_PARAM_TARGETCREATURE` executa lógica customizada em cada alvo. O spell verifica presença de boss no cenário ANTES de executar combat, prevenindo cast em situações inválidas. Inclui integração com Wheel of Destiny para bônus de targets e duração.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `chivalrous_challenge.lua` implementa spell chain premium para Knights (level 150+) que faz challenge (force attack) em múltiplos monstros ranged simultaneamente. É um dos spells mais complexos do suporte, utilizando triple-callback system (chainpicker, chainvalue, targetcreature) para implementar cascata de challenges através grupos de monstros. O spell obtém spectators na posição, valida se algum é reward boss (bloqueia cast), executa combat com chain callbacks, e aplica challenge + mudança de distância em cada alvo. Integração com Wheel of Destiny permite bônus dinâmicos. A implementação demonstra padrão arquiteturalmente avançado com múltiplas camadas de callbacks.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat com Chain Effect
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_CHAIN_EFFECT, CONST_ME_CHIVALRIOUS_CHALLENGE)
+
+-- 2. Callback 1: Filtro de Alvos Elegíveis
+function canChain(creature, target)
+    -- Valida se target é elegível para chain
+end
+combat:setCallback(CALLBACK_PARAM_CHAINPICKER, "canChain")
+
+-- 3. Callback 2: Definição de Quantos Targets
+function getChainValue(creature)
+    -- Retorna (targets, distância, flag)
+end
+combat:setCallback(CALLBACK_PARAM_CHAINVALUE, "getChainValue")
+
+-- 4. Callback 3: Lógica em Cada Alvo
+function onChain(creature, target)
+    -- Aplica challenge e modifica distância
+end
+combat:setCallback(CALLBACK_PARAM_TARGETCREATURE, "onChain")
+
+-- 5. Instância do Spell
+local spell = Spell("instant")
+
+-- 6. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 6.1 Validação de Boss Presente
+    -- 6.2 Erro se Boss Detectado
+    -- 6.3 Execução de Combat (triggers callbacks)
+    -- 6.4 Validação de Resultado
+    -- 6.5 Retorno de Status
+end
+
+-- 7. Configuração de Propriedades do Spell
+spell:group("support")
+spell:id(237)
+spell:name("Chivalrous Challenge")
+spell:words("exeta amp res")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_CHIVALROUS_CHALLENGE)
+spell:level(150)
+spell:mana(80)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:vocation("knight;true", "elite knight;true")
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat com chain callbacks |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Knight que conjura o spell |
+| `target` | `Creature` | Parâmetro (callbacks) | Alvo atual na cadeia |
+| `player` | `Player` | Local (callbacks) | Conversão de creature para Player (para Wheel) |
+| `targets` | `number` | Local (getChainValue) | Quantidade de targets a afetar |
+| `duration` | `number` | Local (onChain) | Duração do challenge em ms |
+| `spectators` | `table` | Local (onCastSpell) | Lista de criaturas no cenário |
+| `spectator` | `Creature` | Local (loop) | Criatura na iteração de spectators |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Triple Callback Chain**
+```lua
+combat:setCallback(CALLBACK_PARAM_CHAINPICKER, "canChain")
+combat:setCallback(CALLBACK_PARAM_CHAINVALUE, "getChainValue")
+combat:setCallback(CALLBACK_PARAM_TARGETCREATURE, "onChain")
+```
+Três callbacks especializados: filtro, configuração de quantidade, e execução.
+
+### 2. **Padrão de Filtro Boss**
+```lua
+function canChain(creature, target)
+    if target:getType():isRewardBoss() then
+        return false
+    elseif target:getMaster() == nil and target:getType():getTargetDistance() > 1 then
+        return true
+    end
+end
+```
+Exclui reward bosses e summons. Inclui apenas monstros ranged (`getTargetDistance() > 1`).
+
+### 3. **Padrão de Validação Pre-Execution Boss Check**
+```lua
+local spectators = Game.getSpectators(creature:getPosition(), false, false)
+for _, spectator in pairs(spectators) do
+    if spectator:isMonster() and spectator:getType():isRewardBoss() then
+        creature:sendCancelMessage("You can't use this spell if there's a boss.")
+        creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+        return false
+    end
+end
+```
+Verifica presença de boss ANTES de executar combat para evitar execução parcial.
+
+### 4. **Padrão de Wheel of Destiny Integration**
+```lua
+local targets = 5
+local player = creature:getPlayer()
+if creature and player then
+    targets = targets + player:getWheelSpellAdditionalTarget("Chivalrous Challenge")
+end
+```
+Incrementa targets base com bonus do Wheel para balanceamento dinâmico.
+
+### 5. **Padrão de Challenge + Distance Combo**
+```lua
+doChallengeCreature(player, target:getMonster(), 12000)
+target:changeTargetDistance(1, duration)
+```
+Combina challenge (força ataque) com mudança de distância (traz próximo) em cada alvo.
+
+## 🤖 Documentação das Funções
+
+### `canChain(creature, target)` (Callback - CHAINPICKER)
+
+**Descrição:** Callback que filtra quais targets são elegíveis para serem afetados pela cadeia.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Knight que conjura o spell.
+- `target` (Creature): Criatura candidata para ser alvo de chain.
+
+**Fluxo:**
+1. Valida se target é monstro: `if target:isMonster()`
+2. Exclui reward bosses: `if target:getType():isRewardBoss() then return false`
+3. Exclui summons (com mestre): `if target:getMaster() == nil`
+4. Inclui apenas ranged: `target:getType():getTargetDistance() > 1`
+
+**Retorno:**
+- `true`: Target é elegível para chain
+- `false`: Target deve ser ignorado
+
+---
+
+### `getChainValue(creature)` (Callback - CHAINVALUE)
+
+**Descrição:** Callback que retorna quantos targets serão afetados e configuração de distância.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Knight que conjura o spell.
+
+**Fluxo:**
+1. Define `targets = 5` (base)
+2. Obtém conversão: `player = creature:getPlayer()`
+3. Se player válido: adiciona bonus do Wheel: `targets = targets + player:getWheelSpellAdditionalTarget(...)`
+4. Retorna tupla: `(targets, 6, false)` onde 6 é max distância em quadrados
+
+**Retorno:**
+- Tupla: `(numTargets, maxDistance, flag)`
+- Exemplo: `(5, 6, false)` = até 5 targets, distância máxima 6 quadrados
+
+---
+
+### `onChain(creature, target)` (Callback - TARGETCREATURE)
+
+**Descrição:** Callback executado para cada target na cadeia. Aplica challenge e muda distância.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Knight que conjura o spell.
+- `target` (Creature): Alvo atual da cadeia.
+
+**Fluxo:**
+1. Define `duration = 12000` ms (base)
+2. Obtém player: `player = creature:getPlayer()`
+3. Se player válido: adiciona bonus de duração do Wheel: `duration = duration + (player:getWheelSpellAdditionalDuration(...) * 1000)`
+4. Se target é monstro:
+   - Executa `doChallengeCreature(player, target:getMonster(), 12000)` - força ataque
+   - Muda distância: `target:changeTargetDistance(1, duration)` - traz para perto
+
+**Retorno:**
+- `true`: Processamento bem-sucedido
+
+---
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Valida environment e executa chain.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Knight que executa o spell.
+- `variant` (Variant): Dados variáveis (não utilizados).
+
+**Fluxo de Execução:**
+
+1. **Obtenção de Spectators**:
+   - Chama `Game.getSpectators(creature:getPosition(), false, false)`
+   - Obtém lista de criaturas em posição do Knight
+
+2. **Validação Pre-Execution de Boss**:
+   - Loop através de spectators
+   - Se algum é monstro reward boss:
+     - Envia mensagem `"You can't use this spell if there's a boss."`
+     - Aplica efeito visual erro `CONST_ME_POFF`
+     - Retorna `false` (cancela spell)
+
+3. **Execução de Combat com Chain**:
+   - Chama `combat:execute(creature, variant)`
+   - Combat dispara callbacks:
+     - `canChain` para cada criatura potencial
+     - `getChainValue` para determinar scope
+     - `onChain` para cada alvo válido
+
+4. **Validação de Resultado**:
+   - Se combat retorna `false` (nenhum alvo encontrado):
+     - Envia mensagem `"There are no ranged monsters."`
+     - Aplica efeito visual erro `CONST_ME_POFF`
+     - Retorna `false`
+
+5. **Sucesso**:
+   - Se execução bem-sucedida: retorna `true`
+
+**Valores de Retorno:**
+- `true`: Spell executado, mana de 80 consumida, targets afetados
+- `false`: Validação falhou (boss presente ou nenhum alvo ranged)
+
+**Lógica Detalhada:**
+
+O spell implementa mecanismo avançado de threat para Knights. A validação de boss antes de cast previne situações de invulnerabilidade (immune a challenge em certos contexts). A filtragem de ranged-only garante que spell é tático para afastar inimigos distantes que disparam magias.
+
+O sistema de callbacks permite implementar lógica complex sem modificar core de Combat. Cada callback é especializado em uma função. O padrão `(targets, distance, flag)` retorno de getChainValue permite controle fino de cadeia.
+
+Integração com Wheel of Destiny via `getWheelSpellAdditionalTarget` e `getWheelSpellAdditionalDuration` criaria escalabilidade dinâmica - jogadores com Wheel investimento ganham mais targets e duração maior.
+
+A duração fixa de 12000ms (12 segundos) no doChallengeCreature força timeout após 12s mesmo se Wheel adiciona duração. A changeTargetDistance(1) traz monstro para 1 quadrado de distância, força close-range combat.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_CHIVALROUS_CHALLENGE`: Som característico de challenge
+
+**Mensagens ao Jogador:**
+- Sucesso: Nenhuma (apenas efeito visual)
+- Falha (boss): `"You can't use this spell if there's a boss."`
+- Falha (nenhum ranged): `"There are no ranged monsters."`
+
+## 📌 Resumo
+
+**Chivalrous Challenge** é um spell chain premium exclusivo para Knights (level 150+) que faz challenge em até 5 monstros ranged simultaneamente, forçando eles a atacar o Knight e mudando sua distância de ataque para close-range por até 12 segundos. O spell requer 80 de mana, cooldown de 2 segundos, e integração com Wheel of Destiny permite bônus dinâmicos de targets e duração. A implementação é arquiteturalmente avançada, usando triple-callback system (chainpicker para filtro, chainvalue para quantidade, targetcreature para execução) para implementar cascata complexa de challenges através de grupos de monstros. Validação pre-execution de boss garante segurança. É spell essencial para threat management em PvE grupado, permitindo Knight dominar enxame de inimigos ranged através de tática de force-attack coordenada.
+
+A implementação segue padrão chain avançado, diferenciando-se por: (1) triple-callback architecture, (2) filtro sophisticado de elegibilidade, (3) integração Wheel of Destiny, (4) validação pre-execution de boss, (5) combinação de challenge + distance mudança.

@@ -1,0 +1,222 @@
+---
+title: costume_bags.lua
+description: Bags que transformam player em outfit aleatória de monstro
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="costume_bags.lua" icon="star">
+Script de ação Lua que implementa bolsas de fantasia com transformação aleatória em monstros.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/costume_bags.lua`
+
+Sistema que oferece outfits aleatórias de monstros com base na bag ID. 4 bags diferentes (653, 654, 655, 24949) com pools de 8-4 monstros cada. Outfit dura 50 minutos (5x 10 minutos = 50 min total). Progride achievement "Masquerader" 100 pontos.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `costume_bags.lua` implementa bags de fantasia com outfit aleatória de monstro. Cada bag (ID 653, 654, 655, 24949) tem pool de nomes de monstros. Ao usar, seleciona aleatoriamente um monstro, aplica outfit por 50 min, progride achievement em 100 pontos, emite efeito vermelho e consome bag.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define config com 4 bags]
+    ├─ 653: 8 monstros (lower tiers)
+    ├─ 654: 8 monstros (mid tiers)
+    ├─ 655: 8 monstros (high tiers)
+    └─ 24949: 4 monstros (old versions)
+    ↓
+[Create costumeBags Action]
+    ↓
+[onUse function]
+    ├─ creatures = config[item.itemid]
+    ├─ Not found? return true
+    ├─ Pick random creature name
+    ├─ setMonsterOutfit(name, 5 * 60 * 10 * 1000)
+    │   └─ 5 * 10min = 50min total
+    ├─ addAchievementProgress("Masquerader", 100)
+    ├─ sendMagicEffect(CONST_ME_MAGIC_RED)
+    ├─ item:remove()
+    └─ return true
+    ↓
+[Register Action on 4 bag IDs via loop]
+```
+
+## Variáveis Globais
+
+### config (local table)
+
+```lua
+local config = {
+	[653] = { "orc warrior", "pirate cutthroat", "dworc voodoomaster", "dwarf guard", "minotaur mage", "ogre shaman", "ogre brute", "rat" },
+	[654] = { "quara hydromancer", "diabolic imp", "banshee", "frost giant", "lich", "vexclaw", "grimeleech", "hellflayer", "ogre shaman", "ogre brute", "pig" },
+	[655] = { "serpent spawn", "demon", "juggernaut", "behemoth", "ashmunrah", "vexclaw", "grimeleech", "hellflayer", "black sheep" },
+	[24949] = { "old beholder", "old bug", "old wolf", "old giant spider" },
+}
+```
+
+Mapeamento bag ID para creature names.
+
+**Estrutura:**
+- Bag ID como índice
+- Array de nomes de criaturas válidas (deve ser string exatan como no game)
+
+## Funções
+
+### costumeBags.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que aplica outfit aleatória.
+
+**Parâmetros:**
+- player: Creature player
+- item: Bag sendo usado
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. Get creatures list por item ID
+   ├─ Não existe? return true
+   └─ Existe? continuar
+
+2. randomCreature = creatures[random(1, #creatures)]
+   └─ Pick aleatório do pool
+
+3. setMonsterOutfit(randomCreature, duration)
+   └─ Transforma player em monstro
+
+4. addAchievementProgress("Masquerader", 100)
+
+5. sendMagicEffect(CONST_ME_MAGIC_RED)
+
+6. item:remove() [consome bag completo]
+
+7. return true
+```
+
+**Implementação:**
+
+```lua
+function costumeBags.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local creatures = config[item.itemid]
+	if not creatures then
+		return true
+	end
+
+	player:setMonsterOutfit(creatures[math.random(#creatures)], 5 * 60 * 10 * 1000)
+	player:addAchievementProgress("Masquerader", 100)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	item:remove()
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| creatures | table | Pool de nomes de monstro |
+| 5 * 60 * 10 * 1000 | integer | 50 minutos em milissegundos |
+| CONST_ME_MAGIC_RED | constant | Efeito mágico vermelho |
+| Masquerader | string | Achievement ID |
+| 100 | integer | Pontos de achievement |
+
+## Bags e Pools
+
+### Bag 653 (Lower)
+
+Criaturas: orc warrior, pirate cutthroat, dworc voodoomaster, dwarf guard, minotaur mage, ogre shaman, ogre brute, rat (8 opções)
+
+### Bag 654 (Mid)
+
+Criaturas: quara hydromancer, diabolic imp, banshee, frost giant, lich, vexclaw, grimeleech, hellflayer, ogre shaman, ogre brute, pig (11 opções)
+
+### Bag 655 (High)
+
+Criaturas: serpent spawn, demon, juggernaut, behemoth, ashmunrah, vexclaw, grimeleech, hellflayer, black sheep (9 opções)
+
+### Bag 24949 (Legacy - "Old")
+
+Criaturas: old beholder, old bug, old wolf, old giant spider (4 opções)
+
+## Fluxo de Operação
+
+```
+[Player usa costume bag]
+    ↓
+[config[item.itemid] existe?]
+    ├─ NÃO → return true
+    └─ SIM → continuar
+    ↓
+[Pick random creature do pool]
+    ↓
+[setMonsterOutfit]
+    ├─ Transforma em monstro
+    └─ Dura 50 minutos
+    ↓
+[addAchievementProgress("Masquerader", 100)]
+    ↓
+[Magic effect vermelho]
+    ↓
+[item:remove()] [desaparece]
+    ↓
+[return true]
+```
+
+## Duration: 50 Minutos
+
+**Cálculo**: 5 * 60 * 10 * 1000 = 3.000.000 ms = 3.000 s = 50 min
+
+Nota: Conversão em milissegundos direta com o game engine.
+
+## Achievement: Masquerader
+
+**Tipo**: Progress tracker  
+**Pontos por uso**: 100  
+**Acumulativo**: Sim (pode repetir para ganhar progresso)
+
+Cada uso progride 100 pontos no achievement.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Config table com pool variável por item
+2. Random selection sem duplicação
+3. setMonsterOutfit para transformação visual
+4. Duration em milissegundos
+5. Achievement progress vs unlock
+6. item:remove() sem quantity (remove tudo)
+7. Multi-ID registration via loop
+
+**Responsabilidades:**
+1. Validar bag ID em config
+2. Pick aleatório do pool de nomes
+3. Aplicar outfit por 50 minutos
+4. Progride achievement tracking
+5. Emitir efeito visual
+6. Consumir bag completamente
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 32 linhas  
+**Função**: 1 (onUse)  
+**Bag IDs**: 4 (653, 654, 655, 24949)  
+**Pool size**: 4-11 criaturas por bag  
+**Outfit Duration**: 50 minutos  
+**Achievement**: Masquerader (100 cada)
+</Card>
+
+<Aside type="note">
+Bags de fantasia com outfit aleatória. Cada bag (653-655, 24949) oferece diferentes pools de criaturas. Dura 50 min total. Progride achievement Masquerader 100 pontos por uso.
+</Aside>

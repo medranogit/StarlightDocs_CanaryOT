@@ -1,0 +1,412 @@
+---
+title: "Spell - holy_flash.lua"
+description: "Spell de flash sagrado para paladins level 70 com condition DAZZLED"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `holy_flash.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 143 |
+| **Tipo de Dano** | COMBAT_HOLYDAMAGE |
+| **Vocações** | Paladin, Royal Paladin |
+| **Level Requerido** | 70 |
+| **Mana Requerida** | 30 |
+| **Words** | utori san |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Cooldown** | 40s |
+| **GroupCooldown** | 2s |
+| **Premium** | Não |
+| **Fórmula** | Fixed damage (7-11 dano + condition 3s) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_HOLY_FLASH |
+| **Condition** | CONDITION_DAZZLED (paralisia!) |
+| **Condition Damage** | 7-11 dano aleatório a cada 3s |
+| **Requer Target** | Sim (needTarget) |
+| **Bloqueia Walls** | Sim |
+| **isAggressive** | Sim |
+| **Distance Effect** | CONST_ANI_SMALLHOLY |
+| **Linhas de Código** | 27 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de flash sagrado para paladins nível 70 (mid-late). Dano sagrado fixed (7-11) com condition DAZZLED (paralisia!). Sistema de condition com damage oscilante. 30 mana (muito baato). Range 3 (ranged). Target required. Cooldown 40s (longo!). Não-premium. Efeito SMALLHOLY. Spell CC utility!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/holy_flash.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(143)
+spell:name("Holy Flash")
+spell:words("utori san")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_HOLY_FLASH)
+spell:level(70)
+spell:mana(30)
+spell:isAggressive(true)
+spell:range(3)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:cooldown(40 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("paladin;true", "royal paladin;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Flash Sagrado - Holy CC Utility Condition-Based**
+
+Este spell implementa um sistema ÚNICO de condition utility com paralisia:
+
+1. **Fixed Damage com Condition:**
+   - Dano sagrado: 7-11 (fixed!)
+   - Condition DAZZLED (paralisia)
+   - Condition damage: 7-11 aleatório
+   - Duration: 3 segundos
+   - Delay: CONDITION_PARAM_DELAYED
+
+2. **CC Utility Mid-Late:**
+   - Level 70 (mid-late)
+   - 30 mana (MUITO baato!)
+   - Cooldown 40s (long duration)
+   - Não-premium advantage
+   - Para paralizar targets!
+
+3. **Ranged Paladin:**
+   - Range 3 (ranged)
+   - needTarget: true (single)
+   - CONST_ANI_SMALLHOLY (projétil)
+   - isAggressive: true
+
+4. **Condition System:**
+   - CONDITION_DAZZLED (unique!)
+   - CONDITION_PARAM_DELAYED: 1 (inicio delay)
+   - addDamage(7-11, 3000, -20) oscilação!
+
+**Fórmula Visual:**
+```
+Paladin lvl 70:
+  Impact damage: 7-11 (fixed)
+  
+Condition DAZZLED:
+  Damage tick: 7-11 aleatório
+  Duration: 3000ms (3s)
+  PeriodChange: -20 (oscilação!)
+
+Total effect:
+  Initial: 7-11 dano
+  Over 3s: 7-11 × múltiplos ticks
+  CC: Paralisia (DAZZLED)!
+```
+
+**Diferencial:** Holy CC condition-based com DAZZLED paralisia!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `holy_flash` oferece dano sagrado com condition CC:
+
+- **Dano:** COMBAT_HOLYDAMAGE (fixed 7-11)
+- **Condition:** CONDITION_DAZZLED (paralisia!)
+- **Mana:** 30 (muito baato)
+- **Level:** 70 (mid-late)
+- **Range:** 3 (ranged)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: HOLYDAMAGE
+├─ Distance Effect: SMALLHOLY
+└─ Condition: DAZZLED
+    ├─ Damage: 7-11 aleatório
+    ├─ Duration: 3000ms
+    └─ Period: -20 (oscilação)
+
+spell.onCastSpell(creature, var)
+└─ combat:execute(creature, var)
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_HOLYDAMAGE)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_SMALLHOLY)
+```
+
+**Propósito:** Combat de dano sagrado ranged.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_HOLYDAMAGE | Dano sagrado |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_SMALLHOLY | Projétil sagrado |
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_DAZZLED)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+condition:addDamage(math.random(7, 11), 3000, -20)
+combat:addCondition(condition)
+```
+
+**Propósito:** Condition de paralisia com damage periódico.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `Type` | CONDITION_DAZZLED | Paralisia! |
+| `DELAYED` | 1 | Inicio com delay |
+| `Damage min-max` | 7-11 | Dano aleatório |
+| `Duration` | 3000ms | 3 segundos |
+| `Period` | -20 | Oscilação negativa |
+
+**Detalhes:**
+- `math.random(7, 11)`: damage aleatório
+- `3000`: duração 3 segundos
+- `-20`: período oscilante (efeito variável!)
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples executa combat.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Paladin |
+| `var` | Variant | Target |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Flash lançado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Holy damage + condition |
+| `condition` | Condition | Arquivo | DAZZLED paralisia |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Condition-Based Utility
+
+```lua
+local condition = Condition(CONDITION_DAZZLED)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+condition:addDamage(math.random(7, 11), 3000, -20)
+combat:addCondition(condition)
+```
+
+**Benefício:** CC utility com damage over time!
+
+### Padrão 2: Random Damage Condition
+
+```lua
+condition:addDamage(math.random(7, 11), 3000, -20)
+```
+
+**Benefício:** Dano aleatório, período oscilante.
+
+### Padrão 3: Long Cooldown CC
+
+```lua
+spell:cooldown(40 * 1000)
+```
+
+**Benefício:** Cooldown longo = CC regulado.
+
+### Padrão 4: Cheap Mana Cost
+
+```lua
+spell:mana(30)
+```
+
+**Benefício:** 30 mana = muito baato utility!
+
+---
+
+## 🤖 Documentação das Funções
+
+### Condition: CONDITION_DAZZLED
+
+**Descrição:** Paralisia sagrada com damage periódico.
+
+**Parâmetros:**
+
+| Nome | Valor | Descrição |
+|---|---|---|
+| `Type` | DAZZLED | Paralisia efeito |
+| `Delayed` | 1 | Inicio com delay |
+| `Damage` | 7-11 | Aleatório |
+| `Duration` | 3000ms | 3 segundos |
+| `Period` | -20 | Oscilação |
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Lança flash sagrado com condition CC.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Paladin |
+| `var` | Variant | Target |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Flash lançado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 70+
+- 30 mana
+- Target required
+- Range 3
+- Cooldown 40s (longo!)
+
+**Efeito:**
+- Efeito sagrado small
+- Projétil SMALLHOLY
+- Damage initial: 7-11
+- Condition DAZZLED (paralisia!)
+- Damage over time: 3s
+- Period oscilante
+
+**Exemplo:**
+
+```lua
+-- Paladin lvl 70 vs target
+spell.onCastSpell(paladin, targetVariant)
+// Validações:
+//   ✓ Level 70 >= 70
+//   ✓ Mana 30 disponível
+//   ✓ Target in range 3
+// Combat executa
+// Projétil SMALLHOLY viaja
+// Impact damage: 7-11 sagrado
+// Condition DAZZLED aplicada
+// Duration 3s com damage 7-11/tick
+// Paralisia ativa!
+// Cooldown 40s (longo!)
+// Resultado: CC utility sagrado!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Mid-Late CC Utility
+
+```lua
+-- Paladin lvl 70+
+// Holy Flash = paralisia targets
+// CC utility para tanks
+// Long cooldown 40s = regulated
+```
+
+### Caso 2: Ranged CC Training
+
+```lua
+-- Paladin farming paralisia
+// Holy Flash = condition damage
+// Range 3 = safe distance
+// 30 mana = spam possible
+// Cooldown 40s timer skill
+```
+
+### Caso 3: PvP Utility
+
+```lua
+-- Paladin PvP
+// Holy Flash = paralisia tática
+// Dazzled condition = CC
+// Ranged safe = advantage
+// 40s CD = strategic timing
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat, Condition
+- **Damage:** COMBAT_HOLYDAMAGE
+- **Condition:** CONDITION_DAZZLED, CONDITION_PARAM_DELAYED
+- **Effects:** CONST_ANI_SMALLHOLY
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Holy CC condition utility |
+| **Dano Type** | COMBAT_HOLYDAMAGE |
+| **Dano** | Fixed 7-11 + condition 7-11/3s |
+| **Mana** | 30 (muy baato!) |
+| **Range** | 3 (ranged) |
+| **Level** | 70 (mid-late) |
+| **Cooldown** | 40s (longo!) |
+| **Premium** | Não |
+| **Condition** | DAZZLED (paralisia!) |
+| **Condition Duration** | 3 segundos |
+| **Distance Effect** | SMALLHOLY |
+| **isAggressive** | Sim |
+| **Vocações** | Paladin, Royal Paladin |
+| **Padrão** | Condition-based + random damage + long cooldown CC |

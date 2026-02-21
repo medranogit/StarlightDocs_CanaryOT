@@ -1,0 +1,245 @@
+---
+title: die.lua
+description: Dado aleatório com rastreamento de seis consecutivos
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="die.lua" icon="star">
+Script de ação Lua que implementa jogo de dados com rastreamento de achievement.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/die.lua`
+
+Sistema que simula rolagem de dado (1-6), emite efeito visual e mensagem pública. Rastreia quantos "seis" consecutivos foram rolados, desbloqueando achievement ao atingir 3 seis. Item ID 5792-5797 (6 estados diferentes).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `die.lua` implementa jogo de dados funcional que gera valor aleatório 1-6, emite efeito visual e frase pública comunicando resultado. Rastreia sequência de seis usando key-value "die-rolled-six". Ao atingir 3 seis consecutivos, desbloquia achievement "Number of the Beast". Qualquer outro resultado reseta contador.
+
+**Estrutura de Funcionalidades**
+
+```
+[Create die Action]
+    ↓
+[onUse function]
+    ├─ position = item:getPosition()
+    ├─ value = random(1, 6)
+    ├─ isInGhostMode = player:isInGhostMode()
+    ├─ If not ghost
+    │   ├─ sendMagicEffect(CRAPS)
+    │   ├─ Get spectators
+    │   └─ For each: player:say("rolled X")
+    ├─ If value == 6
+    │   ├─ Get rolledSixCount from kv
+    │   ├─ Increment count
+    │   ├─ Set in kv
+    │   ├─ If count == 2 (terceiro seis)
+    │   │   └─ addAchievement("Number of the Beast")
+    │   └─ Else
+    │       └─ kv:remove("die-rolled-six")
+    ├─ item:transform(5791 + value)
+    └─ return true
+    ↓
+[Register IDs 5792-5797 via loop]
+```
+
+## Variáveis Globais
+
+### player:kv() - Key-Value Storage
+
+```lua
+local rolledSixCount = player:kv():get("die-rolled-six") or 0
+player:kv():set("die-rolled-six", rolledSixCount + 1)
+```
+
+Sistema persistente de rastreamento jogador-específico.
+
+**Chave**: "die-rolled-six"  
+**Tipo**: Integer  
+**Escopo**: Por jogador  
+**Reinicia**: Quando não rola 6
+
+## Funções
+
+### die.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que executa rolagem de dado.
+
+**Parâmetros:**
+- player: Creature player
+- item: Dado sendo rolado
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. position = item:getPosition()
+
+2. value = random(1, 6)
+   └─ Valor 1-6 equiprobável
+
+3. isInGhostMode = player:isInGhostMode()
+
+4. If not isInGhostMode
+   ├─ sendMagicEffect(CONST_ME_CRAPS)
+   ├─ spectators = Game.getSpectators(3x3)
+   └─ For each spectator
+       └─ say("NAME rolled a X.")
+
+5. If value == 6 then
+   ├─ Get counter (default 0)
+   ├─ Increment counter
+   ├─ If counter == 2 (meaning 3 sixes)
+   │   └─ addAchievement("Number of the Beast")
+   └─ Else
+       └─ Remove "die-rolled-six" from kv
+
+6. item:transform(5791 + value)
+   └─ Muda visual (5792-5797 para 1-6)
+
+7. return true
+```
+
+**Implementação:**
+
+```lua
+function die.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local position = item:getPosition()
+	local value = math.random(1, 6)
+	local isInGhostMode = player:isInGhostMode()
+
+	if not isInGhostMode then
+		position:sendMagicEffect(CONST_ME_CRAPS)
+
+		local spectators = Game.getSpectators(position, false, true, 3, 3)
+		for _, spectator in ipairs(spectators) do
+			player:say(player:getName() .. " rolled a " .. value .. ".", TALKTYPE_MONSTER_SAY, isInGhostMode, spectator, position)
+		end
+	end
+
+	if value == 6 then
+		local rolledSixCount = player:kv():get("die-rolled-six") or 0
+		player:kv():set("die-rolled-six", rolledSixCount + 1)
+
+		if rolledSixCount == 2 then
+			player:addAchievement("Number of the Beast")
+		end
+	else
+		player:kv():remove("die-rolled-six")
+	end
+
+	item:transform(5791 + value)
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| value | integer | 1-6 resultado |
+| isInGhostMode | boolean | Se player está em ghost mode |
+| rolledSixCount | integer | Count seis consecutivos |
+| CONST_ME_CRAPS | constant | Efeito mágico |
+| "die-rolled-six" | string | Chave kv storage |
+
+## Item IDs e Transformações
+
+| ID | Valor | Descrição |
+|----|-------|-----------|
+| 5792 | 1 | Dado face 1 |
+| 5793 | 2 | Dado face 2 |
+| 5794 | 3 | Dado face 3 |
+| 5795 | 4 | Dado face 4 |
+| 5796 | 5 | Dado face 5 |
+| 5797 | 6 | Dado face 6 |
+
+Formula: `5791 + value` onde value 1-6.
+
+## Fluxo de Operação
+
+```
+[Player usa dado]
+    ↓
+[Gera value aleatório 1-6]
+    ↓
+[Se não ghost mode]
+    ├─ Magic effect (CRAPS)
+    └─ Broadcast "NAME rolled a X."
+    ↓
+[value == 6?]
+    ├─ SIM
+    │   ├─ Get contador (default 0)
+    │   ├─ Increment
+    │   ├─ counter == 2?
+    │   │   └─ SIM → Achievement "Number of the Beast"
+    │   └─ Set em kv
+    └─ NÃO
+        └─ Remove kv key
+    ↓
+[item:transform(5791 + value)]
+    └─ Atualiza visual
+    ↓
+[return true]
+```
+
+## Achievement: Number of the Beast
+
+**Desbloqueio**: 3 seis consecutivos (contador == 2)
+
+**Nota Técnica**: Counter começa em 0, então:
+- Primeiro 6: counter = 1
+- Segundo 6: counter = 2  
+- Terceiro 6: counter == 2 check, depois increment para 3
+
+## Ghost Mode
+
+Ao estar em ghost mode:
+- Efeito visual não é emitido
+- Mensagem não é transmitted (isInGhostMode=true)
+- Contador de seis AINDA funciona (não condicionado)
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Random valor discreto (1-6)
+2. Espectadores com range específico
+3. Key-value storage persistente por jogador
+4. Counter com lógica de incremento
+5. Condição de achievement (== 2 significa terceiro)
+6. Transform para visual feedback
+7. Ghost mode silencia efeitos públicos
+
+**Responsabilidades:**
+1. Gerar número aleatório 1-6
+2. Emitir efeito e frase (se não ghost)
+3. Rastrear contador de seis
+4. Desbloquear achievement ao 3º seis
+5. Resetar contador se não rola 6
+6. Transformar item visual
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 32 linhas  
+**Função**: 1 (onUse)  
+**Item IDs**: 6 (5792-5797)  
+**Range**: 1-6  
+**Achievement**: Number of the Beast (3 seis)  
+**Storage**: Key-value por jogador
+</Card>
+
+<Aside type="note">
+Jogo de dados simples com rastreamento de achievement. Sequência de 3 seis consecutivos desbloquia "Number of the Beast". contador reseta ao rolar qualquer outro número.
+</Aside>

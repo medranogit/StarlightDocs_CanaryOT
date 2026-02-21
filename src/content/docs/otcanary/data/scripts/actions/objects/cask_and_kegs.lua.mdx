@@ -1,0 +1,344 @@
+---
+title: cask_and_kegs.lua
+description: Sistema de alquimia com 22 transformações usando charges e 3 items obrigatórios (flasks).
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="cask_and_kegs.lua" icon="pencil">
+Handler complexo de transmutação com charge depletion e local functions.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/objects/cask_and_kegs.lua`
+
+**Linhas:** 99 | **IDs dos Objects:** 22 casks/kegs | **Tipo:** Action Handler com 2 Local Functions
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema de alquimia onde casks/kegs transformam flasks em outros items. Cada cask possui charges que se depletam com uso. Requer 3 items específicos (IDs 283, 284, 285) como input. Usa loop para converter até esgotar charges ou items disponíveis. Duas funções locais: processTransformation() (lógica principal) e onUseTransformation() (seletor de transformação).
+
+### Estrutura de Funcionalidades
+
+```
+CONFIG:
+  ├─ requiredItems: 283, 284, 285 (flasks obrigatórios)
+  └─ transformations: 22 mapeamentos (cask → output)
+
+LOCAL FUNCTIONS:
+  ├─ processTransformation(player, item, charges, transformation)
+  │   ├─ Validar charges > 0
+  │   ├─ Loop requiredItems (283, 284, 285)
+  │   ├─ getItemCount() cada um
+  │   ├─ math.min(itemCount, charges) → transformableCount
+  │   ├─ removeItem + addItem
+  │   ├─ Decrementar charges
+  │   ├─ item:setAttribute(CHARGES, newCharges) ou remove
+  │   └─ return true
+  │
+  └─ onUseTransformation(player, item, position, target, toPosition, isHotkey)
+      ├─ Obter charges do item
+      ├─ Loop transformations
+      ├─ if item.id == transformation.fromItemId
+      └─ Chamar processTransformation
+
+DYNAMIC ACTION CREATION:
+  └─ Loop para cada transformation
+      ├─ Criar Action novo
+      ├─ id(fromItemId)
+      ├─ action.onUse = onUseTransformation
+      └─ register()
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| requiredItems | table | Array de 3 flask IDs (283, 284, 285) |
+| transformations | table | 22 transformações (from → to) |
+
+---
+
+## Funções Locais
+
+| Função | Parâmetros | Retorno | Descrição |
+|--------|-----------|--------|-----------|
+| processTransformation | (player, item, charges, transformation) | boolean | Executa conversão |
+| onUseTransformation | (player, item, position, target, toPosition, isHotkey) | boolean | Seletor de transformation |
+
+---
+
+## Constantes e Parâmetros
+
+### Required Items (Input)
+
+| ID | Tipo | Descrição |
+|----|------|-----------|
+| 283 | Flask | Flask genérico (input 1/3) |
+| 284 | Flask | Flask genérico (input 2/3) |
+| 285 | Flask | Flask genérico (input 3/3) |
+
+### Sample Transformations
+
+| From ID | To ID | Type |
+|---------|-------|------|
+| 25879 | 266 | Basic |
+| 25880 | 236 | Basic |
+| 25889 | 268 | Extended |
+| 25913 | 7642 | Extended |
+| ... | ... | (19 mais) |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local requiredItems = { 283, 284, 285 }
+
+local transformations = {
+	{ fromItemId = 25879, toItemId = 266 },
+	-- ... 21 mais
+}
+
+local function processTransformation(player, item, charges, transformation)
+	local transformedCount = 0
+
+	-- Validação: charges > 0?
+	if charges <= 0 then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "The item has no charges remaining.")
+		return false
+	end
+
+	-- Loop para cada flask type (283, 284, 285)
+	for _, requiredItemId in ipairs(requiredItems) do
+		local itemCount = player:getItemCount(requiredItemId)
+
+		if itemCount > 0 then
+			-- Calcular quanto pode transformar
+			local transformable = math.min(itemCount, charges - transformedCount)
+
+			if transformable > 0 then
+				-- Remover flask input
+				player:removeItem(requiredItemId, transformable)
+				-- Adicionar output
+				player:addItem(transformation.toItemId, transformable)
+
+				-- Atualizar contador
+				transformedCount = transformedCount + transformable
+
+				-- Se atingiu limite de charges, parar
+				if transformedCount >= charges then
+					break
+				end
+			end
+		end
+	end
+
+	-- Processar resultado
+	if transformedCount > 0 then
+		local newCharges = charges - transformedCount
+
+		-- Atualizar charges ou remover
+		if newCharges > 0 then
+			item:setAttribute(ITEM_ATTRIBUTE_CHARGES, newCharges)
+		else
+			item:remove(1)
+		end
+
+		-- Feedback
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Charges remaining: " .. newCharges)
+	else
+		-- Sem flasks disponíveis
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need flasks to carry all that.")
+	end
+
+	return true
+end
+
+local function onUseTransformation(player, item, position, target, toPosition, isHotkey)
+	-- Obter charges
+	local charges = item:getAttribute(ITEM_ATTRIBUTE_CHARGES) or 0
+
+	-- Encontrar transformation
+	for _, transformation in ipairs(transformations) do
+		if item:getId() == transformation.fromItemId then
+			return processTransformation(player, item, charges, transformation)
+		end
+	end
+
+	return false
+end
+
+-- Criar Actions dinâmicas
+for _, transformation in ipairs(transformations) do
+	local action = Action()
+	action:id(transformation.fromItemId)
+	action.onUse = onUseTransformation
+	action:register()
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa cask/keg
+  │
+  ├─ charges = getAttribute(CHARGES) or 0
+  │
+  ├─ Loop transformations:
+  │   ├─ item.id == transformation.id?
+  │   │   └─ Encontrou → Chamar processTransformation
+  │   └─ Não → continua
+  │
+  ├─ processTransformation():
+  │   ├─ charges <= 0? → erro, return false
+  │   │
+  │   ├─ Loop requiredItems (283, 284, 285):
+  │   │   ├─ itemCount = getItemCount(id)
+  │   │   ├─ if > 0:
+  │   │   │   ├─ transformable = min(itemCount, charges - done)
+  │   │   │   ├─ removeItem(requiredId, transformable)
+  │   │   │   ├─ addItem(toId, transformable)
+  │   │   │   ├─ transformedCount += transformable
+  │   │   │   └─ if transformedCount >= charges: break
+  │   │   └─ Próximo requiredItem
+  │   │
+  │   ├─ if transformedCount > 0:
+  │   │   ├─ newCharges = charges - transformedCount
+  │   │   ├─ if newCharges > 0:
+  │   │   │   └─ setAttribute(CHARGES, newCharges)
+  │   │   └─ else: item:remove(1)
+  │   │   └─ Message: "Charges remaining: X"
+  │   │
+  │   └─ else: Message: "need flasks"
+  │
+  └─ return processTransformation() result
+```
+
+### Charge System
+
+```
+Item com 50 charges:
+
+Usar com 30 flasks (283):
+  ├─ transformable = min(30, 50) = 30
+  ├─ Remover 30 × 283
+  ├─ Adicionar 30 × toId
+  ├─ transformedCount = 30
+  ├─ newCharges = 50 - 30 = 20
+  ├─ setAttribute(CHARGES, 20)
+  └─ Message: "Charges remaining: 20"
+
+Item com 10 charges, 20 flasks existentes:
+  ├─ transformable = min(20, 10) = 10
+  ├─ Remover 10 × 283
+  ├─ Adicionar 10 × toId
+  ├─ transformedCount = 10
+  ├─ newCharges = 10 - 10 = 0
+  ├─ item:remove(1) (sem charges, remove)
+  └─ Message: "Charges remaining: 0"
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Charge System**: getAttribute(ITEM_ATTRIBUTE_CHARGES) para depleção
+- **setAttribute()**: Atualizar charges sem remover item
+- **math.min()**: Calcular limite entre items e charges
+- **Local Functions**: 2 funções compiladas no início
+- **Dynamic Action Creation**: Loop cria Action para cada transformation
+- **Multiple Input Types**: 3 flasks diferentes (283, 284, 285)
+- **Loop Accumulation**: Soma transformedCount até atingir charges
+- **Early Break**: Sair do loop se limite atingido
+- **Attribute Check**: getAttribute() com `or 0` para default
+
+### Responsabilidades do Handler
+
+**onUseTransformation:**
+1. Obter charges: getAttribute(CHARGES) or 0
+2. Loop transformations: encontrar match
+3. Chamar processTransformation()
+
+**processTransformation:**
+1. Validar charges > 0
+2. Loop requiredItems: 283, 284, 285
+3. Calcular transformable: min(count, charges)
+4. removeItem() + addItem()
+5. Acumular transformedCount
+6. Break se atingir charges
+7. Atualizar/remover item
+8. Message feedback
+
+---
+
+## Patterns e Implementação
+
+### Padrão Local Function
+
+Funções compiladas no início:
+
+```lua
+local function processTransformation(player, item, charges, transformation)
+	-- Lógica complexa
+end
+
+local function onUseTransformation(player, item, position, target, toPosition, isHotkey)
+	-- Seletor
+	return processTransformation(...)
+end
+```
+
+### Padrão Charge Depletion
+
+math.min() para limite:
+
+```lua
+local transformable = math.min(itemCount, charges - transformedCount)
+
+if newCharges > 0 then
+	item:setAttribute(ITEM_ATTRIBUTE_CHARGES, newCharges)
+else
+	item:remove(1)
+end
+```
+
+### Padrão Dynamic Action Creation
+
+Loop cria Actions:
+
+```lua
+for _, transformation in ipairs(transformations) do
+	local action = Action()
+	action:id(transformation.fromItemId)
+	action.onUse = onUseTransformation
+	action:register()
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: cask_and_kegs.lua" icon="star">
+Análise de sistema de alquimia com charge depletion e 22 transformações. Demonstra 2 local functions, dynamic action creation e math.min() para batch processing.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Charge system com batch transformation | Complexidade: Média-Alta
+</Aside>

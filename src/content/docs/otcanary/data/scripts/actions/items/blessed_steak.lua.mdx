@@ -1,0 +1,175 @@
+---
+title: blessed_steak.lua
+description: Poção de recarga de mana com cooldown
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="blessed_steak.lua" icon="star">
+Script de ação Lua que implementa item consumível para recarga completa de mana com cooldown.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/blessed_steak.lua`
+
+Script que restaura mana completa do player com cooldown de 10 minutos. Item ID 9086 com efeito mágico e emote.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `blessed_steak.lua` implementa poção de mana consumível com sistema de cooldown. Ao usar, restaura mana máxima do player, emite efeito mágico vermelho, player emite emote "Chomp" e item é consumido. Cooldown de 10 minutos previne uso rápido.
+
+**Estrutura Fundamental**
+
+```
+[Create blessedSteak Action]
+    ↓
+[onUse function]
+    ├─ Check cooldown: special-foods-cooldown
+    ├─ SIM → reject with message
+    └─ NÃO → continuar
+    ↓
+    ├─ addMana(maxMana)
+    ├─ Send: "Your mana has been refilled."
+    ├─ player:say("Chomp", TALKTYPE_MONSTER_SAY)
+    ├─ sendMagicEffect(MAGIC_RED)
+    ├─ setExhaustion: 10 minutos
+    ├─ Remove item
+    └─ return true
+    ↓
+[Register Action on item ID 9086]
+```
+
+## Funções
+
+### blessedSteak.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback acionado ao usar poção.
+
+**Parâmetros:**
+- player: Creature player
+- item: Poção sendo usada
+- fromPosition: Posição do uso
+- target: Target (pode ser nil)
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```
+1. hasExhaustion("special-foods-cooldown")?
+   ├─ SIM → "You need to wait..." + return true
+   └─ NÃO → continuar
+
+2. addMana(getMaxMana()): Restaura mana completa
+   ↓
+
+3. sendTextMessage: "Your mana has been refilled."
+   ↓
+
+4. player:say("Chomp.", TALKTYPE_MONSTER_SAY)
+   ↓
+
+5. sendMagicEffect(CONST_ME_MAGIC_RED)
+   ↓
+
+6. setExhaustion(key, duration)
+   ↓
+
+7. item:remove(1) + return true
+```
+
+**Bloco 1: Cooldown Check**
+
+```lua
+if player:hasExhaustion("special-foods-cooldown") then
+  player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+  return true
+end
+```
+
+Valida se player está em cooldown.
+
+**Bloco 2: Mana + Effects**
+
+```lua
+player:addMana(player:getMaxMana())
+player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your mana has been refilled.")
+player:say("Chomp.", TALKTYPE_MONSTER_SAY)
+player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+player:setExhaustion("special-foods-cooldown", 10 * 60)
+item:remove(1)
+return true
+```
+
+Restaura mana, emite efeitos e cooldown.
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Valor | Descrição |
+|------|------|-------|-----------|
+| special-foods-cooldown | string | - | Chave de exhaustion (cooldown) |
+| 10 * 60 | integer | 600 | Duração em segundos (10 min) |
+| CONST_ME_MAGIC_RED | constant | - | Efeito mágico vermelho |
+| TALKTYPE_MONSTER_SAY | constant | - | Tipo de fala monster |
+| MESSAGE_EVENT_ADVANCE | constant | - | Tipo de mensagem destacada |
+
+## Efeitos de Ação
+
+### Mana Restoration
+
+Adiciona mana máxima do player:
+
+```lua
+player:addMana(player:getMaxMana())
+```
+
+Restaura quantidade exata de mana máxima (100% refill).
+
+### Efeito Mágico: CONST_ME_MAGIC_RED
+
+Emite efeito visual vermelho na posição do player.
+
+### Comportamento: player:say("Chomp")
+
+Player emite som visível aos outros de "Chomp" ao comer.
+
+### Cooldown: special-foods-cooldown
+
+Key exclusiva para comidas especiais, 600 segundos (10 minutos).
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Sistema de cooldown com exhaustion key
+2. Restauração de mana máxima (100% refill)
+3. Efeitos visuais e sonoros combinados
+4. Cooldown compartilhado entre special foods
+5. Consumo de item ao usar
+
+**Responsabilidades:**
+1. Verificar cooldown antes de permitir uso
+2. Restaurar mana máxima do player
+3. Emitir efeito mágico e emote
+4. Setar novo cooldown
+5. Remover 1 unidade do item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 19 linhas  
+**Funções**: 1 (onUse)  
+**Item ID**: 9086  
+**Cooldown**: 10 minutos (600s)  
+**Efeito**: MAGIC_RED  
+**Consumível**: Sim
+</Card>
+
+<Aside type="note">
+Script simples de poção com cooldown compartilhado com outras special foods. Restaura mana máxima em 100%. Sem validações de nível ou vocação. Emite efeito vermelho e emote "Chomp" ao usar.
+</Aside>

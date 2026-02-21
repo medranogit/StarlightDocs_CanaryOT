@@ -1,0 +1,439 @@
+---
+title: Soul Pit - Soul Core Collection Quest
+description: Documentação técnica do arquivo soulpit.lua, que implementa a quest Soul Pit com sistema de soul cores, 4 waves progressivas e 3 boss abilities únicas.
+sidebar:
+  order: 3
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **soulpit.lua** implementa a **quest Soul Pit** - um sistema de coleta de soul cores com battles progressivas, abilities de boss e fusão de items.
+
+<Card title="Caminho Original">
+`data-otservbr-global\lib\others\soulpit.lua`
+</Card>
+
+<Aside type="caution">
+**Tipo**: Quest System (Battle/Collection)  
+**Arquivo Size**: ~200 linhas  
+**Waves**: 4 progressivas  
+**Boss Abilities**: 3 únicas  
+**Soul Cores**: 10 variações  
+**Padrão**: Global Config Table + Functions
+</Aside>
+
+## 📄 Visão Geral
+
+Soul Pit é uma **quest de coleta e combate** onde:
+1. Players entram em arena (5 posições simultâneas)
+2. 4 waves progressivas de monstros spawn
+3. Bosses têm abilities especiais (critical, enrage, spells)
+4. Soul cores dropam (progressão)
+5. Fusão de soul cores para melhorar raridade
+
+## 🔧 Configuração Principal
+
+### Soul Cores Configuration
+
+```lua
+SoulPit.SoulCoresConfiguration = {
+  chanceToGetSameMonsterSoulCore = 15,  -- 15% chance
+  chanceToDropSoulCore = 5,             -- 5% drop chance
+  chanceToGetOminousSoulCore = 2,       -- 2% raro
+  chanceToDropSoulPrism = 4,            -- 4% prism drop
+  
+  monsterVariationsSoulCore = {
+    -- Horse variations
+    ["Horse"] = "horse soul core (taupe)",
+    ["Brown Horse"] = "horse soul core (brown)",
+    ["Grey Horse"] = "horse soul core (gray)",
+    
+    -- Nomad variations
+    ["Nomad"] = "nomad soul core (basic)",
+    ["Nomad Blue"] = "nomad soul core (blue)",
+    ["Nomad Female"] = "nomad soul core (female)",
+    
+    -- Butterfly variations
+    ["Purple Butterfly"] = "butterfly soul core (purple)",
+    ["Butterfly"] = "butterfly soul core (blue)",
+    ["Blue Butterfly"] = "butterfly soul core (blue)",
+    ["Red Butterfly"] = "butterfly soul core (red)",
+  },
+  
+  monstersDifficulties = {
+    ["Harmless"] = 1,      -- Tier 1
+    ["Trivial"] = 2,       -- Tier 2
+    ["Easy"] = 3,          -- Tier 3
+    ["Medium"] = 4,        -- Tier 4
+    ["Hard"] = 5,          -- Tier 5
+    ["Challenge"] = 6,     -- Tier 6
+  },
+}
+```
+
+**10 Soul Core Types**: Horse (3 colors), Nomad (3 variants), Butterfly (4 colors)
+
+---
+
+## 👥 Player Setup
+
+### 5 Entry Positions
+
+```lua
+playerPositions = {
+  {
+    pos = Position(32375, 31158, 8),
+    teleport = Position(32373, 31151, 8),
+    effect = CONST_ME_TELEPORT,
+  },
+  {
+    pos = Position(32375, 31159, 8),
+    teleport = Position(32374, 31151, 8),
+    effect = CONST_ME_TELEPORT,
+  },
+  {
+    pos = Position(32375, 31160, 8),
+    teleport = Position(32375, 31151, 8),
+    effect = CONST_ME_TELEPORT,
+  },
+  {
+    pos = Position(32375, 31161, 8),
+    teleport = Position(32376, 31151, 8),
+    effect = CONST_ME_TELEPORT,
+  },
+  {
+    pos = Position(32375, 31162, 8),
+    teleport = Position(32377, 31151, 8),
+    effect = CONST_ME_TELEPORT,
+  },
+}
+```
+
+- **Max 5 players** simultâneos
+- **Entrada**: Y=31158-31162 (coluna)
+- **Teleport interior**: Y=31151 distribuído
+- **Z-level**: Floor 8
+
+---
+
+## 🌊 4 Waves Progressivas
+
+### Wave System
+
+```lua
+waves = {
+  [1] = {
+    stacks = {
+      [1] = 7,  -- 7 creatures de stack difficulty 1
+    },
+  },
+  [2] = {
+    stacks = {
+      [1] = 4,   -- 4 creatures de difficulty 1
+      [5] = 3,   -- 3 creatures de difficulty 5
+    },
+  },
+  [3] = {
+    stacks = {
+      [1] = 5,    -- 5 creatures de difficulty 1
+      [15] = 2,   -- 2 creatures de difficulty 15
+    },
+  },
+  [4] = {
+    stacks = {
+      [1] = 3,    -- 3 creatures de difficulty 1
+      [5] = 3,    -- 3 creatures de difficulty 5
+      [40] = 1,   -- 1 creature de difficulty 40 (BOSS!)
+    },
+  },
+}
+```
+
+**Progressão**:
+- **Wave 1**: 7 fáceis (total 7)
+- **Wave 2**: 4 fáceis + 3 médios (total 7)
+- **Wave 3**: 5 fáceis + 2 bosses (total 7)
+- **Wave 4**: 3 fáceis + 3 médios + 1 mega boss (total 7)
+
+---
+
+## ✨ Effects by Difficulty
+
+```lua
+effects = {
+  [1] = CONST_ME_TELEPORT,          -- Normal
+  [5] = CONST_ME_ORANGETELEPORT,    -- Orange = elevated
+  [15] = CONST_ME_REDTELEPORT,      -- Red = dangerous
+  [40] = CONST_ME_PURPLETELEPORT,   -- Purple = boss
+}
+```
+
+Visual feedback pra players:
+- Verde: Normal monsters
+- Laranja: Médios (5+)
+- Vermelho: Bosses secundários (15+)
+- Roxo: Boss final (40+)
+
+---
+
+## 🎯 Boss Abilities (3 tipos)
+
+### Ability 1: overpowerSoulPit
+
+```lua
+overpowerSoulPit = {
+  criticalChance = 50,   -- 50% critical chance
+  criticalDamage = 25,   -- 25% bonus damage on crit
+  apply = function(monster)
+    monster:criticalChance(50)
+    monster:criticalDamage(25)
+  end,
+}
+```
+
+**Efeito**: Boss com 50% chance de critical, +25% damage.
+
+---
+
+### Ability 2: enrageSoulPit
+
+```lua
+enrageSoulPit = {
+  bounds = {
+    [{ 0.8, 0.6 }] = 0.9,   -- 80-60% health: -10% damage
+    [{ 0.6, 0.4 }] = 0.75,  -- 60-40% health: -25% damage
+    [{ 0.4, 0.2 }] = 0.6,   -- 40-20% health: -40% damage
+    [{ 0.0, 0.2 }] = 0.4,   -- 20-0% health: -60% damage
+  },
+  apply = function(monster)
+    monster:registerEvent("enrageSoulPit")
+  end,
+}
+```
+
+**Efeito**: Boss fica **mais forte** conforme fica com pouca vida:
+- 20% HP → 60% damage reduction (muito difícil!)
+- Mechanic "enrage": fica furioso quando perto de morrer
+
+---
+
+### Ability 3: opressorSoulPit
+
+```lua
+opressorSoulPit = {
+  spells = {
+    { name = "soulpit opressor", 
+      interval = 2000, chance = 25, 
+      minDamage = 0, maxDamage = 0 },
+    { name = "soulpit powerless", 
+      interval = 2000, chance = 30, 
+      minDamage = 0, maxDamage = 0 },
+    { name = "soulpit intensehex", 
+      interval = 2000, chance = 15, 
+      minDamage = 0, maxDamage = 0 },
+  },
+  apply = function(monster)
+    for _, spell in pairs(SoulPit.bossAbilities.opressorSoulPit.spells) do
+      monster:addAttackSpell(readSpell(spell, monster:getType()))
+    end
+    return true
+  end,
+}
+```
+
+**Efeito**: Boss lança 3 spells custom progressivamente:
+1. "Opressor" (25% chance, 2 seg interval)
+2. "Powerless" (30% chance) - provavelmente weakness
+3. "Intense Hex" (15% chance) - provavelmente curse/debuff
+
+---
+
+## 🎮 Possible Boss Abilities
+
+```lua
+possibleAbilities = {
+  "overpowerSoulPit",      -- Critical increases
+  "enrageSoulPit",         -- Enrage on low HP
+  "opressorSoulPit",       -- Custom spells
+}
+```
+
+Bosses spawn com 1-3 dessas abilities aleatoriamente!
+
+---
+
+## 🗺️ Zona e Posições
+
+### Zone Setup
+
+```lua
+zone = Zone("soulpit")
+zone:addArea(Position(32362, 31132, 8), Position(32390, 31153, 8))
+zone:setRemoveDestination(SoulPit.exit)
+
+requiredLevel = 8  -- Mínimo level pra entrar
+```
+
+**Area**: 28x21 tiles arenra (32362-32390 X, 31132-31153 Y)
+
+### Boss/Exit Positions
+
+```lua
+obeliskActive = 47379      -- Item ID quando ativo
+obeliskInactive = 47367    -- Item ID quando inativo
+obeliskPosition = Position(32375, 31157, 8)  -- Obelisk trigger
+bossPosition = Position(32376, 31144, 8)     -- Spawn boss final
+exit = Position(32373, 31158, 8)             -- Saída da arena
+```
+
+---
+
+## 💾 Timing Configuration
+
+```lua
+timeToKick = 10 * 60 * 1000,      -- 10 minutos (timeout)
+checkMonstersDelay = 4.5 * 1000,  -- 4.5 seg check interval
+timeToSpawnMonsters = 4 * 1000,   -- 4 seg spawn interval
+totalMonsters = 7,                -- 7 monsters por wave
+```
+
+**Fluxo Temporal**:
+- Cada 4 seg: spawn novo monster
+- Cada 4.5 seg: verificar status arena
+- 10 min: timeout e kick players
+
+---
+
+## 🔄 Utility Functions
+
+### getMonsterVariationNameBySoulCore(searchName)
+
+```lua
+function getMonsterVariationNameBySoulCore(searchName)
+  for mTypeName, soulCoreName in pairs(
+    SoulPit.SoulCoresConfiguration.monsterVariationsSoulCore
+  ) do
+    if soulCoreName == searchName then
+      return mTypeName  -- Retorna creature name
+    end
+  end
+  return nil
+end
+```
+
+**Uso**: Reverse lookup - dado soul core name, retorna creature original.
+
+### getSoulCoreMonster(name)
+
+```lua
+function getSoulCoreMonster(name)
+  return name:match("^(.-) soul core")
+end
+```
+
+**Uso**: Extract creature type from core item name.
+- Input: `"horse soul core (brown)"`
+- Output: `"horse"`
+
+### onFuseSoulCores(player, item, target)
+
+```lua
+function onFuseSoulCores(player, item, target)
+  -- 1. Validar quantity >= 2
+  local itemCount = item:getCount(item:getId())
+  if item:getId() == target:getId() and itemCount <= 1 then
+    return false
+  end
+
+  -- 2. Extract monster types
+  local itemSoulCore = SoulPit.getSoulCoreMonster(item:getName())
+  local targetSoulCore = SoulPit.getSoulCoreMonster(target:getName())
+  if not itemSoulCore or not targetSoulCore then
+    return false
+  end
+
+  -- 3. Combinar cores → random resultado
+  local randomSoulCore = 
+    SoulPit.soulCores[math.random(#SoulPit.soulCores)]
+  
+  -- 4. Dar item ao player
+  player:addItem(randomSoulCore:getId(), 1)
+  player:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+  player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+    string.format("You have received a %s soul core.", 
+      randomSoulCore:getName()))
+
+  -- 5. Remover usados
+  item:remove(1)
+  target:remove(1)
+  
+  return true
+end
+```
+
+**Mechanic**: Fusão de soul cores:
+1. Precisa 2+ cores (pode ser do mesmo tipo)
+2. Random resultado (pode upgrade raro)
+3. Efeito visual + mensagem
+
+**Exemplo**:
+```
+Funde: horse brown + horse taupe
+Result: Random core (qualquer tipo)
+```
+
+---
+
+## 📊 Fluxo Completo
+
+```
+[5 Players entram pela teleport]
+  ↓
+[Inicia Wave 1: 7 creatures fáceis]
+  ↓
+[Matam creatures]
+  ↓ (T=4 seg)
+[Wave 2: 4 fáceis + 3 médios]
+  ↓
+[Matam creatures, soul cores dropam]
+  ↓ (T=4 seg)
+[Wave 3: 5 fáceis + 2 bosses (difficulty 15)]
+  ↓
+[Bosses com ability especial]
+  ↓ (T=4 seg)
+[Wave 4 Final: 3 fáceis + 3 médios + 1 MEGA BOSS]
+  ↓
+[Boss final (40) com 1-3 abilities aleatórias]
+  ├─ overpowerSoulPit (50% crit)
+  ├─ enrageSoulPit (fica furioso)
+  └─ opressorSoulPit (3 spells custom)
+  ↓
+[Matam boss final]
+  ↓
+[Success! SOul cores coletados]
+  ↓
+[Podem fusionar cores]
+  ├─ core + core → random resultado
+  └─ Chance de raro upgrade
+```
+
+---
+
+## ⚠️ Notas Técnicas
+
+1. **5 Players max**: Due to playerPositions array size
+2. **Soul core drops**: Baseado em chance table (5% base)
+3. **Ability stacking**: Boss pode ter múltiplas abilities
+4. **Zone-based removal**: Players kickados ao timeout (zone remove destination)
+5. **Obelisk tracking**: Active/Inactive visual feedback
+
+---
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Completo  
+**Quest Type**: Battle/Collection avec Progression

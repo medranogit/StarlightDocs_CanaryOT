@@ -1,0 +1,312 @@
+---
+title: "Player - on_storage_update.lua"
+description: "Callback de atualização de key-value storage do jogador"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `on_storage_update.lua` |
+| **Localização** | `data/scripts/eventcallbacks/player/` |
+| **Tipo de Script** | EventCallback |
+| **Callback Principal** | `PlayerOnStorageUpdateBaseEvent` |
+| **Função Registrada** | `playerOnStorageUpdate(player, key, value, oldValue, currentFrameTime)` |
+| **Linhas de Código** | 6 |
+| **Complexidade** | Trivial |
+| **Status** | Base implementation |
+
+**Descrição:**
+Callback responsável por processar eventos quando o key-value storage de um jogador é atualizado. Atua como hook de notificação quando qualquer valor de storage muda, permitindo reação a mudanças.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/eventcallbacks/player/on_storage_update.lua
+```
+
+**Pré-requisitos:**
+- EventCallback API (`EventCallback` função global)
+- Player kv() storage system
+- Game frame timing system
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Atualização de Storage (Storage Update)**
+
+Quando qualquer valor no storage do jogador é alterado:
+
+1. **Trigger:** `player:kv():set(key, value)` é executado
+2. **Callback:** playerOnStorageUpdate é disparado automaticamente
+3. **Processamento:** Callback pode reagir à mudança
+4. **Ação:** Delega para player:updateStorage() para processamento
+
+**Exemplo de Uso - Rastreamento de Eventos:**
+```lua
+-- Em outro script:
+player:kv():set("familiar-summon-time", os.time() + 10800)
+
+-- on_storage_update.lua:
+playerOnStorageUpdate(player, "familiar-summon-time", os.time() + 10800, 0, frameTime)
+  └─ player:updateStorage("familiar-summon-time", ..., frameTime)
+
+-- Usa: Atualizar UI, notificações, cascata de efeitos
+```
+
+**Chaves Comuns de Storage:**
+- `familiar-summon-time` - Timestamp de summon de familiar
+- `hazard-status` - Status do sistema hazard
+- `prey-status` - Status de prey loot
+- `custom-quests` - Dados de quests customizadas
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `on_storage_update.lua` implementa o callback de notificação de storage. Quando um valor é alterado no key-value storage do jogador:
+
+- **Captura evento de mudança** automaticamente
+- **Passa contexto completo** (chave, novo valor, valor antigo, frame time)
+- **Delega processamento** para player:updateStorage() para ações específicas
+
+### Arquitetura
+
+O script usa um padrão simples de **change notification**:
+
+```
+playerOnStorageUpdate (entrada)
+  ├─ Captura: key, value, oldValue, currentFrameTime
+  └─ player:updateStorage(key, value, oldValue, currentFrameTime)
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Processamento | Saída |
+|---------|---------------|-------|
+| `key, value, oldValue, frameTime` | Notifica mudança | Delega updateStorage |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (Callback)
+
+#### **playerOnStorageUpdate(player, key, value, oldValue, currentFrameTime)**
+
+```lua
+function callback.playerOnStorageUpdate(player, key, value, oldValue, currentFrameTime)
+	player:updateStorage(key, value, oldValue, currentFrameTime)
+end
+```
+
+**Propósito:** Entry point do callback. Processa mudanças no key-value storage.
+
+**Fluxo de Execução:**
+
+1. **Trigger:** Qualquer script executa `player:kv():set(key, value)`
+2. **Callback:** playerOnStorageUpdate é disparado automaticamente
+3. **Delegação:** Passa todos os parâmetros para player:updateStorage()
+4. **Processamento:** updateStorage() realiza ações necessárias
+
+**Parâmetros:**
+- `player` - Player cujo storage foi atualizado
+- `key` - Chave (string) que foi alterada
+- `value` - Novo valor armazenado
+- `oldValue` - Valor anterior (antes da mudança)
+- `currentFrameTime` - Timestamp do frame (para sync temporal)
+
+**Sem retorno** - Callback é void (apenas delega)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Não há variáveis locais declaradas
+
+### Player Methods Utilizados
+
+| Método | Descrição |
+|--------|-----------|
+| `player:updateStorage(key, value, oldValue, frameTime)` | Processa mudança de storage |
+| `player:kv()` | Acessa key-value storage (não chamado neste arquivo) |
+
+### Informações de Parâmetros
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| `key` | string | Identificador único da chave |
+| `value` | varies | Novo valor (pode ser number, string, etc) |
+| `oldValue` | varies | Valor anterior (para comparação) |
+| `currentFrameTime` | number | Timestamp do frame (útil para timing) |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Change Notification Callback
+
+**Técnica:** Callback disparado automaticamente quando mudança ocorre.
+
+```lua
+function callback.playerOnStorageUpdate(player, key, value, oldValue, currentFrameTime)
+	player:updateStorage(key, value, oldValue, currentFrameTime)
+end
+```
+
+**Vantagem:** Automático, não necessita polling. Sempre sincronizado.
+
+**Aplicação:** Qualquer sistema que necessite reagir a mudanças (events, triggers, cascatas).
+
+---
+
+### Padrão 2: Value Delta Tracking
+
+**Técnica:** Passar valor antigo e novo para detectar tipo de mudança.
+
+```lua
+-- Callback recebe:
+-- oldValue: 0, value: 10800 → Valor foi criado/incrementado
+-- oldValue: 10800, value: 21600 → Valor foi incrementado
+-- oldValue: 10800, value: 0 → Valor foi zerado
+```
+
+**Vantagem:** Permite lógica condicional. Detecta direção de mudança.
+
+**Aplicação:** Incrementos, contadores, flags de estado.
+
+---
+
+### Padrão 3: Frame Time Synchronization
+
+**Técnica:** Passar timestamp de frame para sincronizar com game loop.
+
+```lua
+player:updateStorage(key, value, oldValue, currentFrameTime)
+```
+
+**Vantagem:** Garante timing sincronizado. Evita race conditions.
+
+**Aplicação:** Sistemas temporais (buffs, cooldowns, summons, eventos).
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Familiar summon time atualizado
+
+```
+[Outro script]:
+player:kv():set("familiar-summon-time", os.time() + 10800)
+
+playerOnStorageUpdate(player, "familiar-summon-time", 1708369200, 0, frameTime)
+  ├─ Detecta: chave = "familiar-summon-time", novo = 1708369200
+  ├─ player:updateStorage("familiar-summon-time", 1708369200, 0, frameTime)
+  └─ [updateStorage action]
+     ├─ Scheduled: Despawn de familiar em 10800s
+     ├─ UI Update: Mostra timer de familiar
+     └─ Notify: Player vê summon de familiar
+```
+
+**Resultado:** Familiar é summoned com timer de 3 horas
+
+---
+
+### Cenário 2: Hazard system status atualizado
+
+```
+[Combat system]:
+player:kv():set("hazard-status", hazardLevel)
+
+playerOnStorageUpdate(player, "hazard-status", 5, 3, frameTime)
+  ├─ Detecta: mudança de hazard 3 → 5
+  ├─ player:updateStorage("hazard-status", 5, 3, frameTime)
+  └─ [updateStorage action]
+     ├─ Recalculate: Loot bonus para nível 5
+     ├─ Update: HUD mostra level 5
+     └─ Maybe: Trigger visual effect para novo level
+```
+
+**Resultado:** Hazard level aumenta com bonus applicado
+
+---
+
+### Cenário 3: Custom quest progress atualizado
+
+```
+[Quest system]:
+player:kv():set("quest-progress-42", currentStep)
+
+playerOnStorageUpdate(player, "quest-progress-42", 3, 2, frameTime)
+  ├─ Detecta: Progress 2 → 3 (próximo step)
+  ├─ player:updateStorage("quest-progress-42", 3, 2, frameTime)
+  └─ [updateStorage action]
+     ├─ Validate: Step 3 é válido?
+     ├─ NPCTalk: NPC pode dar dica do próximo step
+     ├─ Update: Quest log mostra novo objective
+     └─ Maybe: Unlock nova area se step final
+```
+
+**Resultado:** Quest progride com notificações apropriadas
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial |
+| **Estimativa de Aprendizado** | 5 minutos |
+| **Tópicos Principais** | Change notifications, Value delta tracking, Frame time sync |
+| **Padrões Documentados** | 3 padrões |
+| **Cenários Documentados** | 3 cenários (familiar, hazard, quest) |
+| **Funções** | 1 (playerOnStorageUpdate - callback entry) |
+| **Callbacks Registrados** | PlayerOnStorageUpdateBaseEvent |
+| **Dependencies** | Player:updateStorage() system, kv() storage |
+
+### Curva de Aprendizado
+
+**Trivial:** Uma linha. Padrão de delegação simples.
+
+### Common Storage Keys
+
+| Chave | Propósito | Tipo |
+|-------|----------|------|
+| `familiar-summon-time` | Familiar despawn time | Timestamp (number) |
+| `hazard-status` | Hazard level | Integer 0-N |
+| `prey-status` | Prey active status | Boolean/flags |
+| `quest-progress-XXXX` | Quest step | Integer |
+| `blessing-XXXX` | Blessing status | Timestamp |
+| `mission-progress-XXXX` | Mission data | String/JSON |
+
+### Integração com Outros Systems
+
+Este callback é central para:
+- ✅ **Familiar system** - Rastreia summon times
+- ✅ **Hazard system** - Monitora nível de hazard
+- ✅ **Prey system** - Gerencia prey loot
+- ✅ **Quest system** - Rastreia progresso
+- ✅ **Blessing system** - Monitora validade
+- ✅ **Custom events** - Qualquer sistema que usa kv()
+
+### Melhorias Potenciais
+
+- [ ] Implementar filtros de chaves (não processar todas)
+- [ ] Adicionar logging de mudanças importantes
+- [ ] Implementar batch updates (múltiplas chaves)
+- [ ] Suportar hooks por chave específica (key-specific handlers)
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Change notification delegation pattern

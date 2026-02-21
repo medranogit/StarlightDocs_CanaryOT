@@ -1,0 +1,224 @@
+---
+title: cup_of_molten_gold.lua
+description: Cobertura decorativa de ouro derretido com chance de sucesso
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="cup_of_molten_gold.lua" icon="star">
+Script de ação Lua que implementa aplicação de cobertura de ouro com sucesso probabilístico.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/cup_of_molten_gold.lua`
+
+Ferramenta de decoração que tenta cobrir fir cones com ouro derretido. 10% chance de sucesso resultando em item 12550. Falha consome item e target (ou apenas cup se target é item raro). Item ID 12804.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `cup_of_molten_gold.lua` implementa ferramenta de decoração com 10% sucesso. Aplica ouro em fir cones (ID 3614 ou 19111) para criar versão dourada (item 12550). Com sucesso, item transformado ou adicionado. Com falha (90%), envia mensagem e consome material (cup ou target). Diferencia tratamento para materiais raros vs comuns.
+
+**Estrutura de Funcionalidades**
+
+```
+[Create cupOfMoltenGold Action]
+    ↓
+[onUse function]
+    ├─ targetId = target.itemid
+    ├─ Not in {3614, 19111}?
+    │   └─ return false
+    ├─ random(100) <= 10?
+    │   ├─ SIM (10% chance)
+    │   │   ├─ transformedItemId = 12550
+    │   │   ├─ If targetId == 19111
+    │   │   │   └─ item:transform(12550)
+    │   │   └─ Else
+    │   │       └─ player:addItem(12550, 1)
+    │   └─ NÃO (90% chance)
+    │       ├─ sendTextMessage(failure)
+    │       ├─ If targetId == 19111
+    │       │   └─ target:remove(1)
+    │       └─ item:remove(1)
+    └─ return true
+```
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| targetId | integer | ID do item alvo |
+| transformedItemId | integer | 12550 (resultado sucesso) |
+| 10 | integer | Chance de sucesso (%) |
+| 3614 | constant | Fir cone comum |
+| 19111 | constant | Fir cone raro |
+
+## Funções
+
+### cupOfMoltenGold.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que tenta cobrir item com ouro.
+
+**Parâmetros:**
+- player: Creature player
+- item: Cup de ouro sendo usado
+- fromPosition: Posição do uso
+- target: Item alvo para cobrir
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo de Execução:**
+
+```lua
+1. Get targetId = target.itemid
+
+2. Check if targetId in {3614, 19111}
+   ├─ NÃO → return false
+   └─ SIM → continuar
+
+3. if random(100) <= 10 then (10% sucesso)
+   ├─ transformedItemId = 12550
+   ├─ If targetId == 19111
+   │   └─ item:transform(12550)
+   │       [transforma target em dourado]
+   └─ Else
+       └─ player:addItem(12550, 1)
+           [adiciona novo item ao inventory]
+   
+4. else (90% falha)
+   ├─ sendTextMessage(failure message)
+   ├─ If targetId == 19111
+   │   └─ target:remove(1)
+   │       [remove item raro]
+   └─ item:remove(1)
+       [remove cup]
+
+5. return true
+```
+
+**Implementação:**
+
+```lua
+function cupOfMoltenGold.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local targetId = target.itemid
+	if not table.contains({ 3614, 19111 }, targetId) then
+		return false
+	end
+
+	if math.random(100) <= 10 then
+		local transformedItemId = 12550
+		if targetId == 19111 then
+			item:transform(transformedItemId)
+		else
+			player:addItem(transformedItemId, 1)
+		end
+	else
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Drizzling all over a fir cone you picked from the tree, the molten gold only covers about half of it - not enough.")
+
+		if targetId == 19111 then
+			target:remove(1)
+		end
+
+		item:remove(1)
+	end
+	return true
+end
+```
+
+## Target Handling
+
+### Fir Cone 3614 (comum)
+
+- Sucesso: player:addItem(12550, 1)
+  - Não consome target (deixa no chão)
+  - Cria novo item 12550 no inventory
+  
+- Falha: Apenas consome cup
+  - Item target permanece (não consumido)
+
+### Fir Cone 19111 (raro)
+
+- Sucesso: item:transform(12550)
+  - Transforma item no target
+  
+- Falha: target:remove(1)
+  - Consome item raro (punição por falha)
+  - Ainda consome cup
+
+**Diferenciação**: Itens raros têm transição in-place; itens comuns geram novo item.
+
+## Probabilidades
+
+| Outcome | Chance | Descrição |
+|---------|--------|-----------|
+| Sucesso | 10% | Item transformado/criado |
+| Falha | 90% | Mensagem, consume (raro) ou cup (comum) |
+
+## Fluxo de Operação
+
+```
+[Player usa cup em fir cone]
+    ↓
+[targetId é 3614 ou 19111?]
+    ├─ NÃO → return false (incomp.)
+    └─ SIM → continuar
+    ↓
+[random(100) <= 10?]
+    ├─ SIM (10% sucesso)
+    │   ├─ Item raro? transform
+    │   └─ Item comum? addItem novo
+    ├─ NÃO (90% falha)
+    │   ├─ Mensagem "not enough"
+    │   ├─ Item raro? remove target
+    │   └─ Item comum? preserve target
+    │   └─ Sempre remove cup
+    └─ return true
+```
+
+## Mensagem de Falha
+
+```
+"Drizzling all over a fir cone you picked from the tree, 
+the molten gold only covers about half of it - not enough."
+```
+
+Mensagem descritiva explicando falha do crafting.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Validação de alvo com table.contains
+2. Probabilidade com `random(100) <= chance`
+3. Diferenciação de itens por ID (raro vs comum)
+4. Transform in-place para itens raros
+5. AddItem para criação nova
+6. Condicional remove seletivo por tipo
+7. Retorno false vs true por viabilidade
+
+**Responsabilidades:**
+1. Validar target ID viável
+2. Calcular sucesso 10%
+3. Aplicar resultado apropriado (transform vs add)
+4. Handle falha com mensagem
+5. Consumir materiais apropriados
+6. Retornar sucesso/falha
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 32 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 12804 (cup)  
+**Targets Válidos**: 2 (3614, 19111)  
+**Resultado**: 12550 (fir cone dourado)  
+**Chance Sucesso**: 10%
+</Card>
+
+<Aside type="note">
+Ferramenta de decoração com 10% sucesso. Diferencia tratamento: itens raros transformam in-place e são consumidos em falha; itens comuns geram novo item e não são consumidos. Crafting com risco.
+</Aside>

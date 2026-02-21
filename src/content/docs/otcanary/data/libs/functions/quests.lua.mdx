@@ -1,0 +1,781 @@
+---
+title: "quests.lua"
+description: "Sistema de gerenciamento de quests com rastreamento de estado via storage, completeness detection, tracked missions com limite premium, network message protocol, e validação automática de quest config."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que implementa **quest system completo**: rastreamento de progresso via storage key-value (quest started, mission started, mission completed), detecção de quest/mission completeness, sistema de tracked missions com limite dinâmico (10 normal, 25 premium), protocolo de network messages para questlog (0xF0, 0xF1, 0xD0), descrições dinâmicas com estado-based ou callable, e validação automática de quest configuration. Gerencia dados centralizados via `Quests` global registry e per-player cache.
+
+**Caminho Original**: `data/libs/functions/quests.lua`
+
+<Aside type="tip">
+O arquivo `quests.lua` é **foundation de quest system**. Todas as quests do servidor dependem deste sistema para rastreamento, completness detection, e client visualization. O protocolo de network messages integra seamlessly com client para mostrar quest log e tracked missions.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **4 layers de funcionalidade**:
+
+1. **State Tracking**: Verificar quest/mission started/completed via storage comparisons
+2. **Quest Registry**: Lookup quest/mission via ID ou nome, validar estrutura
+3. **Tracked Missions**: Gerenciar fila de até 10/25 missões por jogador
+4. **Network Protocol**: Enviar quest data ao client via opcode 0xF0/0xF1/0xD0
+
+O design usa **centralized `Quests` global** como single source of truth, **per-player `PlayerTrackedMissionsData`** para cache de tracked missions, **`LastQuestlogUpdate`** para debounce de updates, e **storage-based state** (imutável, persistente).
+
+### Estrutura de Funcionalidades
+
+```
+Quest System
+├── Global Variables (Caches)
+│   ├── LastQuestlogUpdate[playerId] = timestamp
+│   └── PlayerTrackedMissionsData[playerId] = missions[]
+├── Local Functions (1)
+│   ├── evaluateText(value, player) → string
+│   └── sendPrint(questId, index) → void [logging]
+├── Quest Registry Methods (4)
+│   ├── Game.isValidQuest(questId) → boolean
+│   ├── Game.getQuest(questId) → quest
+│   ├── Game.getQuestIdByName(name) → questId
+│   └── Game.addQuest(quest) → questId
+├── Mission Registry Methods (2)
+│   ├── Game.isValidMission(questId, missionId) → boolean
+│   └── Game.getMission(questId, missionId) → mission
+├── State Verification Methods (4)
+│   ├── Player.questIsStarted(questId) → boolean
+│   ├── Player.missionIsStarted(questId, missionId) → boolean
+│   ├── Player.questIsCompleted(questId) → boolean
+│   └── Player.missionIsCompleted(questId, missionId) → boolean
+├── Tracked Missions Methods (3)
+│   ├── Player.hasTrackingQuest(missionId) → boolean
+│   ├── Player.getAllowedTrackedQuestCount() → number
+│   └── Player.resetTrackedMissions(missions) → void
+├── Mission Data Methods (4)
+│   ├── Player.getMissionName(questId, missionId) → string
+│   ├── Player.getMissionId(questId, missionId) → number
+│   ├── Player.getMissionDescription(questId, missionId) → string
+│   └── Player.getMissionsData(storage) → missions[]
+├── Network Protocol (4)
+│   ├── Player.sendQuestLog() → void [opcode 0xF0]
+│   ├── Player.sendQuestLine(questId) → void [opcode 0xF1]
+│   ├── Player.sendTrackedQuests(remainingQuests, missions) → void [opcode 0xD0]
+│   └── Player.sendUpdateTrackedQuest(mission) → void [opcode 0xD0]
+├── Storage Hook (1)
+│   └── Player.updateStorage(key, value, oldValue, currentFrameTime) → void
+├── Utilities (2)
+│   ├── Game.isQuestStorage(key, value, oldValue) → boolean
+│   ├── Game.getQuestsCount(player) → number
+│   └── Game.getMissionsCount(player, questId) → number
+├── Player Methods (1)
+│   └── Player.getQuestDataByMissionId(missionId) → questName, questId, missionIndex
+└── Validation Loop
+    └── Initialization check (all quests validated at load)
+```
+
+---
+
+## 🌍 Variáveis Globais
+
+### `LastQuestlogUpdate`
+
+Cache de timestamp para debounce de quest log updates.
+
+**Tipo**: Tabela global (game level)  
+**Estrutura**: `LastQuestlogUpdate[playerId] = frameTime`
+
+**Propósito**: Evitar múltiplas mensagens de update no mesmo frame.
+
+---
+
+### `PlayerTrackedMissionsData`
+
+Registro per-player de missões rastreadas (até 10/25).
+
+**Tipo**: Tabela global (game level)  
+**Estrutura**:
+```lua
+PlayerTrackedMissionsData[playerId] = {
+    {
+        questId = 1,
+        missionId = 10,
+        questName = "Dragon Quest",
+        missionName = "Defeat the Dragon",
+        missionDesc = "A fierce dragon awaits...",
+    },
+    ...
+}
+```
+
+**Limite**: 10 (10 para normal, 25 para premium via `getAllowedTrackedQuestCount()`)
+
+---
+
+## 📝 Funções Locais
+
+### `evaluateText(value, player)` → string
+
+Converte valor (function ou literal) para string.
+
+**Tipo**: Função local  
+**Parâmetros**:
+- `value` (function | string): Valor ou callable
+- `player` (Player): Contexto do jogador
+
+**Retorna**: string
+
+**Implementação**:
+```lua
+local function evaluateText(value, player)
+    if type(value) == "function" then
+        return tostring(value(player))
+    end
+
+    return tostring(value)
+end
+```
+
+**Uso**: Descrições dinâmicas que podem ser funções ou strings lite.
+
+---
+
+### `sendPrint(questId, index)` → void
+
+Logger helper para erro em validação de quest.
+
+**Tipo**: Função local
+
+---
+
+## 🔍 Métodos de Validação de Quest Registry
+
+### `Game.isValidQuest(questId)` → boolean
+
+Verifica se quest existe no registry.
+
+**Tipo**: Static Method  
+**Parâmetros**: `questId` (number)  
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+function Game.isValidQuest(questId)
+    return (Quests and Quests[questId])
+end
+```
+
+---
+
+### `Game.getQuest(questId)` → quest
+
+Obtém quest object do registry.
+
+**Tipo**: Static Method  
+**Parâmetros**: `questId` (number)  
+**Retorna**: quest (table) ou false
+
+---
+
+### `Game.getQuestIdByName(name)` → questId
+
+Busca quest ID por nome (case-insensitive).
+
+**Tipo**: Static Method  
+**Parâmetros**: `name` (string)  
+**Retorna**: questId (number) ou false
+
+---
+
+### `Game.isValidMission(questId, missionId)` → boolean
+
+Verifica se mission existe.
+
+**Tipo**: Static Method  
+**Parâmetros**:
+- `questId` (number)
+- `missionId` (number)
+
+**Retorna**: boolean
+
+---
+
+### `Game.getMission(questId, missionId)` → mission
+
+Obtém mission object.
+
+**Tipo**: Static Method  
+**Retorna**: mission (table) ou false
+
+---
+
+### `Game.addQuest(quest)` → questId
+
+Adiciona nova quest ao registry (ou update se existe por nome).
+
+**Tipo**: Static Method  
+**Parâmetros**: `quest` (table com name, startStorageId, startStorageValue, missions[])  
+**Retorna**: questId (number)
+
+**Implementação**:
+```lua
+function Game.addQuest(quest)
+    local findQuest = Game.getQuestIdByName(quest.name)
+    if findQuest then
+        Quests[findQuest] = quest
+        return findQuest
+    end
+
+    local questId = #Quests + 1
+    Quests[questId] = quest
+    return questId
+end
+```
+
+**Lógica**: Se existe, update. Senão, append ao registry.
+
+---
+
+## ✅ Métodos de Verificação de Estado
+
+### `Player.questIsStarted(self, questId)` → boolean
+
+Verifica se jogador iniciou a quest.
+
+**Tipo**: Method  
+**Parâmetros**: `questId` (number)  
+**Retorna**: boolean
+
+**Lógica**: Verifica se storage >= startStorageValue.
+
+---
+
+### `Player.missionIsStarted(self, questId, missionId)` → boolean
+
+Verifica se missão foi iniciada.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `questId` (number)
+- `missionId` (number)
+
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+function Player.missionIsStarted(self, questId, missionId)
+    local mission = Game.getMission(questId, missionId)
+    if mission then
+        local value = self:getStorageValue(mission.storageId)
+        if value == -1 or value < mission.startValue or 
+           (not mission.ignoreendvalue and value > mission.endValue) then
+            return false
+        end
+
+        return true
+    end
+    return false
+end
+```
+
+**Validações**:
+- Storage deve estar entre `startValue` e `endValue` (se não ignoreendvalue)
+- -1 = storage nunca definido
+
+---
+
+### `Player.questIsCompleted(self, questId)` → boolean
+
+Verifica se ALL missions da quest foram completadas.
+
+**Tipo**: Method  
+**Retorna**: boolean
+
+**Lógica**: Loop em todas missions, se qualquer uma não completa → false.
+
+---
+
+### `Player.missionIsCompleted(self, questId, missionId)` → boolean
+
+Verifica se mission foi completada.
+
+**Tipo**: Method  
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+function Player.missionIsCompleted(self, questId, missionId)
+    local mission = Game.getMission(questId, missionId)
+    if mission then
+        local value = self:getStorageValue(mission.storageId)
+        if value == -1 then
+            return false
+        end
+
+        if mission.ignoreendvalue then
+            return value >= mission.endValue
+        end
+
+        return value == mission.endValue
+    end
+    return false
+end
+```
+
+**Condições**:
+- Se ignoreendvalue: storage >= endValue
+- Senão: storage == endValue
+
+---
+
+## 🎯 Métodos de Missões Rastreadas
+
+### `Player.hasTrackingQuest(self, missionId)` → boolean
+
+Verifica se jogador está rastreando uma missão específica.
+
+**Tipo**: Method  
+**Parâmetros**: `missionId` (number)  
+**Retorna**: boolean
+
+---
+
+### `Player.getAllowedTrackedQuestCount(self)` → number
+
+Retorna limite de missões rastreadas (10 normal, 25 premium).
+
+**Tipo**: Method  
+**Retorna**: number
+
+**Implementação**:
+```lua
+function Player.getAllowedTrackedQuestCount(self)
+    return self:isPremium() and 25 or 10
+end
+```
+
+---
+
+### `Player.resetTrackedMissions(self, missions)` → void
+
+Reseta lista de tracked missions (máximo allowed).
+
+**Tipo**: Method  
+**Parâmetros**: `missions` (array de missionIds)  
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Player.resetTrackedMissions(self, missions)
+    local maxAllowed = self:getAllowedTrackedQuestCount()
+    PlayerTrackedMissionsData[self:getId()] = {}
+    for i = 1, #missions do
+        local missionId = missions[i]
+        local questName, questId, missionIndex = self:getQuestDataByMissionId(missionId)
+        if questName and questId and missionIndex then
+            if self:missionIsStarted(questId, missionIndex) then
+                local data = {
+                    questId = questId,
+                    missionId = missionId,
+                    questName = questName,
+                    missionName = self:getMissionName(questId, missionIndex),
+                    missionDesc = self:getMissionDescription(questId, missionIndex),
+                }
+                table.insert(PlayerTrackedMissionsData[self:getId()], data)
+                if #PlayerTrackedMissionsData[self:getId()] >= maxAllowed then
+                    break
+                end
+            end
+        end
+    end
+
+    self:sendTrackedQuests(maxAllowed - #PlayerTrackedMissionsData[self:getId()], 
+                           PlayerTrackedMissionsData[self:getId()])
+end
+```
+
+**Fluxo**:
+1. Obter max allowed (10 ou 25)
+2. Loop missions, filtrar apenas iniciadas
+3. Parar ao atingir limit
+4. Enviar ao client
+
+---
+
+## 📊 Métodos de Dados de Missão
+
+### `Player.getMissionName(self, questId, missionId)` → string
+
+Obtém nome da missão, com "(completed)" sufixo se completa.
+
+**Tipo**: Method  
+**Retorna**: string
+
+---
+
+### `Player.getMissionId(self, questId, missionId)` → number
+
+Obtém missionId numérico.
+
+**Tipo**: Method  
+**Retorna**: number
+
+---
+
+### `Player.getMissionDescription(self, questId, missionId)` → string
+
+Obtém descrição da missão (callable ou state-based).
+
+**Tipo**: Method  
+**Retorna**: string
+
+**Implementação**:
+```lua
+function Player.getMissionDescription(self, questId, missionId)
+    local mission = Game.getMission(questId, missionId)
+    if mission then
+        if mission.description then
+            return evaluateText(mission.description, self)
+        end
+
+        local value = self:getStorageValue(mission.storageId)
+        local state = value
+        if mission.ignoreendvalue and value > table.maxn(mission.states) then
+            state = table.maxn(mission.states)
+        end
+        return evaluateText(mission.states[state], self)
+    end
+    return "An error has occurred, please contact a gamemaster."
+end
+```
+
+**Fallback**: Se mission.description (callable/literal), use. Senão, use states[storageValue].
+
+---
+
+### `Player.getMissionsData(self, storage)` → missions[]
+
+Busca todas missions iniciadas com storageId específico.
+
+**Tipo**: Method  
+**Parâmetros**: `storage` (number, storageId)  
+**Retorna**: tabla de missions com missionId, missionName, missionDesc
+
+---
+
+### `Player.getQuestDataByMissionId(self, missionId)` → questName, questId, missionIndex
+
+Busca quest/missionIndex por missionId.
+
+**Tipo**: Method  
+**Retorna**: questName (string), questId (number), missionIndex (number), ou false
+
+---
+
+## 📡 Protocolo de Network Messages
+
+### `Player.sendQuestLog(self)` → void
+
+Envia questlog (todas quests started) ao client.
+
+**Tipo**: Method  
+**Opcode**: 0xF0
+
+**Estrutura Network**:
+```
+byte 0xF0
+u16 questCount
+[for each quest]
+  u16 questId
+  string questName
+  byte 0x01 (completed) | 0x00 (ongoing)
+```
+
+---
+
+### `Player.sendQuestLine(self, questId)` → void
+
+Envia missões de uma quest ao client.
+
+**Tipo**: Method  
+**Parâmetros**: `questId` (number)  
+**Opcode**: 0xF1
+
+**Estrutura Network**:
+```
+byte 0xF1
+u16 questId
+byte missionCount
+[for each mission if started]
+  u16 missionId (se client version >= 1200)
+  string missionName
+  string missionDescription
+```
+
+---
+
+### `Player.sendTrackedQuests(self, remainingQuests, missions)` → void
+
+Envia tracked missions ao client.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `remainingQuests` (number): Slots restantes
+- `missions` (table): Array de tracked missions
+
+**Opcode**: 0xD0 (com 0x01 subtype)
+
+**Estrutura Network**:
+```
+byte 0xD0
+byte 0x01 (type: list)
+byte remainingQuests
+byte missionCount
+[for each mission]
+  u16 missionId
+  u16 questId
+  string questName
+  string missionName
+  string missionDesc
+```
+
+---
+
+### `Player.sendUpdateTrackedQuest(self, mission)` → void
+
+Envia update de uma tracked mission individual.
+
+**Tipo**: Method  
+**Parâmetros**: `mission` (table com questId, missionId, questName, missionName, missionDesc)  
+**Opcode**: 0xD0 (com 0x00 subtype)
+
+**Estrutura Network**:
+```
+byte 0xD0
+byte 0x00 (type: update)
+u16 questId
+u16 missionId
+string questName
+string missionName
+string missionDesc
+```
+
+---
+
+## 🔗 Storage Hook
+
+### `Player.updateStorage(self, key, value, oldValue, currentFrameTime)` → void
+
+Chamado quando storage muda (hook de evento).
+
+**Tipo**: Method  
+**Parâmetros**:
+- `key` (number): Storage ID
+- `value` (number): Novo valor
+- `oldValue` (number): Antigo valor
+- `currentFrameTime` (number): Frame timestamp
+
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Player.updateStorage(self, key, value, oldValue, currentFrameTime)
+    local playerId = self:getId()
+    if LastQuestlogUpdate[playerId] ~= currentFrameTime and Game.isQuestStorage(key, value, oldValue) then
+        LastQuestlogUpdate[playerId] = currentFrameTime
+        if value ~= oldValue then
+            self:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your questlog has been updated.")
+        end
+    end
+    
+    local missions = self:getMissionsData(key)
+    for i = 1, #missions do
+        local mission = missions[i]
+        if self:hasTrackingQuest(mission.missionId) then
+            self:sendUpdateTrackedQuest(mission)
+        end
+    end
+end
+```
+
+**Fluxo**:
+1. Debounce: não enviar 2x no mesmo frame
+2. Validar que esse storage pertence a quest
+3. Enviar "Your questlog has been updated."
+4. Para cada mission relativa a esse storage:
+   - Se rastreada: enviar update individual
+
+---
+
+## 🔍 Funções de Busca e Contagem
+
+### `Game.isQuestStorage(key, value, oldValue)` → boolean
+
+Verifica se storage key pertence a alguma quest/mission.
+
+**Tipo**: Static Method  
+**Retorna**: boolean
+
+**Lógica**: Busca em quest.startStorageId ou mission.storageId
+
+---
+
+### `Game.getQuestsCount(player)` → number
+
+Conta quantas quests o jogador iniciou.
+
+**Tipo**: Static Method  
+**Parâmetros**: `player` (Player)  
+**Retorna**: number
+
+---
+
+### `Game.getMissionsCount(player, questId)` → number
+
+Conta quantas missions de uma quest foram iniciadas.
+
+**Tipo**: Static Method  
+**Parâmetros**:
+- `player` (Player)
+- `questId` (number)
+
+**Retorna**: number
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Inicializar Quest para Jogador
+
+```lua
+local quest = Game.getQuest(1)  -- Dragon Quest
+if quest then
+    player:setStorageValue(quest.startStorageId, quest.startStorageValue)
+    -- Quest is now "started"
+    player:sendQuestLog()
+end
+```
+
+### Padrão 2: Avançar Missão
+
+```lua
+local mission = Game.getMission(1, 1)  -- Dragon Quest, Mission 1
+if mission then
+    -- Progresso de 0 → 1 → 2 ... (estados)
+    local current = player:getStorageValue(mission.storageId)
+    player:setStorageValue(mission.storageId, current + 1)
+    -- Hook updateStorage chamado automaticamente
+end
+```
+
+### Padrão 3: Rastrear Missão
+
+```lua
+local missionsToTrack = { 10, 20, 30 }  -- missionIds
+player:resetTrackedMissions(missionsToTrack)
+-- Cliente recebe list of up to 10/25 (dependendo premium)
+```
+
+### Padrão 4: Checar Completeness
+
+```lua
+if player:questIsCompleted(1) then
+    print("Dragon Quest completed!")
+    -- Dar reward, unlock nova quest, etc
+end
+```
+
+### Padrão 5: Descrição Dinâmica
+
+```lua
+-- Mission com description callable
+local mission = {
+    name = "Defeat Dragons",
+    storageId = 1001,
+    startValue = 0,
+    endValue = 10,
+    description = function(player)
+        local kills = player:getStorageValue(1001)
+        return string.format("Defeat dragons: %d/10", kills)
+    end,
+}
+
+-- Ou com states
+local mission2 = {
+    name = "Defeat Dragons",
+    storageId = 1001,
+    startValue = 0,
+    endValue = 3,
+    states = {
+        [0] = "Start the hunt",
+        [1] = "You defeated 1 dragon",
+        [2] = "You defeated 2 dragons",
+        [3] = "You defeated all dragons",
+    },
+}
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Método |
+|----------|-----------|--------|
+| **Storage-Based State** | Persistência via storage key-value | questIsStarted, missionIsStarted |
+| **Mission States** | Múltiplos estados entre startValue e endValue | getMissionDescription |
+| **Tracked Missions** | Fila de até 10/25 por jogador | resetTrackedMissions |
+| **Network Protocol** | Opcodes 0xF0/0xF1/0xD0 para client | sendQuestLog, sendQuestLine |
+| **Storage Hook** | updateStorage chamado automaticamente | updateStorage |
+| **Callable Descriptions** | Descrições dinâmicas como funções | evaluateText |
+
+### Padrões Identificados
+
+1. **Registry Pattern**: Centralized `Quests` global + Game methods
+2. **State Machine**: missionsIsStarted/Completed baseado em storage ranges
+3. **Validation Chain**: isValidQuest → getQuest → getMission
+4. **Caching**: LastQuestlogUpdate para debounce, PlayerTrackedMissionsData
+5. **Network Protocol**: Structured NetworkMessage com multiple opcodes
+6. **Hook Pattern**: updateStorage chamado em storage change
+
+### Responsabilidades por Categoria
+
+- **State Verification**: Quest/mission started/completed via storage
+- **Registry Management**: Lookup, validation, dynamic addition
+- **Tracked Missions**: Gerenciamento de fila com límite premium
+- **Network Protocol**: Envio de quest data ao client
+- **Storage Hook**: React a mudanças de storage
+- **Descriptions**: Dinâmicas callable ou state-based
+
+---
+
+## 📚 Conclusão
+
+O arquivo `quests.lua` é **backbone de quest system** do servidor. Através de storage-based state tracking, network protocol integration, e tracked missions management, permite criar _sophisticated quest systems_ com múltiplas missions, dinâmicas descriptions, e client visualization sincronizada. O design de **storage-based** garante persistência imutável, enquanto **network protocol** mantém client atualizado em tempo real.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 390/390 (100%)  
+**Métodos Player**: 16  
+**Métodos Game**: 8  
+**Funções Locais**: 2  
+**Variáveis Globais**: 2 (caches)  
+**Opcodes Network**: 3 (0xF0, 0xF1, 0xD0)  
+**Padrões de Design**: Registry, State Machine, Validation Chain, Caching, Network Protocol, Hook  
+**Exemplos Práticos**: 5+
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Storage-based state é persistente (database). Validação loop ao load checa required fields (name, storageId, missionId, startValue, endValue). Tracked missions limit é dinâmico (10 base, 25 premium). Network messages devem estar sincronizado com client version checks (u16 missionId se version >= 1200). updateStorage deve ser chamado por engine como hook em storage change (não automático).
+</Aside>

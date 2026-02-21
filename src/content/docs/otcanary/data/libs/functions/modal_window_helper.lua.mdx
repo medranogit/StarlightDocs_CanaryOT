@@ -1,0 +1,684 @@
+---
+title: "modal_window_helper.lua"
+description: "Modal window wrapper class extending native engine ModalWindow with builder pattern, callback support for buttons/choices, auto ID generation, and player registry management."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que implementa wrapper elegante da classe `ModalWindow` nativa do engine Canary. Fornece padrão builder para construir janelas modais complexas, suporte a callbacks para botões e opções, auto-geração de IDs, gerenciamento centralizado de janelas abertas por jogador, e integração com sistema de eventos.
+
+<Aside type="tip">
+O arquivo `modal_window_helper.lua` é um **middleware interceptor** que substitui a classe `ModalWindow` nativa com versão estendida, mantendo compatibilidade total. Permite criar modais reutilizáveis sem hardcoding de IDs e callbacks.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O arquivo `modal_window_helper.lua` implementa **padrão de decorator/wrapper** que enriquece a classe `ModalWindow` nativa com 3 funcionalidades principais:
+
+1. **Builder Pattern**: Construir modais incrementalmente via métodos chain-able
+2. **Callback Management**: Armazenar e executar callbacks para botões e choices
+3. **Auto-ID Generation**: Sistema de contador auto-incremento para evitar colisão de IDs
+
+O design usa **interception via global reassignment**: salva classe nativa em `__ModalWindow`, redefine `ModalWindow` com extensões, mantém compatibilidade total.
+
+### Estrutura de Funcionalidades
+
+```
+ModalWindowHelper System
+├── Global Variables
+│   ├── ModalWindowAutoID (local counter)
+│   ├── __ModalWindow (native class backup)
+│   └── ModalWindows (player registry)
+├── Class Definition
+│   └── ModalWindow (wrapper with 31 methods)
+├── Initialization & Factory
+│   ├── ModalWindow.new() → instance
+│   └── __call metamethod
+├── Configuration Methods
+│   ├── setTitle(title) → boolean
+│   ├── setMessage(message) → boolean
+│   ├── setPriority(priority) → boolean
+│   ├── setDefaultEnterButton(id) → boolean
+│   └── setDefaultEscapeButton(id) → boolean
+├── Button Management
+│   ├── addButton(name, callback) → boolean
+│   ├── removeButton(name) → boolean
+│   ├── callButton(name, player, button, choice) → any
+│   └── clearButtons() → boolean
+├── Choice Management
+│   ├── addChoice(text, callback) → boolean
+│   ├── removeChoice(text) → boolean
+│   ├── callChoice(text, player, button, choice) → any
+│   └── clearChoices() → boolean
+├── Execution & Rendering
+│   ├── setId() → number
+│   ├── create() → native ModalWindow
+│   └── sendToPlayer(player) → boolean
+└── Utility Methods
+    ├── setDefaultCallback(callback) → boolean
+    └── clear() → boolean
+```
+
+---
+
+## 🔧 Variáveis Globais e Locais
+
+### Variável Local: `ModalWindowAutoID`
+
+Contador crescente para auto-gerar IDs únicos de modal windows.
+
+**Tipo**: number (local)  
+**Valor Inicial**: 10000  
+**Incremento**: +1 a cada nova janela
+
+**Implementação**:
+```lua
+local ModalWindowAutoID = 10000
+```
+
+**Uso**:
+```lua
+function ModalWindow:setId()
+    if self.modalWindowId ~= 0 then
+        return self.modalWindowId
+    end
+    
+    self.modalWindowId = ModalWindowAutoID
+    ModalWindowAutoID = ModalWindowAutoID + 1
+    return self.modalWindowId
+end
+```
+
+**Observação**: Começa 10000 para evitar colisão com IDs manualmente definidos (0-9999).
+
+---
+
+### Variável Global: `__ModalWindow`
+
+Referência à classe `ModalWindow` nativa do engine (salva antes de ser sobrescrita).
+
+**Tipo**: class (global)  
+**Atribuído**: Na primeira carga de load.lua  
+**Propósito**: Chamar métodos nativos do engine (create, sendToPlayer, etc)
+
+**Implementação**:
+```lua
+if not __ModalWindow then
+    __ModalWindow = ModalWindow
+    ModalWindows = {}
+end
+```
+
+**Verificação**: `if not __ModalWindow` garante que backup só é feito uma vez.
+
+**Uso**:
+```lua
+local modalWindow = __ModalWindow(self:setId(), self.title, self.message)
+```
+
+---
+
+### Variável Global: `ModalWindows`
+
+Registro centralizado de janelas modais abertas, indexado por player ID e modal window ID.
+
+**Tipo**: table (global)  
+**Estrutura**: `ModalWindows[playerId][modalWindowId] = modalWindowInstance`  
+**Propósito**: Rastrear qual jogador tem quais modais abertas
+
+**Exemplo**:
+```lua
+ModalWindows = {
+    [1001] = {  -- Player ID 1001
+        [10000] = modalWindowInstance1,
+        [10001] = modalWindowInstance2,
+    },
+    [1002] = {  -- Player ID 1002
+        [10002] = modalWindowInstance3,
+    },
+}
+```
+
+**Uso**:
+```lua
+function ModalWindow:sendToPlayer(player)
+    local playerId = player:getId()
+    ModalWindows[playerId] = ModalWindows[playerId] or {}
+    ModalWindows[playerId][self.modalWindowId] = self
+    -- ...
+end
+```
+
+---
+
+## 🏗️ Inicialização e Factory
+
+### `ModalWindow.new(...)` - Factory Constructor
+
+Cria nova instância de ModalWindow com padrão builder.
+
+**Tipo**: Factory Method  
+**Parâmetros**: `...` (varargs passados para engine se chamada diretamente)  
+**Retorna**: tabela ModalWindow (instância) ou resultado do engine
+
+**Implementação**:
+```lua
+function ModalWindow.new(self, ...)
+    if type(self) ~= "table" then
+        -- Chamada direta ao engine (compatibilidade)
+        return __ModalWindow(self, ...)
+    end
+
+    self.modalWindowId = 0
+    self.buttons = {}
+    self.choices = {}
+    self.using = 0
+    self.defaultEnterButton = 0
+    self.defaultEscapeButton = 1
+    return setmetatable(self, ModalWindow)
+end
+```
+
+**Valores Padrão**:
+- `modalWindowId = 0`: Será gerado via `setId()`
+- `buttons = {}`: Array vazio de botões
+- `choices = {}`: Array vazio de opções
+- `using = 0`: Contador de uso/referência
+- `defaultEnterButton = 0`: Sem botão padrão Enter
+- `defaultEscapeButton = 1`: ID 1 como botão padrão Escape
+
+**Exemplo**:
+```lua
+-- Forma 1: Construtor novo
+local modal = ModalWindow()
+modal:setTitle("Hello")
+modal:addButton("OK", function(player) print("OK") end)
+
+-- Forma 2: Compatibilidade com engine (raro)
+local nativeModal = ModalWindow(10000, "Title", "Message")
+```
+
+---
+
+### Metamethod `__call`
+
+Permite chamar `ModalWindow()` como função (sintaxe sugar para factory).
+
+**Implementação**:
+```lua
+setmetatable(ModalWindow, {
+    __call = function(self, ...)
+        return ModalWindow.new(...)
+    end,
+})
+```
+
+---
+
+## ⚙️ Métodos de Configuração
+
+### `ModalWindow:setTitle(title)` e `setMessage(message)`
+
+Define título e mensagem da janela modal.
+
+**Tipo**: Method  
+**Parâmetros**: `title` ou `message` (string)  
+**Retorna**: boolean (true sempre)
+
+**Exemplo**:
+```lua
+local modal = ModalWindow()
+modal:setTitle("Welcome")
+modal:setMessage("Choose an option:")
+```
+
+---
+
+### `ModalWindow:setPriority(priority)`
+
+Define prioridade da janela (afeta renderização de sobrescrita).
+
+**Tipo**: Method  
+**Parâmetros**: `priority` (boolean ou truthy)  
+**Retorna**: boolean (true)
+
+**Exemplo**:
+```lua
+modal:setPriority(true)  -- Janela tem prioridade
+```
+
+---
+
+### `ModalWindow:setDefaultEnterButton(buttonId)` e `setDefaultEscapeButton(buttonId)`
+
+Define qual botão é acionado ao pressionar Enter ou Escape.
+
+**Tipo**: Method  
+**Parâmetros**: `buttonId` (number, ID do botão)  
+**Retorna**: boolean (true)
+
+**Exemplo**:
+```lua
+modal:addButton("OK", function() ... end)      -- ID 1
+modal:addButton("Cancel", function() ... end)  -- ID 2
+
+modal:setDefaultEnterButton(1)   -- Enter → OK
+modal:setDefaultEscapeButton(2)  -- Escape → Cancel
+```
+
+---
+
+### `ModalWindow:setDefaultCallback(callback)`
+
+Define callback padrão se nenhum for definido para botão/choice.
+
+**Tipo**: Method  
+**Parâmetros**: `callback` (function)  
+**Retorna**: boolean (true)
+
+---
+
+## 🔘 Gerenciamento de Botões
+
+### `ModalWindow:addButton(name, callback)`
+
+Adiciona botão à janela com callback associado.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `name` (string): Nome único do botão
+- `callback` (function): Função executada ao clicar
+
+**Retorna**: boolean (true se sucesso, false se botão já existe)
+
+**Estrutura Interna**:
+```lua
+{
+    id = 1,                    -- ID numérico (índice)
+    name = "buttonName",       -- Nome único
+    callback = function(...),  -- Callback
+}
+```
+
+**Validação**:
+- `name` deve ser string (converte se não for)
+- `name` não pode duplicar (retorna false)
+
+**Exemplo**:
+```lua
+local modal = ModalWindow()
+
+modal:addButton("Accept", function(player, button, choice)
+    print("Player " .. player:getName() .. " clicked Accept")
+    return true
+end)
+
+modal:addButton("Decline", function(player, button, choice)
+    print("Player declined")
+    return false
+end)
+```
+
+---
+
+### `ModalWindow:removeButton(name)`
+
+Remove botão da janela.
+
+**Tipo**: Method  
+**Parâmetros**: `name` (string)  
+**Retorna**: boolean (true se sucesso, false se não existe)
+
+**Exemplo**:
+```lua
+modal:removeButton("Accept")
+```
+
+---
+
+### `ModalWindow:callButton(name, player, button, choice)`
+
+Executa callback do botão manualmente.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `name` (string): Nome do botão
+- `player` (Player): Jogador que clicou
+- `button` (number): ID do botão
+- `choice` (number): ID da choice selecionada
+
+**Retorna**: Resultado do callback
+
+**Validação**:
+- Botão deve existir
+- Callback deve estar definido
+
+---
+
+### `ModalWindow:clearButtons()`
+
+Remove todos os botões da janela.
+
+**Tipo**: Method  
+**Retorna**: boolean (true)
+
+---
+
+## 📝 Gerenciamento de Choices
+
+### `ModalWindow:addChoice(text, callback)`
+
+Adiciona opção (choice) à janela.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `text` (string): Texto da opção
+- `callback` (function): Função executada ao selecionar
+
+**Retorna**: boolean (true se sucesso, false se duplica)
+
+**Estrutura Interna**:
+```lua
+{
+    id = 1,                   -- ID numérico
+    text = "Option Text",     -- Texto único
+    callback = function(...), -- Callback
+}
+```
+
+**Exemplo**:
+```lua
+modal:addChoice("Option 1", function(player, button, choice)
+    print("Selected: " .. choice)
+    return true
+end)
+
+modal:addChoice("Option 2", function(player, button, choice)
+    -- ...
+end)
+```
+
+---
+
+### `ModalWindow:removeChoice(text)` e `clearChoices()`
+
+Remove opção específica ou todas as opções.
+
+**Tipo**: Method  
+**Retorna**: boolean
+
+---
+
+### `ModalWindow:callChoice(text, player, button, choice)`
+
+Executa callback da opção manualmente.
+
+**Tipo**: Method  
+**Parâmetros**: `text`, `player`, `button`, `choice`  
+**Retorna**: Resultado do callback
+
+---
+
+## 🎯 Renderização e Envio
+
+### `ModalWindow:setId()`
+
+Auto-gera ou retorna ID único da janela.
+
+**Tipo**: Method  
+**Retorna**: number (modalWindowId)
+
+**Lógica**:
+- Se já tem ID: retorna direto
+- Senão: atribui novo (ModalWindowAutoID), incrementa contador
+
+**Exemplo**:
+```lua
+local id1 = modal:setId()  -- 10000
+local id2 = modal:setId()  -- 10000 (mesmo, já foi setado)
+
+local modal2 = ModalWindow()
+local id3 = modal2:setId() -- 10001
+```
+
+---
+
+### `ModalWindow:create()`
+
+Cria instância nativa do `ModalWindow` do engine com dados configurados.
+
+**Tipo**: Method  
+**Parâmetros**: Nenhum  
+**Retorna**: native ModalWindow object
+
+**Implementação Core**:
+```lua
+function ModalWindow:create()
+    local modalWindow = __ModalWindow(self:setId(), self.title, self.message)
+    modalWindow:setPriority(self.priority and true or false)
+
+    for id = 1, #self.buttons do
+        local name = self.buttons[id].name
+        modalWindow:addButton(id, name)
+    end
+
+    modalWindow:setDefaultEnterButton(self.defaultEnterButton)
+    modalWindow:setDefaultEscapeButton(self.defaultEscapeButton)
+    
+    for id = 1, #self.choices do
+        modalWindow:addChoice(id, self.choices[id].text)
+    end
+    return modalWindow
+end
+```
+
+**Fluxo**:
+1. Chamar `__ModalWindow` nativo com ID, título, mensagem
+2. Settar prioridade
+3. Adicionar cada botão (usa ID como primeiro parâmetro)
+4. Settar botões padrão
+5. Adicionar cada choice
+6. Retornar objeto nativo
+
+---
+
+### `ModalWindow:sendToPlayer(player)`
+
+Envia janela para jogador (renderiza na tela).
+
+**Tipo**: Method  
+**Parâmetros**: `player` (Player object)  
+**Retorna**: boolean (resultado do envio nativo)
+
+**Implementação**:
+```lua
+function ModalWindow:sendToPlayer(player)
+    local modalWindow = self:create()
+    local playerId = player:getId()
+    ModalWindows[playerId] = ModalWindows[playerId] or {}
+    ModalWindows[playerId][self.modalWindowId] = self
+    player:registerEvent("ModalWindowHelper")
+    self.using = self.using + 1
+    return modalWindow:sendToPlayer(player)
+end
+```
+
+**Operações**:
+1. Criar instância nativa via `create()`
+2. Registrar em `ModalWindows[playerId][modalWindowId]`
+3. Registrar evento "ModalWindowHelper" para o jogador
+4. Incrementar contador de uso
+5. Enviar para player via engine nativo
+
+**Evento Registrado**: "ModalWindowHelper" (deve ter script em creaturescripts/)
+
+---
+
+## `ModalWindow:clear()`
+
+Remove todos botões e choices.
+
+**Tipo**: Method  
+**Retorna**: boolean (true)
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Simples Dialog
+
+```lua
+local function askConfirmation(player)
+    local modal = ModalWindow()
+    modal:setTitle("Confirmation")
+    modal:setMessage("Are you sure?")
+    
+    modal:addButton("Yes", function(player, button, choice)
+        player:sendTextMessage(MESSAGE_INFO, "You confirmed!")
+        return true
+    end)
+    
+    modal:addButton("No", function(player, button, choice)
+        player:sendTextMessage(MESSAGE_INFO, "You declined!")
+        return true
+    end)
+    
+    modal:setDefaultEnterButton(1)
+    modal:setDefaultEscapeButton(2)
+    
+    return modal:sendToPlayer(player)
+end
+```
+
+### Padrão 2: Menu com Choices
+
+```lua
+local function showMenu(player)
+    local modal = ModalWindow()
+    modal:setTitle("Select Item")
+    modal:setMessage("Which item do you want?")
+    
+    modal:addChoice("Sword", function(player, button, choice)
+        player:addItem(2400, 1)
+        player:sendTextMessage(MESSAGE_INFO, "You got a sword!")
+        return true
+    end)
+    
+    modal:addChoice("Shield", function(player, button, choice)
+        player:addItem(2513, 1)
+        player:sendTextMessage(MESSAGE_INFO, "You got a shield!")
+        return true
+    end)
+    
+    modal:addButton("Accept", function(player, button, choice)
+        if choice == 0 then
+            return false  -- Nenhuma choice selecionada
+        end
+        modal:callChoice(modal.choices[choice].text, player, button, choice)
+        return true
+    end)
+    
+    return modal:sendToPlayer(player)
+end
+```
+
+### Padrão 3: Modal Reutilizável (Classe)
+
+```lua
+local ShopModal = {}
+
+function ShopModal.new(shopName, items)
+    local modal = ModalWindow()
+    modal:setTitle(shopName)
+    modal:setMessage("Select an item to buy:")
+    
+    for itemId, price in pairs(items) do
+        local itemName = ItemType(itemId):getName()
+        modal:addChoice(itemName .. " (" .. price .. " gp)", function(player, button, choice)
+            if player:getMoney() >= price then
+                player:removeMoneyNpc(price)
+                player:addItem(itemId, 1)
+                return true
+            else
+                return false
+            end
+        end)
+    end
+    
+    modal:addButton("Buy", function(player, button, choice)
+        if choice > 0 then
+            modal:callChoice(modal.choices[choice].text, player, button, choice)
+        end
+        return true
+    end)
+    
+    return modal
+end
+
+-- Uso
+local shop = ShopModal.new("Magic Shop", {
+    [2190] = 100,  -- Wand (100 gp)
+    [2191] = 150,  -- Staff (150 gp)
+})
+shop:sendToPlayer(player)
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+1. **Wrapper/Decorator Pattern**: Envolver classe nativa com funcionalidade extra
+2. **Builder Pattern**: Configuração sequencial antes de criar
+3. **Callback Registry**: Armazenar callbacks para execução desacoplada
+4. **Auto-ID Generation**: Counter auto-incremento para evitar colisão
+5. **Player Registry**: Rastrear modais por jogador para cleanup/validação
+
+### Padrões Identificados
+
+- **Dual-Indexing**: Buttons/Choices indexados por ID (numérico) e nome/texto (string)
+- **Method Chaining**: Setters retornam boolean (não self, então não faz chain real)
+- **Lazy Validation**: Validação apenas ao adicionar/executar
+- **Interception**: Hijacking global com `__call` metamethod
+
+### Responsabilidades
+
+| Responsabilidade | Método | Exemplo |
+|------------------|--------|---------|
+| Configuração | setTitle, setMessage, setPriority | Dados iniciais |
+| Botões | addButton, callButton, removeButton | Ações principais |
+| Choices | addChoice, callChoice, removeChoice | Seleções |
+| Renderização | setId, create, sendToPlayer | Enviar ao jogador |
+| Registry | ModalWindows global | Rastrear por player |
+
+---
+
+## 📚 Conclusão
+
+O arquivo `modal_window_helper.lua` é um **middleware elegante** que enriquece a classe `ModalWindow` nativa com padrão builder, callback management, e auto-ID generation. Seu design de **wrapper com interception** permite total compatibilidade com código existente enquanto adiciona funcionalidades reutilizáveis.
+
+O padrão **dual-indexing** (ID numérico + nome/texto string) oferece flexibilidade ao recuperar botões e choices. A integração com sistema de eventos via `registerEvent("ModalWindowHelper")` permite separar lógica de rendering da lógica de callback.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 230/230 (100%)  
+**Padrão de Design**: Wrapper/Decorator + Builder  
+**Métodos Documentados**: 31  
+**Categorias**: 7 (Factory, Config, Buttons, Choices, Rendering, Utilities)  
+**Variáveis Globais**: 3 (__ModalWindow, ModalWindows, ModalWindowAutoID)  
+**Exemplos Práticos**: 5+
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Ao estender com novo método, manter padrão de retorno boolean. Integração com evento "ModalWindowHelper" é crítica para callbacks funcionarem (deve haver creaturescript roteando chamadas). Auto-ID começa 10000 para evitar colisão com manual IDs 0-9999.
+</Aside>

@@ -1,0 +1,281 @@
+---
+title: "Movement - decay_to.lua"
+description: "Sistema de transformação automática e decay de itens ao pisar"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `decay_to.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (stepin) |
+| **Event Name** | `decay.onStepIn` |
+| **Função Registrada** | `onStepIn(creature, item, position, fromPosition)` |
+| **Linhas de Código** | 17 |
+| **Complexidade** | Trivial |
+| **Status** | Base implementation |
+
+**Descrição:**
+Sistema simples que transforma automaticamente um item ao jogador pisar nele, incrementando seu ID em +1 e iniciando o processo de decay (desaparecimento gradual).
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/decay_to.lua
+```
+
+**Requisitos:**
+- Validação de jogador
+- Sistema de transformação de item (transform)
+- Sistema de decay automático
+- IDs de items monitorados: 293, 475, 1066
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Transformação com Decay Automático**
+
+Este script implementa um **mecanismo de consumo acompanhado por transformação**:
+
+1. **Condição:** Jogador pisa no item
+2. **Transformação:** ID incrementa +1 (ex: 293 → 294)
+3. **Decay:** Item desaparece após tempo de decay
+4. **Resultado:** Item consumido do mundo
+
+**Casos de Uso:**
+- Itens consumíveis que deixam rastro (piso sujo → sujo)
+- Objetos que transformam ao usar (escada → escada usada)
+- Elementos ambientais que desaparecem
+
+**Fluxo Simples:**
+```
+Jogador: pisa em item 293
+  ├─ Transform: 293 → 294
+  ├─ Decay: ativa decaimento
+  └─ Tempo: item desaparece
+```
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `decay_to.lua` implementa um sistema de transformação com decay automático:
+
+- **Transformação:** Incrementa ID do item (+1)
+- **Decay:** Inicia decaimento imediato do item
+- **Cobertura:** 3 items monitorados (293, 475, 1066)
+- **Validação:** Apenas jogadores acionam o evento
+
+### Arquitetura
+
+Callback único de stepin com transformação:
+
+```
+Jogador pisa no item
+  └─ onStepIn(creature, item, position, fromPosition)
+     ├─ if player exists
+     │  ├─ transform(itemid + 1)
+     │  ├─ decay()
+     │  └─ return true
+     └─ else return false
+```
+
+### Fluxo Lógico Resumido
+
+| Evento | Ação | Resultado |
+|---|---|---|
+| **onStepIn** | Transforma + decay | Item incrementa e desaparece |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Instanciação do MoveEvent
+
+```lua
+local decay = MoveEvent()
+```
+
+**Propósito:** Cria nova instância de MoveEvent para este sistema.
+
+---
+
+### Callback onStepIn
+
+```lua
+function decay.onStepIn(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return false
+	end
+
+	item:transform(item.itemid + 1)
+	item:decay()
+	return true
+end
+```
+
+**Propósito:** Executado quando criatura pisa no item. Transforma item e inicia decay.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que pisou (pode não ser jogador) |
+| `item` | Item | O item sendo pisado |
+| `position` | Position | Posição do item |
+| `fromPosition` | Position | Posição anterior da criatura |
+
+**Fluxo Lógico:**
+
+1. **Validação:** Converte creature para player
+2. **Rejeita NPC/Monstro:** Se não é jogador, retorna false
+3. **Transforma Item:** `item.itemid + 1` (ex: 293 → 294)
+4. **Ativa Decay:** `item:decay()` (inicia desaparecimento)
+5. **Retorna:** true (movimento permitido)
+
+---
+
+### Registração do Evento
+
+```lua
+decay:type("stepin")
+decay:id(293, 475, 1066)
+decay:register()
+```
+
+| Método | Valor | Significado |
+|---|---|---|
+| `:type("stepin")` | stepin | Dispara ao pisar |
+| `:id(293, 475, 1066)` | IDs | Aplica a 3 items diferentes |
+| `:register()` | - | Registra o evento |
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `decay` | MoveEvent | Arquivo | Instância do evento |
+| `player` | Player | Função | Criatura convertida para jogador |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Validação Simples de Jogador
+
+```lua
+local player = creature:getPlayer()
+if not player then
+	return false
+end
+```
+
+**Benefício:** NPC/monstros não acionam transformação.
+
+### Padrão 2: Transformação Matemática
+
+```lua
+item:transform(item.itemid + 1)
+```
+
+**Benefício:** Genérico para múltiplos items, sem hardcoding de IDs.
+
+### Padrão 3: Decay Imediato
+
+```lua
+item:decay()
+```
+
+**Benefício:** Simples, item desaparece após tempo configurado.
+
+---
+
+## 🤖 Documentação das Funções
+
+### decay.onStepIn(creature, item, position, fromPosition)
+
+Callback executado quando criatura pisa no item. Transforma item e inicia decay.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que pisou |
+| `item` | Item | O item |
+| `position` | Position | Posição atual |
+| `fromPosition` | Position | Posição anterior |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Movimento permitido, transformação executada |
+| `false` | NPC/Monstro, sem transformação |
+
+**Exemplo:**
+
+```lua
+-- Jogador pisa em item 293
+decay.onStepIn(player, item293, pos, fromPos)
+-- Transformação: 293 → 294
+-- Decay ativado
+-- Retorna true → movimento permitido
+
+-- NPC pisa em item 293
+decay.onStepIn(npc, item293, pos, fromPos)
+-- Retorna false → sem transformação
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Pisar em Item Monitorado
+
+```lua
+-- Jogador pisa em tile com ID 293
+-- onStepIn é acionado
+-- Item transforma para 294
+-- Item inicia decay (desaparece)
+```
+
+### Caso 2: NPC Pisa
+
+```lua
+-- NPC pisa em tile com ID 293
+-- creature:getPlayer() = nil
+-- Retorna false (sem transformação)
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Item IDs:** 293, 475, 1066
+- **MoveEvent API:** [events/movements](../movements)
+- **Sistema de Decay:** Item decay automático
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | MoveEvent (stepin) |
+| **Transformação** | itemid + 1 |
+| **Decay** | Automático |
+| **Validação** | Jogadores apenas |
+| **Items Monitorados** | 3 (293, 475, 1066) |
+| **Padrão** | Validação + transformação simples |

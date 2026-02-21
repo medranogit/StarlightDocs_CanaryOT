@@ -1,0 +1,193 @@
+---
+title: Add Bosstiary Kills
+description: Comando GOD para adicionar kills de boss ao bestiary de um jogador
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `add_bosstiary_kills.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Adicionar kills de boss |
+| **Comando** | `/addbosskill <kills>, <monster name>, <optional target>` |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Parâmetro Alvo** | Opcional (padrão: self) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/add_bosstiary_kills.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que adiciona kills de boss com parâmetro alvo opcional. Parse 3 parâmetros com split(","), primeiro é número de kills, segundo é monster name (capitalize), terceiro é target opcionalmente. Se target vazio, usa self. Validação de kills >= 1. Usa helper `HasValidTalkActionParams()` para validação inicial. Feedback diferenciado para self vs outro jogador. Aplica via `addBosstiaryKill()`.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `add_bosstiary_kills.lua` implementa um comando TalkAction (`/addbosskill`) que adiciona kills de boss ao registro bestiary de jogadores. O sistema valida parâmetros (kills, monster name, target opcional), oferece alvo autoexclusivo se vazio, aplica via `addBosstiaryKill()`, e fornece feedback diferenciado. Ferramenta de auditoria bestiary.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local talkaction = TalkAction("/addbosskill")
+
+function talkaction.onSay(player, words, param)
+    -- Validação usando helper
+    local usage = "Usage: /addbosskill <kills>,<monster name>,<optional target name>"
+    if not HasValidTalkActionParams(player, param, usage) then
+        return false
+    end
+    
+    -- Parse: kills, monsterName, targetName (opcional)
+    local split = param:split(",")
+    local kills = tonumber(split[1])
+    local monsterName = string.capitalize(string.trimSpace(tostring(split[2])))
+    local targetName = string.capitalize(string.trimSpace(tostring(split[3])))
+    
+    -- Validação de kills
+    if not kills or kills < 1 then
+        player:sendCancelMessage("Invalid kill count.")
+        return true
+    end
+    
+    -- Definir alvo: se targetName vazio, usa self
+    local target = targetName ~= "" and Player(targetName) or player
+    if not target then
+        player:sendCancelMessage("Target player not found.")
+        return true
+    end
+    
+    -- Construir mensagem
+    local message = "Added received kills: " .. kills .. ", for boss: " .. monsterName
+    
+    -- Feedback diferenciado
+    if target == player then
+        player:sendTextMessage(MESSAGE_ADMINISTRATOR, message .. " to yourself.")
+    else
+        player:sendTextMessage(MESSAGE_ADMINISTRATOR, message .. " to player: " .. targetName)
+        target:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            "You received kills: " .. kills .. ", to boss: " .. monsterName)
+    end
+    
+    -- Adicionar kills ao bestiary
+    target:addBosstiaryKill(monsterName, kills)
+    
+    return true
+end
+
+talkaction:separator(" ")
+talkaction:groupType("god")
+talkaction:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **talkaction.onSay(player, words, param)**
+
+**Descrição:** Função callback que adiciona kills de boss ao bestiary de um jogador.
+
+**Parâmetros:**
+- `param` (string): `<kills>, <monster_name>, <optional_target_name>`
+
+**Formato de Comando:**
+```
+/addbosskill 5, Dragon Lord               -- 5 kills para GM (self)
+/addbosskill 10, The Orshabaal, Player1   -- 10 kills para Player1
+/addbosskill 3, Ferumbras                 -- 3 kills para GM
+```
+
+**Fluxo de Execução:**
+
+1. **Validação de Parâmetro:**
+   - `HasValidTalkActionParams(player, param, usage)` valida parâmetro não vazio
+
+2. **Parse de Parâmetros:**
+   ```lua
+   local split = param:split(",")
+   local kills = tonumber(split[1])
+   local monsterName = string.capitalize(string.trimSpace(split[2]))
+   local targetName = string.capitalize(string.trimSpace(split[3]))
+   ```
+   - Exemplo: "5, Dragon Lord, Player1"
+   - kills: 5
+   - monsterName: "Dragon Lord"
+   - targetName: "Player1"
+
+3. **Validação de Kills:**
+   - Deve ser número >= 1
+   - Se não: "Invalid kill count."
+
+4. **Determinar Alvo:**
+   ```lua
+   local target = targetName ~= "" and Player(targetName) or player
+   ```
+   - Se targetName vazio: usa self (player)
+   - Se targetName preenchido: busca jogador
+   - Se não encontrado: "Target player not found."
+
+5. **Construir Mensagem:**
+   ```lua
+   local message = "Added received kills: " .. kills .. ", for boss: " .. monsterName
+   ```
+
+6. **Feedback Diferenciado:**
+   - Se self: "Added received kills: X, for boss: BossName to yourself."
+   - Se outro: GM vê "... to player: PlayerName"
+   - Alvo vê: "You received kills: X, to boss: BossName"
+
+7. **Aplicar Kills:**
+   ```lua
+   target:addBosstiaryKill(monsterName, kills)
+   ```
+
+**Exemplo de Execução:**
+
+```
+GM: /addbosskill 10, Ferumbras, TestPlayer
+
+Parse:
+- kills = 10
+- monsterName = "Ferumbras"
+- targetName = "TestPlayer"
+
+Validações:
+- 10 >= 1 ✓
+- "TestPlayer" encontrado online ✓
+
+Resultado:
+- GM vê: "Added received kills: 10, for boss: Ferumbras to player: TestPlayer"
+- TestPlayer vê: "You received kills: 10, to boss: Ferumbras"
+- Bestiary de TestPlayer + 10 kills de Ferumbras
+```
+
+**Casos de Uso:**
+
+| Comando | GM (Executor) | Alvo | Efeito |
+|---|---|---|---|
+| `/addbosskill 5, Boss` | Self | Self | +5 kills no bestiary do GM |
+| `/addbosskill 10, Boss, Player` | Outro | Player | +10 kills no bestiary do Player |
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `HasValidTalkActionParams(player, param, usage)` | Valida parâmetro |
+| `param:split(sep)` | Divide por separador |
+| `tonumber(str)` | Converte para número |
+| `string.capitalize(str)` | Capitaliza primeira letra |
+| `string.trimSpace(str)` | Remove espaços |
+| `Player(name)` | Busca jogador |
+| `target:addBosstiaryKill(name, count)` | Adiciona kills |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `add_bosskill.lua` é gerenciador de progression bestiary. Implementação com parâmetro alvo opcional, validação de kills, feedback diferenciado por cenário. Essencial para administradores auditar kills de boss, corrigir registros, ou recompensar jogadores. Design prático com self-default para conveniência.

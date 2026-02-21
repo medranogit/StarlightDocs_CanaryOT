@@ -1,0 +1,345 @@
+---
+title: "Global Event - save_interval.lua"
+description: "Global event para salvar servidor em intervalos configuráveis com avisos"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `save_interval.lua` |
+| **Localização** | `data/scripts/globalevents/` |
+| **Tipo de Script** | GlobalEvent |
+| **Event Name** | `save` |
+| **Função Registrada** | `onTime(interval)` |
+| **Linhas de Código** | 24 |
+| **Intervalo** | Configurável (segundos, minutos ou horas) |
+| **Complexidade** | Médium |
+| **Status** | Base implementation com features |
+
+**Descrição:**
+Global event que executa saves periódicos do servidor em intervalo configurável. Coordena broadcast de avisos aos jogadores (60 segundos antes do save), execução efetiva do save via addEvent, limpeza de mapa opcional, e logging via webhook e logger system.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/globalevents/save_interval.lua
+```
+
+**Pré-requisitos:**
+- GlobalEvent API (`GlobalEvent` função global)
+- configManager com keys:
+  - `TOGGLE_SAVE_INTERVAL` (ativa/desativa feature)
+  - `TOGGLE_SAVE_INTERVAL_CLEAN_MAP` (limpa mapa durante save)
+- Game API: `broadcastMessage()`, `saveServer()`
+- Webhook system: `sendMessage()`
+- cleanMap() global function
+- addEvent() scheduling
+- logger system
+- Constantes globais: `SAVE_INTERVAL_CONFIG_TIME`, `SAVE_INTERVAL_TYPE`, `SAVE_INTERVAL_TIME`
+- MESSAGE_GAME_HIGHLIGHT, WEBHOOK_COLOR_WARNING constantes
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Save Interval (Servidor Save Periódico)**
+
+Em intervalos configurados, o servidor executa save automático:
+
+1. **Trigger:** OnTime dispara a cada intervalo configurado
+2. **Avisos:** Se TOGGLE_SAVE_INTERVAL ativo, broadcast para jogadores com countdown
+3. **Agendamento:** schedula serverSave() para 60 segundos depois
+4. **Execução:** serverSave() executa:
+   - Limpa mapa se configurado
+   - Chama saveServer() (persist no DB)
+   - Broadcast de confirmação
+   - Log em webhook
+5. **Repetição:** Retorna true para continuar ciclo
+
+**Timeline de Save**
+```
+10:00:00 - onTime() dispara
+  ├─ T+0s: Broadcast "Save em 60 segundos"
+  ├─ T+60s: serverSave() executado
+  │  ├─ cleanMap() (opcional)
+  │  ├─ saveServer() (persist)
+  │  └─ Broadcast "Save completo"
+  └─ T+intervalo: próximo cycle
+```
+
+**Diferença de Server Save Manual vs Interval**
+- **Manual:** Executado via comando/script (imediato)
+- **Interval:** Automático periódico com avisos (60s warning)
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `save_interval.lua` implementa o sistema de save automático periódico:
+
+- **Monitora intervalos** via GlobalEvent com configuração flexível
+- **Avisa jogadores** 60 segundos antes do save
+- **Executa save efetivo** via addEvent com delay
+- **Limpa mapa** opcionalmente durante save
+- **Registra operações** em webhook e logger
+
+### Arquitetura
+
+O script usa padrão de **scheduled action com delayed execution**:
+
+```
+GlobalEvent (intervalo configurado)
+  └─ onTime(interval)
+     ├─ Valida: TOGGLE_SAVE_INTERVAL?
+     ├─ Sim → Broadcast warning
+     ├─ Schedula: addEvent(serverSave, 60000)
+     └─ Retorna: true/false conforme config
+```
+
+### Fluxo Lógico Resumido
+
+| Fase | Ação | Duração |
+|------|------|---------|
+| **Aviso** | Broadcast countdown | T+0s |
+| **Espera** | Jogadores têm tempo de reagir | T+0 até T+60s |
+| **Execução** | serverSave() com DB persist | T+60s |
+| **Confirmação** | Broadcast resultado | T+60s (após completion) |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Local: serverSave()
+
+#### **serverSave(interval)**
+
+```lua
+local function serverSave(interval)
+	if configManager.getBoolean(configKeys.TOGGLE_SAVE_INTERVAL_CLEAN_MAP) then
+		cleanMap()
+	end
+
+	saveServer()
+	local message = string.format(SAVE_INTERVAL_CONFIG_TIME > 1 
+		and "Server save complete. Next save in %d %ss!" 
+		or "Server save complete. Next save in %d %s!", 
+		SAVE_INTERVAL_CONFIG_TIME, SAVE_INTERVAL_TYPE)
+	Game.broadcastMessage(message, MESSAGE_GAME_HIGHLIGHT)
+	logger.info(message)
+	Webhook.sendMessage("Server save", message, WEBHOOK_COLOR_WARNING)
+end
+```
+
+**Propósito:** Executa operação efetiva de save com cleanup opcional.
+
+**Fluxo de Execução:**
+
+1. **Limpeza Opcional:**
+   - Verifica `TOGGLE_SAVE_INTERVAL_CLEAN_MAP`
+   - Se true → Chama `cleanMap()` (remove items no chão, etc)
+
+2. **Persist no Database:**
+   - Chama `saveServer()` (salva estado no DB)
+
+3. **Mensagem de Conclusão:**
+   - Formata string com próximo tempo de save
+   - Usa ternário para pluralização: "1 second" vs "2 seconds"
+
+4. **Notificações:**
+   - `Game.broadcastMessage()` - Notifica todos jogadores online
+   - `logger.info()` - Registra em logs internos
+   - `Webhook.sendMessage()` - Notifica via webhook (Discord, etc)
+
+**Parâmetros:**
+- `interval` - Intervalo passado pelo addEvent (não usado na função)
+
+**Efeitos Colaterais:** Altera estado do servidor (persistence), afeta jogadores online
+
+---
+
+### Função Principal (GlobalEvent)
+
+#### **onTime(interval)**
+
+```lua
+function save.onTime(interval)
+	local remainingTime = 60 * 1000  -- 60 segundos em milliseconds
+
+	if configManager.getBoolean(configKeys.TOGGLE_SAVE_INTERVAL) then
+		local message = "The server will save all accounts within " .. 
+			(remainingTime / 1000) .. " seconds. " ..
+			"You might lag or freeze for 5 seconds, please find a safe place."
+		
+		Game.broadcastMessage(message, MESSAGE_GAME_HIGHLIGHT)
+		logger.info(string.format(message, SAVE_INTERVAL_CONFIG_TIME, SAVE_INTERVAL_TYPE))
+		addEvent(serverSave, remainingTime, interval)
+		return true
+	end
+	
+	return not configManager.getBoolean(configKeys.TOGGLE_SAVE_INTERVAL)
+end
+```
+
+**Propósito:** Entry point do global event. Gerencia avisos e agendamento de save.
+
+**Fluxo de Execução:**
+
+1. **Inicialização:** Define `remainingTime` como 60 segundos (em ms)
+
+2. **Validação:** Verifica se `TOGGLE_SAVE_INTERVAL` está habilitado
+
+3. **Se Habilitado:**
+   - Monta mensagem de aviso para jogadores
+   - Broadcast via `Game.broadcastMessage()`
+   - Log em sistema
+   - **Agendamento:** Chama `addEvent(serverSave, 60000, interval)` para executar 60s depois
+   - Retorna `true` (continua event)
+
+4. **Se Desabilitado:**
+   - Retorna `not TOGGLE_SAVE_INTERVAL` (continua ativo mas sem fazer nada)
+
+**Parâmetros:**
+- `interval` - Intervalo do GlobalEvent (passado para addEvent como referência)
+
+**Retorno:**
+- `true` - GlobalEvent continua ativo
+- `false` - GlobalEvent é desativado (quando config muda)
+
+---
+
+### Configuração de Intervalo
+
+#### **save:interval() e save:register()**
+
+```lua
+if SAVE_INTERVAL_TIME ~= 0 then
+	save:interval(SAVE_INTERVAL_CONFIG_TIME * SAVE_INTERVAL_TIME)
+else
+	return logger.error("[save.onTime] - Save interval type '%s' is not valid, use 'second', 'minute' or 'hour'", SAVE_INTERVAL_TYPE)
+end
+
+save:register()
+```
+
+**Descrição:** Configura intervalo do GlobalEvent baseado em constantes globais.
+
+**Cálculo de Intervalo:**
+- `SAVE_INTERVAL_CONFIG_TIME` - Número (ex: 2)
+- `SAVE_INTERVAL_TIME` - Multiplicador (1 para second, 60 para minute, 3600 para hour)
+- Resultado: `2 * 60000` = a cada 2 minutos (em ms)
+
+**Validação:** Se SAVE_INTERVAL_TIME = 0 → erro e termina script
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Locais (Script-Level)
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `save` | GlobalEvent | Local | GlobalEvent object do save automático |
+
+### Constantes Globais Utilizadas
+
+| Constante | Tipo | Descrição |
+|-----------|------|-----------|
+| `SAVE_INTERVAL_CONFIG_TIME` | number | Quantidade (ex: 2) |
+| `SAVE_INTERVAL_TYPE` | string | Tipo de unidade ("second", "minute", "hour") |
+| `SAVE_INTERVAL_TIME` | number | Multiplicador UNIX (1, 60, 3600) |
+| `MESSAGE_GAME_HIGHLIGHT` | number | Constante de message highlight |
+| `WEBHOOK_COLOR_WARNING` | string\|number | Cor do webhook warning |
+
+### Constantes de Configuração (Booleans)
+
+| Config Key | Descrição |
+|-----------|-----------|
+| `TOGGLE_SAVE_INTERVAL` | Habilita/desabilita saves periódicos |
+| `TOGGLE_SAVE_INTERVAL_CLEAN_MAP` | Limpa mapa durante save |
+
+### Objetos Externos Referenciados
+
+| Objeto | Propriedade/Método | Descrição |
+|--------|-------------------|-----------|
+| `configManager` | `getBoolean(key)` | Obtém valor booleano de configuração |
+| `configKeys` | constantes | Namespace de chaves de config |
+| `Game` | `broadcastMessage(msg, type)` | Envia mensagem para todos jogadores |
+| `Game` | `saveServer()` | Persiste estado no database |
+| `cleanMap()` | (função global) | Limpa items/bodies do mapa |
+| `addEvent()` | (função global) | Agenda função para executar em futuro |
+| `logger` | `info()` | Registra mensagem de info |
+| `Webhook` | `sendMessage()` | Envia para webhook (Discord, etc) |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Delayed Execution com Aviso Prévio
+
+**Técnica:** Avisar usuários antes de operação disruptiva, usando addEvent para delay.
+
+```lua
+-- Avisa
+Game.broadcastMessage("Save em 60 segundos", MESSAGE_GAME_HIGHLIGHT)
+
+-- Aguarda e executa
+addEvent(serverSave, 60 * 1000, interval)
+```
+
+**Vantagem:**
+- Jogadores têm tempo de reagir (ir para safe spot)
+- Reduz frustrações com desconexões
+- Melhor experiência de usuário
+
+**Aplicação:** Qualquer operação que cause lag/desconexão (save, restart, update).
+
+---
+
+### Padrão 2: Multi-Channel Logging
+
+**Técnica:** Registrar eventos em múltiplos canais simultaneamente.
+
+```lua
+logger.info(message)                    -- Sistema de logs
+Game.broadcastMessage(message, type)    -- Para jogadores
+Webhook.sendMessage("Title", message)   -- Para admin (Discord)
+```
+
+**Vantagem:**
+- Rastreabilidade em múltiplas fontes
+- Admins recebem notificação em tempo real
+- Jogadores mantêm-se informados
+
+**Aplicação:** Eventos críticos, manutenção, operações de sistema.
+
+---
+
+### Padrão 3: String Formatting com Ternário para Pluralização
+
+**Técnica:** Usar ternário em string.format para ajustar mensagens.
+
+```lua
+local message = string.format(
+	SAVE_INTERVAL_CONFIG_TIME > 1 
+		and "Next save in %d %ss!" 
+		or "Next save in %d %s!", 
+	SAVE_INTERVAL_CONFIG_TIME, 
+	SAVE_INTERVAL_TYPE
+)
+```
+
+**Vantagem:**
+- Mensagens gramaticalmente corretas
+- "1 second" vs "2 seconds"
+- Internacionalização facilitada
+
+**Aplicação:** Qualquer mensagem que envolve pluralização/singular.

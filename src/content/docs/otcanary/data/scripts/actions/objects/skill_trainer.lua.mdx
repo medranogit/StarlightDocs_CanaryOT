@@ -1,0 +1,275 @@
+---
+title: skill_trainer.lua
+description: 5 estátuas de treinamento offline com validação premium, PZ lock e setOfflineTrainingSkill com logout automático.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="skill_trainer.lua" icon="pencil">
+Handler complexo com lookup table de skills, validações dual (premium + PZ) e logout automático.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/objects/skill_trainer.lua`
+
+**Linhas:** 23 | **IDs dos Objects:** 5 estatuas (16198-16202) | **Tipo:** Action Handler com Validação
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema de estátuas de treinamento offline com lookup table: cada ID vinculado a 1 skill (sword, axe, club, distance, maglevel). Validações: premium account obrigatório (reject se não), PZ lock check (block se sim). Se passar: setOfflineTrainingSkill(skill) + player:remove() (logout). Cada estátua treina 1 skill diferente.
+
+### Estrutura de Funcionalidades
+
+```
+LOOKUP TABLE:
+  └─ setting[ID] = SKILL
+      ├─ 16198 → SKILL_SWORD
+      ├─ 16199 → SKILL_AXE
+      ├─ 16200 → SKILL_CLUB
+      ├─ 16201 → SKILL_DISTANCE
+      └─ 16202 → SKILL_MAGLEVEL
+
+HANDLER:
+  └─ skillTrainer.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+      ├─ skill = setting[item:getId()]
+      ├─ isPremium()? → false: sendCancelMessage + return true
+      ├─ isPzLocked()? → true: return false (bloqueia)
+      ├─ setOfflineTrainingSkill(skill)
+      ├─ player:remove(false) → logout
+      └─ return true
+
+REGISTRO:
+  └─ 5 estátuas (16198-16202)
+      └─ for-in loop dinâmico
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| setting | table | Lookup: ID -> Skill ID |
+
+### Conteúdo da Variável setting
+
+```lua
+16198 → SKILL_SWORD
+16199 → SKILL_AXE
+16200 → SKILL_CLUB
+16201 → SKILL_DISTANCE
+16202 → SKILL_MAGLEVEL
+```
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Statue IDs and Skills
+
+| ID | Skill | Descrição |
+|-------|--------|-----------|
+| 16198 | SKILL_SWORD | Treinamento de espada |
+| 16199 | SKILL_AXE | Treinamento de machado |
+| 16200 | SKILL_CLUB | Treinamento de clava |
+| 16201 | SKILL_DISTANCE | Treinamento de distância |
+| 16202 | SKILL_MAGLEVEL | Treinamento de magia |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local setting = {
+	[16198] = SKILL_SWORD,
+	[16199] = SKILL_AXE,
+	[16200] = SKILL_CLUB,
+	[16201] = SKILL_DISTANCE,
+	[16202] = SKILL_MAGLEVEL,
+}
+
+local skillTrainer = Action()
+
+function skillTrainer.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Obter skill da lookup table
+	local skill = setting[item:getId()]
+	
+	-- VALIDAÇÃO 1: Premium account obrigatório
+	if not player:isPremium() then
+		player:sendCancelMessage(RETURNVALUE_YOUNEEDPREMIUMACCOUNT)
+		return true  -- Retorna true sem consumir item
+	end
+
+	-- VALIDAÇÃO 2: PZ lock (não pode estar preso)
+	if player:isPzLocked() then
+		return false  -- Retorna false (bloqueia)
+	end
+
+	-- OPERAÇÕES: Assignar skill e logout
+	player:setOfflineTrainingSkill(skill)
+	player:remove(false)  -- false = logout (não mata)
+	return true
+end
+
+-- REGISTRO dinâmico
+for index, value in pairs(setting) do
+	skillTrainer:id(index)
+end
+
+skillTrainer:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa estátua (16198-16202)
+  │
+  ├─ skill = setting[item:getId()]
+  │   └─ Lookup: ID → Skill
+  │
+  ├─ isPremium()?
+  │   ├─ NÃO → sendCancelMessage() + return true (bloqueado)
+  │   └─ SIM → Continua
+  │
+  ├─ isPzLocked()?
+  │   ├─ SIM → return false (preso, não pode treinar)
+  │   └─ NÃO → Continua
+  │
+  ├─ setOfflineTrainingSkill(skill)
+  │   └─ Assinala skill para treinamento
+  │
+  ├─ player:remove(false)
+  │   └─ Logout automático (não mata)
+  │
+  └─ return true
+```
+
+### Padrão Lookup Table
+
+```lua
+local skill = setting[item:getId()]
+
+-- Operação:
+-- ID 16198 → setting[16198] = SKILL_SWORD
+-- ID 16199 → setting[16199] = SKILL_AXE
+-- etc...
+```
+
+### Padrão Validação Dual
+
+```lua
+-- VALIDAÇÃO 1: Obrigatório
+if not player:isPremium() then
+	player:sendCancelMessage(...)
+	return true
+end
+
+-- VALIDAÇÃO 2: Pode bloquear
+if player:isPzLocked() then
+	return false
+end
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Lookup Table**: ID -> Skill mapping
+- **isPremium()**: Validação de conta premium
+- **isPzLocked()**: Validação de prisão de proteção
+- **setOfflineTrainingSkill()**: Assinala skill para treinamento
+- **player:remove()**: Logout automático (false = não mata)
+- **sendCancelMessage()**: Mensagem de erro padrão
+- **for-in pairs()**: Iteração dinâmica de tabela
+- **Dual Validation**: Premium obrigatório, PZ lock bloqueia
+
+### Responsabilidades do Handler
+
+1. **Obter skill**: setting[item:getId()]
+2. **Validar premium**: isPremium() obrigatório
+3. **Validar PZ**: isPzLocked() bloqueia
+4. **Assignar skill**: setOfflineTrainingSkill(skill)
+5. **Logout**: player:remove(false)
+6. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Lookup Table
+
+Mapear IDs para skills:
+
+```lua
+local setting = {
+	[16198] = SKILL_SWORD,
+	[16199] = SKILL_AXE,
+	-- ...
+}
+
+local skill = setting[item:getId()]
+```
+
+### Padrão Validação Premium
+
+Reject se não premium:
+
+```lua
+if not player:isPremium() then
+	player:sendCancelMessage(RETURNVALUE_YOUNEEDPREMIUMACCOUNT)
+	return true
+end
+```
+
+### Padrão PZ Lock Check
+
+Bloqueia se preso:
+
+```lua
+if player:isPzLocked() then
+	return false
+end
+```
+
+### Comparação: Skill Trainer vs Wall Mirror
+
+| Aspecto | Trainer | Mirror |
+|---------|---------|--------|
+| Linhas | 23 | 26 |
+| IDs | 5 | 8 |
+| Lookup | Sim (skill) | Sim (message) |
+| Premium Check | Sim | Não |
+| PZ Check | Sim | Não |
+| Cooldown | Não | Sim (20h) |
+| Logout | Sim | Não |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: skill_trainer.lua" icon="star">
+Análise de handler de offline training com lookup table, validação dual (premium + PZ) e logout automático. Demonstra setOfflineTrainingSkill() e player:remove().
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Lookup table com dual validation | Complexidade: Média
+</Aside>

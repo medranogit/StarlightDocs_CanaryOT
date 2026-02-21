@@ -1,0 +1,152 @@
+---
+title: Magic Effect
+description: Comando GM para enviar efeito mágico na posição atual do jogador
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `magic_effect.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Enviar efeito mágico local |
+| **Comando** | `/effect <effect_id>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | ID do efeito (numérico) |
+| **Separador** | Espaço |
+| **Localização** | Posição do próprio jogador |
+| **Valores Válidos** | ID > 0 |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/magic_effect.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando minimalista para testar efeitos visuais. Valida parâmetro com `tonumber()`, verifica se > 0, e envia efeito na posição atual via `player:getPosition():sendMagicEffect(effect)`. Sem validação de ID válido (permite IDs altos ou inválidos silenciosamente). Útil para desenvolvimento, testes visuais, ou demonstrações rápidas de efeitos. Versão simplificada sem parâmetros de distância ou direção.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `magic_effect.lua` implementa um comando TalkAction (`/effect`) que permite gamemasters enviar qualquer efeito mágico na posição atual. O sistema valida parâmetro com conversão numérica, verifica se ID positivo, obtém posição do jogador, e envia efeito via `sendMagicEffect()`. Implementação minimalista focada em testes rápidos sem validações granulares ou restrições de ID.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local magicEffect = TalkAction("/effect")
+
+-- 2. Função Principal (onSay)
+function magicEffect.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Converter parâmetro para número
+    local effect = tonumber(param)
+    
+    -- Validação: numérico e positivo
+    if effect ~= nil and effect > 0 then
+        -- Obter posição e enviar efeito
+        player:getPosition():sendMagicEffect(effect)
+    end
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+magicEffect:separator(" ")
+magicEffect:groupType("gamemaster")
+magicEffect:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **magicEffect.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/effect` é utilizado. Envia efeito mágico na posição do jogador.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando
+- `words` (string): Palavras do comando (`/effect`)
+- `param` (string): **[OBRIGATÓRIO]** ID numérico do efeito (> 0)
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Conversão para Número:**
+   ```lua
+   local effect = tonumber(param)
+   ```
+   - Se conversão falhar: `effect = nil`
+   - Se conversão suceder: `effect` contém número
+
+4. **Validação de Validez:**
+   ```lua
+   if effect ~= nil and effect > 0 then
+       -- Válido: enviar efeito
+   else
+       -- Inválido: silencioso (sem feedback)
+   end
+   ```
+   - Condições:
+     - `effect ~= nil` - Parâmetro é numérico
+     - `effect > 0` - ID positivo (> 0)
+
+5. **Envio de Efeito:**
+   ```lua
+   player:getPosition():sendMagicEffect(effect)
+   ```
+   - Obtém posição: `player:getPosition()`
+   - Envia efeito naquela posição
+   - Visível para todos os spectadores próximos
+
+**Comportamento:**
+
+| Entrada | Ação | Resultado |
+|---|---|---|
+| `/effect` | Vazio | "Command param required." |
+| `/effect abc` | Não numérico | Silencioso (sem ação) |
+| `/effect -5` | Negativo | Silencioso (sem ação) |
+| `/effect 0` | Zero | Silencioso (sem ação) |
+| `/effect 28` | Válido | Efeito 28 na posição |
+| `/effect 9999` | ID alto | Efeito 9999 (se válido) |
+
+**Notas:**
+- Sem validação de ID real (IDs altos ou inválidos são silenciosamente ignorados)
+- Sem feedback visual após sucesso
+- Efeito é visível para todos próximos
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+### **Constantes Comuns de Efeitos**
+
+| Constante | ID | Descrição |
+|---|---|---|
+| `CONST_ME_TELEPORT` | 49 | Efeito de teleporte |
+| `CONST_ME_POFF` | 37 | Desaparecimento |
+| `CONST_ME_YALAHARIGHOST` | 60 | Efeito ghost/invisibilidade |
+| `CONST_ME_REDSMOKE` | 52 | Fumaça vermelha |
+| `CONST_ME_HOLYAREA` | 27 | Aura sagrada |
+| `CONST_ME_SMOKE` | 3 | Fumaça |
+
+---
+
+## 📌 Resumo
+
+O arquivo `magic_effect.lua` é ferramenta simples de testes visuais. Implementação minimalista que valida entrada numérica, verifica positividade, e envia efeito sem fricção. Essencial para desenvolvimento, testes visuais rápidos, ou demonstrações de efeitos em tempo real. Design sem validação rigorosa prioriza rapidez e flexibilidade sobre segurança, adequado para ambiente GM-only.

@@ -1,0 +1,223 @@
+---
+title: Test Message Types
+description: Comando GOD para testar tipos de mensagem diferentes
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | test_send_message.lua |
+| **Tipo de Sistema** | Message Type Testing (GOD) |
+| **Funcionalidade Principal** | Testar tipos de mensagem |
+| **Comando** | /testmessage |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Parâmetros** | messageType (obrigatório), textColor (opt) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/test_send_message.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** `/testmessage <type>, [color]`. Valida primeiro param (messageType numérico). Color default: TEXTCOLOR_WHITE_EXP. `sendTextMessage(type, message, position, 500, color)`. Testa todos tipos de mensagem disponíveis (MESSAGE_EVENT_ADVANCE, MESSAGE_STATUS, MESSAGE_LOOK, etc).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo test_send_message.lua implementa comando de teste de tipos de mensagem. Dispõe de 2 parâmetros (tipo obrigatório, cor opcional), default color (WHITE_EXP), feedback de teste. Ferramenta debug para message system.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **TalkAction /testmessage**
+
+```lua
+local sendMessage = TalkAction("/testmessage")
+
+function sendMessage.onSay(player, words, param)
+	-- create log
+	logCommand(player, words, param)
+
+	if param == "" or param == nil then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Message type is missing, please enter a message type.")
+		return
+	end
+
+	-- Parse parâmetros
+	local split = param:split(",")
+	local messageType = tonumber(split[1])
+	local textCollor = TEXTCOLOR_WHITE_EXP
+	if split[2] then
+		textCollor = tonumber(split[2])
+	end
+
+	-- Enviar mensagem de teste
+	player:sendTextMessage(messageType, "Testing message type.", player:getPosition(), 500, textCollor)
+	return true
+end
+
+sendMessage:separator(" ")
+sendMessage:groupType("god")
+sendMessage:register()
+```
+
+**Comando:**
+```
+/testmessage 23                     -- Teste tipo 23 (color default WHITE_EXP)
+/testmessage 23, 215                -- Teste tipo 23 com color 215
+```
+
+---
+
+## **Parâmetros**
+
+| Param | Nome | Obrigatório | Default | Tipo |
+|---|---|---|---|---|
+| 1 | messageType | SIM | - | number |
+| 2 | textColor | NÃO | TEXTCOLOR_WHITE_EXP | number |
+
+---
+
+## **Tipos de Mensagem (MESSAGE_*)**
+
+```
+Constantes comuns (valores numéricos):
+
+MESSAGE_EVENT_ADVANCE = 23          -- Amarelo (eventos, avanços)
+MESSAGE_EVENT_DEFAULT = 16          -- Branco padrão
+MESSAGE_STATUS = 18                 -- Status (efeitos, status)
+MESSAGE_STATUS_SMALL = 28           -- Status pequeno
+MESSAGE_LOOK = 26                   -- Branco (look, inspeção)
+MESSAGE_INFORMATION = 47            -- Cinza (informação)
+MESSAGE_GAME = 32                   -- Azul (sistema)
+MESSAGE_HEALED = 20                 -- Verde (cura)
+MESSAGE_DAMAGE = 21                 -- Vermelho (dano)
+MESSAGE_EXPIRE = 42                 -- Laranja (expira)
+MESSAGE_MANA = 30                   -- Azul claro (mana)
+MESSAGE_FAILURE = 31                -- Vermelho (falha)
+MESSAGE_WARNING = 31                -- Vermelho (aviso)
+MESSAGE_ADMINISTRATOR = 24          -- Especial (admin)
+```
+
+---
+
+**Cores de Texto (TEXTCOLOR_*)**
+
+```
+TEXTCOLOR_WHITE_EXP = 215           -- Branco (default)
+TEXTCOLOR_YELLOW = 210              -- Amarelo
+TEXTCOLOR_RED = 180                 -- Vermelho
+TEXTCOLOR_GREEN = 66                -- Verde
+TEXTCOLOR_BLUE = 35                 -- Azul
+TEXTCOLOR_ORANGE = 198              -- Laranja
+```
+
+---
+
+## **Fluxo de Execução**
+
+```
+/testmessage 23, 215
+
+Fluxo:
+1. Valida param não vazio
+2. Parse split(","):
+   - messageType = 23
+   - textColor = 215
+3. Fallback color se não informado:
+   - textColor = TEXTCOLOR_WHITE_EXP (215)
+4. player:sendTextMessage(
+     messageType = 23,
+     message = "Testing message type.",
+     position = player:getPosition(),
+     distance = 500,
+     textColor = 215
+   )
+5. Feedback: "Testing message type." na cor 215
+
+Resultado:
+- Mensagem de teste enviada
+- Tipo 23 testado
+- Cor 215 aplicada
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /testmessage 23
+
+Resultado:
+- Mensagem: "Testing message type."
+- Tipo: MESSAGE_EVENT_ADVANCE (23 - Amarelo)
+- Cor: TEXTCOLOR_WHITE_EXP (215 - Branco) [default]
+
+Mensagem aparece em amarelo com texto branco
+
+---
+
+GM: /testmessage 26, 180
+
+Resultado:
+- Mensagem: "Testing message type."
+- Tipo: MESSAGE_LOOK (26 - Branco)
+- Cor: 180 (Vermelho)
+
+Combine tipo 26 com cor vermelha
+
+---
+
+GM: /testmessage 18, 66
+
+Resultado:
+- Mensagem: "Testing message type."
+- Tipo: MESSAGE_STATUS (18 - Status)
+- Cor: 66 (Verde)
+
+Status message com cor verde
+```
+
+---
+
+**Erros Comuns:**
+
+```
+Error: "Message type is missing, please enter a message type."
+- Param vazio ou nil
+- Solução: /testmessage <type>
+
+Erro: Mensagem não aparece
+- MessageType inválido (negativo ou > MAX_MESSAGE_TYPE)
+- Solução: Use tipos conhecidos (16-47)
+
+Erro: Cor não aplicada
+- TEXTCOLOR inválido
+- Solução: Use cores conhecidas
+```
+
+---
+
+**Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `tonumber(str)` | Converte número |
+| `player:getPosition()` | Posição do GM |
+| `player:sendTextMessage(type, msg, pos, distance, color)` | Envia mensagem |
+
+**Constantes:**
+- `MESSAGE_*` variants (23, 16, 18, 26, etc)
+- `TEXTCOLOR_*` variants (215, 210, 180, 66, 35, 198)
+
+---
+
+## 📌 Resumo
+
+O arquivo test_send_message.lua é ferramenta simples de message testing. Implementação com 1-2 params, default color, feedback direto. Essencial para GMs debugar message display. Design minimalista focado em testes.

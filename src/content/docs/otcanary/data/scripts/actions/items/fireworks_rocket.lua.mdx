@@ -1,0 +1,172 @@
+---
+title: fireworks_rocket.lua
+description: Foguete de fogos de artifício com efeitos aleatórios
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="fireworks_rocket.lua" icon="star">
+Script de ação Lua que implementa foguete de fogos de artifício com efeitos visuais.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/fireworks_rocket.lua`
+
+Foguete temático que emite efeito de fogos aleatório (amarelo ou azul) se colocado no chão, ou dano + efeitos pirotécnicos se usado no inventory. Desbloquia achievements "Rocket in Pocket" e "Fireworks in the Sky". Item ID 6576.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `fireworks_rocket.lua` implementa foguete de artifício com dois comportamentos distintos baseado em localização. Se usado no chão, emite efeito visual aleatório (amarelo ou azul). Se usado no inventory (bolsa), causa dano de 10 HP físico, emite dois efeitos (fogo + queimado), grita frase cômida e progride achievement "Rocket in Pocket". Todos os usos progridem "Fireworks in the Sky".
+
+**Estrutura de Funcionalidades**
+
+```
+[Create fireworksRocket Action]
+    ↓
+[onUse function]
+    ├─ If fromPosition not CONTAINER_POSITION
+    │   └─ Ground placement
+    │       ├─ efeito aleatório (YELLOW ou BLUE)
+    │       └─ return true
+    └─ Else container placement
+        ├─ Dois efeitos (FIREAREA + HITBYFIRE)
+        ├─ Frase: "Ouch! Rather place it on the ground..."
+        ├─ Progress "Rocket in Pocket" +3
+        ├─ Dano -10 HP (PHYSICAL)
+        └─ return true
+    ↓
+[Ambos os casos]
+    ├─ Progress "Fireworks in the Sky" +250
+    ├─ item:remove()
+    └─ return true
+    ↓
+[Register on item ID 6576]
+```
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| CONTAINER_POSITION | constant | Posição container/inventory |
+| CONST_ME_FIREWORK_YELLOW | constant | Efeito amarelo |
+| CONST_ME_FIREWORK_BLUE | constant | Efeito azul |
+| CONST_ME_FIREAREA | constant | Efeito fogo área |
+| CONST_ME_HITBYFIRE | constant | Efeito queimado |
+| COMBAT_PHYSICALDAMAGE | constant | Tipo dano físico |
+
+## Funções
+
+### fireworksRocket.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que detona foguete.
+
+**Parâmetros:**
+- player: Creature player
+- item: Foguete sendo usado
+- fromPosition: Posição original
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. If fromPosition.x != CONTAINER_POSITION (chão)
+   ├─ efeito = random(YELLOW, BLUE)
+   ├─ fromPosition:sendMagicEffect(efeito)
+   └─ return true
+
+2. Else (inventory/container)
+   ├─ player:getPosition():sendMagicEffect(FIREAREA)
+   ├─ player:getPosition():sendMagicEffect(HITBYFIRE)
+   ├─ player:say("Ouch! Rather place it on the ground next time.")
+   ├─ Progress "Rocket in Pocket" +3
+   ├─ Dano addHealth(-10, PHYSICAL)
+   └─ continue
+
+3. Ambos os casos
+   ├─ Progress "Fireworks in the Sky" +250
+   ├─ item:remove()
+   └─ return true
+```
+
+**Implementação:**
+
+```lua
+function fireworksRocket.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if fromPosition.x ~= CONTAINER_POSITION then
+		fromPosition:sendMagicEffect(math.random(CONST_ME_FIREWORK_YELLOW, CONST_ME_FIREWORK_BLUE))
+	else
+		player:getPosition():sendMagicEffect(CONST_ME_FIREAREA)
+		player:getPosition():sendMagicEffect(CONST_ME_HITBYFIRE)
+		player:say("Ouch! Rather place it on the ground next time.", TALKTYPE_MONSTER_SAY)
+		player:addAchievementProgress("Rocket in Pocket", 3)
+		player:addHealth(-10, COMBAT_PHYSICALDAMAGE)
+	end
+
+	player:addAchievementProgress("Fireworks in the Sky", 250)
+	item:remove()
+	return true
+end
+```
+
+## Achievements
+
+| Nome | Tipo | Progresso | Descrição |
+|------|------|-----------|-----------|
+| Rocket in Pocket | Progress | +3 per pocket detonation | Usar foguete no inventory |
+| Fireworks in the Sky | Progress | +250 per use | Usar foguete (qualquer localização) |
+
+## Fluxo de Operação
+
+```
+[Player usa foguete]
+    ↓
+[fromPosition no chão?]
+    ├─ SIM → efeito aleatório (50% amarelo, 50% azul)
+    └─ NÃO (inventory) → Dois efeitos + dano + frase + progress +3
+    ↓
+[Ambos: Progress "Fireworks in the Sky" +250]
+    ↓
+[item:remove()]
+    ↓
+[return true]
+```
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Diferença localização chão vs container
+2. Random entre dois efeitos
+3. Múltiplos efeitos simultâneos
+4. Achievement progress (não unlock único)
+5. Dano físico como penalidade
+6. Behavior condicional por posição
+
+**Responsabilidades:**
+1. Detectar localização (chão vs inventory)
+2. Emitir efeito apropriado
+3. Se inventory: dano + efeitos + frase
+4. Progresso achievements em ambos os casos
+5. Remover item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 20 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 6576  
+**Efeitos**: 3 tipos (YELLOW, BLUE, FIREAREA, HITBYFIRE)  
+**Achievements**: 2 (progress-based)  
+**Dano**: 10 HP físico (só inventory)
+</Card>
+
+<Aside type="note">
+Foguete com dois comportamentos: chão emite efeito aleatório, inventory causa dano + efeitos. Ambos progridem achievements. "Rocket in Pocket" para detonação acidental.
+</Aside>

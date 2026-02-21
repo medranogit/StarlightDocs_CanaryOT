@@ -1,0 +1,177 @@
+---
+title: Invisibility
+description: Spell de suporte para Druids e Sorcerers que aplica condition de invisibilidade por aproximadamente 3 minutos 20 segundos
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `invisible.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Druid / Elder Druid / Sorcerer / Master Sorcerer |
+| **Spell ID** | 45 |
+| **Mana Requerida** | 440 |
+| **Level Requerido** | 35 |
+| **Status Premium** | Não (acesso livre) |
+| **Duração do Buff** | 200 segundos (200.000 ms) = 3 minutos 20 segundos |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utana vid` |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (buff defensivo) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/invisible.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell aplica CONDITION_INVISIBLE com duração longa (200 segundos). Diferente de Cancel Invisibility que REMOVE invisibilidade via dispel, este spell APLICA. A mana de 440 é alta, indicando que invisibilidade é recurso custoso. Não há verificação de condition anterior - spell pode ser castado novamente imediatamente mesmo se já invisível, potencialmente recarregando duração. A invisibilidade é cosmética + mechânica (player fica invisível a outros players + monstros, ganhando vantagem tática). Ao cast (atacar) ou tomar dano, invisibilidade quebra.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `invisible.lua` implementa buff de invisibilidade para Druids e Sorcerers (level 35+) que torna o caster invisível por 3 minutos 20 segundos. É um dos spells mais simples em estrutura, usando apenas condition aplicação direta sem cálculos complexos. O spell cria Combat com condition CONDITION_INVISIBLE, seta duração de 200 segundos, executa combat para aplicar ao caster, e retorna resultado. A implementação demonstra padrão minimalista de condition de invisibilidade.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+
+-- 2. Criação de Condition de Invisibilidade
+local condition = Condition(CONDITION_INVISIBLE)
+condition:setParameter(CONDITION_PARAM_TICKS, 200000)
+combat:addCondition(condition)
+
+-- 3. Instância do Spell
+local spell = Spell("instant")
+
+-- 4. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 4.1 Execução de Combat (aplica condition)
+    -- 4.2 Retorno de Status
+end
+
+-- 5. Configuração de Propriedades do Spell
+spell:name("Invisibility")
+spell:words("utana vid")
+spell:group("support")
+spell:vocation("druid;true", "elder druid;true", "sorcerer;true", "master sorcerer;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_INVISIBLE)
+spell:id(45)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(35)
+spell:mana(440)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat com condition de invisibilidade |
+| `condition` | `Condition` | Local | Condition de INVISIBLE com duração 200s |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Druid/Sorcerer que executa o spell |
+| `variant` | `Variant` | Parâmetro | Dados variáveis (não utilizados - self target) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Condition Minimalista**
+```lua
+local condition = Condition(CONDITION_INVISIBLE)
+condition:setParameter(CONDITION_PARAM_TICKS, 200000)
+combat:addCondition(condition)
+```
+Condition com apenas 1 parâmetro - duração. Sem parâmetros visuais adicionais.
+
+### 2. **Padrão de Handler Simples**
+```lua
+function spell.onCastSpell(creature, variant)
+    return combat:execute(creature, variant)
+end
+```
+Handler direto - sem validação, sem lógica adicional.
+
+### 3. **Padrão de Vocação Restrita (4 de 10)**
+```lua
+spell:vocation("druid;true", "elder druid;true", "sorcerer;true", "master sorcerer;true")
+```
+Exclusivo de vocações mágicas (Druid + Sorcerer e promotions).
+
+### 4. **Padrão de Mana Alta**
+```lua
+spell:mana(440)
+```
+Mana significativamente alta para level 35, indicando recurso custoso.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Aplica condition de invisibilidade ao caster.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Druid, Elder Druid, Sorcerer, ou Master Sorcerer que executa o spell.
+- `variant` (Variant): Dados variáveis (não utilizados - self target).
+
+**Fluxo de Execução:**
+
+1. **Execução de Combat**:
+   - Chama `combat:execute(creature, variant)`
+   - Combat aplica condition de CONDITION_INVISIBLE
+
+2. **Aplicação de Condition**:
+   - Duração: 200.000 ms (200 segundos = 3:20 minutos)
+   - Efeito visual: CONST_ME_MAGIC_BLUE
+
+3. **Resultado**:
+   - Caster fica invisível imediatamente
+   - Invisibilidade persiste por 200 segundos
+   - Quebra ao atacar ou tomar dano
+
+4. **Retorno**:
+   - Retorna `true` (cast bem-sucedido, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Invisibilidade aplicada, mana de 440 consumida
+
+**Lógica Detalhada:**
+
+O spell implementa invisibilidade pura sem lógica adicional. A duração de 200 segundos (3:20 minutos) é longa o suficiente para evasão tática ou viagem discreta, mas não indefinida.
+
+A mana de 440 é muito alta para level 35. Comparado a outros spells nesse nível, indica que invisibilidade é recurso premium em termos de custável. Força decisão de uso estratégico vs spam.
+
+A invisibilidade em Canary geralmente funciona:
+- Cosmético: Player aparenta invisível a outros
+- Mecânico: Monstros não veem player invisível (evitam agredir)
+- Quebra: Ao atacar ou tomar dano, breaks imediatamente
+- Combat: Atacar enquanto invisível quebra e revela
+
+A aplicação direta sem validação anterior significa que spell pode ser recastado mesmo se já invisível, potencialmente recarregando duração (útil para extended cover).
+
+O cooldown de 2 segundos permite recast se needed (e.g., se involuntariamente quebrou invisible).
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_INVISIBLE`: Som característico
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal padrão (apenas efeito visual)
+
+## 📌 Resumo
+
+**Invisibility** é um spell de suporte para Druids e Sorcerers (level 35+) que torna o caster invisível por 3 minutos 20 segundos. O spell requer 440 de mana (alto) e cooldown de 2 segundos. A implementação é minimalista, usando apenas condition CONDITION_INVISIBLE com duração 200 segundos. É ferramenta tática essencial para evasão, viagem discreta, ou posicionamento defensivo. A invisibilidade quebra ao atacar ou tomar dano, prevenindo exploit. É exclusivo de vocações mágicas (Druids e Sorcerers), tornando invisibilidade recurso raro e valioso em gameplay.
+
+A implementação segue padrão minimalista de condition, diferenciando-se por: (1) mana muito alta (440), (2) duração longa (200s ou 3:20), (3) vocação restrita (4 de 10), (4) handler ultra-simples.

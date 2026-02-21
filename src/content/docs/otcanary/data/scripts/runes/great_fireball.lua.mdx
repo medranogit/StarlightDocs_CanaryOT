@@ -1,0 +1,394 @@
+---
+title: "Spell/Rune - great_fireball.lua"
+description: "Runa de bola de fogo grande com área 3x3 e fórmula escalável"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `great_fireball.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 16 |
+| **ID do Item (runeId)** | 3191 |
+| **Level Requerido** | 30 |
+| **Magic Level Requerido** | 4 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Área** | 3x3 Circle |
+| **Cooldown** | 2s |
+| **Cargas** | 4 |
+| **PZ Locked** | Não |
+| **Agressividade** | Sim |
+| **Linhas de Código** | 37 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa que causa dano de fogo em área 3x3 com fórmula escalável. Versão melhorada de fireball tradicional com cobertura em área. Sem PZ lock permite uso em town. Efeito de área de fogo visual para indicar dano espalho.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/great_fireball.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(16)
+rune:runeId(3191)
+rune:level(30)
+rune:magicLevel(4)
+rune:group("attack")
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Bola de Fogo Grande com Área**
+
+Esta runa implementa um **sistema de dano em área com escalabilidade**:
+
+1. **Área 3x3:** Até 9 targets simultâneos
+2. **Fórmula Escalável:**
+   - min = (level/5) + (maglevel*1.2) + 7
+   - max = (level/5) + (maglevel*2.8) + 17
+   - Mesmo da avalanche (mas fogo vs físico)
+
+3. **Sem PZ Lock:** Funciona em town!
+4. **Efeito:** FIREAREA (explosão fogo)
+
+**Comparação com fireball:**
+```
+fireball:       single target, mlvl*1.81/3
+great_fireball: 3x3 área, mlvl*1.2/2.8
+```
+
+**Fluxo:**
+```
+Aponta em grupo
+├─ Projétil fogo viaja
+├─ Chega no centro
+├─ Explode em 3x3 (FIREAREA)
+└─ Todos em área sofrem dano
+```
+
+**Diferencial:** Primeira AoE de fogo disponível!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `great_fireball` oferece dano em área:
+
+- **Dano:** COMBAT_FIREDAMAGE escalável
+- **Fórmula:** (level/5) + (maglevel*1.2/2.8) + bônus
+- **Área:** 3x3 Circle (até 9 targets)
+- **Acesso:** Level 30, sem PZ lock
+
+### Arquitetura
+
+Combat com fórmula + área:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_FIREDAMAGE
+├─ Effect: FIREAREA
+├─ Distance: FIRE
+├─ Area: 3x3 Circle
+└─ Callback: onGetFormulaValues
+
+onGetFormulaValues()
+└─ Escalabilidade
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_FIREAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_FIRE)
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+```
+
+**Propósito:** Instância de Combat para grande bola de fogo.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_FIREAREA | Explosão área |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_FIRE | Projétil fogo |
+| `Area` | AREA_CIRCLE3X3 | 3x3 círculo (9 tiles) |
+
+**Características:**
+- Área 3x3 = splash damage
+- Callback para fórmula escalável
+- Efeito explosivo visual
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.2) + 7
+	local max = (level / 5) + (maglevel * 2.8) + 17
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano escalável em área.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level total |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 1.2) + 7
+max = (level / 5) + (maglevel * 2.8) + 17
+```
+
+**Pesos:**
+- Level: 0.2 igual
+- Maglevel min: 1.2
+- Maglevel max: 2.8 (quase 3x min)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 30 | 4 | 13.8 | 26.2 |
+| 50 | 10 | 23 | 45 |
+| 75 | 20 | 40 | 73 |
+| 100 | 30 | 54 | 101 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler da runa.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Grande fireball executada |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Fórmula de Área
+
+```lua
+local min = (level / 5) + (maglevel * 1.2) + 7
+local max = (level / 5) + (maglevel * 2.8) + 17
+```
+
+**Benefício:** Mesmo padrão de avalanche mas com fogo.
+
+### Padrão 2: Área 3x3
+
+```lua
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+```
+
+**Benefício:** Até 9 targets simultâneos.
+
+### Padrão 3: Sem PZ Lock
+
+```lua
+-- Runa SEM setPzLocked
+```
+
+**Benefício:** Funciona em town, crowd control early.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano de great fireball.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(player, 50, 10)
+// min = 10 + 12 + 7 = 29
+// max = 10 + 28 + 17 = 55
+// Retorna: -29, -55
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Lança bola de fogo grande em área 3x3.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Position alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Dano aplicado em área |
+| `false` | Target falhou |
+
+**Efeito:**
+- Projétil fogo viaja
+- Impacto FIREAREA em 3x3
+- Todos em área sofrem dano escalável
+- Até 9 targets simultâneos
+
+**Exemplo:**
+
+```lua
+-- Mago nível 50, MLvl 10 aponta em grupo
+rune.onCastSpell(mago, groupCenterVariant, false)
+// Projétil fogo viaja
+// Chega no centro
+// Explode em 3x3
+// Cada criatura na área: -29 a -55 dano
+// Resultado: Multidão queimada!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Crowd Control
+
+```lua
+-- Mago aponta em spawn de 5+ monstros
+// Grande fireball cobre 3x3
+// Todos sofrem dano simultânea
+// Resultado: AoE efficient
+```
+
+### Caso 2: Progression
+
+```lua
+-- Mesmo mago, level 30 -> 100:
+// Dano: 14 -> 54
+// Melhora progressivo
+```
+
+### Caso 3: Town Safe
+
+```lua
+-- Sem PZ lock
+// Pode usar em town
+// Útil contra PK
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage Type:** COMBAT_FIREDAMAGE
+- **Areas:** AREA_CIRCLE3X3
+- **Effects:** CONST_ME_FIREAREA
+- **Distance:** CONST_ANI_FIRE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Dano fogo em área 3x3 |
+| **Dano Type** | COMBAT_FIREDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*1.2)+7, max=(lvl/5)+(mlvl*2.8)+17 |
+| **Área** | 3x3 Circle (9 tiles) |
+| **Cargas** | 4 |
+| **PZ Lock** | Não (funciona town) |
+| **Level** | 30 (mid-game) |
+| **Padrão** | Callback + área 3x3 |

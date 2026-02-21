@@ -1,0 +1,327 @@
+---
+title: Exercise Weapon Reward
+description: Comando PLAYER para reivindicar arma de exercício em modal interativo
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# 🛠️ Documentação: reward.lua
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Arquivo** | `reward.lua` |
+| **Tipo** | TalkAction (Comando de Jogador) |
+| **Acesso** | normal (PLAYER) |
+| **Comando** | `!reward` |
+| **Descrição** | Reivindicar arma de exercício em modal interativo |
+| **Parâmetro** | Nenhum |
+| **Validações** | Feature habilitada, localização mínima, storage de uma vez |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/reward.lua
+```
+
+## 💡 Utilidade
+
+Este comando apresenta um modal interativo para que jogadores selecionem uma arma de exercício como prêmio. O sistema valida múltiplas condições (feature habilitada, localização mínima, capacidade do inbox) e marca como recebido via Storage Value.
+
+## 📄 Visão Geral do Código Resumo Executivo
+
+O script `reward.lua` implementa um sistema de recompensa de arma de exercício:
+
+- **Configuração de Itens**: Array com 7 armas distintass e cargas configuráveis
+- **Modal Interativo**: Apresenta escolhas visuais ao jogador
+- **Validações Cascata**: Feature, localização, capacidade, storage
+- **Armazenamento em Inbox**: Itens vão direto para loja (store inbox)
+- **Atributos Especiais**: Marca como imóvel, adiciona descrição personalizada
+- **Controle de Uma Vez**: Storage previne múltiplos recebimentos
+
+### Fluxo Lógico Resumido
+
+1. Valida se feature está habilitada globalmente
+2. Valida se jogador está em localização mínima
+3. Valida se já recebeu recompensa (storage)
+4. Exibe modal com 7 opções de armas
+5. Ao selecionar: valida capacidade e espaço
+6. Adiciona arma ao inbox com atributos especiais
+7. Marca como recebido via Storage
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variáveis Locais Globais
+
+```lua
+local config = {
+    items = {
+        { id = 35284, charges = 64400 },
+        { id = 35279, charges = 64400 },
+        { id = 35281, charges = 64400 },
+        { id = 35283, charges = 64400 },
+        { id = 35282, charges = 64400 },
+        { id = 35280, charges = 64400 },
+        { id = 44066, charges = 64400 },
+    },
+    storage = tonumber(Storage.PlayerWeaponReward),
+}
+```
+
+**Descrição:**
+
+- `config.items`: Array de 7 armas com:
+  - `id`: ID do item da arma
+  - `charges`: Carga inicial (64400 padrão)
+- `config.storage`: Storage key para rastrear recebimento (tonumber converte)
+
+**Armas Configuradas:**
+
+| Índice | ID | Cargas |
+|--------|----|-|
+| 1 | 35284 | 64400 |
+| 2 | 35279 | 64400 |
+| 3 | 35281 | 64400 |
+| 4 | 35283 | 64400 |
+| 5 | 35282 | 64400 |
+| 6 | 35280 | 64400 |
+| 7 | 44066 | 64400 |
+
+### Função Local: `sendExerciseRewardModal()`
+
+```lua
+local function sendExerciseRewardModal(player)
+    local window = ModalWindow({
+        title = "Exercise Reward",
+        message = "choose a item",
+    })
+    for _, it in pairs(config.items) do
+        local iType = ItemType(it.id)
+        if iType then
+            window:addChoice(iType:getName(), function(player, button, choice)
+                if button.name ~= "Select" then
+                    return true
+                end
+
+                local inbox = player:getStoreInbox()
+                local inboxItems = inbox:getItems()
+                if inbox and #inboxItems < inbox:getMaxCapacity() and player:getFreeCapacity() >= iType:getWeight() then
+                    local item = inbox:addItem(it.id, it.charges)
+                    if item then
+                        item:setActionId(IMMOVABLE_ACTION_ID)
+                        item:setAttribute(ITEM_ATTRIBUTE_STORE, systemTime())
+                        item:setAttribute(ITEM_ATTRIBUTE_DESCRIPTION, string.format("You won this exercise weapon as a reward to be a %s player. Use it in a dummy!\nHave a nice game..", configManager.getString(configKeys.SERVER_NAME)))
+                    else
+                        player:sendTextMessage(MESSAGE_LOOK, "You need to have capacity and empty slots to receive.")
+                        return
+                    end
+                    player:sendTextMessage(MESSAGE_LOOK, string.format("Congratulations, you received a %s with %i charges in your store inbox.", iType:getName(), it.charges))
+                    player:setStorageValue(config.storage, 1)
+                else
+                    player:sendTextMessage(MESSAGE_LOOK, "You need to have capacity and empty slots to receive.")
+                end
+            end)
+        end
+    end
+    window:addButton("Select")
+    window:addButton("Close")
+    window:setDefaultEnterButton(0)
+    window:setDefaultEscapeButton(1)
+    window:sendToPlayer(player)
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador a quem exibir modal
+
+**Retorno:**
+- Nenhum (envia modal ao jogador)
+
+#### Lógica Detalhada
+
+1. **Criação da Modal**:
+   - `ModalWindow({ title = "Exercise Reward", message = "choose a item" })`
+   - Cria janela interativa
+
+2. **Iteração de Armas**:
+   - Para cada arma em `config.items`:
+   - `ItemType(it.id)`: Obtém dados do item
+   - `window:addChoice()`: Adiciona opção clicável
+
+3. **Callback de Seleção**:
+   - Executado quando jogador clica em arma
+   - Valida botão: se não é "Select", cancela
+
+4. **Validação de Capacidade**:
+   - Obtém inbox do jogador
+   - Verifica: `#inboxItems < getMaxCapacity()`
+   - Verifica: `getFreeCapacity() >= iType:getWeight()`
+
+5. **Adição de Item**:
+   - `inbox:addItem(it.id, it.charges)`: Adiciona item ao inbox
+   - `setActionId(IMMOVABLE_ACTION_ID)`: Marca como imóvel
+   - `setAttribute(ITEM_ATTRIBUTE_STORE, systemTime())`: Marca timestamp
+   - `setAttribute(ITEM_ATTRIBUTE_DESCRIPTION, ...)`: Adiciona descrição personalizada
+
+6. **Finalização**:
+   - Se sucesso: envia confirmação e define storage
+   - Se falha: envia mensagem de erro de capacidade
+
+7. **Botões da Modal**:
+   - "Select" (botão 0): Botão padrão Enter
+   - "Close" (botão 1): Botão padrão Escape
+   - Ambos configurados como ações padrão
+
+### Função Principal: `exerciseRewardModal.onSay()`
+
+```lua
+local exerciseRewardModal = TalkAction("!reward")
+function exerciseRewardModal.onSay(player, words, param)
+    if not configManager.getBoolean(configKeys.TOGGLE_RECEIVE_REWARD) or player:getTown():getId() < TOWNS_LIST.AB_DENDRIEL then
+        return true
+    end
+    if player:getStorageValue(config.storage) > 0 then
+        player:sendTextMessage(MESSAGE_LOOK, "You already received your exercise weapon reward!")
+        return true
+    end
+    sendExerciseRewardModal(player)
+    return true
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavra-chave do comando
+- `param` (string): Parâmetro vazio (sem uso)
+
+**Retorno:**
+- `true`: Comando processado
+
+#### Lógica Detalhada
+
+1. **Validação de Feature Habilitada**:
+   - `configManager.getBoolean(configKeys.TOGGLE_RECEIVE_REWARD)`
+   - Se falso: retorna silenciosamente (sem mensagem)
+
+2. **Validação de Localização Mínima**:
+   - `player:getTown():getId() < TOWNS_LIST.AB_DENDRIEL`
+   - Se em localização anterior a Dendriel: retorna
+   - Propósito: apenas em certas áreas do jogo
+
+3. **Validação de Uma Vez**:
+   - `player:getStorageValue(config.storage) > 0`
+   - Se Storage > 0: já recebeu, envia mensagem informativa
+
+4. **Exibição da Modal**:
+   - Se todas as validações passam: chama `sendExerciseRewardModal()`
+
+### Variáveis Globais Utilizadas
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `MESSAGE_LOOK` | number | Tipo de mensagem (comunicação visual) |
+| `IMMOVABLE_ACTION_ID` | number | Action ID para itens imóveis |
+| `ITEM_ATTRIBUTE_STORE` | number | Atributo para marcar item como da loja |
+| `ITEM_ATTRIBUTE_DESCRIPTION` | number | Atributo de descrição customizada |
+| `TOWNS_LIST.AB_DENDRIEL` | number | ID da cidade Ab'Dendriel |
+| `Storage.PlayerWeaponReward` | string | Chave de storage para recompensa |
+
+### Funções Globais Utilizadas
+
+| Função | Origem | Descrição |
+|--------|--------|-----------|
+| `configManager.getBoolean(key)` | Config Manager | Obtém valor booleano da config |
+| `player:getTown()` | Object Player | Retorna town do jogador |
+| `:getId()` | Object Town | Retorna ID da cidade |
+| `ItemType(id)` | Core de Items | Obtém dados do tipo de item |
+| `iType:getName()` | Object ItemType | Retorna nome do item |
+| `iType:getWeight()` | Object ItemType | Retorna peso unitário do item |
+| `player:getStoreInbox()` | Object Player | Retorna inbox de loja do jogador |
+| `:getItems()` | Object Inbox | Retorna lista de itens |
+| `:getMaxCapacity()` | Object Inbox | Retorna capacidade máxima |
+| `player:getFreeCapacity()` | Object Player | Retorna capacidade livre em gramas |
+| `:addItem(id, charges)` | Object Inbox | Adiciona item ao inbox |
+| `item:setActionId(id)` | Object Item | Define action ID |
+| `item:setAttribute(attr, value)` | Object Item | Define atributo customizado |
+| `systemTime()` | Global | Retorna timestamp atual do sistema |
+| `player:setStorageValue(key, value)` | Object Player | Define storage value |
+| `player:getStorageValue(key)` | Object Player | Obtém storage value |
+| `player:sendTextMessage(type, text)` | Object Player | Envia mensagem de texto |
+
+## 🤖 Informações da Documentação
+
+| Info | Detalhe |
+|------|---------|
+| **Versão Documentada** | Build Canary - Estrutura Completa |
+| **Tipo de Documento** | Documentação Técnica de TalkAction |
+| **Completude** | Análise Completa do Código-Fonte |
+| **Últimas Verificações** | Validação de Sintaxe Lua, Fluxo Lógico |
+
+---
+
+## 📋 Resumo de Implementação
+
+**Padrão de Registro:**
+
+```lua
+exerciseRewardModal:separator(" ")
+exerciseRewardModal:groupType("normal")
+exerciseRewardModal:register()
+```
+
+**Uso Prático:**
+
+Quando um jogador digita `!reward`:
+
+1. Sistema valida se feature está habilitada
+2. Valida se está em localização mínima (Ab'Dendriel+)
+3. Valida se já recebeu recompensa (storage)
+4. Se tudo OK: exibe modal com 7 armas
+5. Jogador clica em arma desejada
+6. Sistema valida capacidade
+7. Item vai ao inbox da loja com marca de loja e descrição
+8. Storage marcado para prevenir múltiplos recebimentos
+
+**Exemplo de Execução:**
+
+```
+--- Primeira vez (sucesso) ---
+Jogador: !reward (em Dendriel, nunca recebeu)
+Sistema: Exibe modal "Exercise Reward"
+Opções: 7 armas diferentes
+Jogador: Clica em "Sword of Fury"
+Sistema: "Congratulations, you received a Sword of Fury with 64400 charges in your store inbox."
+Storage: PlayerWeaponReward = 1
+
+--- Segunda vez (já recebeu) ---
+Jogador: !reward
+Sistema: "You already received your exercise weapon reward!"
+
+--- Se feature desabilitada ---
+Jogador: !reward
+Sistema: (sem resposta, retorna silenciosamente)
+
+--- Se em localização anterior a Dendriel ---
+Jogador: !reward (em Rookgaard)
+Sistema: (sem resposta, retorna silenciosamente)
+```
+
+**Características Especiais:**
+
+- **Inbox de Loja**: Items vão à loja (store inbox), não ao inventário
+- **Imóvel**: Marcado com IMMOVABLE_ACTION_ID (não pode ser movido)
+- **Descrição Customizada**: Inclui nome do servidor
+- **Cargas Completas**: 64400 cargas iniciais
+- **Timestamp**: Registra quando foi recebido
+
+---
+
+## 🔗 Relacionados
+
+- **Arquivo de Padrão**: `data/npclib/npc_system/custom_modules.lua.mdx`
+- **Sistema**: TalkActions (Comandos de Conversa)
+- **Acesso**: PLAYER (normal)
+- **Tipo de Armazenamento**: Storage Value (uma vez por jogador)
+- **Localização Mínima**: Ab'Dendriel (TOWNS_LIST.AB_DENDRIEL)
+- **Detalhe Arquitetura**: Ver `ARQUITETURA_PROJETO.mdx` para contexto completo

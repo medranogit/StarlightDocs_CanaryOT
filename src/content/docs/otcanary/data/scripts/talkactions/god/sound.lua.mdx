@@ -1,0 +1,356 @@
+---
+title: Sound Effects Management
+description: Comandos GOD para tocar efeitos sonoros globalmente
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | sound.lua |
+| **Tipo de Sistema** | Sound Effects (GOD/GM) |
+| **Funcionalidade Principal** | Tocar sons |
+| **Comandos** | /areasound, /internalsound, /globalsound, /ambientsound, /musicsound |
+| **Requisito** | God (primeiros 3) ou GM (últimos 2) |
+| **Separador** | Espaço |
+| **Modos Som** | Single (1 effect) ou Double (2 effects) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/sound.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** 5 comandos independentes. Primeiros 3 suportam 1-2 effects: /areasound (single/double), /internalsound (single/double), /globalsound (single/double) com Game.getPlayers(). Últimos 2 GM simples: /ambientsound, /musicsound com 1 param numérico. Ghost mode consideration em areasound.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo sound.lua implementa 5 comandos de sound effects. Dispõe de area/internal/global sounds com single/double effects, ambient e music, validações de parâmetro, feedback personalizado. Ferramenta versátil de audio management.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **TalkAction /areasound**
+
+```lua
+local areasound = TalkAction("/areasound")
+
+function areasound.onSay(player, words, param)
+	-- create log
+	logCommand(player, words, param)
+
+	if param == "" then
+		player:sendCancelMessage("Command param required.")
+		return true
+	end
+
+	local split = param:split(",")
+	if not split[2] then
+		-- Single effect
+		local primaryEffect = tonumber(param)
+		if primaryEffect == nil or primaryEffect == 0 then
+			player:sendCancelMessage("Invalid command param.")
+			return true
+		end
+
+		player:sendCancelMessage("Playing sound number " .. primaryEffect .. " on the area.")
+		player:getPosition():sendSingleSoundEffect(primaryEffect, player:isInGhostMode() and nil or player)
+		return true
+	end
+
+	-- Double effects
+	local primaryEffect = tonumber(split[1])
+	local secondaryEffect = tonumber(split[2])
+	if primaryEffect == nil or secondaryEffect == nil then
+		player:sendCancelMessage("Invalid command params.")
+		return true
+	end
+
+	player:sendCancelMessage("Playing sound number " .. primaryEffect .. " and " .. secondaryEffect .. " on the area.")
+	player:getPosition():sendDoubleSoundEffect(primaryEffect, secondaryEffect, player:isInGhostMode() and nil or player)
+	return true
+end
+
+areasound:separator(" ")
+areasound:groupType("god")
+areasound:register()
+```
+
+**Comando:**
+```
+/areasound 100                  -- Single effect no local
+/areasound 100, 200             -- Double effect no local
+```
+
+**Fluxo:**
+1. Valida param não vazio
+2. Se 1 param: Single effect
+3. Se 2 params: Double effects
+4. Considera ghost mode (não ouve se ghost)
+5. Feedback ao executor
+
+---
+
+### **TalkAction /internalsound**
+
+```lua
+local internalsound = TalkAction("/internalsound")
+
+function internalsound.onSay(player, words, param)
+	-- create log
+	logCommand(player, words, param)
+
+	if param == "" then
+		player:sendCancelMessage("Command param required.")
+		return true
+	end
+
+	local split = param:split(",")
+	if not split[2] then
+		-- Single effect
+		local primaryEffect = tonumber(param)
+		if primaryEffect == nil or primaryEffect == 0 then
+			player:sendCancelMessage("Invalid command param.")
+			return true
+		end
+
+		player:sendCancelMessage("Playing sound number " .. primaryEffect .. " internally.")
+		player:sendSingleSoundEffect(primaryEffect)
+		return true
+	end
+
+	-- Double effects
+	local primaryEffect = tonumber(split[1])
+	local secondaryEffect = tonumber(split[2])
+	if primaryEffect == nil or secondaryEffect == nil then
+		player:sendCancelMessage("Invalid command params.")
+		return true
+	end
+
+	player:sendCancelMessage("Playing sound number " .. primaryEffect .. " and " .. secondaryEffect .. " internally.")
+	player:sendDoubleSoundEffect(primaryEffect, secondaryEffect)
+	return true
+end
+
+internalsound:separator(" ")
+internalsound:groupType("god")
+internalsound:register()
+```
+
+**Comando:**
+```
+/internalsound 100              -- Single effect interno (só executor)
+/internalsound 100, 200         -- Double effect interno
+```
+
+**Diferença:** Toca só para o GM, não audível ao redor.
+
+---
+
+### **TalkAction /globalsound**
+
+```lua
+local globalsound = TalkAction("/globalsound")
+
+function globalsound.onSay(player, words, param)
+	-- create log
+	logCommand(player, words, param)
+
+	if param == "" then
+		player:sendCancelMessage("Command param required.")
+		return true
+	end
+
+	local split = param:split(",")
+	if not split[2] then
+		-- Single effect
+		local primaryEffect = tonumber(param)
+		if primaryEffect == nil or primaryEffect == 0 then
+			player:sendCancelMessage("Invalid command param.")
+			return true
+		end
+
+		player:sendCancelMessage("Playing sound number " .. primaryEffect .. " globally.")
+		for _, pid in ipairs(Game.getPlayers()) do
+			pid:sendSingleSoundEffect(primaryEffect, false)
+		end
+		return true
+	end
+
+	-- Double effects
+	local primaryEffect = tonumber(split[1])
+	local secondaryEffect = tonumber(split[2])
+	if primaryEffect == nil or secondaryEffect == nil then
+		player:sendCancelMessage("Invalid command params.")
+		return true
+	end
+
+	player:sendCancelMessage("Playing sound number " .. primaryEffect .. " and " .. secondaryEffect .. " globally.")
+	for _, pid in ipairs(Game.getPlayers()) do
+		pid:sendDoubleSoundEffect(primaryEffect, secondaryEffect)
+	end
+	return true
+end
+
+globalsound:separator(" ")
+globalsound:groupType("god")
+globalsound:register()
+```
+
+**Comando:**
+```
+/globalsound 100                -- Single effect para todos
+/globalsound 100, 200           -- Double effect para todos
+```
+
+**Fluxo:** Game.getPlayers() itera todos players online.
+
+---
+
+### **TalkAction /ambientsound**
+
+```lua
+local ambientSoundCommand = TalkAction("/ambientsound")
+
+function ambientSoundCommand.onSay(player, words, param)
+	logCommand(player, words, param)
+
+	local soundId = tonumber(param)
+	if not soundId then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Uso correto: /ambientsound <id> ou /ambientsound disable")
+		return false
+	end
+
+	player:sendAmbientSoundEffect(soundId)
+	return true
+end
+
+ambientSoundCommand:separator(" ")
+ambientSoundCommand:groupType("gamemaster")
+ambientSoundCommand:register()
+```
+
+**Comando:** `/ambientsound 50`
+
+**Requisito:** GameMaster (nivel menor)
+
+---
+
+### **TalkAction /musicsound**
+
+```lua
+local musicSoundCommand = TalkAction("/musicsound")
+
+function musicSoundCommand.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	local soundId = tonumber(param)
+	if not soundId then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Uso correto: /musicsound <id> ou /musicsound disable")
+		return false
+	end
+
+	player:sendMusicSoundEffect(soundId)
+	return true
+end
+
+musicSoundCommand:separator(" ")
+musicSoundCommand:groupType("gamemaster")
+musicSoundCommand:register()
+```
+
+**Comando:** `/musicsound 75`
+
+**Requisito:** GameMaster (nivel menor)
+
+---
+
+## **Tabela de Efeitos Sonoros**
+
+**Padrão:** IDs numéricos (customizáveis via data files)
+
+```
+Examples:
+- 1-50: Basic sounds (hits, spells, moves)
+- 50-100: Ambient sounds (wind, water, fire)
+- 100-150: Music tracks
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /areasound 25
+
+Resultado:
+- Som 25 toca na área ao redor do GM
+- Feedback: "Playing sound number 25 on the area."
+- Audível para players próximos
+
+---
+
+GM: /internalsound 25
+
+Resultado:
+- Som 25 toca só para o GM
+- Feedback: "Playing sound number 25 internally."
+- Outros players não ouvem
+
+---
+
+GM: /globalsound 10, 20
+
+Resultado:
+- Som 10 + 20 toca para TODOS os players
+- Feedback: "Playing sound number 10 and 20 globally."
+- Propagação em server inteiro
+
+---
+
+GM: /ambientsound 50
+
+Resultado:
+- Ambient sound 50 tocado
+- Precisa GameMaster+
+
+---
+
+GM: /musicsound 75
+
+Resultado:
+- Música 75 tocada
+- Precisa GameMaster+
+```
+
+---
+
+**Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `tonumber(str)` | Converte número |
+| `player:getPosition()` | Posição do GM |
+| `position:sendSingleSoundEffect(id, observer)` | 1 effect com observer opt |
+| `position:sendDoubleSoundEffect(id1, id2, observer)` | 2 effects |
+| `player:sendSingleSoundEffect(id)` | Internal single |
+| `player:sendDoubleSoundEffect(id1, id2)` | Internal double |
+| `player:sendAmbientSoundEffect(id)` | Ambient sound |
+| `player:sendMusicSoundEffect(id)` | Music sound |
+| `player:isInGhostMode()` | Valida ghost |
+| `Game.getPlayers()` | Lista all online |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+
+**Constantes:**
+- `MESSAGE_EVENT_ADVANCE`
+
+---
+
+## 📌 Resumo
+
+O arquivo sound.lua é ferramenta versátil de sound management. Implementação com 5 comandos (3 GOD + 2 GM), single/double effects, scopes diferenciados (area/internal/global/ambient/music), ghost consideration. Essencial para efeitos sonoros. Design modular com validações.

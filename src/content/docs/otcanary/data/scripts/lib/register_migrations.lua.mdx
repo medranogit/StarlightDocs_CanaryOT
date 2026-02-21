@@ -1,0 +1,760 @@
+---
+title: "Script Lib - register_migrations.lua"
+description: "Sistema de migrations para versionamento de banco de dados com executar sequencial e persistência de estado"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `register_migrations.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Migration System / Bootstrap |
+| **Padrão** | Metatable Class with Persistent State |
+| **Linhas de Código** | 87 |
+| **Funções Globais** | 1 (GlobalEvent callback) |
+| **Funções Locais** | 5 (execute, register, forEachPlayer, etc) |
+| **Complexidade** | Médium-Complexo |
+| **Status** | Database versioning framework |
+
+**Descrição:**
+Sistema de migrations que fornece mecanismo de versionamento de banco de dados e execução de operações de boot sequencial. Implementa classe Migration com metatable que valida nomes (timestamp_description), persiste estado de execução em KV store, e executa migrations registradas durante startup do servidor. Suporta iteração de players, callbacks customizados (onExecute), e logging detalhado.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/register_migrations.lua
+```
+
+**Tipo de Carregamento:** Executado durante inicialização, registra GlobalEvent de startup
+
+**Contexto de Uso:** Database migrations - versioning de alterações estruturais, update de players, alterações de dados
+
+**Pré-requisitos:**
+- KV (key-value store) global scoped system
+- Database (db) global com storeQuery/Result
+- Game.getOfflinePlayer() para carregar players
+- Logger system
+- GlobalEvent system
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de Database Migrations (Version Control para Data)**
+
+Servidores evoluem: novos campos, estruturas, dados. Migrations rastreiam isso:
+
+**Sem migrations:**
+```lua
+-- Primeira vez: criou novo field
+UPDATE players SET new_field = 0
+
+-- Próxima vez: rodou again? Problema!
+-- Ou não rodou? Dados inconsistentes
+```
+
+**Com migrations:**
+```lua
+-- Migration criada uma vez
+Migration("20240101_add_new_field"):onExecute(function(self)
+	db.query("ALTER TABLE players ADD COLUMN ...")
+end)
+
+-- Sistema rastreia: "execute isso 1x, nunca mais"
+-- KV store persiste: Migration["20240101_add_new_field"] = true
+```
+
+**Pattern:**
+```
+GlobalEvent GameMigrations (startup)
+  ├─ Ordena migrations por timestamp
+  ├─ Para cada migration não-executada
+  ├─ Chama migration:execute()
+  ├─ Persiste em KV store
+  └─ Log detalhado de progresso
+```
+
+**Benefício:** Safe, traceable, idempotent, zero data loss
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `register_migrations.lua` implementa **database migration system**:
+
+- **Define Migration class** com metatable para criar migrações
+- **Valida nomes** (formato timestamp obrigatório: YYYYMMDDHHMMSS_description)
+- **Persiste estado** (KV store rastreia quais já executadas)
+- **Executa sequencialmente** durante startup ordenado por timestamp
+- **Suporta callbacks** customizados via onExecute hook
+- **Fornece utilities** (forEachPlayer para batch operations)
+
+### Arquitetura
+
+Script usa padrão de **class-based factory com registry**:
+
+```lua
+Migration = {
+	registry = {},
+}
+
+setmetatable(Migration, {
+	__call = function(self, name)
+		return setmetatable({
+			name = name,
+			executed = KV.scoped("migrations"):get(name) or false,
+		}, { __index = Migration })
+	end,
+})
+```
+
+Cada chamada `Migration("20240101_add_field")` cria nova instância com estado persistido.
+
+### Fluxo Lógico Resumido
+
+| Fase | Ação | Validação |
+|------|------|-----------|
+| **Definição** | `Migration("20240101_name")` cria nova instância | Nome é string |
+| **Carregamento** | KV store confere se já foi executada | `KV.scoped("migrations"):get(name)` |
+| **Registro** | Script chama `migration:register()` | Valida nome, registra em registry |
+| **Validação** | `_validateName()` confere timestamp | Formato 14 digitos + underscore |
+| **Startup** | GlobalEvent dispara, ordena migrations | `table.sort()` por nome (= chronológico) |
+| **Execução** | Para cada migration não-executada | Chama `migration:execute()` |
+| **Persistência** | Marca como executada em KV store | `KV.scoped("migrations"):set(name, true)` |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Metatable: Migration Constructor
+
+```lua
+setmetatable(Migration, {
+	__call = function(self, name)
+		return setmetatable({
+			name = name,
+			executed = KV.scoped("migrations"):get(name) or false,
+		}, { __index = Migration })
+	end,
+})
+```
+
+**Propósito:** Factory pattern para criar instâncias Migration.
+
+**Acionamento:**
+```lua
+local migration = Migration("20240101_add_field")
+```
+
+**Retorna:** Nova tabela com metatable `__index = Migration` (método lookup).
+
+**Carregamento de Estado:**
+```lua
+executed = KV.scoped("migrations"):get(name) or false
+```
+
+- KV store scoped em "migrations" namespace
+- Se não existe chave, default para false
+- Permite múltiplas execuções do script sin risco
+
+---
+
+### Função Global: Migration:forEachPlayer()
+
+```lua
+function Migration:forEachPlayer(callback, main)
+	local rows = db.storeQuery("SELECT `id` FROM `players`")
+	if rows then
+		repeat
+			local playerId = Result.getNumber(rows, "id")
+			local player = Game.getOfflinePlayer(playerId)
+			if player then
+				callback(player)
+				player:save()
+			end
+		until not Result.next(rows)
+		Result.free(rows)
+	end
+end
+```
+
+**Propósito:** Iterar todos players do banco de dados e executar callback em cada um.
+
+**Uso Típico (em onExecute):**
+```lua
+Migration("20240101_update_skill"):onExecute(function(self)
+	self:forEachPlayer(function(player)
+		player:addSkillTries(SKILL.DISTANCE, 100)
+	end)
+end)
+```
+
+**Fluxo:**
+
+1. **Query Database**
+   ```lua
+   local rows = db.storeQuery("SELECT `id` FROM `players`")
+   ```
+   - Seleciona todos IDs de players
+
+2. **Iterar Resultados**
+   ```lua
+   repeat
+       local playerId = Result.getNumber(rows, "id")
+       -- Processa playerId
+   until not Result.next(rows)
+   ```
+   - Loop via Result.next() até esgotar
+
+3. **Carregar Player**
+   ```lua
+   local player = Game.getOfflinePlayer(playerId)
+   ```
+   - Carrega player como offline (sem questão de estar online)
+
+4. **Executar Callback**
+   ```lua
+   if player then
+       callback(player)
+       player:save()
+   end
+   ```
+   - Chama função callback
+   - Salva player automaticamente após modificação
+
+5. **Cleanup**
+   ```lua
+   Result.free(rows)
+   ```
+   - Libera resultado de query
+
+**Parâmetros:**
+- `callback` - Função `function(player)` executada em cada player
+- `main` - Sem uso no código (parameter fantasma)
+
+**Performance:** O(n) onde n = número de players, com salve individual
+
+---
+
+### Função Global: Migration:execute()
+
+```lua
+function Migration:execute()
+	if self.executed then
+		return
+	end
+
+	if self.onExecute then
+		self:onExecute()
+	end
+
+	self.executed = true
+	KV.scoped("migrations"):set(self.name, true)
+end
+```
+
+**Propósito:** Executar migration se não foi executada, e marcar como executada.
+
+**Segurança:** Idempotent - pode ser chamado múltiplas vezes, só executa uma vez.
+
+**Fluxo:**
+
+1. **Checar se já executada**
+   ```lua
+   if self.executed then
+       return
+   end
+   ```
+   - Se `self.executed` é true, aborta
+
+2. **Chamar onExecute Hook**
+   ```lua
+   if self.onExecute then
+       self:onExecute()
+   end
+   ```
+   - Se callback foi definido, executa
+   - Callback recebe `self` como argumento
+   - Exemplo: query de banco, modificação de player
+
+3. **Marcar como Executada (Memory)**
+   ```lua
+   self.executed = true
+   ```
+   - Atualiza flag local
+
+4. **Persistir em KV Store**
+   ```lua
+   KV.scoped("migrations"):set(self.name, true)
+   ```
+   - Salva no banco de dados persistente
+   - Garante que próximo restart não roda again
+
+**Callback Hook Esperado:**
+```lua
+Migration("20240101_name"):onExecute(function(self)
+	-- DB queries, player updates, etc
+	db.query("ALTER TABLE ...")
+	self:forEachPlayer(function(player) ... end)
+end)
+```
+
+---
+
+### Função Global: Migration:register()
+
+```lua
+function Migration:register()
+	if self.executed then
+		return
+	end
+	if not self:_validateName() then
+		logger.error("Invalid migration name: " .. self.name .. ". Migration names must be in the format: <timestamp>_<description>. Example: 20231128213149_add_new_monsters")
+	end
+
+	table.insert(Migration.registry, self)
+end
+```
+
+**Propósito:** Registrar migration na registry global para execução durante startup.
+
+**Sequência:**
+
+1. **Skip se já Executada**
+   ```lua
+   if self.executed then
+       return
+   end
+   ```
+   - Se migration já rodou, não registra novamente
+
+2. **Validar Nome**
+   ```lua
+   if not self:_validateName() then
+       logger.error("Invalid migration name: ...")
+   end
+   ```
+   - Checa formato obrigatório (vide próxima função)
+   - Loga erro se inválido (NÃO falha, apenas alerta)
+
+3. **Adicionar à Registry**
+   ```lua
+   table.insert(Migration.registry, self)
+   ```
+   - Adiciona self à lista global
+   - Lista será executada em ordem durante startup
+
+**Nota:** Error logging não impede registro (code bug? ou intencional para debugging?)
+
+---
+
+### Função Privada: Migration:_validateName()
+
+```lua
+function Migration:_validateName()
+	local timestampString = string.match(self.name, "^(%d+)_")
+
+	if not timestampString or #timestampString ~= 14 then
+		return false
+	end
+
+	local year, month, day, hour, min, sec = timestampString:match("(%d%d%d%d)(%d%d)(%d%d)(%d%d)(%d%d)(%d%d)")
+	local timestamp = os.time({ year = tonumber(year), month = tonumber(month), day = tonumber(day), hour = tonumber(hour), min = tonumber(min), sec = tonumber(sec) })
+
+	local minTimestamp = os.time({ year = 2023, month = 11, day = 28, hour = 0, min = 0, sec = 0 })
+
+	if timestamp < minTimestamp then
+		return false
+	end
+
+	return true
+end
+```
+
+**Propósito:** Validar que nome segue formato obrigatório `YYYYMMDDHHMMSS_description`.
+
+**Validações em Cascata:**
+
+1. **Extrair Timestamp String**
+   ```lua
+   local timestampString = string.match(self.name, "^(%d+)_")
+   ```
+   - Regex: começa com dígitos, seguidos de underscore
+   - Captura só os dígitos (`(%d+)`)
+   - Exemplo: "20240101120000_add_field" → "20240101120000"
+
+2. **Validar Comprimento**
+   ```lua
+   if not timestampString or #timestampString ~= 14 then
+       return false
+   end
+   ```
+   - Deve ter exatamente 14 caracteres (YYYYMMDDHHMMSS)
+   - Se não existe ou tamanho errado, falha
+
+3. **Parser Timestamp para Componentes**
+   ```lua
+   local year, month, day, hour, min, sec = timestampString:match("(%d%d%d%d)(%d%d)(%d%d)(%d%d)(%d%d)(%d%d)")
+   ```
+   - Divide 14 dígitos em: YYYY, MM, DD, HH, MM, SS
+
+4. **Converter para Unix Timestamp**
+   ```lua
+   local timestamp = os.time({ year = tonumber(year), month = tonumber(month), day = tonumber(day), hour = tonumber(hour), min = tonumber(min), sec = tonumber(sec) })
+   ```
+   - Cria tabela date, converte para timestamp Unix
+   - Permite comparação numérica
+
+5. **Validar Mínimo de Data**
+   ```lua
+   local minTimestamp = os.time({ year = 2023, month = 11, day = 28, hour = 0, min = 0, sec = 0 })
+   if timestamp < minTimestamp then
+       return false
+   end
+   ```
+   - Timestamp deve ser >= 28 de Novembro de 2023 00:00:00
+   - Rejeita datas antigas demais (prevent typos)
+
+**Exemplos Válidos:**
+```
+20231128213149_add_new_monsters  ✓
+20240615120000_update_players    ✓
+20251231235959_final_update      ✓
+```
+
+**Exemplos Inválidos:**
+```
+20240101_add_field               ✗ (8 dígitos, não 14)
+2024-01-01_add_field             ✗ (contains hyphens)
+20200101120000_old_migration     ✗ (antes de 2023-11-28)
+add_new_field_20240101120000     ✗ (timestamp não está no início)
+```
+
+---
+
+### GlobalEvent: GameMigrations (Startup)
+
+```lua
+local serverstartup = GlobalEvent("GameMigrations")
+function serverstartup.onStartup()
+	if #Migration.registry > 0 then
+		table.sort(Migration.registry, function(a, b)
+			return a.name < b.name
+		end)
+		logger.info("[migration] === Executing game migrations ===")
+		local start = os.time()
+		for _, migration in ipairs(Migration.registry) do
+			logger.info("[migration] Executing game migration {}", migration.name)
+			migration:execute()
+		end
+		logger.info("[migration] === Game migrations executed in {}s ===", os.time() - start)
+	else
+	end
+end
+
+serverstartup:register()
+```
+
+**Propósito:** Disparador principal que executa todas migrations durante startup do servidor.
+
+**Fluxo:**
+
+1. **Criar GlobalEvent**
+   ```lua
+   local serverstartup = GlobalEvent("GameMigrations")
+   ```
+   - Cria novo event listener named "GameMigrations"
+
+2. **Definir Callback onStartup**
+   ```lua
+   function serverstartup.onStartup()
+   ```
+   - Será chamado automaticamente quando servidor inicia
+
+3. **Checar se há Migrations**
+   ```lua
+   if #Migration.registry > 0 then
+   ```
+   - Se nenhuma migration registrada, faz nada
+
+4. **Ordenar Chronologicamente**
+   ```lua
+   table.sort(Migration.registry, function(a, b)
+       return a.name < b.name
+   end)
+   ```
+   - Ordena por nome alfabético
+   - Como nomes começam com timestamp, = ordem chronológica
+   - Exemplo ordem: 20240101, 20240115, 20240620
+
+5. **Log Inicio**
+   ```lua
+   logger.info("[migration] === Executing game migrations ===")
+   local start = os.time()
+   ```
+   - Marca início, captura timestamp
+
+6. **Loop & Execute**
+   ```lua
+   for _, migration in ipairs(Migration.registry) do
+       logger.info("[migration] Executing game migration {}", migration.name)
+       migration:execute()
+   end
+   ```
+   - Para cada migration em ordem
+   - Log qual está executando
+   - Chama execute() (que respeita flag se já foi executada)
+
+7. **Log Conclusão com Duração**
+   ```lua
+   logger.info("[migration] === Game migrations executed in {}s ===", os.time() - start)
+   ```
+   - Calcula tempo decorrido
+   - Logs total time para performance monitoring
+
+8. **Registrar como GlobalEvent**
+   ```lua
+   serverstartup:register()
+   ```
+   - Ativa o como listener de startup
+
+**Output Esperado no Log:**
+```
+[migration] === Executing game migrations ===
+[migration] Executing game migration 20240101_add_field
+[migration] Executing game migration 20240615_update_players
+[migration] === Game migrations executed in 2s ===
+```
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variável Global Criada
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `Migration` | table (class) | Global | Classe Migration com metatable e registry |
+
+### Estrutura da Classe Migration
+
+| Campo/Função | Tipo | Descrição |
+|---|---|---|
+| `Migration.registry` | table (array) | Lista de migrations para executar |
+| `Migration:forEachPlayer(callback)` | function | Itera todos players com callback |
+| `Migration:execute()` | function | Executa migration 1x, persiste estado |
+| `Migration:register()` | function | Registra na global registry |
+| `Migration:_validateName()` | function | Valida formato YYYYMMDDHHMMSS_ |
+
+### Estrutura de Instância Migration
+
+Cada `Migration("20240101_name")` cria:
+
+```lua
+{
+	name = "20240101_name",         -- Nome da migration (OBRIGATÓRIO)
+	executed = false|true,          -- Carregado de KV store
+	onExecute = function(self)...   -- Callback OPCIONAL
+}
+```
+
+### Metatable de Instância
+
+```lua
+{ __index = Migration }
+```
+
+- Lookup de métodos referencia `Migration` class
+- Permite chamar `migration:execute()`, `migration:register()`, etc
+
+### KV Store Scoped
+
+```lua
+KV.scoped("migrations"):get(name)     -- Ler estado
+KV.scoped("migrations"):set(name, true) -- Persistir
+```
+
+**Namespace:** "migrations"
+
+**Chave:** Nome da migration
+
+**Valor:** true (booleano, significa executada)
+
+**Persistência:** Sobrevive restart do servidor
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrón 1: Idempotent Operations
+
+**Técnica:** `execute()` pode ser chamado múltiplas vezes, só roda 1x.
+
+```lua
+function Migration:execute()
+	if self.executed then
+		return  -- Early exit
+	end
+	
+	if self.onExecute then
+		self:onExecute()
+	end
+	
+	self.executed = true
+	KV.scoped("migrations"):set(self.name, true)
+end
+```
+
+**Vantagem:**
+- Safe: restart do servidor não roda migrations twice
+- Predictable: sem side effects
+- Robust: permite script rerun sem corruption
+
+**Aplicação:** Critical data operations (migrations themselves).
+
+---
+
+### Padrón 2: Timestamp-Based Versioning
+
+**Técnica:** Nomes começam com timestamp único (YYYYMMDDHHMMSS).
+
+```lua
+Migration("20240101120000_add_field")
+Migration("20240615153045_update_players")
+```
+
+**Vantagem:**
+- Chronological: timestamp natural ordena migrations
+- Unique: 14 dígitos permite múltiplas por segundo (improvável collision)
+- Human-readable: encode quando foi criada
+
+**Aplicação:** Version control de migrations (git-style).
+
+---
+
+### Padrón 3: Registry + Delayed Execution
+
+**Técnica:** Collect migrations durante script load, execute durante startup.
+
+```lua
+Migration("20240101_x"):register()
+Migration("20240615_y"):register()
+Migration("20240620_z"):register()
+-- Todos após .register()
+
+GlobalEvent dispara:
+-- Executa todos em ordem
+```
+
+**Vantagem:**
+- Batched: executa sequencial, ordenado
+- Logged: tracking completo
+- Flexible: permite skip executadas
+
+**Aplicação:** Boot orchestration.
+
+---
+
+### Padrón 4: Callback Factory Pattern
+
+**Técnica:** Instance cria com state, callback pode acessar `self`.
+
+```lua
+Migration("20240101_add_skill"):onExecute(function(self)
+	self:forEachPlayer(function(player)
+		player:addSkill(...)
+	end)
+end)
+```
+
+**Vantagem:**
+- Contextual: callback tem acesso a migration (self)
+- Functional: pode chamar helper methods (forEachPlayer)
+- Clean: DSL-style definition
+
+**Aplicação:** Complex migrations com multiple operations.
+
+---
+
+### Padrón 5: Cascading Validation
+
+**Técnica:** Múltiplas checks em cascata, falha rápido.
+
+```lua
+-- Check 1: Existe timestamp
+if not timestampString then return false end
+
+-- Check 2: Tamanho correto
+if #timestampString ~= 14 then return false end
+
+-- Check 3: Timestamp válido (não é no passado)
+if timestamp < minTimestamp then return false end
+
+return true
+```
+
+**Vantagem:**
+- Efficient: falha rápido em inválidos
+- Clear: cada check é independente
+- Safe: prevent garbage data
+
+**Aplicação:** Input validation em sistemas críticos.
+
+---
+
+### Padrón 6: Resource Cleanup
+
+**Técnica:** Database queries liberam resultados.
+
+```lua
+local rows = db.storeQuery(...)
+if rows then
+	repeat
+		-- Use row
+	until not Result.next(rows)
+	Result.free(rows)  -- CLEANUP!
+end
+```
+
+**Vantagem:**
+- Safe: prevent memory leaks
+- Explicit: claro quando recurso é liberado
+- Mandatory: boa prática em DB operations
+
+**Aplicação:** Database batch operations.
+
+---
+
+## 🤖 Informações da Documentação
+
+| Meta | Valor |
+|------|-------|
+| **Arquivo Documentado** | register_migrations.lua |
+| **Versão de Análise** | v1 (87 linhas) |
+| **Linguagem** | Lua 5.1+ com Canary extensions |
+| **Dependências Documentadas** | 7 |
+| **Padrões Identificados** | 6 |
+| **Funções Documentadas** | 5 (1 global, 4 métodos) |
+| **Data de Documentação** | February 20, 2026 |
+
+**Notas de Análise:**
+- Migration:_validateName() é private (underscore prefix) mas é crítico
+- GlobalEvent callback é "void" (não retorna nada)
+- Parameter `main` em forEachPlayer é unused (possível legacy)
+- KV.scoped() é thread-safe assumido (Canary implementation detail)
+- Logger usa {} placeholders (format-string style)
+
+**Possíveis Melhorias Futuras:**
+- Adicionar Migration:rollback() para reverter
+- Permitir migration dependencies (execute em ordem dependência)
+- Timing de cada migration individual (não só total)
+- Status em-progress flag (prevent concurrent executions)

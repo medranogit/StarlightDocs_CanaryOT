@@ -1,0 +1,226 @@
+---
+title: anniversary_balloons.lua
+description: Sistema de transformação de balões de aniversário
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="anniversary_balloons.lua" icon="star">
+Script de ação Lua que implementa sistema de transformação de balões com 30+ variações de cores e designs.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/anniversary_balloons.lua`
+
+Script que transforma balões entre estados (inflado e desinflado) apenas dentro de casas. Usado no evento de aniversário do servidor.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `anniversary_balloons.lua` implementa um sistema bidirecional de transformação de balões. Cada balão tem dois IDs (inflado e desinflado) que alternam ao usar. Suporta 30+ variações incluindo balões de cores simples, balões temáticos (monstros), balões especiais de aniversário 25 anos e balões numerados (0-9). Restrição: apenas funciona dentro de casas.
+
+**Estrutura Fundamental**
+
+```
+[Load settings table]
+    ↓
+[30+ balloon ID mappings]
+    ├── Color variants (blue, green, orange, etc)
+    ├── Monster themes (bonelord, cyclops, hydra, etc)
+    ├── Anniversary special (25 years)
+    └── Numbered balloons (0-9)
+    ↓
+[Create anniversaryBalloons Action]
+    ↓
+[onUse function]
+    ├─ Validate balloon exists in settings
+    ├─ Check if inside house
+    ├─ Transform balloon (toggle state)
+    └─ Return true
+    ↓
+[Register Action on all 60+ balloon IDs]
+```
+
+## Variáveis Globais
+
+### settings (local table)
+
+```lua
+local settings = {
+  [37471] = 37414,  -- blue balloon inflated ↔ deflated
+  [37414] = 37471,  -- blue balloon deflated ↔ inflated
+  -- ... 58+ mais entradas (29 pares)
+}
+```
+
+Tabela bidirecional mapeando balões entre estados inflado e desinflado.
+
+**Estrutura:**
+- Chave: ID do balloon (um estado)
+- Valor: ID do outro estado
+- Bidirectional: ambos A→B e B→A existem
+
+**Categorias dentro da tabela:**
+
+1. **Balões de Cor Simples** (8 pares)
+   - Blue, green, orange, pink, purple, red, teal, yellow
+
+2. **Balões Temáticos de Monstros** (10 pares)
+   - Bonelord, cyclops, cyclops head, dwarf, hydra, orc, orc head, Tibianus, Eloise, rotworm, rotworm head
+
+3. **Balões Especiais 25 Anos** (8 pares)
+   - Yellow 25 years, red 25 years, teal 25 years, green 25 years, orange 25 years, pink 25 years, purple 25 years, blue 25 years
+
+4. **Balões Numerados** (5 pares)
+   - Balloon 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+
+## Funções
+
+### anniversaryBalloons.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback acionado quando player usa balão.
+
+**Parâmetros:**
+- player: Creature player
+- item: Item balão sendo usado
+- fromPosition: Posição do uso
+- target: Target item (pode ser nil)
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```
+1. Lookup balloon em settings[item.itemid]
+   ├─ Não existe? → return true (no-op)
+   └─ Existe → continuar
+
+2. Get item position e create Tile
+   ↓
+
+3. Validar se inside house
+   ├─ Não em house? → "You may use this only inside a house." + return true
+   └─ Em house → continuar
+
+4. Transform item para outro estado
+   ├─ item:transform(balloon, 1)
+   └─ return true
+```
+
+**Bloco 1: Lookup**
+
+```lua
+local balloon = settings[item.itemid]
+if not balloon then
+  return true
+end
+```
+
+Verifica se o balão usar existe na tabela.
+
+**Bloco 2: House Validation**
+
+```lua
+local fromPosition = item:getPosition()
+local tile = Tile(fromPosition)
+
+if not tile:getHouse() then
+  player:sendTextMessage(MESSAGE_FAILURE, "You may use this only inside a house.")
+  return true
+end
+```
+
+Rejeita uso fora de casas.
+
+**Bloco 3: Transformation**
+
+```lua
+item:transform(balloon, 1)
+return true
+```
+
+Transforma para outro estado (toggle bidirectional).
+
+## Fluxo de Operação
+
+```
+[Player usa balão]
+    ↓
+[Item ID em settings?]
+    ├─ NÃO → return true (silence)
+    └─ SIM → próximo
+    ↓
+[Validar inside house]
+    ├─ NÃO → "You may use this only inside a house."
+    └─ SIM → próximo
+    ↓
+[item:transform(balloon, 1)]
+    ↓
+[Toggle entre estados]
+```
+
+## Balloon Variations
+
+| Tipo | Count | Exemplos |
+|------|-------|----------|
+| Cores Simples | 8 pares | blue, green, orange, pink, purple, red, teal, yellow |
+| Monstros | 11 pares | bonelord, cyclops, dwarf, hydra, orc, rotworm, personagens |
+| 25 Anos | 8 pares | Versões especiais de cores |
+| Numerados | 10 pares | 0-9 para coleção |
+
+## Padrões de Implementação
+
+### Bidirectional Mapping
+
+```lua
+[37471] = 37414,  -- inflated → deflated
+[37414] = 37471,  -- deflated → inflated
+```
+
+Dois registros que apontam um para o outro permitem toggle em ambas direções.
+
+### Registration
+
+```lua
+for itemId in pairs(settings) do
+  anniversaryBalloons:id(itemId)
+end
+anniversaryBalloons:register()
+```
+
+Registra ação em todos os 60+ IDs de balões.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Mapeamento bidirecional para toggle entre dois estados
+2. 30+ pares de balões (inflado e desinflado)
+3. Validação de house obrigatória
+4. Transformação simples de item (sem efeitos)
+5. Registro em massa para 60+ IDs
+
+**Responsabilidades:**
+1. Manter settings table com todos os balões
+2. Validar balloon existe antes de usar
+3. Checar localização (house) antes de permitir
+4. Executar transformação bidirectional
+5. Registrar ação em todos os IDs
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 105 linhas  
+**Funções**: 1 (onUse)  
+**Variáveis**: 1 local (settings)  
+**Balloon Count**: 30 pares (60 IDs)  
+**Transformações**: 60+ bidirecional
+</Card>
+
+<Aside type="note">
+Script de transformação bidirectional de balões. Requer tabela settings com mapeamentos de ID para ID. Validação de house obrigatória. Usado em evento de aniversário com 30+ variações e designs diferentes.
+</Aside>

@@ -1,0 +1,761 @@
+---
+title: "spectators.lua"
+description: "Sistema de gerenciamento de espectadores em áreas: detecção de criaturas via Game.getSpectators(), filtros por tipo (players apenas), písos (single/multi), lista negra de posições, remoção de monstros/players com teleportação automática para destino ou temple. [DEPRECATED - Use Zone instead]"
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que implementa **spectator detection system** para áreas.
+
+Constructor Spectators() que cria instância com as seguintes configurações:
+- only_player (true)
+- multi_floor (false)
+- blacklist_pos (posições excluídas)
+- creature_detect (cache de criaturas detectadas)
+- remove_destination (teleporte customizado)
+- check_position (área a scannear com from e to)
+
+Integra Game.getSpectators() para detecção, convertPosToRange/convertPos para processamento de posição, blacklist validation, e remoção automática de monstros/players.
+
+**Caminho Original**: `data/libs/functions/spectators.lua`
+
+<Aside type="caution">
+**DEPRECATED**: Este módulo está marcado como deprecated. **Use Zone ao invés**. Spectators é legado mantido por compatibilidade mas Zone oferece API mais moderna. Use apenas para código legado.
+</Aside>
+
+<Aside type="tip">
+O arquivo `spectators.lua` oferece **legacy spectator detection** para áreas retangulares. Permite filtrar por tipo de criatura (players/todos), piso único/múltiplo, excluir posições via blacklist, remover automaticamente monstros/players com teleportação. Útil para arenas, eventos, detecção dinâmica de criaturas em zona.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **3 layers de funcionalidade**:
+
+1. **Configuration**: only_player, multi_floor, blacklist_pos, remove_destination
+2. **Position Management**: setCheckPosition (area `{from, to}`), convertPosToRange, convertPos (center)
+3. **Detection & Removal**: check() para detectar criaturas via Game.getSpectators(), removeMonsters/removePlayers para cleanup
+
+O design usa **Game.getSpectators() wrapper** que captura criaturas em área, **position-based filtering** com exclusões de blacklist, e **automatic creature removal** com fallback a temple.
+
+### Estrutura de Funcionalidades
+
+```
+Spectators System
+├── Constructor (1)
+│   └── Spectators() → spectator instance [via __call]
+├── Configuration Methods (8)
+│   ├── Spectators:getOnlyPlayer() / setOnlyPlayer(bool) → void
+│   ├── Spectators:getMultiFloor() / setMultiFloor(bool) → void
+│   ├── Spectators:getCreatureDetect() / setCreatureDetect(creatures) → void
+│   ├── Spectators:getRemoveDestination() / setRemoveDestination(pos) → void
+│   └── Spectators:getCheckPosition() / setCheckPosition(pos) → void
+├── Blacklist Management (2)
+│   ├── Spectators:getBlacklistPos() → table
+│   └── Spectators:setBlacklistPos(list) → void
+├── Position Conversion (3)
+│   ├── Spectators:convertPosToRange() → {x, y, z} (range from center)
+│   ├── Spectators:convertPos() → Position (center of area)
+│   └── Spectators:checkCreatureBlacklistPos(creature) → boolean
+├── Detection (1)
+│   └── Spectators:check(pos) → creatures[] [calls Game.getSpectators]
+├── Creature Removal (3)
+│   ├── Spectators:removeMonsters() → void
+│   ├── Spectators:removePlayer(player) → void
+│   └── Spectators:removePlayers(players) → void
+├── Utilities (2)
+│   ├── Spectators:getPlayers() → count (number of players detected)
+│   └── Spectators:clearCreaturesCache() → void
+└── Internal State
+    ├── only_player (boolean, default true)
+    ├── multi_floor (boolean, default false)
+    ├── creature_detect (table, cached creatures)
+    ├── blacklist_pos (table, excluded areas)
+    ├── remove_destination (Position)
+    └── check_position (`{from: Position, to: Position}`)
+```
+
+---
+
+## 🏗️ Constructor
+
+### `Spectators()` → spectator instance
+
+Cria nova Spectators instance via metatable __call.
+
+**Tipo**: Constructor function (via metatable)  
+**Retorna**: Spectators instance (metatable com __index = Spectators)
+
+**Implementação**:
+```lua
+setmetatable(Spectators, {
+	__call = function(self)
+		local spectators_data = {
+			only_player = true,
+			multi_floor = false,
+			blacklist_pos = {},
+			creature_detect = {},
+		}
+		return setmetatable(spectators_data, { __index = Spectators })
+	end,
+})
+```
+
+**Estrutura Criada**:
+- `only_player`: true (filtra para players apenas)
+- `multi_floor`: false (scanneia piso único)
+- `blacklist_pos`: {} (posições excluídas)
+- `creature_detect`: {} (cache de criaturas detectadas)
+
+**Uso**:
+```lua
+local spec = Spectators()
+```
+
+---
+
+## ⚙️ Configuração - Only Player
+
+### `Spectators:getOnlyPlayer()` → boolean
+
+Retorna se filtro only_player está ativo.
+
+**Tipo**: Method  
+**Retorna**: boolean (default: true)
+
+---
+
+### `Spectators:setOnlyPlayer(boolean)` → void
+
+Define se apenas players devem ser detectados.
+
+**Tipo**: Method  
+**Parâmetros**: `boolean` (true para players apenas, false para todos)  
+**Retorna**: Nenhum
+
+**Efeito**: Afeta próxima chamada a check() (Game.getSpectators com onlyPlayers flag)
+
+**Exemplo**:
+```lua
+local spec = Spectators()
+spec:setOnlyPlayer(true)   -- Detecta apenas players
+spec:setOnlyPlayer(false)  -- Detecta players + NPCs + monstros
+```
+
+---
+
+## 🏢 Configuração - Multi Floor
+
+### `Spectators:getMultiFloor()` → boolean
+
+Retorna se multi-floor scanning está ativo.
+
+**Tipo**: Method  
+**Retorna**: boolean (default: false)
+
+---
+
+### `Spectators:setMultiFloor(boolean)` → void
+
+Define se pode detectar criaturas em pisos diferentes.
+
+**Tipo**: Method  
+**Parâmetros**: `boolean` (true para múltiplos pisos, false para piso único)  
+**Retorna**: Nenhum
+
+**Exemplo**:
+```lua
+local spec = Spectators()
+spec:setMultiFloor(false)  -- Apenas piso Z atual
+spec:setMultiFloor(true)   -- Pisos acima e abaixo
+```
+
+---
+
+## 👥 Configuração - Creature Detect Cache
+
+### `Spectators:getCreatureDetect()` → table
+
+Retorna cache de criaturas detectadas (array).
+
+**Tipo**: Method  
+**Retorna**: self.creature_detect (table de Creatures)
+
+---
+
+### `Spectators:setCreatureDetect(creatures)` → void
+
+Define manualmente cache de criaturas.
+
+**Tipo**: Method  
+**Parâmetros**: `creatures` (table de Creatures)  
+**Retorna**: Nenhum
+
+**Uso**: Normalmente setado automaticamente por check()
+
+---
+
+### `Spectators:removeCreatureDetect()` → void
+
+Limpa cache (alias para clearCreaturesCache).
+
+**Tipo**: Method  
+**Retorna**: Nenhum
+
+---
+
+### `Spectators:clearCreaturesCache()` → void
+
+Limpa cache de criaturas.
+
+**Tipo**: Method  
+**Retorna**: Nenhum
+
+---
+
+## 📍 Configuração - Check Position
+
+### `Spectators:setCheckPosition(position)` → void
+
+Define área de scan (bounding box).
+
+**Tipo**: Method  
+**Parâmetros**: `position` (table `{from: Position, to: Position}`)  
+**Retorna**: Nenhum
+
+**Validação**: Checa se position.from e position.to existem (error caso contrário)
+
+**Estrutura**:
+```lua
+{
+	from = Position(x1, y1, z1),  -- Canto inferior esquerdo
+	to = Position(x2, y2, z2)     -- Canto superior direito
+}
+```
+
+**Exemplo**:
+```lua
+spec:setCheckPosition({
+	from = Position(100, 100, 7),
+	to = Position(150, 150, 7)
+})
+```
+
+---
+
+### `Spectators:getCheckPosition()` → table
+
+Retorna área de scan atual.
+
+**Tipo**: Method  
+**Retorna**: `{from: Position, to: Position}`
+
+---
+
+## 🚫 Configuração - Blacklist Pos
+
+### `Spectators:getBlacklistPos()` → table
+
+Retorna lista de posições bloqueadas (excluídas).
+
+**Tipo**: Method  
+**Retorna**: self.blacklist_pos (table de ranges)
+
+---
+
+### `Spectators:setBlacklistPos(list)` → void
+
+Define lista de posições excluídas.
+
+**Tipo**: Method  
+**Parâmetros**: `list` (table de ranges `{from: Position, to: Position}`)  
+**Retorna**: Nenhum
+
+**Validação**: Checa type(list) == "table" (error caso contrário)
+
+**Estrutura de Elemento**:
+```lua
+{
+	from = Position(x1, y1, z),
+	to = Position(x2, y2, z)
+}
+```
+
+**Exemplo**:
+```lua
+spec:setBlacklistPos({
+	{ from = Position(120, 120, 7), to = Position(130, 130, 7) },  -- Área excluída 1
+	{ from = Position(140, 140, 7), to = Position(145, 145, 7) },  -- Área excluída 2
+})
+```
+
+---
+
+## 📐 Conversão de Posição
+
+### `Spectators:convertPosToRange()` → table
+
+Calcula range (metade da distância de cada axis).
+
+**Tipo**: Method  
+**Retorna**: `{x: number, y: number, z: number}`
+
+**Implementação**:
+```lua
+function Spectators.convertPosToRange(self)
+	local pos = self:getCheckPosition()
+	return {
+		x = (pos.to.x - pos.from.x) / 2,
+		y = (pos.to.y - pos.from.y) / 2,
+		z = pos.from.z,
+	}
+end
+```
+
+**Exemplo**:
+Se area é `{from: (100,100,7), to: (150,150,7)}`:
+- x = (150-100)/2 = 25
+- y = (150-100)/2 = 25
+- z = 7
+
+---
+
+### `Spectators:convertPos()` → Position
+
+Calcula Position central da área.
+
+**Tipo**: Method  
+**Retorna**: Position (center de check_position)
+
+**Implementação**:
+```lua
+function Spectators.convertPos(self)
+	local pos = self:getCheckPosition()
+	local range = self:convertPosToRange()
+	return Position(pos.from.x + range.x, pos.from.y + range.y, range.z)
+end
+```
+
+**Exemplo**:
+If area é `{from: (100,100,7), to: (150,150,7)}`:
+- center = Position(100+25, 100+25, 7) = Position(125, 125, 7)
+
+---
+
+### `Spectators:checkCreatureBlacklistPos(creature)` → boolean
+
+Verifica se criatura está em posição bloqueada.
+
+**Tipo**: Method  
+**Parâmetros**: `creature` (Creature)  
+**Retorna**: boolean (true se em blacklist)
+
+**Implementação**:
+```lua
+function Spectators.checkCreatureBlacklistPos(self, creature)
+	local creature_pos = creature:getPosition()
+	for _, v in pairs(self:getBlacklistPos()) do
+		if creature_pos.x >= v.from.x and creature_pos.x <= v.to.x then
+			if creature_pos.y >= v.from.y and creature_pos.y <= v.to.y then
+				return true
+			end
+		end
+	end
+	return false
+end
+```
+
+**Fluxo**:
+1. Obter posição da criatura
+2. Loop cada blacklist range
+3. Verificar se X está dentro range.x: [from.x, to.x]
+4. Verificar se Y está dentro range.y: [from.y, to.y]
+5. Se ambas: return true (em blacklist)
+
+---
+
+## 🔍 Detecção
+
+### `Spectators:check(pos)` → creatures[]
+
+Detecta criaturas em área via Game.getSpectators().
+
+**Tipo**: Method  
+**Parâmetros**: `pos` (table `{from, to}`|nil): Opcionalmente setá novo check_position  
+**Retorna**: creatures[] (array de Creatures detectadas)
+
+**Implementação**:
+```lua
+function Spectators.check(self, pos)
+	if pos ~= nil then
+		self:setCheckPosition(pos)
+	end
+	local range = self:convertPosToRange()
+	pos = self:convertPos()
+	local specs = Game.getSpectators(pos, self:getMultiFloor(), self:getOnlyPlayer(), range.x, range.x, range.y, range.y)
+	self:setCreatureDetect(specs)
+	return specs
+end
+```
+
+**Fluxo**:
+1. Setá check_position se fornecido
+2. Calcula range via convertPosToRange()
+3. Calcula center via convertPos()
+4. Chama Game.getSpectators(center, multiFloor, onlyPlayers, rangeX, rangeX, rangeY, rangeY)
+5. Seta creature_detect cache
+6. Retorna spectators
+
+**Assinatura Game.getSpectators**:
+```
+Game.getSpectators(pos, multiFloor, onlyPlayers, rangeX_min, rangeX_max, rangeY_min, rangeY_max)
+```
+
+**Exemplo**:
+```lua
+local spec = Spectators()
+spec:setOnlyPlayer(true)
+local creatures = spec:check({
+	from = Position(100, 100, 7),
+	to = Position(150, 150, 7)
+})
+print("Detected: " .. (#creatures or 0))
+```
+
+---
+
+## 🗑️ Remoção de Criaturas
+
+### `Spectators:removeMonsters()` → void
+
+Remove todos monstros detectados.
+
+**Tipo**: Method  
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Spectators.removeMonsters(self)
+	if self:getCreatureDetect() then
+		for _, v in pairs(self:getCreatureDetect()) do
+			if v:isMonster() then
+				v:remove()
+			end
+		end
+	end
+end
+```
+
+**Fluxo**:
+1. Loop creature_detect cache
+2. Checar se :isMonster()
+3. Se verdadeiro: chamar v:remove()
+
+---
+
+### `Spectators:removePlayer(player)` → void
+
+Remove um player (teleporta para remove_destination ou temple).
+
+**Tipo**: Method  
+**Parâmetros**: `player` (Player)  
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Spectators.removePlayer(self, player)
+	if player then
+		if player:isPlayer() then
+			local destination = self:getRemoveDestination()
+			if destination then
+				player:teleportTo(destination)
+			else
+				player:teleportTo(player:getTown():getTemplePosition())
+				player:remove()
+			end
+		end
+	end
+end
+```
+
+**Fluxo**:
+1. Validar que é Player
+2. Se remove_destination setado: teleportar para destination
+3. Se não: teleportar para temple + remove()
+
+**Comportamento**: Com destination = apenas teleportação. Sem destination = teleportação + remove (logout)
+
+---
+
+### `Spectators:removePlayers(players)` → void
+
+Remove múltiplos players.
+
+**Tipo**: Method  
+**Parâmetros**: `players` (table de Players|nil): Se nil, usa creature_detect cache  
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Spectators.removePlayers(self, players)
+	local creature_remove = players or self:getCreatureDetect()
+	for _, v in pairs(creature_remove) do
+		self:removePlayer(v)
+	end
+end
+```
+
+**Fluxo**:
+1. Usar players parameter ou creature_detect cache
+2. Loop cada criatura
+3. Chamar removePlayer(v)
+
+---
+
+## 📊 Destination Management
+
+### `Spectators:setRemoveDestination(destination)` → void
+
+Define posição de teleportação para remoção.
+
+**Tipo**: Method  
+**Parâmetros**: `destination` (Position)  
+**Retorna**: Nenhum
+
+**Efeito**: Se setado, removePlayer teleporta para destination ao invés de remover
+
+**Exemplo**:
+```lua
+spec:setRemoveDestination(Position(245, 245, 7))  -- Town respawn point
+```
+
+---
+
+### `Spectators:getRemoveDestination()` → Position
+
+Retorna posição de teleportação.
+
+**Tipo**: Method  
+**Retorna**: self.remove_destination (Position ou nil)
+
+---
+
+## 📈 Utilities
+
+### `Spectators:getPlayers()` → number
+
+Conta quantos players foram detectados.
+
+**Tipo**: Method  
+**Retorna**: number (count de players)
+
+**Implementação**:
+```lua
+function Spectators.getPlayers(self)
+	local count = 0
+	if not self:getCreatureDetect() then
+		error("Not creature detect")
+		return nil
+	end
+	for _, v in pairs(self:getCreatureDetect()) do
+		if v:isPlayer() then
+			count = count + 1
+		end
+	end
+	return count
+end
+```
+
+**Fluxo**:
+1. Validar creature_detect não nil
+2. Loop, contar se :isPlayer()
+3. Retornar count
+
+**Erro**: Se creature_detect nil → error (precisa chamar check() antes)
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Detecção Simples de Players
+
+```lua
+local arena = Spectators()
+arena:setOnlyPlayer(true)
+arena:setMultiFloor(false)
+
+local players = arena:check({
+	from = Position(100, 100, 7),
+	to = Position(150, 150, 7)
+})
+
+print("Players na arena: " .. arena:getPlayers())
+```
+
+---
+
+### Padrão 2: Arena com Blacklist de Spawns
+
+```lua
+local arena = Spectators()
+arena:setOnlyPlayer(true)
+
+-- Definir área principal
+arena:setCheckPosition({
+	from = Position(100, 100, 7),
+	to = Position(150, 150, 7)
+})
+
+-- Excluir spawns de segurança
+arena:setBlacklistPos({
+	{ from = Position(120, 120, 7), to = Position(125, 125, 7) },
+	{ from = Position(140, 140, 7), to = Position(145, 145, 7) },
+})
+
+local players = arena:check()
+print("Players válidos: " .. arena:getPlayers())
+```
+
+---
+
+### Padrão 3: Remoção de Players com Teleportação
+
+```lua
+local invasion = Spectators()
+invasion:setOnlyPlayer(true)
+invasion:setRemoveDestination(Position(245, 245, 7))  -- Town
+
+invasion:check({
+	from = Position(100, 100, 7),
+	to = Position(150, 150, 7)
+})
+
+-- Teleportar todos players para town
+invasion:removePlayers()
+```
+
+---
+
+### Padrão 4: Limpeza de Monstros
+
+```lua
+local dungeon = Spectators()
+dungeon:setOnlyPlayer(false)  -- Detectar tudo
+
+local creatures = dungeon:check({
+	from = Position(200, 200, 7),
+	to = Position(250, 250, 7)
+})
+
+-- Remover apenas monstros
+dungeon:removeMonsters()
+```
+
+---
+
+### Padrão 5: Monitoramento de Eventi Arena
+
+```lua
+local eventArena = Spectators()
+eventArena:setOnlyPlayer(true)
+eventArena:setCheckPosition({
+	from = Position(100, 100, 7),
+	to = Position(150, 150, 7)
+})
+
+-- Checar periodicamente
+addEvent(function()
+	eventArena:check()
+	local playerCount = eventArena:getPlayers()
+	
+	if playerCount == 0 then
+		print("[Event] Arena vazia")
+	else
+		print("[Event] " .. playerCount .. " players detected")
+	end
+end, 5000)  -- A cada 5s
+```
+
+---
+
+### Padrão 6: Multi-Floor Event
+
+```lua
+local multiFloorEvent = Spectators()
+multiFloorEvent:setOnlyPlayer(true)
+multiFloorEvent:setMultiFloor(true)  -- Detecta pisos 6,7,8
+
+local players = multiFloorEvent:check({
+	from = Position(100, 100, 6),  -- Piso 6
+	to = Position(150, 150, 8)     -- Piso 8
+})
+
+print("Players em todos os pisos: " .. multiFloorEvent:getPlayers())
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Implementação |
+|----------|-----------|---------------|
+| **Game.getSpectators Wrapper** | Wraps Game.getSpectators com filtros | check() calcula center + range |
+| **Bounding Box Detection** | Área retangular com from/to corners | convertPosToRange calcula range |
+| **Blacklist Exclusion** | Áreas dentro main box excluídas | checkCreatureBlacklistPos loops ranges |
+| **Piso Filtering** | Single vs multi-floor scanning | multiFloor boolean flag |
+| **Player Filtering** | Apenas players vs todos | onlyPlayer boolean flag |
+| **Teleportation Removal** | Remove via teleportação ao invés de logout | removeDestination como fallback |
+| **Cache Management** | creature_detect armazena resultados | setCreatureDetect, clearCreaturesCache |
+| **Metatable Constructor** | Spectators() via __call | __call em Spectators metatable |
+
+### Padrões Identificados
+
+1. **Wrapper Pattern**: Wraps Game.getSpectators com configuração simplificada
+2. **Configuration Pattern**: Boolean flags para filtering (only_player, multi_floor)
+3. **Cache Pattern**: creature_detect armazena últimos resultados
+4. **Bounding Box Pattern**: Area retangular com position conversion
+5. **Exclusion Pattern**: Blacklist ranges dentro area principal
+6. **Removal Pattern**: Cleanup automático com fallback para temple
+
+### Responsabilidades
+
+- **Position Management**: Define/converte área de scanning
+- **Filtering**: only_player, multi_floor, blacklist validation
+- **Detection**: Wraps Game.getSpectators com processamento
+- **Removal**: Remove monstros/players com customização
+
+---
+
+## 📚 Conclusão
+
+O arquivo `spectators.lua` oferece **legacy spectator detection API** para scanning de criaturas em áreas. Game.getSpectators wrapper simplifica setup com filtros configuráveis (players/todos, piso único/múltiplo), blacklist exclusions, automatic removal com teleportação. **DEPRECATED** em favor de Zone, mas mantido para compatibilidade.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Legado (DEPRECATED)  
+**Autor**: @Glatharth  
+**Status**: Deprecated - Use Zone instead  
+**Linhas Documentadas**: 200+/200+ (100%)  
+**Métodos Principais**: 21  
+**Global Variables**: 1 (Spectators)  
+**Configurações**: only_player, multi_floor, blacklist_pos, remove_destination, check_position, creature_detect  
+**Integração**: Game.getSpectators  
+**Padrões de Design**: Wrapper, Configuration, Cache, Removal  
+**Exemplos Práticos**: 6  
+**Nota**: Players removidos teleportam para remove_destination ou temple (se destination not set, call remove())
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Spectators marcado como deprecated. Usar Zone para novos código. Game.getSpectators chamado com center position + range calculado dynamicamente. convertPosToRange calcula metade da distância (range = (to-from)/2). removePlayer com destination seta customizado teleportation; sem destination teleporta para town temple. getPlayers retorna count de players em creature_detect (error se null). checkCreatureBlacklistPos valida X primeiro depois Y. Multi-floor scanneia pisos diferentes baseado em Z range.
+</Aside>

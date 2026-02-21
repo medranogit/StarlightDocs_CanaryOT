@@ -1,0 +1,453 @@
+---
+title: "Spell - buzz.lua"
+description: "Spell de buzz energia para sorcerers iniciante level 1"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `buzz.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 177 |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 1 |
+| **Mana Requerida** | 6 |
+| **Words** | exori infir vis |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Cooldown** | 2s |
+| **GroupCooldown** | 2s |
+| **Premium** | Não |
+| **Agressividade** | Sim |
+| **Fórmula** | Magic-level based (0.4-0.7 MLvl) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_BUZZ |
+| **Requer Caster/Target/Direction** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 37 |
+| **Complexidade** | Baixo |
+
+**Descrição:**
+Spell de buzz energia para sorcerers nível 1 (mais cedo possível!). Dano energia muito económico. Mana 6 (baratíssimo). Sem premium. Alcance 3. Fórmula magic-level escalável (0.4-0.7 MLvl). Primeiro spell sorcerer. Agressivo (isAggressive: true). Efeito ENERGYAREA.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/buzz.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(177)
+spell:name("Buzz")
+spell:words("exori infir vis")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_BUZZ)
+spell:level(1)
+spell:mana(6)
+spell:isAggressive(true)
+spell:isPremium(false)
+spell:range(3)
+spell:needCasterTargetOrDirection(true)
+spell:blockWalls(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Buzz - Energia Mágica Iniciante**
+
+Este spell implementa um **sistema de dano energia starter level 1**:
+
+1. **Level 1 Extremo:**
+   - Acesso IMEDIATO (nível 1!)
+   - Primeiro spell sorcerer
+   - Sem espera de level
+
+2. **Magic-Level Escalável:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - Depende magic level
+   - Escalável progressivo
+
+3. **Fórmula Economia:**
+   - min = (level/5) + (maglevel × 0.4) + 3
+   - max = (level/5) + (maglevel × 0.7) + 5
+   - Muito baixa (iniciante)
+
+4. **Agricultura Livre:**
+   - Mana 6 (spam infinito!)
+   - Sem premium
+   - Alcance 3 (ranged)
+   - isAggressive: true
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 1, mlvl 0:
+  min = 0.2 + 0 + 3 = 3.2
+  max = 0.2 + 0 + 5 = 5.2
+
+Sorcerer lvl 50, mlvl 20:
+  min = 10 + 8 + 3 = 21
+  max = 10 + 14 + 5 = 29
+```
+
+**Diferencial:** Level 1 spam-magic pure attack!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `buzz` oferece dano energia starter:
+
+- **Dano:** COMBAT_ENERGYDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*0.4/0.7) + bônus (MUITO BARATO!)
+- **Mana:** 6 (spam-friendly)
+- **Level:** 1 (imediato!)
+- **Range:** 3 (ranged)
+
+### Arquitetura
+
+Combat com callback magic-level:
+
+```
+local combat = Combat()
+├─ Type: ENERGYDAMAGE
+├─ Effect: ENERGYAREA
+├─ Distance: ENERGY
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max muito barato
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
+```
+
+**Propósito:** Combat de dano energia.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ENERGYDAMAGE | Dano energia |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ENERGYAREA | Efeito área energia |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ENERGY | Projétil energia |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 0.4) + 3
+	local max = (level / 5) + (maglevel * 0.7) + 5
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano buzz starter.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 0.4) + 3
+max = (level / 5) + (maglevel * 0.7) + 5
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 0.4 (muito baixo)
+- Maglevel max: 0.7 (muito baixo)
+- Bônus: 3/5 (moderado)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 1 | 0 | 3 | 5 |
+| 30 | 10 | 14 | 20 |
+| 60 | 25 | 28 | 42 |
+| 100 | 50 | 48 | 71 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Buzz ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback magic |
+| `spell` | Spell | Arquivo | Instância do spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Magic-Level Based
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 0.4) + 3
+	local max = (level / 5) + (maglevel * 0.7) + 5
+	return -min, -max
+end
+```
+
+**Benefício:** Escalável com skill mago.
+
+### Padrão 2: Mana Extremamente Barato
+
+```lua
+spell:mana(6)
+```
+
+**Benefício:** Spam infinito possível.
+
+### Padrão 3: Level 1 Imediato
+
+```lua
+spell:level(1)
+```
+
+**Benefício:** Acesso INSTANT novo sorcerer.
+
+### Padrão 4: Aggressive Flag
+
+```lua
+spell:isAggressive(true)
+```
+
+**Benefício:** Marca explicitamente como agressivo.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano buzz starter.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(sorcerer, 30, 10)
+// min = 6 + 4 + 3 = 13
+// max = 6 + 7 + 5 = 18
+// Retorna: -13, -18
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura buzz energia em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Target ou direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Buzz ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 1+
+- 6 mana
+- Range 3
+- Nenhum item requerido
+
+**Efeito:**
+- Efeito área energia
+- Projétil energia
+- Dano magic-level based
+- Alcance 3 tiles
+- Agressivo
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 1, MLvl 0
+spell.onCastSpell(sorcerer, targetVariant)
+// Validações OK (1+ level, 6 mana)
+// Combat executa
+// Dano: -3 a -5 (iniciante!)
+// Efeito energia visual
+// Alcance 3 tiles
+// Agressivo marcado
+// Resultado: Buzz inicial!
+
+-- Sorcerer lvl 50, MLvl 20
+spell.onCastSpell(sorcerer, targetVariant)
+// Dano: -21 a -29
+// Escalado muito
+// Resultado: Buzz mid-game!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Primeiro Spell Absoluto
+
+```lua
+-- Novo sorcerer level 1
+// Buzz = acessível IMEDIATAMENTE
+// Nenhuma espera de level
+// Starter magic pure
+```
+
+### Caso 2: Spam Infinite
+
+```lua
+-- Treino magic level
+// 6 mana = spam possível
+// Mana regenera rápido
+// Cumulativo dano
+```
+
+### Caso 3: Free-to-Play
+
+```lua
+-- Sem premium
+// Acessível cedo
+// Tudo gratuito
+// Fundamental sorcerer
+```
+
+### Caso 4: Ranged Damage
+
+```lua
+-- Combate distance
+// Range 3 = seguro
+// Alcance good
+// Targeting livre
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_ENERGYDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Effects:** CONST_ME_ENERGYAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Dano buzz energia starter |
+| **Dano Type** | COMBAT_ENERGYDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*0.4)+3, max=(lvl/5)+(mlvl*0.7)+5 |
+| **Mana** | 6 (spam-friendly) |
+| **Range** | 3 |
+| **Level** | 1 (imediato!) |
+| **Cooldown** | 2s |
+| **Premium** | Não |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Agressivo** | Sim |
+| **Padrão** | Magic-level + mana barato + level 1 |

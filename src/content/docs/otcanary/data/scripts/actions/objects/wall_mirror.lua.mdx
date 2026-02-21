@@ -1,0 +1,252 @@
+---
+title: wall_mirror.lua
+description: 8 espelhos com RNG de 11 mensagens diferentes, cooldown 20h e say() de vaidade.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="wall_mirror.lua" icon="pencil">
+Handler com array de mensagens, RNG simples e cooldown daily.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/objects/wall_mirror.lua`
+
+**Linhas:** 26 | **IDs dos Objects:** 8 espelhos diferentes | **Tipo:** Action Handler com RNG Simples
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa 8 espelhos de parede que exibem mensagens de vaidade aleatórias. Contém array de 11 mensagens pré-escritas (vaidade, beleza, aparência). Ao ativar: verifica cooldown 20h (delay-wall-mirror), se ativo exibe mensagem bloqueadora "Don't be so vain", se inativo seleciona mensagem aleatória via math.random(1, conta de mensagens), exibe via say() e assinala cooldown 20h. Padrão similar ao large_seashell mas sem RNG branches, apenas seleção de mensagem.
+
+### Estrutura de Funcionalidades
+
+```
+ARRAY DE MENSAGENS:
+  └─ setting[1-11]
+      ├─ "You could win a beauty contest today!"
+      ├─ "You rarely looked better."
+      ├─ "Well, you can't look good every day."
+      ├─ "You should think about a makeover."
+      ├─ "Is that the indication of a potbelly looming..."
+      ├─ "You look irresistible."
+      ├─ "You look tired."
+      ├─ "You look awesome!"
+      ├─ "You nearly don't recognize yourself."
+      ├─ "You look fabulous."
+      └─ "Surprise, surprise, you don't see yourself."
+
+HANDLER:
+  └─ wallMirror.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+      ├─ hasExhaustion("delay-wall-mirror")?
+      │   ├─ SIM → say("Don't be so vain...") + return true
+      │   └─ NÃO → Continua
+      ├─ randomIdx = math.random(1, #setting)
+      ├─ message = setting[randomIdx]
+      ├─ say(message)
+      ├─ setExhaustion("delay-wall-mirror", 20h)
+      └─ return true
+
+REGISTRO:
+  └─ 8 espelhos IDs (2603, 2604, 2630, 2631, 2633, 2634, 2636, 2637)
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| setting | table | Array com 11 mensagens de espelho |
+
+### Conteúdo da Variável setting
+
+```
+[1] = "You could win a beauty contest today!"
+[2] = "You rarely looked better."
+[3] = "Well, you can't look good every day."
+[4] = "You should think about a makeover."
+[5] = "Is that the indication of a potbelly looming under your clothes?"
+[6] = "You look irresistible."
+[7] = "You look tired."
+[8] = "You look awesome!"
+[9] = "You nearly don't recognize yourself."
+[10] = "You look fabulous."
+[11] = "Surprise, surprise, you don't see yourself."
+```
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Mirror Parameters
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| Mirror IDs | 8 items | 2603, 2604, 2630, 2631, 2633, 2634, 2636, 2637 |
+| Cooldown | 20*60*60 | 72,000 seg = 20 horas |
+| Message Count | 11 | Quantidade de mensagens |
+| Blocked Message | Static | "Don't be so vain..." |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local setting = {
+	"You could win a beauty contest today!",
+	"You rarely looked better.",
+	"Well, you can't look good every day.",
+	"You should think about a makeover.",
+	"Is that the indication of a potbelly looming under your clothes?",
+	"You look irresistible.",
+	"You look tired.",
+	"You look awesome!",
+	"You nearly don't recognize yourself.",
+	"You look fabulous.",
+	"Surprise, surprise, you don't see yourself.",
+}
+
+local wallMirror = Action()
+
+function wallMirror.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- VALIDAÇÃO: Cooldown 20h
+	if player:hasExhaustion("delay-wall-mirror") then
+		player:say("Don't be so vain about your appearance.", TALKTYPE_MONSTER_SAY)
+		return true
+	end
+
+	-- RNG: Seleção de mensagem (1 de 11)
+	player:say(setting[math.random(1, #setting)], TALKTYPE_MONSTER_SAY)
+	
+	-- ASSINALAR: Cooldown 20h
+	player:setExhaustion("delay-wall-mirror", 20 * 60 * 60)
+	return true
+end
+
+wallMirror:id(2603, 2604, 2630, 2631, 2633, 2634, 2636, 2637)
+wallMirror:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa espelho (2603-2637)
+  │
+  ├─ hasExhaustion("delay-wall-mirror")?
+  │   ├─ SIM → say("Don't be so vain")
+  │   │         + return true (bloqueado)
+  │   └─ NÃO → Continua
+  │
+  ├─ randomIdx = math.random(1, 11)
+  │   └─ Seleciona índice aleatório (1-11)
+  │
+  ├─ message = setting[randomIdx]
+  │   └─ Obtem mensagem do array
+  │
+  ├─ say(message, TALKTYPE_MONSTER_SAY)
+  │   └─ Exibe mensagem (audível)
+  │
+  ├─ setExhaustion("delay-wall-mirror", 72000)
+  │   └─ Assinala cooldown de 20 horas
+  │
+  └─ return true
+```
+
+### Padrão RNG Array Selection
+
+```lua
+-- Seleção aleatória de 11 opções
+local randomIdx = math.random(1, #setting)
+local message = setting[randomIdx]
+
+-- #setting retorna tamanho (11)
+-- math.random(1, 11) retorna valor 1-11
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Array with Messages**: setting[1-11] (11 options)
+- **math.random(1, count)**: RNG simples com range
+- **meta-length Operator**: #setting retorna tamanho
+- **hasExhaustion()**: Validação de cooldown
+- **setExhaustion()**: Assinala cooldown (20h neste caso)
+- **say() Output**: Mensagem visível com TALKTYPE_MONSTER_SAY
+- **Multiple IDs**: 8 espelhos diferentes
+- **Blocked Message**: Mensagem fixa quando em cooldown
+
+### Responsabilidades do Handler
+
+1. **Validar cooldown**: hasExhaustion("delay-wall-mirror")
+2. **Gerar RNG**: math.random(1, #setting)
+3. **Obter mensagem**: setting[randomIdx]
+4. **Exibir**: say(message, TALKTYPE_MONSTER_SAY)
+5. **Assinalar**: setExhaustion(20h)
+6. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão RNG Array Selection
+
+Selecionar item aleatório de array:
+
+```lua
+local message = setting[math.random(1, #setting)]
+player:say(message, TALKTYPE_MONSTER_SAY)
+```
+
+### Padrão Cooldown Check
+
+Bloquear se em cooldown:
+
+```lua
+if player:hasExhaustion("delay-wall-mirror") then
+	player:say("Don't be so vain about your appearance.", TALKTYPE_MONSTER_SAY)
+	return true
+end
+```
+
+### Comparação: Wall Mirror vs Large Seashell
+
+| Aspecto | Mirror | Seashell |
+|---------|--------|----------|
+| Linhas | 26 | 30 |
+| IDs | 8 | 1 |
+| Array | 11 mensagens | 3 branches RNG |
+| Output | say() | dano/pérola/nada |
+| Cooldown | 20h | 20h |
+| Achievement | Não | Sim (progress) |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: wall_mirror.lua" icon="star">
+Análise de handler com RNG simples e array de mensagens. Demonstra math.random com meta-length operator e cooldown de 20h.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: RNG array selection with cooldown | Complexidade: Baixa-Média
+</Aside>

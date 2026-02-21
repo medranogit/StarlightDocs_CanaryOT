@@ -1,0 +1,302 @@
+---
+title: Add Skill
+description: Comando GOD para adicionar níveis de skills a jogadores (combat, magic, level, etc)
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `add_skill.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Aumentar skills/levels |
+| **Comando** | `/addskill &lt;playername&gt;, &lt;skill\|level\|magic&gt;, [amount]` |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Skill Suportadas** | club, sword, axe, dist, shield, fish |
+| **Quantidade Padrão** | 1 (se não informado) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/add_skill.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando com skillMap (6 tipos combat), detecta tipo via string prefix (l=level, m=magic). Level usa experiência via `Game.getExperienceForLevel()` e calculando diferença. Magic usa `getVocation():getRequiredManaSpent()`. Combats usam `getVocation():getRequiredSkillTries()`. Feedback singular/plural para "level"/"levels", "magic level"/"magic levels", "skill level"/"skill levels".
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `add_skill.lua` implementa um comando TalkAction (`/addskill`) que aumenta skills de jogadores (level, magic, ou combat skills). O sistema com skillMap (6 tipos), detecta tipo por prefix de string, calcula experiência/mana/tries necessárias, aplica via `addExperience()`/`addManaSpent()`/`addSkillTries()`, e fornece feedback singular/plural. Ferramenta de progressão.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- Mapa de skills combat
+local skillMap = {
+    club = SKILL_CLUB,
+    sword = SKILL_SWORD,
+    axe = SKILL_AXE,
+    dist = SKILL_DISTANCE,
+    shield = SKILL_SHIELD,
+    fish = SKILL_FISHING,
+}
+
+-- Função auxiliar: extrair skill ID do nome
+local function getSkillId(skillName)
+    return skillMap[skillName:match("^%a+")] or SKILL_FIST
+end
+
+local addSkill = TalkAction("/addskill")
+
+function addSkill.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    -- Validação: parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Parse: playerName, skillType, amount (opcional)
+    local split = param:split(",")
+    if #split < 2 then
+        player:sendCancelMessage("Usage: /addskill <playername>, <skill or 'level'/'magic'>, [amount]")
+        return true
+    end
+    
+    -- Extrair parâmetros
+    local targetPlayerName = split[1]:trim()
+    local targetPlayer = Player(targetPlayerName)
+    
+    if not targetPlayer then
+        player:sendCancelMessage("Player not found.")
+        return true
+    end
+    
+    -- Tipo de skill e quantidade
+    local skillParam = split[2]:trim()
+    local skillIncreaseAmount = tonumber(split[3]) or 1
+    local skillPrefix = skillParam:sub(1, 1)  -- Primeira letra
+    
+    -- MODO 1: Level (prefix "l")
+    if skillPrefix == "l" then
+        local targetNewLevel = targetPlayer:getLevel() + skillIncreaseAmount
+        local targetNewExp = Game.getExperienceForLevel(targetNewLevel)
+        local experienceToAdd = targetNewExp - targetPlayer:getExperience()
+        local levelText = (skillIncreaseAmount > 1) and "levels" or "level"
+        
+        targetPlayer:addExperience(experienceToAdd, false)
+        targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("%s has added %d %s to you.", player:getName(), skillIncreaseAmount, levelText))
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("You have successfully added %d %s to player %s.", skillIncreaseAmount, levelText, targetPlayer:getName()))
+    
+    -- MODO 2: Magic Level (prefix "m")
+    elseif skillPrefix == "m" then
+        for _ = 1, skillIncreaseAmount do
+            local requiredManaSpent = targetPlayer:getVocation():getRequiredManaSpent(targetPlayer:getBaseMagicLevel() + 1)
+            targetPlayer:addManaSpent(requiredManaSpent - targetPlayer:getManaSpent(), true)
+        end
+        
+        local magicText = (skillIncreaseAmount > 1) and "magic levels" or "magic level"
+        targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("%s has added %d %s to you.", player:getName(), skillIncreaseAmount, magicText))
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("You have successfully added %d %s to player %s.", skillIncreaseAmount, magicText, targetPlayer:getName()))
+    
+    -- MODO 3: Combat Skill (club, sword, axe, dist, shield, fish)
+    else
+        local skillId = getSkillId(skillParam)
+        for _ = 1, skillIncreaseAmount do
+            local requiredSkillTries = targetPlayer:getVocation():getRequiredSkillTries(skillId, targetPlayer:getSkillLevel(skillId) + 1)
+            targetPlayer:addSkillTries(skillId, requiredSkillTries - targetPlayer:getSkillTries(skillId), true)
+        end
+        
+        local skillText = (skillIncreaseAmount > 1) and "skill levels" or "skill level"
+        targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("%s has added %d %s %s to you.", player:getName(), skillIncreaseAmount, skillParam, skillText))
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("You have successfully added %d %s %s to player %s.", skillIncreaseAmount, skillParam, skillText, targetPlayer:getName()))
+    end
+    
+    return true
+end
+
+addSkill:separator(" ")
+addSkill:groupType("god")
+addSkill:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **addSkill.onSay(player, words, param)**
+
+**Descrição:** Função callback que aumenta skills de um jogador (level, magic, ou combat).
+
+**Parâmetros:**
+- `param` (string): `<playername>, <skill|level|magic>, [amount]`
+
+**Formato de Comando:**
+```
+/addskill Player1, level, 5        -- +5 levels
+/addskill Player1, magic, 3        -- +3 magic levels
+/addskill Player1, sword, 2        -- +2 sword skill levels
+/addskill Player1, club            -- +1 club skill level (padrão)
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação:**
+   - Parâmetro vazio: "Command param required."
+   - Menos de 2 parâmetros: "Usage: /addskill ..."
+
+3. **Busca de Jogador:**
+   - Se não encontrado: "Player not found."
+
+4. **Extração de Parâmetros:**
+   ```lua
+   local skillParam = split[2]:trim()
+   local skillIncreaseAmount = tonumber(split[3]) or 1
+   local skillPrefix = skillParam:sub(1, 1)  -- Primeira letra
+   ```
+   - Exemplo: "sword" -> skillPrefix = "s"
+   - Exemplo: "level" -> skillPrefix = "l"
+   - Exemplo: "magic" -> skillPrefix = "m"
+
+5. **MODO 1: Level (prefix "l")**
+   ```lua
+   if skillPrefix == "l" then
+       local targetNewLevel = targetPlayer:getLevel() + skillIncreaseAmount
+       local targetNewExp = Game.getExperienceForLevel(targetNewLevel)
+       local experienceToAdd = targetNewExp - targetPlayer:getExperience()
+       targetPlayer:addExperience(experienceToAdd, false)
+   ```
+   - Calcula novo nível
+   - Obtém experiência necessária
+   - Diferença = experiência a adicionar
+   - Aplica via `addExperience()`
+
+6. **MODO 2: Magic (prefix "m")**
+   ```lua
+   elseif skillPrefix == "m" then
+       for _ = 1, skillIncreaseAmount do
+           local requiredManaSpent = targetPlayer:getVocation():getRequiredManaSpent(targetPlayer:getBaseMagicLevel() + 1)
+           targetPlayer:addManaSpent(requiredManaSpent - targetPlayer:getManaSpent(), true)
+       end
+   ```
+   - Loop skillIncreaseAmount vezes
+   - Calcula mana necessária para próximo level
+   - Diferença = mana a adicionar
+   - Aplica via `addManaSpent()`
+
+7. **MODO 3: Combat Skill (club, sword, axe, dist, shield, fish)**
+   ```lua
+   else
+       local skillId = getSkillId(skillParam)
+       for _ = 1, skillIncreaseAmount do
+           local requiredSkillTries = targetPlayer:getVocation():getRequiredSkillTries(skillId, targetPlayer:getSkillLevel(skillId) + 1)
+           targetPlayer:addSkillTries(skillId, requiredSkillTries - targetPlayer:getSkillTries(skillId), true)
+       end
+   ```
+   - Busca skillId em skillMap ou padrão SKILL_FIST
+   - Loop skillIncreaseAmount vezes
+   - Calcula tries necessárias
+   - Diferença = tries a adicionar
+   - Aplica via `addSkillTries()`
+
+8. **Feedback Singular/Plural:**
+   ```lua
+   local levelText = (skillIncreaseAmount > 1) and "levels" or "level"
+   ```
+   - Se amount > 1: plural ("levels")
+   - Senão: singular ("level")
+
+**Exemplo de Execução:**
+
+```
+GM: /addskill TestPlayer, level, 5
+
+Parse:
+- playerName = "TestPlayer"
+- skillParam = "level"
+- skillIncreaseAmount = 5
+- skillPrefix = "l"
+
+Modo Level:
+- levelAtual: 50
+- levelNovo: 55
+- expNova = Game.getExperienceForLevel(55)
+- expAtual = targetPlayer:getExperience()
+- toAdd = expNova - expAtual
+- addExperience(toAdd, false)
+
+Feedback:
+- TestPlayer vê: "[GM] has added 5 levels to you."
+- GM vê: "You have successfully added 5 levels to player TestPlayer."
+```
+
+---
+
+```
+GM: /addskill TestPlayer, sword, 3
+
+Parse:
+- skillParam = "sword"
+- skillPrefix = "s"
+- skillIncreaseAmount = 3
+
+Modo Combat:
+- skillId = skillMap["sword"] = SKILL_SWORD
+- Loop 3x:
+  - requiredTries = getVocation():getRequiredSkillTries(SKILL_SWORD, currentLevel+1)
+  - addSkillTries(SKILL_SWORD, requiredTries - currentTries, true)
+
+Feedback:
+- TestPlayer vê: "[GM] has added 3 sword skill levels to you."
+- GM vê: "You have successfully added 3 sword skill levels to player TestPlayer."
+```
+
+**Tabela de Skills Combat:**
+
+| Nome | Constante | Descrição |
+|---|---|---|
+| club | SKILL_CLUB | Skill de meio | 
+| sword | SKILL_SWORD | Skill de espada |
+| axe | SKILL_AXE | Skill de machado |
+| dist | SKILL_DISTANCE | Skill de distância |
+| shield | SKILL_SHIELD | Skill de escudo |
+| fish | SKILL_FISHING | Skill de pesca |
+| (padrão) | SKILL_FIST | Skill de soco |
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `param:split(sep)` | Divide por separador |
+| `split[n]:trim()` | Remove espaços |
+| `tonumber(str)` | Converte para número |
+| `skillParam:sub(1, 1)` | Primeira letra |
+| `getSkillId(name)` | Busca em skillMap |
+| `targetPlayer:getLevel()` | Nível atual |
+| `Game.getExperienceForLevel(n)` | Exp para nível |
+| `targetPlayer:addExperience(exp, bool)` | Adiciona exp |
+| `targetPlayer:getVocation():getRequiredManaSpent(n)` | Mana necessária |
+| `targetPlayer:addManaSpent(amount, bool)` | Adiciona mana |
+| `targetPlayer:getVocation():getRequiredSkillTries(skill, level)` | Tries necessárias |
+| `targetPlayer:addSkillTries(skill, tries, bool)` | Adiciona tries |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `add_skill.lua` é gerenciador completo de progressão. Implementação com 3 modos (level, magic, combat), skillMap para abstração, loop de aplicações, feedback singular/plural. Essencial para administradores aumentar progressão, recompensar eventos, ou debugar vocation. Design robusto com detecção automática de tipo por primeira letra.

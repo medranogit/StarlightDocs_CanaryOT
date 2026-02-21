@@ -1,0 +1,284 @@
+---
+title: VIP Management
+description: Comando GOD para gerenciar dias de VIP de jogadores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | manage_vip.lua |
+| **Tipo de Sistema** | VIP System Management (GOD) |
+| **Funcionalidade Principal** | Gerenciar dias VIP |
+| **Comando** | /vip &lt;action&gt;, &lt;name&gt;, [value] |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Config** | minDays=1, maxDays=90 |
+| **Ações** | check, adddays, removedays, remove |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/manage_vip.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /vip com 4 ações (check, adddays, removedays, remove). Parse 3 parâmetros (action, targetName, value opt). Valida VIP enabled (configManager). /check: mostra dias (0xFFFF = infinito). /adddays: valida 1-90, player:addPremiumDays(), onAddVip(). /removedays: valida amount, remove capped ao máximo. /remove: reset completo. Magic effects HOLY/RED.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo manage_vip.lua implementa comando /vip complexo com 4 ações de VIP management. Dispõe de checker, adder, remover, reset completo, validações de limites, magic effects, logging automático, feedback via dialogs. Ferramenta essencial de VIP system management.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Variáveis Locais**
+
+```lua
+local vipGod = TalkAction("/vip")
+
+local config = {
+	minDays = 1,      -- dias mínimos que podem ser adicionados
+	maxDays = 90,     -- dias máximos que podem ser adicionados
+}
+```
+
+---
+
+### **TalkAction /vip**
+
+```lua
+function vipGod.onSay(player, words, param)
+	-- Validação: VIP habilitado?
+	if not configManager.getBoolean(configKeys.VIP_SYSTEM_ENABLED) then
+		player:sendCancelMessage("Vip System are not enabled!")
+		return true
+	end
+	
+	logCommand(player, words, param)
+	
+	-- Parse: 3 parâmetros
+	local params = param:split(",")
+	local action = params[1]:trim():lower()
+	local targetName = params[2]:trim()
+	if not action or not targetName then
+		player:sendTextMessage(MESSAGE_LOOK, "Command invalid.\nUsage:\n/vip <action>, <name>, [, <value>]\n\nAvailable actions:\ncheck, adddays, removedays, remove")
+		return true
+	end
+	
+	-- Buscar player
+	local target = Player(targetName)
+	if not target then
+		player:sendTextMessage(MESSAGE_LOOK, string.format('Player "%s" is not online or does not exist!', targetName))
+		return true
+	end
+	
+	local targetVipDays = target:getVipDays()
+	targetName = target:getName()
+	
+	-- Ação 1: CHECK
+	if action == "check" then
+		player:sendTextMessage(MESSAGE_STATUS, string.format('"%s" has %s VIP day(s) left.', targetName, (targetVipDays == 0xFFFF and "infinite" or targetVipDays)))
+	
+	-- Ação 2: ADDDAYS
+	elseif action == "adddays" then
+		local amount = tonumber(params[3])
+		if not amount or amount <= 0 then
+			player:sendCancelMessage("<value> has to be a numeric value.")
+			return true
+		end
+		
+		-- Validação: 1-90 dias
+		if amount < config.minDays or amount > config.maxDays then
+			player:sendTextMessage(MESSAGE_LOOK, string.format("You can only add %d to %d VIP days at a time.", config.minDays, config.maxDays))
+			return true
+		end
+		
+		-- Adicionar
+		target:addPremiumDays(amount)
+		target:onAddVip(amount)
+		target:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+		player:sendTextMessage(MESSAGE_STATUS, string.format('"%s" received %d VIP day(s) and now has %d VIP day(s)', targetName, amount, target:getVipDays()))
+	
+	-- Ação 3: REMOVEDAYS
+	elseif action == "removedays" then
+		local amount = tonumber(params[3])
+		if not amount then
+			player:sendTextMessage(MESSAGE_LOOK, "<value> has to be a numeric value.")
+			return true
+		end
+		
+		-- Capped ao máximo
+		if amount > targetVipDays then
+			target:removePremiumDays(targetVipDays)
+			target:onRemoveVip()
+			target:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+			player:sendTextMessage(MESSAGE_STATUS, string.format("You removed all VIP days from %s.", targetName))
+		else
+			target:removePremiumDays(amount)
+			player:sendTextMessage(MESSAGE_STATUS, string.format("%s lost %s VIP day(s) and now has %s VIP day(s).", targetName, amount, target:getVipDays()))
+		end
+	
+	-- Ação 4: REMOVE
+	elseif action == "remove" then
+		target:removePremiumDays(targetVipDays)
+		target:onRemoveVip()
+		target:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+		player:sendTextMessage(MESSAGE_STATUS, string.format("You removed all VIP days from %s.", targetName))
+	
+	-- Ação inválida
+	else
+		player:sendTextMessage(MESSAGE_LOOK, "Action is required.\nUsage:\n/vip <action>, <name>, [, <value>]\n\nAvailable actions:\ncheck, adddays, removedays, remove")
+		return true
+	end
+	return true
+end
+
+vipGod:separator(" ")
+vipGod:groupType("god")
+vipGod:register()
+```
+
+---
+
+## **Ações Disponíveis**
+
+### **check**
+
+```
+/vip check, PlayerName
+
+Fluxo:
+1. Obtém dias VIP do player
+2. Mostra: "PlayerName" has X VIP day(s) left.
+3. Se infinito (0xFFFF): "has infinite VIP day(s) left."
+
+Resultado:
+- Feedback: "PlayerName" has 30 VIP day(s) left.
+```
+
+---
+
+### **adddays**
+
+```
+/vip adddays, PlayerName, 30
+
+Fluxo:
+1. Valida value numeric e > 0
+2. Valida 1-90 dias (config)
+3. addPremiumDays(amount)
+4. onAddVip(amount) - callback
+5. HOLYAREA magic effect
+6. Feedback atual: 30 + antigos
+
+Resultado:
+- HOLY magic effect (confirmação)
+- Feedback: "PlayerName" received 30 VIP day(s) and now has 35 VIP day(s)
+
+Validações:
+- amount <= 0: erro
+- amount < 1 ou > 90: erro
+```
+
+---
+
+### **removedays**
+
+```
+/vip removedays, PlayerName, 10
+
+Fluxo:
+1. Valida value numeric
+2. Se amount > dias atuais:
+   - Remove todos (capped)
+   - onRemoveVip() - callback
+3. Se amount <= dias:
+   - Remove somente amount
+4. RED magic effect
+
+Resultado:
+- RED magic effect (confirmação negativa)
+- Feedback: "PlayerName" lost 10 VIP day(s) and now has 20 VIP day(s)
+```
+
+---
+
+### **remove**
+
+```
+/vip remove, PlayerName
+
+Fluxo:
+1. Remove todos dias (0)
+2. onRemoveVip() - callback
+3. RED magic effect
+4. Feedback: "You removed all VIP days from PlayerName."
+
+Resultado:
+- VIP completo removido
+- RED magic effect
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /vip check, TestPlayer
+Resultado: "TestPlayer" has 30 VIP day(s) left.
+
+---
+
+GM: /vip adddays, TestPlayer, 25
+Resultado: HOLYAREA effect
+Mensagem: "TestPlayer" received 25 VIP day(s) and now has 55 VIP day(s)
+
+---
+
+GM: /vip removedays, TestPlayer, 10
+Resultado: RED effect
+Mensagem: "TestPlayer" lost 10 VIP day(s) and now has 45 VIP day(s)
+
+---
+
+GM: /vip remove, TestPlayer
+Resultado: RED effect
+Mensagem: "You removed all VIP days from TestPlayer."
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `configManager.getBoolean(key)` | Obtém config booleano |
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `string:trim()` | Remove espaços |
+| `string:lower()` | Lowercase |
+| `Player(name)` | Busca player online |
+| `player:getVipDays()` | Obtém dias VIP |
+| `player:addPremiumDays(amount)` | Adiciona dias |
+| `player:removePremiumDays(amount)` | Remove dias |
+| `player:onAddVip(amount)` | Callback adição |
+| `player:onRemoveVip()` | Callback remoção |
+| `player:getPosition()` | Posição do player |
+| `position:sendMagicEffect(effect)` | Efeito visual |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+| `tonumber(str)` | Converte número |
+| `string.format(fmt, ...)` | Formata string |
+
+**Constantes:**
+- `MESSAGE_LOOK`, `MESSAGE_STATUS`, `MESSAGE_ADMINISTRATOR`
+- `CONST_ME_HOLYAREA`, `CONST_ME_MAGIC_RED`
+- `configKeys.VIP_SYSTEM_ENABLED`
+
+---
+
+## 📌 Resumo
+
+O arquivo manage_vip.lua é sistema robusto de VIP management. Implementação com 4 ações (check/add/remove/reset), validações de limites (1-90), magic effects, callbacks, config habilitação. Essencial para GMs gerenciar premium visualmente. Design flexível com capping automático.

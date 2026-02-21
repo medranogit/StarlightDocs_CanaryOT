@@ -1,0 +1,38 @@
+---
+title: Migration 53 - Forge History Unique Constraint
+description: Torna done_at único em forge_history com multiplicação de timestamp.
+sidebar:
+  order: 53
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## Visão Geral
+
+**Versão**: 53  
+**Objetivo**: Add unique constraint to forge history
+
+## Operações
+
+```lua
+-- Converter timestamps < 1 bilhão para milissegundos (* 1000)
+UPDATE forge_history
+SET done_at = done_at * 1000
+WHERE done_at < 1000000000000;
+
+-- Remover duplicatas adicionando microsegundos incrementais
+UPDATE forge_history AS f1
+JOIN (
+  SELECT id, player_id, done_at,
+         ROW_NUMBER() OVER (...)
+  FROM forge_history
+)
+SET f1.done_at = f1.done_at + row_num
+WHERE row_num > 1;
+
+-- Adicionar UNIQUE constraint
+ALTER TABLE forge_history 
+ADD UNIQUE KEY unique_player_done_at (player_id, done_at);
+```
+
+**Propósito**: Garantir unicidade de operações de forge por timestamp

@@ -1,0 +1,229 @@
+---
+title: Push Town
+description: Comando GM para teleportar jogador (ou a si mesmo) para templo da sua cidade base
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `push_town.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Teleportar para templo da cidade |
+| **Comando** | `/t [playername]` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Opcional** | Nome do jogador (vazio = self) |
+| **Separador** | Espaço |
+| **Localização Alvo** | Temple Position da Town |
+| **Efeito** | CONST_ME_HOLYAREA se outro jogador |
+| **Integração** | Webhook Discord + Logger |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/push_town.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando versátil com 2 modos. Sem param: teleporta GM ao templo sua própria cidade via `player:getTown():getTemplePosition()`. Com param: teleporta outro jogador ao seu templo, envia mensagens bilaterais (GM vê "teleported X to temple", X vê "vous ont teleported to your temple"), efeito HOLYAREA, webhook auditoria, e log de servidor. Sem validações de city/guild, todos vão ao seu templo base.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `push_town.lua` implementa um comando TalkAction (`/t`) que teleporta jogadores para o templo de sua cidade base. O sistema suporta dois modos: modo auto (sem param = teleporta GM) e modo alvo (com param = teleporta outro jogador ao seu templo). Inclui mensagens bilaterais, efeito mágico visual no destino, webhook Discord para auditoria, e logging de servidor. Ferramenta essencial para reorganização de eventos ou punição rápida.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local pushTown = TalkAction("/t")
+
+-- 2. Função Principal (onSay)
+function pushTown.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Modo 1: Sem parâmetro (teleporta GM ao seu templo)
+    if param == "" then
+        -- Teleportar GM
+        player:teleportTo(player:getTown():getTemplePosition())
+    else
+        -- Modo 2: Com parâmetro (teleporta outro jogador)
+        
+        -- Buscar jogador target
+        local targetPlayer = Player(param)
+        if not targetPlayer then
+            player:sendCancelMessage("A player with that name is not online.")
+            return true
+        end
+        
+        -- Obter posição do templo do target
+        local templePos = targetPlayer:getTown():getTemplePosition()
+        
+        -- Mensagens bilaterais
+        player:sendTextMessage(MESSAGE_STATUS, 
+            "You have teleported " .. targetPlayer:getName() .. " to temple.")
+        targetPlayer:sendTextMessage(MESSAGE_STATUS, 
+            "You have been teleported to your temple.")
+        
+        -- Teleportar
+        targetPlayer:teleportTo(templePos)
+        
+        -- Efeito mágico no destino
+        templePos:sendMagicEffect(CONST_ME_HOLYAREA)
+        
+        -- Construir mensagem de log
+        local text = "Player " .. targetPlayer:getName() .. 
+                     " has been teleported to temple by " .. player:getName() .. "."
+        
+        -- Log estruturado do servidor
+        logger.info("[pushTown.onSay] - {}", text)
+        
+        -- Webhook para auditoria
+        Webhook.sendMessage(
+            "Player Teleported",
+            text,
+            WEBHOOK_COLOR_YELLOW,
+            announcementChannels["serverAnnouncements"]
+        )
+    end
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+pushTown:separator(" ")
+pushTown:groupType("gamemaster")
+pushTown:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **pushTown.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/t` é utilizado. Teleporta ao templo (self ou alvo).
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando (GM)
+- `words` (string): Palavras do comando (`/t`)
+- `param` (string): Nome do jogador a teleportar (opcional, vazio = self)
+
+**Fluxo Executivo - Modo Auto (param vazio):**
+
+```lua
+if param == "" then
+    player:teleportTo(player:getTown():getTemplePosition())
+end
+```
+
+1. `player:getTown()` - Obtém objeto Town do jogador
+2. `getTown():getTemplePosition()` - Retorna Position do templo
+3. `player:teleportTo()` - Teleporta
+
+**Fluxo Executivo - Modo Alvo (param fornecido):**
+
+1. **Busca de Jogador:**
+   ```lua
+   local targetPlayer = Player(param)
+   if not targetPlayer then
+       player:sendCancelMessage("A player with that name is not online.")
+       return true
+   end
+   ```
+   - Busca por nome (case-sensitive)
+   - Se offline: retorna erro
+
+2. **Obtenção de Posição de Templo:**
+   ```lua
+   local templePos = targetPlayer:getTown():getTemplePosition()
+   ```
+   - Obtém templo da CIDADE do alvo (não do GM)
+
+3. **Mensagens Bilaterais:**
+   ```lua
+   player:sendTextMessage(MESSAGE_STATUS, 
+       "You have teleported " .. targetPlayer:getName() .. " to temple.")
+   targetPlayer:sendTextMessage(MESSAGE_STATUS, 
+       "You have been teleported to your temple.")
+   ```
+   - GM vê confirmação (quem foi teleportado)
+   - Alvo vê notificação (foi teleportado)
+   - Tipo: MESSAGE_STATUS (infobar, não chat)
+
+4. **Teleportação:**
+   ```lua
+   targetPlayer:teleportTo(templePos)
+   ```
+
+5. **Efeito Visual:**
+   ```lua
+   templePos:sendMagicEffect(CONST_ME_HOLYAREA)
+   ```
+   - Efeito sacro/sagrado no destino
+   - Visível apenas se modo auto (sem param), não aparece para alvo
+
+6. **Auditoria (Alvo Apenas):**
+   ```lua
+   local text = "Player " .. targetPlayer:getName() .. 
+                " has been teleported to temple by " .. player:getName() .. "."
+   logger.info("[pushTown.onSay] - {}", text)
+   Webhook.sendMessage("Player Teleported", text, WEBHOOK_COLOR_YELLOW, ...)
+   ```
+   - Log com formato estruturado
+   - Webhook Discord com cor YELLOW (auditoria)
+
+**Exemplo de Uso:**
+
+```
+/t                         -- GM teleporta a si (templo próprio)
+/t PlayerName              -- Teleporta PlayerName ao seu templo
+
+Resultado (modo alvo):
+- GM vê: "You have teleported PlayerName to temple."
+- PlayerName vê: "You have been teleported to your temple."
+- Logger: "[pushTown.onSay] - Player PlayerName has been teleported to temple by GMName."
+- Webhook: "Player Teleported" - "Player PlayerName has been teleported to temple by GMName."
+- Efeito HOLYAREA no destino
+```
+
+**Diferenças entre Modos:**
+
+| Aspecto | Auto (vazio) | Alvo (param) |
+|---|---|---|
+| Teleporta quem | GM | Outro jogador |
+| Mensagens | Nenhuma | Bilaterais |
+| Efeito | Nenhum | HOLYAREA |
+| Webhook | Não | Sim |
+| Logger | Não | Sim |
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Player(name)` | Busca jogador online por nome |
+| `player:getTown()` | Obtém objeto Town do jogador |
+| `town:getTemplePosition()` | Retorna Position do templo |
+| `player:teleportTo(position)` | Teleporta até posição |
+| `player:sendTextMessage(type, message)` | Envia mensagem |
+| `position:sendMagicEffect(id)` | Envia efeito mágico |
+| `logger.info(format, text)` | Log estruturado |
+| `Webhook.sendMessage()` | Envia webhook Discord |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+### **Town e Temple**
+
+**Conceitos:**
+- **Town:** Cidade base atribuída a cada jogador (Carlin, Thais, Venore, etc)
+- **Temple Position:** Coordenadas específicas de spawn de templo para regressão
+- Cada jogador tem uma `getTown()` que define seu templo padrão
+
+---
+
+## 📌 Resumo
+
+O arquivo `push_town.lua` é ferramenta versátil de teleportação urbana. Implementação com dois modos (auto/alvo), mensagens educadas e bilaterais, integração de webhook para auditoria, e efeitos visuais no destino. Essencial para GMs reposicionar jogadores em eventos, punir com regressão de templo, ou navegar rapidamente. Design intuitivo com modo auto simplificado e modo alvo informativo com rastreamento completo.

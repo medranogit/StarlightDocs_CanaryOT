@@ -1,0 +1,251 @@
+---
+title: fiery_horseshoe.lua
+description: Ferraduras de fogo que acumulam para desbloquear mount
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="fiery_horseshoe.lua" icon="star">
+Script de ação Lua que implementa sistema de acúmulo de ferradura para mount temático.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/fiery_horseshoe.lua`
+
+Sistema que requer 4 ferradura de fogo (ID 36938) para desbloquear mount "Singeing Steed" (ID 184). Players que já tem o mount não podem usar. Rastreia progresso com key-value "fiery-horseshoe". Achievement "Hot on the Trail" ao completar.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `fiery_horseshoe.lua` implementa sistema de crafting de mount com acúmulo de 4 ferradura. Usa config table para permitir fácil extensão a múltiplos itens/mounts. Players que já tem o mount (184) são rejeitados. Rastreia progresso com kv "fiery-horseshoe". Ao atingir 4 ferradura, desbloqueia mount e achievement.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define config table]
+    ├─ requiredItems: {36938} (1 tipo de ferradura)
+    │   └─ key: "fiery-horseshoe"
+    │   └─ count: 4 (necessário)
+    └─ mountId: 184
+
+[Create fieryHorseshoe Action]
+    ↓
+[onUse function]
+    ├─ Get itemInfo = config.requiredItems[item:getId()]
+    ├─ If not found? return true
+    ├─ If already has mount? return true
+    ├─ currentCount = kv:get(key) or 0 + 1
+    ├─ kv:set(key, currentCount)
+    ├─ sendMagicEffect(FIREATTACK)
+    ├─ item:remove(1)
+    ├─ Loop requiredItems
+    │   ├─ For each: check if count < required
+    │   └─ If any missing? return true
+    ├─ player:addMount(mountId)
+    ├─ player:addAchievement("Hot on the Trail")
+    ├─ sendTextMessage: "Singeing Steed is now yours!"
+    └─ return true
+```
+
+## Variáveis Globais
+
+### config (local table)
+
+```lua
+local config = {
+	requiredItems = {
+		[36938] = { key = "fiery-horseshoe", count = 4 },
+	},
+	mountId = 184,
+}
+```
+
+Configuração centralizeda para fácil extensão.
+
+**Estrutura**:
+- requiredItems: Map de item ID para info
+- mountId: ID do mount a desbloquear
+
+**Extensível**: Pode adicionar mais itens em requiredItems com keys diferentes.
+
+## Funções
+
+### fieryHorseshoe.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que processa ferradura.
+
+**Parâmetros:**
+- player: Creature player
+- item: Ferradura sendo usada
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. itemInfo = config.requiredItems[item:getId()]
+   ├─ Não existe? return true
+   └─ Existe? continuar
+
+2. If player:hasMount(config.mountId)
+   └─ return true (já tem mount)
+
+3. currentCount = (kv:get(key) or 0) + 1
+   └─ Incrementa contador
+
+4. kv:set(key, currentCount)
+   └─ Salva novo contador
+
+5. sendMagicEffect(FIREATTACK)
+   └─ Efeito visual fogo
+
+6. item:remove(1)
+   └─ Consome ferradura
+
+7. For _, info in pairs(config.requiredItems)
+   ├─ If (kv:get(key) or 0) < required
+   │   └─ return true (ainda faltam)
+   └─ If algum check falha
+       └─ return true
+
+8. player:addMount(mountId)
+   ├─ addAchievement("Hot on the Trail")
+   ├─ sendTextMessage: "Singeing Steed is now yours!"
+   └─ return true
+```
+
+**Implementação:**
+
+```lua
+function fieryHorseshoe.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local itemInfo = config.requiredItems[item:getId()]
+	if not itemInfo then
+		return true
+	end
+
+	if player:hasMount(config.mountId) then
+		return true
+	end
+
+	local currentCount = (player:kv():get(itemInfo.key) or 0) + 1
+	player:kv():set(itemInfo.key, currentCount)
+	player:getPosition():sendMagicEffect(CONST_ME_FIREATTACK)
+	item:remove(1)
+
+	for _, info in pairs(config.requiredItems) do
+		if (player:kv():get(info.key) or 0) < info.count then
+			return true
+		end
+	end
+
+	player:addMount(config.mountId)
+	player:addAchievement("Hot on the Trail")
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Singeing Steed is now yours!")
+	return true
+end
+```
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| itemInfo | table | Config do item |
+| currentCount | integer | Contador atual |
+| config.mountId | integer | 184 (Singeing Steed) |
+| "fiery-horseshoe" | string | Chave kv |
+| 4 | integer | Ferradura necessárias |
+| CONST_ME_FIREATTACK | constant | Efeito mágico |
+
+## Fluxo de Operação
+
+```
+[Player usa ferradura]
+    ↓
+[Item está em config?]
+    ├─ NÃO → return true
+    └─ SIM → continuar
+    ↓
+[Já tem mount?]
+    ├─ SIM → return true
+    └─ NÃO → continuar
+    ↓
+[Incrementa contador]
+    ├─ currentCount = old + 1
+    └─ kv:set(key, currentCount)
+    ↓
+[Magic effect FIREATTACK]
+    ↓
+[item:remove(1)]
+    ↓
+[Verifica se todos required items coletados]
+    ├─ Algum count < required? 
+    │   └─ SIM → return true
+    └─ NÃO (todos = 4) → continuar
+    ↓
+[player:addMount(184)]
+    ↓
+[addAchievement("Hot on the Trail")]
+    ↓
+[sendTextMessage: "Singeing Steed is now yours!"]
+    ↓
+[return true]
+```
+
+## Arquitetura Extensível
+
+**Config-driven Approach**:
+
+Atual: 1 ferradura (36938) → 1 mount (184)
+
+**Pode estender para**:
+```lua
+requiredItems = {
+	[36938] = { key = "fiery-horseshoe", count = 4 },
+	[OTHER_ID] = { key = "other-key", count = 3 },
+}
+```
+
+Permite múltiplas rotas de crafting mount.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Config table para extensibilidade
+2. Counter progressão com kv
+3. Validação multi-item (loop checking)
+4. Mount bloqueia se já tem
+5. Achievement unlock em completion
+6. Registration dinâmica via loop
+
+**Responsabilidades:**
+1. Validar item em config
+2. Validar player não tem mount
+3. Incrementar contador
+4. Emitir efeito visual
+5. Consumir ferradura
+6. Verificar se todos items coletados
+7. Desbloquear mount e achievement
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 39 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 36938 (ferradura)  
+**Mount ID**: 184 (Singeing Steed)  
+**Requerido**: 4 ferradura  
+**Achievement**: Hot on the Trail  
+**Storage**: Key-value por jogador  
+**Padrão**: Config-driven extensível
+</Card>
+
+<Aside type="note">
+Sistema de acúmulo config-driven. 4 ferradura para mount. Rejeita se já tem mount. Bloqueia repeat use. Achievement "Hot on the Trail" ao completar.
+</Aside>

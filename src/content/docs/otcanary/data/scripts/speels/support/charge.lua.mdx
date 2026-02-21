@@ -1,0 +1,217 @@
+---
+title: Charge
+description: Spell de suporte para Knights que aplica buff de haste e aumenta velocidade de move do conjurador e suas familiares por 5 segundos
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `charge.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Knight / Elite Knight |
+| **Spell ID** | 131 |
+| **Mana Requerida** | 100 |
+| **Level Requerido** | 25 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração do Buff** | 5 segundos (5.000 ms) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utani tempo hur` |
+| **Efeito Visual** | `CONST_ME_MAGIC_GREEN` |
+| **Multiplicador de Haste** | 1.9x (formula base) |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (buff defensivo) |
+| **Afeta Familiares** | Sim (summons com familiar flag) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/charge.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell é único pois aplica haste ao conjurador E ajusta dinamicamente a velocidade das familiares (summons) para permanecerem sincronizadas. O algoritmo calcula a diferença de velocidade base entre Knight e sua familiar, mantendo proporção durante haste. A fórmula `FamiliarSpeed = ((summon:getBaseSpeed() + deltaSpeed) * 0.9) - 72` garante que familiar move 90% mais rapido que ajuste do Knight, menos penalidade de 72 pixels/sec.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `charge.lua` implementa buff de haste premium para Knights (level 25+) que aumenta tanto velocidade do conjurador quanto de suas familiares summonadas. É dos poucos spells que mantém sincronização entre caster e summons durante modificação de atributos. O spell obtém lista de summons do Knight, filtra apenas familiares (via `summon_t:familiar()`), calcula velocidade proporcional mantendo offset relativo, e aplica condition de HASTE separada para cada familiar com suas próprias configurações de speed. A implementação demonstra padrão avançado de iteração sobre summons com lógica adaptativa.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Criação da Condição de Haste Principal
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_GREEN)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+
+local condition = Condition(CONDITION_HASTE)
+condition:setParameter(CONDITION_PARAM_TICKS, 5000)
+condition:setFormula(1.9, 40, 1.9, 40)
+combat:addCondition(condition)
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 3.1 Obtenção de Summons do Knight
+    -- 3.2 Iteração sobre lista de Summons
+    -- 3.3 Filtro de Familiares
+    -- 3.4 Cálculo de Velocidade Proporcional
+    -- 3.5 Aplicação de Haste em Familiar
+    -- 3.6 Execução de Combat (aplica ao Knight)
+    -- 3.7 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:name("Charge")
+spell:words("utani tempo hur")
+spell:group("support")
+spell:vocation("knight;true", "elite knight;true")
+spell:id(131)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(25)
+spell:mana(100)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_CHARGE)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat que aplica haste ao Knight |
+| `condition` | `Condition` | Local | Condition base de HASTE com fórmula 1.9x |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Knight que conjura o spell |
+| `variant` | `Variant` | Parâmetro | Dados variáveis (não utilizados - self target) |
+| `summons` | `table` | Local (onCastSpell) | Lista de summons do Knight |
+| `summon` | `Creature` | Local (loop) | Summon atual na iteração |
+| `summon_t` | `MonsterType` | Local (loop) | Tipo do summon para validação |
+| `deltaSpeed` | `number` | Local (loop) | Diferença de velocidade entre Knight e familiar |
+| `FamiliarSpeed` | `number` | Local (loop) | Velocidade calculada para familiar durante haste |
+| `FamiliarHaste` | `Condition` | Local (loop) | Condition separada de HASTE para familiar |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Iteração sobre Summons**
+```lua
+local summons = creature:getSummons()
+if summons and type(summons) == "table" and #summons > 0 then
+    for i = 1, #summons do
+        local summon = summons[i]
+```
+Obtém lista de summons, valida existência e tipo table, então itera sobre cada um.
+
+### 2. **Padrão de Filtro por Tipo de Summon**
+```lua
+local summon_t = summon:getType()
+if summon_t and summon_t:familiar() then
+```
+Filtra apenas summons que possuem flag `familiar()` ativa, ignorando outros tipos.
+
+### 3. **Padrão de Cálculo Proporcional de Velocidade**
+```lua
+local deltaSpeed = math.max(creature:getBaseSpeed() - summon:getBaseSpeed(), 0)
+local FamiliarSpeed = ((summon:getBaseSpeed() + deltaSpeed) * 0.9) - 72
+```
+Calcula offset de velocidade e aplica proporcional (90% do ajuste) menos penalidade fixa.
+
+### 4. **Padrão de Condition Dinâmica por Summon**
+```lua
+local FamiliarHaste = Condition(CONDITION_HASTE)
+FamiliarHaste:setParameter(CONDITION_PARAM_TICKS, 5000)
+FamiliarHaste:setParameter(CONDITION_PARAM_SPEED, FamiliarSpeed)
+summon:addCondition(FamiliarHaste)
+```
+Cria condition separada para cada familiar, não reutiliza - permite customização per-summon.
+
+### 5. **Padrão de Haste com Fórmula**
+```lua
+condition:setFormula(1.9, 40, 1.9, 40)
+```
+Fórmula 1.9x indica multiplicação de velocidade. Parâmetros 40 podem indicar thresholds ou limites.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Aplica buff de haste ao Knight e dinamicamente ajusta velocidade de suas familiares para manter sincronização.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Knight ou Elite Knight que conjura o spell.
+- `variant` (Variant): Dados variáveis (não utilizados - self target).
+
+**Fluxo de Execução:**
+
+1. **Obtenção de Summons**:
+   - Chama `creature:getSummons()` para obter lista de summons
+   - Valida tipo table e existência de elementos
+   - Se vazio, pula loop de familiares
+
+2. **Iteração sobre Summons** (se existem):
+   - Loop `for i = 1, #summons` percorre cada summon
+   - Obtém `summon_t = summon:getType()` para validação
+
+3. **Filtro de Familiares**:
+   - Verifica `summon_t:familiar()` para confirmar que é familiar
+   - Ignora summons que não possuem flag familiar
+
+4. **Cálculo de Velocidade Individual**:
+   - Calcula `deltaSpeed = math.max(creature:getBaseSpeed() - summon:getBaseSpeed(), 0)`
+   - Diferença positiva conta quantos pixels/sec o Knight é mais rápido que familiar
+   - `math.max(..., 0)` garante que não fica negativo
+
+5. **Ajuste Proporcional**:
+   - Calcula `FamiliarSpeed = ((summon:getBaseSpeed() + deltaSpeed) * 0.9) - 72`
+   - Aplica 90% do ajuste do Knight à familiar
+   - Subtrai penalidade de 72 pixels/sec
+
+6. **Aplicação de Haste na Familiar**:
+   - Cria `FamiliarHaste = Condition(CONDITION_HASTE)` separada
+   - Define duração para 5.000 ms (sincronizado com Knight)
+   - Aplica velocidade customizada via `setParameter(CONDITION_PARAM_SPEED, FamiliarSpeed)`
+   - Adiciona condition à familiar
+
+7. **Aplicação de Haste no Knight**:
+   - Retorna execução de `combat:execute(creature, variant)`
+   - Combat aplica condition base (1.9x formula) ao Knight
+   - Efeito visual CONST_ME_MAGIC_GREEN
+
+8. **Retorno**:
+   - Retorna `true` (cast bem-sucedido)
+
+**Valores de Retorno:**
+- `true`: Spell executado com sucesso, mana de 100 consumida
+- Nota: Não retorna `false` mesmo sem summons (spell sempre sucesso para conjurador)
+
+**Lógica Detalhada:**
+
+O spell implementa sincronização avançada entre Knight e familiares. Sem ajuste proporcional, familiar ficaria para trás durante haste, quebrando formação tática. O cálculo de `deltaSpeed` captura velocidade relativa do Knight em relação à familiar.
+
+A aplicação de 90% do ajuste (não 100%) mantém familiar ligeiramente mais lenta, preservando diferença base. A penalidade de-72 é hack que pode indicar ajuste para lag ou diferença de movimento algoritmo.
+
+Fórmula `1.9x` no Knight significa multiplicação por 1.9 (aumento de 90% em velocidade). A duração de 5 segundos força recast frequente. Mana de 100 é moderada para level 25, incentivando uso tático mas não proibitivo.
+
+A criação de condition separada para cada familiar em vez de reutilizar permite que cada familiar tenha offset customizado. Útil se familiares têm velocidades bases diferentes.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_CHARGE`: Som característico de acele
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+
+## 📌 Resumo
+
+**Charge** é um spell de suporte premium exclusivo para Knights (level 25+) que aplica buff de haste aumentando velocidade de movimento do Knight em 1.9x e dinamicamente ajusta velocidade de suas familiares para manter formação sincronizada por 5 segundos. O spell requer 100 de mana e cooldown de 2 segundos. A implementação é única por sincronizar velocidade de summons via cálculo proporcional, preservando offset relativo durante haste. É essencial para tática de agrupamento familiar em combate, permitindo que Knight e suas familiares avancem juntos mantendo efetividade de grupo.
+
+A implementação segue padrão avançado de modificação de atributos com sincronização, diferenciando-se por: (1) iterar sobre summons dinamicamente, (2) calcular velocidade proporcional per-summon, (3) manter sincronização de duração, (4) usar condition separada para cada familiar permitindo customização.

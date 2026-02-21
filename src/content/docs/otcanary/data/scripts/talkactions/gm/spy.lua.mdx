@@ -1,0 +1,303 @@
+---
+title: Spy
+description: Comando GM para visualizar todos os equipamentos e itens de um jogador organizado por slot
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `spy.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Espiar equipamento de jogador |
+| **Comando** | `/spy <playername>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Nome do jogador |
+| **Separador** | Espaço |
+| **Saída** | Text Dialog com interface de visualização |
+| **Suporta** | Containers e contagem de itens |
+| **Slots Listados** | 10 (Helmet, Amulet, Backpack, Armor, etc) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/spy.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Sistema avançado que espias todos os 10 slots de equipamento por name. Define array de nomes de slots, itera cada um via `getSlotItem()`, verifica se é container recursivamente, e constrói string detalhada com itens e quantidades. Função auxiliar `getItemsInContainer()` processa recursivamente containers mostrando indentação progressiva. Exibe em text dialog via `showTextDialog()` para interface visual. Sem validações de offline, apenas online.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `spy.lua` implementa um comando TalkAction (`/spy`) que permite gamemasters visualizar equipamento completo de jogadores. O sistema busca jogador por nome, itera 10 slots de equipamento principal, determina se cada slot contém container, processa recursivamente containers com indentação visual progressiva, agrupa informações de items com quantidades, e exibe em interface de text dialog. Ferramenta de auditoria equipamento completa.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Função Auxiliar: Processar Container Recursivamente
+local function getItemsInContainer(container, sep)
+    local text = ""
+    local tsep = ""
+    local count
+    
+    -- Construir indentação progressiva
+    for i = 1, sep do
+        tsep = tsep .. "-"
+    end
+    tsep = tsep .. ">"
+    
+    -- Iterar slots do container
+    for slot = 0, container:getSize() - 1 do
+        local item = container:getItem(slot)
+        
+        if not item:isContainer() then
+            -- Item simples
+            if item.type > 0 then
+                count = "(" .. item.type .. "x)"
+            else
+                count = ""
+            end
+            text = text .. "\n" .. tsep .. ItemType(item.itemid):getName() .. " " .. count
+        else
+            -- É container
+            if item:getSize() > 0 then
+                -- Container com itens
+                text = text .. "\n" .. tsep .. ItemType(item.itemid):getName()
+                -- Recursão: aumentar indentação
+                text = text .. getItemsInContainer(item, sep + 2)
+            else
+                -- Container vazio
+                text = text .. "\n" .. tsep .. ItemType(item.itemid):getName()
+            end
+        end
+    end
+    
+    return text
+end
+
+-- 2. Instanciação do TalkAction
+local spy = TalkAction("/spy")
+
+-- 3. Função Principal (onSay)
+function spy.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Write the name of the character to be spyed.")
+        return true
+    end
+    
+    -- Buscar jogador
+    local target = Player(param)
+    
+    if target and target:isPlayer() then
+        -- Array de nomes de slots
+        local slotName = { 
+            "Helmet", "Amulet", "Backpack", "Armor", 
+            "Right Hand", "Left Hand", "Legs", "Boots", 
+            "Ring", "Arrow" 
+        }
+        
+        -- Construir mensagem
+        local text = "Equipments of " .. target:getName()
+        
+        -- Iterar 10 slots
+        for i = 1, 10 do
+            text = text .. "\n\n"
+            
+            -- Obter item do slot
+            local item = target:getSlotItem(i)
+            
+            if item and item.itemid > 0 then
+                -- Slot com item
+                if item:isContainer() then
+                    -- É container
+                    text = text .. slotName[i] .. ": " .. 
+                           ItemType(item.itemid):getName() .. 
+                           getItemsInContainer(item, 1)
+                else
+                    -- Item simples
+                    local count
+                    if item.type > 0 then
+                        count = "(" .. item.type .. "x)"
+                    else
+                        count = ""
+                    end
+                    text = text .. slotName[i] .. ": " .. 
+                           ItemType(item.itemid):getName() .. " " .. count
+                end
+            else
+                -- Slot vazio
+                text = text .. slotName[i] .. ": Empty"
+            end
+        end
+        
+        -- Exibir em text dialog
+        player:showTextDialog(6528, text)
+    else
+        -- Jogador não encontrado
+        player:sendCancelMessage("This player is offline or doesn't exist.")
+    end
+    
+    return true
+end
+
+-- 4. Configuração de Registro
+spy:separator(" ")
+spy:groupType("gamemaster")
+spy:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **spy.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/spy` é utilizado. Exibe equipamento completo de jogador.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando
+- `words` (string): Palavras do comando (`/spy`)
+- `param` (string): **[OBRIGATÓRIO]** Nome do jogador a espiar
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Write the name of the character to be spyed."
+
+3. **Busca de Jogador:**
+   ```lua
+   local target = Player(param)
+   ```
+   - Online apenas
+
+4. **Construção de Mensagem:**
+   ```lua
+   local text = "Equipments of " .. target:getName()
+   for i = 1, 10 do
+       -- Iterar 10 slots
+   end
+   ```
+
+5. **Mapeamento de Slots:**
+   | Índice | Slot |
+   |---|---|
+   | 1 | Helmet (cabeça) |
+   | 2 | Amulet (colar) |
+   | 3 | Backpack (mochila/corpo) |
+   | 4 | Armor (armadura) |
+   | 5 | Right Hand (mão direita) |
+   | 6 | Left Hand (mão esquerda) |
+   | 7 | Legs (pernas) |
+   | 8 | Boots (pés) |
+   | 9 | Ring (anel) |
+   | 10 | Arrow (munição) |
+
+6. **Processamento de Cada Slot:**
+   ```lua
+   local item = target:getSlotItem(i)
+   ```
+   - Se item.itemid > 0: tem item
+   - Se item.type > 0: mostra quantidade (para pilhas)
+   - Se item:isContainer(): processa recursivamente
+
+7. **Exibição:**
+   ```lua
+   player:showTextDialog(6528, text)
+   ```
+   - Dialog ID: 6528 (interface visual)
+   - Conteúdo: texto formatado
+
+**Exemplo de Saída:**
+```
+Equipments of PlayerName
+
+Helmet: Crown
+
+Amulet: Pendant
+
+Backpack: Backpack
+  -> Rope (1x)
+  -> Pick (1x)
+  -> Wand of Fire
+
+Armor: Knight Armor
+
+Right Hand: Sword
+
+Left Hand: Shield
+
+Legs: Leg Armor
+
+Boots: Soft Boots
+
+Ring: Ring of Wisdom
+
+Arrow: Power Bolt (100x)
+```
+
+---
+
+### **getItemsInContainer(container, sep) [Função Auxiliar]**
+
+**Descrição:** Função recursiva que processa items de um container com indentação progressiva.
+
+**Parâmetros:**
+- `container` (Container): Item container a processar
+- `sep` (number): Nível de indentação (incrementa +2 por nível)
+
+**Fluxo:**
+
+1. **Construir Indentação:**
+   ```lua
+   local tsep = string.rep("-", sep) .. ">"
+   ```
+   - Nível 1: `->` (1 hífen)
+   - Nível 2: `-->` (2 hífens)
+   - Nível 3: `--->` (3 hífens)
+
+2. **Iterar Slots:**
+   ```lua
+   for slot = 0, container:getSize() - 1 do
+   ```
+
+3. **Determinar Tipo:**
+   - Se não container: mostra item + quantidade
+   - Se container: mostra nome + recursão com sep+2
+
+**Recursão Profunda:**
+Suporta containers dentro de containers infinitamente
+
+---
+
+### **Estrutura de Slots**
+
+A tabela `slotName` mapeia índices para nomes legíveis:
+
+```lua
+local slotName = { 
+    "Helmet",      -- 1
+    "Amulet",      -- 2
+    "Backpack",    -- 3
+    "Armor",       -- 4
+    "Right Hand",  -- 5
+    "Left Hand",   -- 6
+    "Legs",        -- 7
+    "Boots",       -- 8
+    "Ring",        -- 9
+    "Arrow"        -- 10
+}
+```
+
+---
+
+## 📌 Resumo
+
+O arquivo `spy.lua` é ferramenta completa de auditoria de equipamento. Implementação com recursão inteligente de containers, indentação progressiva para legibilidade, contagem de itens, e interface visual via text dialog. Essencial para GMs auditarem equipamento, detectar items suspeitos ou contracontratos fraud. Design robusto que suporta profundidade ilimitada de containers aninhados.

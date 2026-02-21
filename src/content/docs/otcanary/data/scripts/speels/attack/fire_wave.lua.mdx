@@ -1,0 +1,423 @@
+---
+title: "Spell - fire_wave.lua"
+description: "Spell de onda de fogo para sorcerers level 18 com área wave"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `fire_wave.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 19 |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 18 |
+| **Mana Requerida** | 25 |
+| **Words** | exevo flam hur |
+| **Alcance** | -1 (direction) |
+| **Área** | WAVE4+AREADIAGONAL_WAVE4 (onda direcionada) |
+| **Cooldown** | 4s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level based (1.25-2 MLvl) - ALTA! |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_FIRE_WAVE |
+| **Requer Direction** | Sim |
+| **Bloqueia Walls** | Não |
+| **Linhas de Código** | 31 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de onda fogo AOE para sorcerers nível 18 (early). Area WAVE4+AREADIAGONAL_WAVE4 (direcionada). Dano fogo escalável magic-level (1.25-2 coef). 25 mana. Direcionado (não target). Premium only. Cooldown 4s. Efeito HITBYFIRE. Early AOE fogo!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/fire_wave.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(19)
+spell:name("Fire Wave")
+spell:words("exevo flam hur")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_FIRE_WAVE)
+spell:level(18)
+spell:mana(25)
+spell:isPremium(true)
+spell:needDirection(true)
+spell:cooldown(4 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Onda de Fogo - Wave Direcionada Magic-Level**
+
+Este spell implementa um **sistema de AOE onda fogo direcionado com escalabilidade MLvl alta**:
+
+1. **Áreas Wave Direcionadas:**
+   - AREA_WAVE4 (linha onda)
+   - AREADIAGONAL_WAVE4 (diagonais)
+   - Cobertura direcionada progressive
+
+2. **Escalabilidade Muito Alta:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 1.25) + 4
+   - max = (level/5) + (maglevel × 2) + 12
+   - Coef MLvl MUITO ALTOS (1.25-2!)
+
+3. **Early-Game Premium:**
+   - Level 18 (cedo!)
+   - 25 mana (baato)
+   - Premium only
+   - Cooldown 4s (moderado)
+
+4. **Tipo Fire:**
+   - COMBAT_FIREDAMAGE
+   - Efeito HITBYFIRE
+   - Direcionado (não target)
+   - Wave áreas
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 18, mlvl 5:
+  min = 3.6 + 6.25 + 4 = 13.85
+  max = 3.6 + 10 + 12 = 25.6
+
+Sorcerer lvl 40, mlvl 15:
+  min = 8 + 18.75 + 4 = 30.75
+  max = 8 + 30 + 12 = 50
+```
+
+**Diferencial:** Wave AOE fogo direcionado early!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `fire_wave` oferece dano fogo AOE direcionado:
+
+- **Dano:** COMBAT_FIREDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*1.25/2) (MUITO ALTA!)
+- **Mana:** 25 (baato)
+- **Level:** 18 (early)
+- **Áreas:** Wave4 + diagonal
+
+### Arquitetura
+
+Combat com áreas wave:
+
+```
+local combat = Combat()
+├─ Type: FIREDAMAGE
+├─ Effect: HITBYFIRE
+├─ Area: WAVE4
+├─ Area: AREADIAGONAL_WAVE4
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max escalável muito alto
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITBYFIRE)
+
+local area = createCombatArea(AREA_WAVE4, AREADIAGONAL_WAVE4)
+combat:setArea(area)
+```
+
+**Propósito:** Combat de AOE fogo direcionado.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITBYFIRE | Efeito fogo impacto |
+| `Area 1` | AREA_WAVE4 | Onda linha |
+| `Area 2` | AREADIAGONAL_WAVE4 | Onda diagonal |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.25) + 4
+	local max = (level / 5) + (maglevel * 2) + 12
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano fogo AOE.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 1.25) + 4
+max = (level / 5) + (maglevel * 2) + 12
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 1.25 (MUITO ALTO!)
+- Maglevel max: 2 (MUITO ALTO!)
+- Bônus: 4/12 (moderado)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 18 | 5 | 13 | 25 |
+| 40 | 10 | 30 | 50 |
+| 60 | 20 | 50 | 92 |
+| 100 | 40 | 90 | 172 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Fire wave ativado |
+| `false` | Direction falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com áreas wave |
+| `area` | Area | Arquivo | Wave4 + diagonal |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Áreas Wave Direcionadas
+
+```lua
+local area = createCombatArea(AREA_WAVE4, AREADIAGONAL_WAVE4)
+combat:setArea(area)
+```
+
+**Benefício:** Múltiplas ondas em direção.
+
+### Padrão 2: Direction Required
+
+```lua
+spell:needDirection(true)
+```
+
+**Benefício:** Clique direção, não target.
+
+### Padrão 3: Magic-Level Escalável Muito Alta
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.25) + 4
+	local max = (level / 5) + (maglevel * 2) + 12
+	return -min, -max
+end
+```
+
+**Benefício:** Escalável muito com skill mago.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano fogo AOE direcionado.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(sorcerer, 40, 10)
+// min = 8 + 12.5 + 4 = 24.5
+// max = 8 + 20 + 12 = 40
+// Retorna: -24, -40
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura ondas fogo em direção.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Direction (não target) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Ondas ativadas |
+| `false` | Direction falhou |
+
+**Requisitos:**
+- Level 18+
+- 25 mana
+- Direction required
+- Premium account
+- Cooldown 4s
+
+**Efeito:**
+- Efeito fogo impacto
+- Wave4 + diagonal ondas
+- Dano magic-level escalável
+- Direção livre
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 40, MLvl 10
+spell.onCastSpell(sorcerer, directionVariant)
+// Validações OK (18+ level, 25 mana)
+// Combat executa em direção
+// Wave4 + diagonal ondas
+// Dano: -24 a -40
+// Efeito fogo impacto visual
+// Resultado: Ondas fogo direcionadas!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: AOE Direcionado
+
+```lua
+-- Novo sorcerer level 18
+// Fire Wave = primeiras ondas
+// Direção clique (não target)
+// Wave pattern coverage
+```
+
+### Caso 2: Spam Training
+
+```lua
+-- Farming monstros em fila
+// Fire Wave = direcionado AOE
+// 25 mana = spam possível
+// 4s cooldown = regulado
+// Direção = controle perfeito
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_FIREDAMAGE
+- **Areas:** AREA_WAVE4, AREADIAGONAL_WAVE4
+- **Effects:** CONST_ME_HITBYFIRE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | AOE onda fogo direcionada |
+| **Dano Type** | COMBAT_FIREDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*1.25)+4, max=(lvl/5)+(mlvl*2)+12 |
+| **Mana** | 25 |
+| **Area** | WAVE4 + AREADIAGONAL_WAVE4 |
+| **Level** | 18 (early) |
+| **Cooldown** | 4s |
+| **Premium** | Sim |
+| **Direction** | Sim (needDirection) |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | Direction AOE + wave areas + magic-level alta |

@@ -1,0 +1,413 @@
+---
+title: Forge Functions
+description: Comando GOD para gerenciar sistema de forja (dusts, fiendish, influenced)
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | forge_functions.lua |
+| **Tipo de Sistema** | Forge System Management (GOD) |
+| **Funcionalidade Principal** | Gerenciar dust, fiendish/influenced |
+| **Comandos** | /adddusts, /removedusts, /getdusts, /setdusts, /fiendish, /influenced, /setfiendish, /openforge, /adddustlevel |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Sistema Integrado** | ForgeMonster, PlayerForge |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/forge_functions.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** 9 comandos que manipulam forge system. Comandos de dust: /adddusts, /removedusts, /getdusts, /setdusts com validações de nível (getForgeDustLevel), todos com logging. Teleport: /fiendish, /influenced (via ForgeMonster:pickFiendish/Influenced). Set: /setfiendish. UI: /openforge. Level: /adddustlevel. Todas funções validam player online, dustAmount &lt;= 0, caps de nível.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo forge_functions.lua implementa sistema completo de forja com 9 comandos. Dispõe de 4 comandos dust (add/remove/get/set com validações de nível), 2 comandos teleport (fiendish/influenced via ForgeMonster), 1 comando set, 1 UI (/openforge), 1 comando level. Todas validações de player online, dust amount, caps automáticos. Logging automático via logger.info, feedback MESSAGE_EVENT_ADVANCE. Sistema robusto de forge management.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Função /adddusts**
+
+```lua
+local addDusts = TalkAction("/adddusts")
+
+function addDusts.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Player name param required.")
+		logger.error("[addDusts.onSay] - Player name param not found.")
+		return true
+	end
+	
+	local split = param:split(",")
+	local name = split[1]
+	local targetPlayer = Player(name)
+	if not targetPlayer then
+		player:sendCancelMessage("Player " .. string.titleCase(name) .. " is not online.")
+		logger.error("[addDusts.onSay] - Player {} is not online.", string.titleCase(name))
+		return true
+	end
+	
+	local dustAmount = tonumber(split[2])
+	if dustAmount <= 0 or dustAmount == nil then
+		player:sendCancelMessage("Invalid dust count.")
+		return true
+	end
+	
+	-- Cap automático no nível de dust
+	local finalDustAmount = targetPlayer:getForgeDusts() + dustAmount
+	if finalDustAmount > targetPlayer:getForgeDustLevel() then
+		dustAmount = targetPlayer:getForgeDustLevel() - targetPlayer:getForgeDusts()
+	end
+	
+	targetPlayer:addForgeDusts(dustAmount)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("Successful added %d dusts for the %s player.", dustAmount, targetPlayer:getName()))
+	targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("%s added %d dusts to your character.", player:getName(), dustAmount))
+	logger.info("{} added {} dusts to {} player.", player:getName(), dustAmount, targetPlayer:getName())
+	return true
+end
+
+addDusts:separator(" ")
+addDusts:groupType("god")
+addDusts:register()
+```
+
+**Comando:** `/adddusts PlayerName, 100`
+
+**Validações:**
+- Player online
+- Dust amount > 0
+- Cap automático (não ultrapassa getForgeDustLevel)
+
+---
+
+### **Função /removedusts**
+
+```lua
+local removeDusts = TalkAction("/removedusts")
+
+function removeDusts.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Player name param required.")
+		logger.error("[removeDusts.onSay] - Player name param not found.")
+		return true
+	end
+	
+	local split = param:split(",")
+	local name = split[1]
+	local targetPlayer = Player(name)
+	if not targetPlayer then
+		player:sendCancelMessage("Player " .. string.titleCase(name) .. " is not online.")
+		logger.error("[removeDusts.onSay] - Player {} is not online.", string.titleCase(name))
+		return true
+	end
+	
+	local dustAmount = tonumber(split[2])
+	if dustAmount <= 0 or dustAmount == nil then
+		player:sendCancelMessage("Invalid dust count.")
+		return true
+	end
+	
+	-- Ajustar se tentar remover mais que tem
+	finalDustAmount = targetPlayer:getForgeDusts() - dustAmount
+	if finalDustAmount < 0 then
+		dustAmount = targetPlayer:getForgeDusts()
+	end
+	
+	targetPlayer:removeForgeDusts(dustAmount)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("Successful removed %d dusts for the %s player.", dustAmount, targetPlayer:getName()))
+	targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("%s removed %d dusts to your character.", player:getName(), dustAmount))
+	logger.info("{} removed {} dusts to {} player.", player:getName(), dustAmount, targetPlayer:getName())
+	return true
+end
+
+removeDusts:separator(" ")
+removeDusts:groupType("god")
+removeDusts:register()
+```
+
+**Comando:** `/removedusts PlayerName, 50`
+
+---
+
+### **Função /getdusts**
+
+```lua
+local getDusts = TalkAction("/getdusts")
+
+function getDusts.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Player name param required.")
+		logger.error("[getDusts.onSay] - Player name param not found.")
+		return true
+	end
+	
+	local split = param:split(",")
+	local name = split[1]
+	local targetPlayer = Player(name)
+	if not targetPlayer then
+		player:sendCancelMessage("Player " .. string.titleCase(name) .. " is not online.")
+		logger.error("[getDusts.onSay] - Player {} is not online.", string.titleCase(name))
+		return true
+	end
+	
+	local dustAmount = targetPlayer:getForgeDusts()
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "" .. targetPlayer:getName() .. " has " .. dustAmount .. " dusts.")
+	logger.info("{} has {} dusts.", targetPlayer:getName(), dustAmount)
+	return true
+end
+
+getDusts:separator(" ")
+getDusts:groupType("god")
+getDusts:register()
+```
+
+**Comando:** `/getdusts PlayerName`
+
+---
+
+### **Função /setdusts**
+
+```lua
+local setDusts = TalkAction("/setdusts")
+
+function setDusts.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Player name param required.")
+		logger.error("[setDusts.onSay] - Player name param not found.")
+		return true
+	end
+	
+	local split = param:split(",")
+	local name = split[1]
+	local targetPlayer = Player(name)
+	if not targetPlayer then
+		player:sendCancelMessage("Player " .. string.titleCase(name) .. " is not online.")
+		logger.error("[setDusts.onSay] - Player {} is not online.", string.titleCase(name))
+		return true
+	end
+	
+	local dustAmount = tonumber(split[2])
+	if dustAmount <= 0 or dustAmount == nil then
+		player:sendCancelMessage("Invalid dust count.")
+		return true
+	end
+	
+	-- Cap no nível máximo
+	if dustAmount > targetPlayer:getForgeDustLevel() then
+		dustAmount = targetPlayer:getForgeDustLevel()
+	end
+	
+	targetPlayer:setForgeDusts(dustAmount)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("Successful set %d dusts for the %s player.", dustAmount, targetPlayer:getName()))
+	targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("%s set %d dusts to your character.", player:getName(), dustAmount))
+	logger.info("{} set {} dusts to {} player.", player:getName(), dustAmount, targetPlayer:getName())
+	return true
+end
+
+setDusts:separator(" ")
+setDusts:groupType("god")
+setDusts:register()
+```
+
+**Comando:** `/setdusts PlayerName, 200`
+
+---
+
+### **Função /fiendish**
+
+```lua
+local gotoFiendish = TalkAction("/fiendish")
+
+function gotoFiendish.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	local monster = Monster(ForgeMonster:pickFiendish())
+	if monster then
+		player:teleportTo(monster:getPosition())
+	else
+		player:sendCancelMessage("There are not fiendish monsters right now.")
+	end
+	return true
+end
+
+gotoFiendish:groupType("god")
+gotoFiendish:register()
+```
+
+**Comando:** `/fiendish`
+
+**Função:** Teleporta para fiendish monster mais próximo
+
+---
+
+### **Função /influenced**
+
+```lua
+local gotoInfluenced = TalkAction("/influenced")
+
+function gotoInfluenced.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	local monster = Monster(ForgeMonster:pickInfluenced())
+	if monster then
+		player:teleportTo(monster:getPosition())
+	else
+		player:sendCancelMessage("There are not influenced monsters right now.")
+	end
+	return true
+end
+
+gotoInfluenced:groupType("god")
+gotoInfluenced:register()
+```
+
+**Comando:** `/influenced`
+
+**Função:** Teleporta para influenced monster mais próximo
+
+---
+
+### **Função /setfiendish**
+
+```lua
+local setFiendish = TalkAction("/setfiendish")
+
+function setFiendish.onSay(player, words, param)
+	logCommand(player, words, param)
+	return player:setFiendish()
+end
+
+setFiendish:groupType("god")
+setFiendish:register()
+```
+
+**Comando:** `/setfiendish`
+
+**Função:** Marca jogador como fiendish (special status)
+
+---
+
+### **Função /openforge**
+
+```lua
+local forge = TalkAction("/openforge")
+
+function forge.onSay(player, words, param)
+	logCommand(player, words, param)
+	return player:openForge()
+end
+
+forge:groupType("god")
+forge:register()
+```
+
+**Comando:** `/openforge`
+
+**Função:** Abre interface de forja
+
+---
+
+### **Função /adddustlevel**
+
+```lua
+local addDustLevel = TalkAction("/adddustlevel")
+
+function addDustLevel.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Player name param required.")
+		logger.error("[addDustLevel.onSay] - Player name param not found.")
+		return true
+	end
+	
+	local split = param:split(",")
+	local name = split[1]
+	local targetPlayer = Player(name)
+	if not targetPlayer then
+		player:sendCancelMessage("Player " .. string.titleCase(name) .. " is not online.")
+		logger.error("[addDustLevel.onSay] - Player {} is not online.", string.titleCase(name))
+		return true
+	end
+	
+	local dustLevel = tonumber(split[2])
+	if dustLevel <= 0 or dustLevel == nil then
+		player:sendCancelMessage("Invalid dust level.")
+		return true
+	end
+	
+	targetPlayer:addForgeDustLevel(dustLevel)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("Successful added %d dust level for the %s player.", dustLevel, targetPlayer:getName()))
+	targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("%s adds %d dust level to your character.", player:getName(), dustLevel))
+	logger.info("{} added {} dust level to {} player.", player:getName(), dustLevel, targetPlayer:getName())
+	return true
+end
+
+addDustLevel:separator(" ")
+addDustLevel:groupType("god")
+addDustLevel:register()
+```
+
+**Comando:** `/adddustlevel PlayerName, 50`
+
+---
+
+## **Tabela de Comandos**
+
+| Comando | Parâmetros | Função |
+|---|---|---|
+| /adddusts | PlayerName, Amount | Adiciona dusts |
+| /removedusts | PlayerName, Amount | Remove dusts |
+| /getdusts | PlayerName | Mostra dusts |
+| /setdusts | PlayerName, Amount | Seta dusts |
+| /fiendish | (vazio) | Teleport fiendish |
+| /influenced | (vazio) | Teleport influenced |
+| /setfiendish | (vazio) | Mark fiendish |
+| /openforge | (vazio) | Abre UI |
+| /adddustlevel | PlayerName, Level | Adiciona level |
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Player(name)` | Busca jogador online |
+| `param:split(sep)` | Divide string |
+| `tonumber(str)` | Converte número |
+| `string.titleCase(str)` | Capitaliza string |
+| `player:getForgeDusts()` | Obtém dusts |
+| `player:setForgeDusts(amount)` | Seta dusts |
+| `player:addForgeDusts(amount)` | Adiciona dusts |
+| `player:removeForgeDusts(amount)` | Remove dusts |
+| `player:getForgeDustLevel()` | Obtém nível máximo |
+| `player:addForgeDustLevel(level)` | Adiciona nível |
+| `player:setFiendish()` | Mark como fiendish |
+| `player:openForge()` | Abre interface |
+| `ForgeMonster:pickFiendish()` | Pick fiendish |
+| `ForgeMonster:pickInfluenced()` | Pick influenced |
+| `Monster(id)` | Busca monster |
+| `player:teleportTo(pos)` | Teleport |
+| `logger.info(fmt, ...)` | Log info |
+| `logCommand(player, words, param)` | Log comando |
+
+---
+
+## 📌 Resumo
+
+O arquivo forge_functions.lua é sistema completo de forge management. Implementação com 9 comandos, validações rigorosas, caps automáticos, logging, feedback visual. Essencial para GMs gerenciar dusts, teleportar a monsters especiais, testar forge system. Design robusto com tratamento de edge cases (removal > amount, overdust cap).

@@ -1,0 +1,294 @@
+---
+title: claw_of_the_noxious_spawn.lua
+description: Anel tool com 5% chance de curse (-800 a -1200 HP, 4s interval) ou remoção de poison, com transform + decay + achievement.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="claw_of_the_noxious_spawn.lua" icon="pencil">
+Handler com condition setup, RNG dual-branch e item lifecycle.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/tools/claw_of_the_noxious_spawn.lua`
+
+**Linhas:** 28 | **ID do Tool:** 1 (9392) | **Tipo:** Action Handler com Condition System
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa anel mágico com condição de curse em RNG 5%. Ao usar: valida se é anel (CONST_SLOT_RING). Se sim: 5% chance de aplicar cursed condition (-800 a -1200 HP damage, 4 segundos interval, delayed), enviar mensagem, transformar item (9392 -> 9395), decay e achievement "Cursed!". Caso oposto (95%): remover poison, transformar item (9392 -> 9394) e decay. Ambas branches disparam effect (red ou green).
+
+### Estrutura de Funcionalidades
+
+```
+CONDITION SETUP:
+  └─ cursed (CONDITION_CURSED)
+      ├─ DELAYED: true
+      ├─ MINVALUE: -800 HP
+      ├─ MAXVALUE: -1200 HP
+      ├─ STARTVALUE: -1
+      ├─ TICKINTERVAL: 4000ms (4s)
+      └─ FORCEUPDATE: true
+
+HANDLER:
+  └─ clawOfTheNoxiousSpawn.onUse()
+      ├─ isRingSlot(player, item)?
+      │   ├─ SIM → Continua
+      │   └─ NÃO → return false
+      ├─ RNG: random(100) <= 5?
+      │   ├─ SIM (5%):
+      │   │   ├─ player:addCondition(cursed)
+      │   │   ├─ Message: "Cursed by The Noxious Spawn!"
+      │   │   ├─ transform(9395)
+      │   │   ├─ decay()
+      │   │   ├─ Effect: MAGIC_RED
+      │   │   └─ Achievement: "Cursed!"
+      │   │
+      │   └─ NÃO (95%):
+      │       ├─ removeCondition(POISON)
+      │       ├─ transform(9394)
+      │       ├─ decay()
+      │       └─ Effect: MAGIC_GREEN
+      └─ return true
+
+REGISTRO:
+  └─ 1 anel ID (9392)
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| cursed | Condition | Condição de curse (CONDITION_CURSED) |
+
+### Condition Parameters
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| CONDITION_PARAM_DELAYED | true | Damage é aplicado ao longo do tempo |
+| CONDITION_PARAM_MINVALUE | -800 | Dano mínimo por tick |
+| CONDITION_PARAM_MAXVALUE | -1200 | Dano máximo por tick |
+| CONDITION_PARAM_STARTVALUE | -1 | Valor inicial (aplicado imediatamente) |
+| CONDITION_PARAM_TICKINTERVAL | 4000 | 4 segundos entre ticks |
+| CONDITION_PARAM_FORCEUPDATE | true | Forçar update visual/aplicação |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Ring Parameters
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| Item ID | 9392 | ID original do anel |
+| Cursed Transform | 9395 | ID após curse (versão amaldiçoada) |
+| Cleansed Transform | 9394 | ID após cleanse (versão limpa) |
+| Curse Chance | 5% | Probabilidade da curse |
+| Tick Interval | 4000ms | 4 segundos entre aplicações de dano |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local cursed = Condition(CONDITION_CURSED)
+cursed:setParameter(CONDITION_PARAM_DELAYED, true)
+cursed:setParameter(CONDITION_PARAM_MINVALUE, -800)
+cursed:setParameter(CONDITION_PARAM_MAXVALUE, -1200)
+cursed:setParameter(CONDITION_PARAM_STARTVALUE, -1)
+cursed:setParameter(CONDITION_PARAM_TICKINTERVAL, 4000)
+cursed:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+
+local clawOfTheNoxiousSpawn = Action()
+
+function clawOfTheNoxiousSpawn.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: Anel equipado
+	if item == player:getSlotItem(CONST_SLOT_RING) then
+		-- RNG: 5% chance
+		if math.random(100) <= 5 then
+			-- BRANCH 1: CURSE (5%)
+			player:addCondition(cursed)
+			player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You are cursed by The Noxious Spawn!")
+			item:transform(9395)  -- Muda para versão amaldiçoada
+			item:decay()          -- Schedule remoção
+			player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+			player:addAchievement("Cursed!")
+		else
+			-- BRANCH 2: CLEANSE (95%)
+			player:removeCondition(CONDITION_POISON)
+			item:transform(9394)  -- Muda para versão limpa
+			item:decay()          -- Schedule remoção
+			player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+		end
+		return true
+	end
+	return false
+end
+
+clawOfTheNoxiousSpawn:id(9392)
+clawOfTheNoxiousSpawn:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador usa anel (9392)
+  │
+  ├─ item == player:getSlotItem(RING)?
+  │   ├─ NÃO → return false (não é anel slot)
+  │   └─ SIM → Continua
+  │
+  ├─ random(100) <= 5?
+  │   │
+  │   ├─ SIM (5%):
+  │   │   │
+  │   │   ├─ CURSE BRANCH:
+  │   │   ├─ player:addCondition(cursed)
+  │   │   │   └─ Aplica condition (-800/-1200 HP, 4s tick)
+  │   │   ├─ Message: "You are cursed..."
+  │   │   ├─ transform(9395) → Versão amaldiçoada
+  │   │   ├─ decay() → Schedule remoção
+  │   │   ├─ Effect: MAGIC_RED
+  │   │   └─ Achievement: "Cursed!"
+  │   │
+  │   └─ NÃO (95%):
+  │       │
+  │       ├─ CLEANSE BRANCH:
+  │       ├─ removeCondition(POISON)
+  │       │   └─ Remove poison condition
+  │       ├─ transform(9394) → Versão limpa
+  │       ├─ decay() → Schedule remoção
+  │       └─ Effect: MAGIC_GREEN
+  │
+  └─ return true
+```
+
+### Condition Application Timeline
+
+```
+Tick 0 (Imediatamente):
+  └─ STARTVALUE = -1 aplicado
+
+Tick 1 (4 segundos):
+  └─ Dano: random(-1200, -800) HP
+
+Tick 2 (8 segundos):
+  └─ Dano: random(-1200, -800) HP
+
+... (continua até item decay/removida)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Condition System**: CONDITION_CURSED com parâmetros
+- **Delayed Damage**: Aplicado ao longo do tempo (tick interval)
+- **MINVALUE/MAXVALUE**: Range de dano por tick (800-1200)
+- **TICKINTERVAL**: 4000ms = 4 segundos entre aplicações
+- **FORCEUPDATE**: Força aplicação mesmo com duplicatas
+- **Slot Validation**: CONST_SLOT_RING para validar ring slot
+- **RNG Branches**: 5% curse vs 95% cleanse
+- **Item Transform**: Muda ID (9392 -> 9395 ou 9394)
+- **item:decay()**: Schedule automático de remoção
+- **Effect Mágico**: MAGIC_RED (curse) vs MAGIC_GREEN (cleanse)
+- **Achievement**: addAchievement() apenas na branch curse
+
+### Responsabilidades do Handler
+
+1. **Setup condition**: cursed com 6 parâmetros
+2. **Validar slot**: Ring slot obrigatório
+3. **RNG 5%**: Determina curse vs cleanse
+4. **Branch 1 (5%)**: Curse + message + transform + decay + red effect + achievement
+5. **Branch 2 (95%)**: Cleanse poison + transform + decay + green effect
+6. **Confirmar**: return true/false
+
+---
+
+## Patterns e Implementação
+
+### Padrão Condition Setup
+
+Criar e configurar condition:
+
+```lua
+local cursed = Condition(CONDITION_CURSED)
+cursed:setParameter(CONDITION_PARAM_DELAYED, true)
+cursed:setParameter(CONDITION_PARAM_MINVALUE, -800)
+cursed:setParameter(CONDITION_PARAM_MAXVALUE, -1200)
+cursed:setParameter(CONDITION_PARAM_TICKINTERVAL, 4000)
+
+-- Depois aplicar:
+player:addCondition(cursed)
+```
+
+### Padrão Slot Validation
+
+Validar slot ring:
+
+```lua
+if item == player:getSlotItem(CONST_SLOT_RING) then
+	-- É ring slot
+end
+```
+
+### Padrão Dual-Branch com Effect
+
+Duas branches com effects diferentes:
+
+```lua
+if math.random(100) <= 5 then
+	-- CURSE
+	player:addCondition(cursed)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+else
+	-- CLEANSE
+	player:removeCondition(CONDITION_POISON)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+end
+```
+
+### Comparação: Noxious Spawn vs Large Seashell
+
+| Aspecto | Noxious | Seashell |
+|---------|---------|----------|
+| Linhas | 28 | 30 |
+| RNG | 5%/95% | 16%/48%/36% |
+| Condition | Sim | Não |
+| Item Transform | Sim | Sim (2 transforms) |
+| Decay | Sim | Sim |
+| Achievement | Sim | Sim |
+| Effect | Dual (red/green) | Um (bubbles) |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: claw_of_the_noxious_spawn.lua" icon="star">
+Análise de ring tool com RNG dual-branch curse system. Demonstra condition setup com damage over time, slot validation e item lifecycle.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Condition RNG with dual effects | Complexidade: Média
+</Aside>

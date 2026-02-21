@@ -1,0 +1,225 @@
+---
+title: Teleport Set Destination
+description: Comando GM para criar item de teleportação com destino específico
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `teleport_set_destination.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Criar portal/teleportação com destino |
+| **Comando** | `/teleport <x>, <y>, <z>` ou `/tp <x>, <y>, <z>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | x, y, z (separados por vírgula) |
+| **Separador** | Vírgula |
+| **Item ID** | 35502 |
+| **Localização Criada** | 1 passo na frente do GM |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/teleport_set_destination.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que cria item de teleportação (35502) configurável. Parse 3 parâmetros (x,y,z) via split(","), valida destino via `Position().getTile()`, cria item 1 passo na frente do GM via `getNextPosition()`, seta destino via `setDestination()`. Suporta 2 triggers (`/teleport` e `/tp`). Validação de formato e existência de tile no destino. Feedback de posição definida ao sucesso.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `teleport_set_destination.lua` implementa comando TalkAction (`/teleport` | `/tp`) que cria itens de teleportação configuráveis no chão. O sistema realiza parse de três coordenadas (x, y, z) separadas por vírgula, valida existência de tile no destino, cria item ID 35502 um passo à frente do GM, seta destino via `setDestination()`, e fornece feedback. Ferramenta de game design para criar zonas de teleportação permanente.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Comentário de uso
+-- Script for set teleport destination
+-- /teleport xxxx, xxxx, x
+
+-- 2. Instanciação do TalkAction (suporta 2 triggers)
+local teleportSetDestination = TalkAction("/teleport", "/tp")
+
+-- 3. Função Principal (onSay)
+function teleportSetDestination.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Parse: separar por vírgula
+    local params = param:split(",")
+    
+    -- Validação: 3 parâmetros obrigatórios
+    if params[3] then
+        -- Obter posição 1 passo na frente
+        local position = player:getPosition()
+        position:getNextPosition(player:getDirection(), 1)
+        
+        -- Criar posição de destino
+        local destination = Position(params[1], params[2], params[3])
+        
+        -- Validar destino existe
+        if destination and destination:getTile() then
+            -- Criar item de teleportação
+            local tp = Game.createItem(35502, 1, position)
+            
+            if tp then
+                -- Seta destino do item
+                tp:setDestination(destination)
+                
+                -- Feedback de sucesso
+                player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+                    string.format("New position: %s", param))
+            end
+        else
+            -- Destino inválido
+            player:sendCancelMessage("Destination position is not valid.")
+        end
+    else
+        -- Parâmetros incompletos
+        player:sendCancelMessage(
+            'You need to declare the X, Y of Z of destination. ' ..
+            'Please use "/teleport X, Y, Z".')
+    end
+    
+    return true
+end
+
+-- 4. Configuração de Registro
+teleportSetDestination:separator(" ")
+teleportSetDestination:groupType("gamemaster")
+teleportSetDestination:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **teleportSetDestination.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/teleport` ou `/tp` é utilizado. Cria item de teleportação com destino.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando
+- `words` (string): Palavras do comando (`/teleport` ou `/tp`)
+- `param` (string): **[OBRIGATÓRIO]** `x, y, z` (separado por vírgula)
+
+**Formato de Comando:**
+```
+/teleport 100, 200, 7        -- Cria TP para (100, 200, 7)
+/tp 150, 250, 8              -- Alias curto
+/teleport 1000,2000,9        -- Sem espaços também funciona
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Parse de Coordenadas:**
+   ```lua
+   local params = param:split(",")
+   -- Exemplo: "100, 200, 7" -> {"100", " 200", " 7"}
+   ```
+
+4. **Validação de 3 Parâmetros:**
+   ```lua
+   if params[3] then  -- Verifica se existe 3º parâmetro
+   ```
+   - Se não existe: retorna "You need to declare the X, Y of Z..."
+
+5. **Obtenção de Posição:**
+   ```lua
+   local position = player:getPosition()
+   position:getNextPosition(player:getDirection(), 1)
+   ```
+   - Posição do GM
+   - Avança 1 passo na direção que está olhando
+
+6. **Criação de Destino:**
+   ```lua
+   local destination = Position(params[1], params[2], params[3])
+   ```
+   - Converte strings para Position
+   - coords[1] = x, coords[2] = y, coords[3] = z
+
+7. **Validação de Destino:**
+   ```lua
+   if destination and destination:getTile() then
+   ```
+   - getTile() retorna nil se posição inválida no mapa
+   - Se inválida: "Destination position is not valid."
+
+8. **Criação de Item:**
+   ```lua
+   local tp = Game.createItem(35502, 1, position)
+   ```
+   - Item ID: 35502 (teleportação mágica)
+   - Quantidade: 1
+   - Localização: 1 passo à frente
+
+9. **Configuração de Destino:**
+   ```lua
+   tp:setDestination(destination)
+   ```
+   - Seta onde o item teleporta quando usado
+
+10. **Feedback:**
+    ```lua
+    player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+        string.format("New position: %s", param))
+    ```
+
+**Exemplo de Uso Completo:**
+
+```
+GM está em (500, 500, 7) olhando NORTH
+Comando: /teleport 600, 700, 8
+
+Resultado:
+- Item 35502 criado em (500, 499, 7) [1 passo norte]
+- Item configura teleportação para (600, 700, 8)
+- GM vê: "New position: 600, 700, 8"
+- Jogador que passar no item: teleporta para (600, 700, 8)
+```
+
+**Mensagens de Erro:**
+
+```
+"Command param required."
+
+"You need to declare the X, Y of Z of destination. 
+Please use "/teleport X, Y, Z"."
+
+"Destination position is not valid."
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `param:split(sep)` | Divide string por separador |
+| `player:getPosition()` | Obtém Position atual |
+| `player:getDirection()` | Obtém direção (0-3) |
+| `position:getNextPosition(dir, steps)` | Calcula próxima posição |
+| `Position(x, y, z)` | Cria nova Position |
+| `position:getTile()` | Obtém tile (nil se inválido) |
+| `Game.createItem(id, count, pos)` | Cria item no chão |
+| `item:setDestination(pos)` | Seta destino de teleportação |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `teleport_set_destination.lua` é ferramenta de game design para teleportação. Implementação que realiza parse robusto de 3 coordenadas, valida destino em múltiplas camadas, cria item de teleportação configurável, e oferece feedback claro. Essencial para GMs criar zonas de teleportação permanente, eventos com portais, ou atalhos de navegação. Design flexível com 2 triggers e validação rigorosa de destinos.

@@ -1,0 +1,195 @@
+---
+title: Database Migrations - Overview
+description: Sistema de migração automática de banco de dados para aplicar updates de schema.
+sidebar:
+  order: 0
+---
+
+import { Aside, Card, Steps } from '@astrojs/starlight/components';
+
+## 🛠️ Visão Geral
+
+Sistema automático de **migração de banco de dados** que aplica updates de schema ou dados sempre que uma nova versão do servidor inicia.
+
+<Card title="Características">
+- ✅ Aplicação automática de migrations em ordem
+- ✅ Rastreamento de versão do banco
+- ✅ Apenas scripts não executados são rodados
+- ✅ Fácil manutenção e updates
+</Card>
+
+## 📋 Como Funciona
+
+O sistema de migração é desenhado para aplicar updates ao banco de dados automaticamente.
+
+<Steps>
+
+1. **Recuperar Versão Atual do Banco**
+   - Sistema obtém versão atual via `getDatabaseVersion()`
+   - Versão determina quais scripts precisam ser executados
+
+2. **Diretório de Migration Files**
+   - Todos os scripts estão em `migrations/`
+   - Nomeação: `1.lua`, `2.lua`, `3.lua`, etc
+   - Convenção numérica define ordem de execução
+
+3. **Executar Scripts de Migration**
+   - Sistema itera no diretório `migrations/`
+   - Aplica cada script com versão > versão atual
+   - Apenas scripts não-executados são rodados
+   - Lua state (`lua_State* L`) é inicializado
+
+4. **Atualizar Versão do Banco**
+   - Após sucesso, banco é atualizado
+   - Garante que script não roda novamente
+   - No próximo startup, versão reflete changes
+
+</Steps>
+
+## 📁 Estrutura de Arquivo
+
+```
+migrations/
+├── 1.lua
+├── 2.lua
+├── 3.lua
+├── ...
+├── 55.lua
+└── README.mdx
+```
+
+**Padrão**: Cada arquivo = 1 versão de migration
+
+## 📝 Exemplo de Script de Migration
+
+```lua
+function onUpdateDatabase()
+	logger.info("Updating database to version X (description)")
+	
+	-- Adicionar nova coluna
+	db.query([[
+		ALTER TABLE `players` 
+		ADD COLUMN `new_feature_flag` TINYINT(1) NOT NULL DEFAULT 0;
+	]])
+	
+	-- Ou criar nova tabela
+	db.query([[
+		CREATE TABLE `new_table` (
+			`id` int NOT NULL AUTO_INCREMENT,
+			`data` text,
+			PRIMARY KEY (`id`)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+	]])
+end
+```
+
+## ⚙️ Processamento
+
+### Validação
+
+- Queries são validadas antes de execução
+- Erros durante migração são logados
+- Falhas impedem re-execução de scripts anteriores
+
+### Versioning
+
+```lua
+-- Recuperar versão
+local version = db.storeQuery("SELECT VERSION FROM version_info LIMIT 1")
+
+-- Atualizar versão após sucesso
+db.query("UPDATE version_info SET VERSION = " .. newVersion)
+```
+
+## 🔍 Fluxo de Execução
+
+```
+Server Startup
+    ↓
+getDatabaseVersion() → Current Version
+    ↓
+Iterate migrations/ directory
+    ↓
+if (migrationVersion > currentVersion) then
+    ↓
+    Execute migration script
+    ↓
+    Update DB Version
+    ↓
+else
+    Skip (already applied)
+end
+    ↓
+All migrations applied → Server Online
+```
+
+## 💡 Best Practices
+
+<Aside type="tip">
+Sempre execute migrations em ambiente de teste antes de produção
+</Aside>
+
+1. **Nomes Descritivos**
+   - Use logger.info() com descrição clara
+   - Helper: "Updating database to version X (description)"
+
+2. **Validação de Dados**
+   - Verifique se coluna já existe antes de ALTER
+   - Use CREATE TABLE IF NOT EXISTS
+
+3. **Organizção**
+   - 1 responsabilidade por migration
+   - Pequenas mudanças, frequentemente
+   - Avoid massive migrations
+
+4. **Documentação**
+   - Sempre documente o propósito
+   - Inclua comentários em operações complexas
+   - Use nomes de colunas significativos
+
+## 📊 Migrations Disponíveis
+
+**Total**: 55 migrations (v1 a v55)
+
+| Range | Categoria | Count |
+|-------|-----------|-------|
+| 1-5 | Sample Players & Accounts | 5 |
+| 6-20 | Player Features | 15 |
+| 21-40 | Advanced Systems | 20 |
+| 41-55 | Tibia 14.12+ Support | 15 |
+
+## 🚀 Execução Automática
+
+Não requer ação manual - todas as migrations executam:
+- Automaticamente no startup do servidor
+- Em ordem sequencial (1 → 2 → 3 → ... → 55)
+- Apenas uma vez cada
+
+## ⚠️ Rollback Considerações
+
+<Aside type="caution">
+Migrations não possuem rollback automático. Backups são essenciais antes de atualizar!
+</Aside>
+
+Para reverter mudanças:
+1. Restaurar backup de banco anterior
+2. Ou criar nova migration que desfaça alterações
+3. Never delete migration files após aplicadas
+
+## 📖 Documentação das Migrations
+
+Cada migration tem documentação própria em:
+- `migrations/1.mdx` - Migration 1
+- `migrations/2.mdx` - Migration 2
+- ... (até 55)
+
+Each MDX file documenta:
+- **Versão**: Número da migration
+- **Objetivo**: O que faz
+- **Alterações**: SQL ou Lua code
+- **Propósito**: Por que foi necessária
+
+---
+
+**Status**: ✅ Todas 55 migrations documentadas  
+**Última Atualização**: v55 (Monk Sample Player)

@@ -1,0 +1,319 @@
+---
+title: logout.lua
+description: CreatureEvent "PlayerLogout" que limpa globals, salva damageOut em boss fights e para exercise training.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="logout.lua" icon="pencil">
+Listener de logout que gerencia cleanup e estado persistente.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/player/logout.lua`
+
+**Linhas:** 31 | **Event:** CreatureEvent "PlayerLogout" | **Tipo:** onLogout Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener de logout que gerencia limpeza de dados globais e estado de bosses. Ao sair: obtém playerId, limpa NextUseStaminaTime[playerId] (global stamina timer), obtem boss fight stats via `inBossFight()`, se tem boss: lookup monster, obtem damage map, accumula damageOut, salva stamina atual. Se em exercise training: para event com stopEvent(), limpa global OnExerciseTraining, seta training(false). Padrão de multi-cleanup com persistência de estado.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT: "PlayerLogout"
+  └─ onLogout(player)
+      ├─ playerId = player:getId()
+      │   └─ Obtem ID único
+      │
+      ├─ CLEANUP 1: NextUseStaminaTime
+      │   ├─ if _G.NextUseStaminaTime[playerId]:
+      │   │   └─ _G.NextUseStaminaTime[playerId] = nil
+      │
+      ├─ CLEANUP 2: Boss Fight Stats
+      │   ├─ stats = player:inBossFight()
+      │   ├─ if stats:
+      │   │   ├─ boss = Monster(stats.bossId)
+      │   │   ├─ if boss:
+      │   │   │   ├─ dmgOut = boss:getDamageMap()[playerId]
+      │   │   │   ├─ if dmgOut:
+      │   │   │   │   └─ stats.damageOut += dmgOut.total
+      │   │   │   └─ stats.stamina = player:getStamina()
+      │
+      ├─ CLEANUP 3: Exercise Training
+      │   ├─ if _G.OnExerciseTraining[playerId]:
+      │   │   ├─ stopEvent(event)
+      │   │   ├─ _G.OnExerciseTraining[playerId] = nil
+      │   │   └─ player:setTraining(false)
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| playerLogout | CreatureEvent | Listener de logout |
+| _G.NextUseStaminaTime | table | Global de stamina timers |
+| _G.OnExerciseTraining | table | Global de exercise events |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| Monster(bossId) | construtor | Lookup de monster por ID |
+| stopEvent() | função | Para event ativo |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Player fazendo logout |
+
+### Global Structures
+
+#### _G.NextUseStaminaTime
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| [playerId] | número | Timestamp do último uso |
+
+#### _G.OnExerciseTraining
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| [playerId].event | número | ID do event ativo |
+
+#### Boss Fight Stats (inBossFight)
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| bossId | número | ID do monster boss |
+| damageOut | número | Dano total acumulado |
+| stamina | número | Stamina restante |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local playerLogout = CreatureEvent("PlayerLogout")
+
+function playerLogout.onLogout(player)
+	local playerId = player:getId()
+
+	-- CLEANUP 1: NextUseStaminaTime
+	if _G.NextUseStaminaTime[playerId] then
+		_G.NextUseStaminaTime[playerId] = nil
+	end
+
+	-- CLEANUP 2: Boss Fight Stats
+	local stats = player:inBossFight()
+	if stats then
+		local boss = Monster(stats.bossId)
+		if boss then
+			-- Acumular damage (em caso de reconexão)
+			local dmgOut = boss:getDamageMap()[playerId]
+			if dmgOut then
+				stats.damageOut = (stats.damageOut or 0) + dmgOut.total
+			end
+			-- Salvar stamina
+			stats.stamina = player:getStamina()
+		end
+	end
+
+	-- CLEANUP 3: Exercise Training
+	if _G.OnExerciseTraining[playerId] then
+		stopEvent(_G.OnExerciseTraining[playerId].event)
+		_G.OnExerciseTraining[playerId] = nil
+		player:setTraining(false)
+	end
+	return true
+end
+
+playerLogout:register()
+```
+
+### Árvore de Decisão
+
+```
+Player faz logout
+  │
+  ├─ playerId = player:getId()
+  │   └─ Obtem ID único
+  │
+  ├─ ========== CLEANUP 1: STAMINA TIMER ==========
+  │  └─ _G.NextUseStaminaTime[playerId]?
+  │      ├─ SIM → = nil (limpa)
+  │      └─ NÃO → Pula
+  │
+  ├─ ========== CLEANUP 2: BOSS FIGHT ==========
+  │  ├─ stats = player:inBossFight()
+  │  │   └─ Obtem dados do boss
+  │  │
+  │  ├─ stats exists?
+  │  │   │
+  │  │   ├─ SIM:
+  │  │   │   │
+  │  │   │   ├─ boss = Monster(stats.bossId)
+  │  │   │   │   └─ Lookup boss
+  │  │   │   │
+  │  │   │   ├─ boss exists?
+  │  │   │   │   │
+  │  │   │   │   ├─ SIM:
+  │  │   │   │   │   │
+  │  │   │   │   │   ├─ dmgOut = getDamageMap()[playerId]
+  │  │   │   │   │   │   └─ Obtem dano neste boss
+  │  │   │   │   │   │
+  │  │   │   │   │   ├─ dmgOut exists?
+  │  │   │   │   │   │   ├─ SIM → stats.damageOut += dmgOut.total
+  │  │   │   │   │   │   │         (Acumula dano)
+  │  │   │   │   │   │   └─ NÃO → Pula
+  │  │   │   │   │   │
+  │  │   │   │   │   └─ stats.stamina = getStamina()
+  │  │   │   │   │       (Salva stamina atual)
+  │  │   │   │   │
+  │  │   │   │   └─ NÃO → Pula (boss não existe)
+  │  │   │   │
+  │  │   │   └─ (Final de stats)
+  │  │   │
+  │  │   └─ NÃO → Pula (não está em boss fight)
+  │
+  ├─ ========== CLEANUP 3: EXERCISE TRAINING ==========
+  │  └─ _G.OnExerciseTraining[playerId]?
+  │      │
+  │      ├─ SIM:
+  │      │   │
+  │      │   ├─ stopEvent(_G.OnExerciseTraining[playerId].event)
+  │      │   │   └─ Para o event
+  │      │   │
+  │      │   ├─ _G.OnExerciseTraining[playerId] = nil
+  │      │   │   └─ Limpa global
+  │      │   │
+  │      │   └─ player:setTraining(false)
+  │      │       └─ Seta training flag
+  │      │
+  │      └─ NÃO → Pula (não está treinando)
+  │
+  └─ return true (sucesso)
+```
+
+### Damage Accumulation Detail
+
+```lua
+-- Quando player reconecta em boss fight:
+-- 1. Dano anterior está em stats.damageOut
+-- 2. Novo dano durante logout está em getDamageMap()
+-- 3. Combina os dois:
+
+dmgOut = boss:getDamageMap()[playerId]  -- Dano atual
+if dmgOut then
+	stats.damageOut = (stats.damageOut or 0) + dmgOut.total
+	-- (stats.damageOut or 0) = default 0 se não existe
+	-- + dmgOut.total = adiciona novo dano
+end
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onLogout**: Callback disparado ao fazer logout
+- **player:getId()**: Obtem ID único do player
+- **Global Tables**: _G.NextUseStaminaTime, _G.OnExerciseTraining
+- **inBossFight()**: Obtem stats do boss fight (ou nil)
+- **Monster(bossId)**: Lookup de monster por ID
+- **getDamageMap()**: Obtem mapa de dano por playerId
+- **stopEvent()**: Para event previamente schedulado
+- **setTraining()**: Flag de training status
+- **Damage Accumulation**: (x or 0) + new para não sobrescrever
+- **Conditional Cleanup**: Apenas limpa se existe
+
+### Responsabilidades do Handler
+
+1. **Obter**: playerId para lookup
+2. **Cleanup stamina**: _G.NextUseStaminaTime
+3. **Cleanup boss**: Acumula damage + salva stamina
+4. **Cleanup training**: stopEvent + flags
+5. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Global Table Cleanup
+
+Limpar entrada específica de player:
+
+```lua
+if _G.NextUseStaminaTime[playerId] then
+	_G.NextUseStaminaTime[playerId] = nil
+end
+```
+
+### Padrão Boss Fight Persistence
+
+Acumular dano em desconexão:
+
+```lua
+local stats = player:inBossFight()
+if stats then
+	local boss = Monster(stats.bossId)
+	if boss then
+		local dmgOut = boss:getDamageMap()[playerId]
+		if dmgOut then
+			stats.damageOut = (stats.damageOut or 0) + dmgOut.total
+		end
+		stats.stamina = player:getStamina()
+	end
+end
+```
+
+### Padrão Event Cleanup
+
+Para event e limpa global:
+
+```lua
+if _G.OnExerciseTraining[playerId] then
+	stopEvent(_G.OnExerciseTraining[playerId].event)
+	_G.OnExerciseTraining[playerId] = nil
+	player:setTraining(false)
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: logout.lua" icon="star">
+Análise de listener de logout para multi-cleanup. Demonstra global table management, boss fight persistence e event cleanup.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Player logout cleanup with boss persistence | Complexidade: Média
+</Aside>

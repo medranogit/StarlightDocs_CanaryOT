@@ -1,0 +1,319 @@
+---
+title: "Spell/Rune - poison_field.lua"
+description: "Runa que cria campo de veneno com early game access no level 14"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `poison_field.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 26 |
+| **ID do Item (runeId)** | 3172 |
+| **Level Requerido** | 14 |
+| **Magic Level Requerido** | 0 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_EARTHDAMAGE |
+| **Área** | Single tile (padrão) |
+| **Field** | ITEM_POISONFIELD_PVP |
+| **Cooldown** | 2s |
+| **Cargas** | 3 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Bloqueio** | Sim (isBlocking: true) |
+| **PZ Locked** | Sim |
+| **Agressividade** | Sim |
+| **Requer Target** | Não |
+| **Linhas de Código** | 26 |
+| **Complexidade** | Baixa |
+
+**Descrição:**
+Runa muito early de controle territorial que cria campo de veneno. Acesso extremo (level 14, MLvl 0). Sem fórmula dano (dano fixo engine). Similar a fire_field mas tipo terra + veneno. Sem needTarget permite auto-cast. Bloqueio duplo impede passagem. PZ locked força combate. Cargas moderadas (3) facilitam experimentação inicial.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/poison_field.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(26)
+rune:runeId(3172)
+rune:level(14)
+rune:magicLevel(0)
+rune:group("attack")
+rune:allowFarUse(true)
+rune:setPzLocked(true)
+rune:charges(3)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Campo de Veneno para Iniciantes**
+
+Esta runa implementa um **sistema early game de controle territorial**:
+
+1. **Acesso Extremamente Cedo:**
+   - Level 14 (muito inicial!)
+   - MLvl 0 (sem requisito)
+   - Primeira field de veneno
+
+2. **Dano Fixo (Engine Default):**
+   - Sem fórmula callback
+   - Dano previsível
+   - Novatos sem distração
+
+3. **Field PVP:**
+   - ITEM_POISONFIELD_PVP
+   - Controle territorial
+   - Bloqueio duplo
+
+4. **Sem Target:**
+   - Auto-cast ok
+   - Apenas posição
+   - Controle fácil
+
+**Comparação Fields:**
+```
+fire_field (15):   dano fogo, MLvl 1
+poison_field (14): dano terra, MLvl 0 (MAIS CEDO!)
+energy_field (18): dano energia, MLvl 0
+```
+
+**Diferencial:** Primeira field terra + MUITO cedo!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `poison_field` oferece primeira field terra:
+
+- **Dano:** COMBAT_EARTHDAMAGE (fixo)
+- **Field:** ITEM_POISONFIELD_PVP
+- **Área:** Single tile
+- **Early Access:** Level 14 (MUITO CEDO!)
+- **Cargas:** 3
+
+### Arquitetura
+
+Combat simples fields:
+
+```
+local combat = Combat()
+├─ Type: EARTHDAMAGE
+├─ Effect: GREEN_RINGS
+├─ Distance: POISON
+├─ CreateItem: POISONFIELD_PVP
+└─ Sem area() call
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_GREEN_RINGS)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_POISON)
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_POISONFIELD_PVP)
+```
+
+**Propósito:** Combat para field de veneno.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_EARTHDAMAGE | Dano terra |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_GREEN_RINGS | Efeito anéis |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_POISON | Projétil veneno |
+| `COMBAT_PARAM_CREATEITEM` | ITEM_POISONFIELD_PVP | Field veneno |
+
+**Características:**
+- Sem `combat:setArea()` = single
+- Sem callback = dano fixo
+- Field auto-deploy
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Field criado |
+| `false` | Position falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Field automático |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Field Automático
+
+```lua
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_POISONFIELD_PVP)
+```
+
+**Benefício:** Field criado automaticamente.
+
+### Padrão 2: Acesso Level 14
+
+```lua
+rune:level(14)
+rune:magicLevel(0)
+```
+
+**Benefício:** Primeira field terra (MUITO cedo).
+
+### Padrão 3: Bloqueio Duplo
+
+```lua
+rune:isBlocking(true)
+```
+
+**Benefício:** Bloqueia movimento completamente.
+
+### Padrão 4: PZ Protection
+
+```lua
+rune:setPzLocked(true)
+```
+
+**Benefício:** Força combate em dungeons.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Cria field de veneno.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Position alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Field criado |
+| `false` | Position falhou |
+
+**Efeito:**
+- Projétil veneno viaja
+- Impacto GREEN_RINGS
+- Dano earth fixo aplicado
+- POISONFIELD_PVP criado
+- Bloqueio duplo ativa
+
+**Exemplo:**
+
+```lua
+-- Mago jovem nível 14, MLvl 0
+rune.onCastSpell(mago, positionVariant, false)
+// PZ locked: fora proteção
+// Projétil veneno viaja
+// Impacto anéis verdes
+// Field de veneno criado
+// Bloqueio duplo = parede
+// Resultado: Primeira field terra!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Early Territorial Control
+
+```lua
+-- Mago nível 14 quer primeiro field
+// Poison field = primeira opção terra
+// Aprende: territory control
+```
+
+### Caso 2: Múltiplas Fields
+
+```lua
+-- 3 cargas = múltiplas fields
+// Cria defesa territorial
+// Primeiros fundamentos
+```
+
+### Caso 3: PvM Training
+
+```lua
+-- Combate contra monstros
+// Field bloqueia passagem
+// Controle de inimigos
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_EARTHDAMAGE
+- **Field:** ITEM_POISONFIELD_PVP
+- **Effects:** CONST_ME_GREEN_RINGS, CONST_ANI_POISON
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Field veneno early |
+| **Dano** | COMBAT_EARTHDAMAGE (fixo) |
+| **Field** | POISONFIELD_PVP automático |
+| **Area** | Single tile |
+| **Cargas** | 3 |
+| **Distancia** | Sim (allowFarUse) |
+| **Bloqueio** | Sim (duplo) |
+| **PZ Locked** | Sim |
+| **Level** | 14 (VERY EARLY) |
+| **MLvl** | 0 (nenhum!) |
+| **Padrão** | Field automático early game |

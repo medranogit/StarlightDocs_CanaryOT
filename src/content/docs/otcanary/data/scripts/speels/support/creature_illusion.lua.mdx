@@ -1,0 +1,216 @@
+---
+title: Creature Illusion
+description: Spell de suporte que transforma aparência do caster em qualquer monstro/criatura com duração de 3 minutos
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `creature_illusion.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Druid / Elder Druid / Sorcerer / Master Sorcerer |
+| **Spell ID** | 38 |
+| **Mana Requerida** | 100 |
+| **Level Requerido** | 23 |
+| **Status Premium** | Não (acesso livre) |
+| **Duração do Buff** | 180 segundos (180.000 ms) = 3 minutos |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utevo res ina` |
+| **Efeito Visual** | `CONST_ME_MAGIC_RED` |
+| **Requer Parâmetro** | Sim (nome do monstro) |
+| **Requer Flag** | `PlayerFlag_CanIllusionAll` (alternativa) |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (transformação cosmética) |
+| **Validação** | MonsterType deve existir e ser illusionable |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/creature_illusion.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell requer parâmetro (nome do monstro) via `variant:getString()`. O spell valida existência do MonsterType e verifica flag `monsterType:isIllusionable()` que lista quais monstros podem ser imitados. Players com flag `PlayerFlag_CanIllusionAll` podem contornar restrição. A outfit é aplicada via `monsterType:getOutfit()` que retorna estrutura visual do monstro. Duração longa (3 minutos) permite exploração e roleplay prolongado.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `creature_illusion.lua` implementa transformação cosmética de aparência para Druids e Sorcerers (level 23+) que permite ao caster imitar qualquer monstro válido por 3 minutos. É um dos poucos spells que requer parâmetro string (nome do monstro) e realiza lookup dinâmico em MonsterType. O spell recebe variante com nome do monstro, cria MonsterType via lookup, valida se monstro existe e se é illusionable (através de flag ou `PlayerFlag_CanIllusionAll`), e aplica outfit condition com duração fixa de 180 segundos. A implementação demonstra padrão de validação multi-camada com error handling via RETURNVALUE constants.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Criação da Condition de Outfit
+local condition = Condition(CONDITION_OUTFIT)
+condition:setTicks(180000)  -- 3 minutos
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 3.1 Obtenção do Nome do Monstro (Parâmetro)
+    -- 3.2 Lookup de MonsterType
+    -- 3.3 Validação de Existência
+    -- 3.4 Validação de Illusionable Flag
+    -- 3.5 Verificação de Flag de Override
+    -- 3.6 Tratamento de Erros
+    -- 3.7 Aplicação de Outfit
+    -- 3.8 Efeito Visual
+    -- 3.9 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:name("Creature Illusion")
+spell:words("utevo res ina")
+spell:group("support")
+spell:vocation("druid;true", "elder druid;true", "sorcerer;true", "master sorcerer;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_CREATURE_ILLUSION)
+spell:id(38)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(23)
+spell:mana(100)
+spell:hasParams(true)  -- Indica que requer parâmetro
+spell:isAggressive(false)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `condition` | `Condition` | Local | Condition de OUTFIT com duração 180 segundos |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Caster que executa o spell (Druid/Sorcerer) |
+| `variant` | `Variant` | Parâmetro | Contém nome do monstro como string |
+| `returnValue` | `ReturnValue` | Local | Constante de erro/sucesso (RETURNVALUE_*) |
+| `monsterType` | `MonsterType` | Local | Tipo de monstro obtido via lookup |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de MonsterType Lookup via String**
+```lua
+local monsterType = MonsterType(variant:getString())
+if not monsterType then
+    returnValue = RETURNVALUE_CREATUREDOESNOTEXIST
+end
+```
+Converte string do parâmetro para MonsterType object. Validação de existência via boolean check.
+
+### 2. **Padrão de Flag Override**
+```lua
+elseif not creature:hasFlag(PlayerFlag_CanIllusionAll) and not monsterType:isIllusionable() then
+    returnValue = RETURNVALUE_NOTPOSSIBLE
+end
+```
+Permite cast se player tem flag OU se monstro é illusionable. Flag `PlayerFlag_CanIllusionAll` contorna restrição.
+
+### 3. **Padrão de Outfit Dinâmica**
+```lua
+condition:setOutfit(monsterType:getOutfit())
+creature:addCondition(condition)
+```
+Obtém outfit structure do monstro e aplica dinamicamente na condition.
+
+### 4. **Padrão de RETURNVALUE Error Handling**
+```lua
+if returnValue ~= RETURNVALUE_NOERROR then
+    creature:sendCancelMessage(returnValue)
+```
+Usa constantes RETURNVALUE para centralizar error handling. Sistema engine converte para mensagem apropriada.
+
+### 5. **Padrão de Spell com Parâmetro Obrigatório**
+```lua
+spell:hasParams(true)
+```
+Marca spell como requerendo parâmetro (nome do monstro) no cast.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Obtém nome do monstro da variante, valida existência e illusionable flag, e aplica outfit transformation.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Druid, Elder Druid, Sorcerer, ou Master Sorcerer que executa o spell.
+- `variant` (Variant): Contém string com nome do monstro desejado para imitation.
+
+**Fluxo de Execução:**
+
+1. **Inicialização de ReturnValue**:
+   - Define `returnValue = RETURNVALUE_NOERROR` (assume sucesso)
+
+2. **Lookup de MonsterType**:
+   - Chama `MonsterType(variant:getString())` para obter tipo
+   - Passa nome do monstro como string ao construtor
+
+3. **Validação de Existência**:
+   - Verifica `if not monsterType` (monstro existe?)
+   - Se não existe: `returnValue = RETURNVALUE_CREATUREDOESNOTEXIST`
+   - Define código de erro, não retorna imediatamente (permite consolidação)
+
+4. **Validação de Illusionable Flag**:
+   - Verifica se monstro pode ser imitado
+   - Condição: `not creature:hasFlag(PlayerFlag_CanIllusionAll) and not monsterType:isIllusionable()`
+   - Se player tem `PlayerFlag_CanIllusionAll`: PERMITE (override)
+   - Se monstro tem `isIllusionable()` true: PERMITE
+   - Se ambos falsos: `returnValue = RETURNVALUE_NOTPOSSIBLE`
+
+5. **Tratamento Centralizado de Erros**:
+   - Verifica se `returnValue ~= RETURNVALUE_NOERROR` após validações
+   - Se erro: 
+     - Envia mensagem: `creature:sendCancelMessage(returnValue)` (engine traduz constante)
+     - Aplica efeito visual erro: `CONST_ME_POFF`
+     - Retorna `false` (cancela spell)
+
+6. **Aplicação de Outfit** (se nenhum erro):
+   - Chama `condition:setOutfit(monsterType:getOutfit())`
+   - Obtém estrutura visual do monstro e aplica à condition
+
+7. **Adição de Condition ao Caster**:
+   - `creature:addCondition(condition)`
+   - Condition com duração 180.000 ms (3 minutos) é aplicada
+   - Caster imediatamente aparenta ser o monstro desejado
+
+8. **Efeito Visual de Sucesso**:
+   - Envia efeito visual `CONST_ME_MAGIC_RED` na posição do caster
+   - Confirma visualmente que transformação foi bem-sucedida
+
+9. **Retorno Positivo**:
+   - Retorna `true` (cast bem-sucedido, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Spell executado com sucesso, outfit aplicado, mana de 100 consumida
+- `false`: Validação falhou (monstro não existe, não illusionable, etc)
+
+**Lógica Detalhada:**
+
+O spell implementa lookup dinâmico e validação multi-camada. A string do parâmetro é convertida para MonsterType, permitindo cast com nome do monstro como argumento. O uso de RETURNVALUE constants centraliza error handling - engine automaticamente converte constantes para mensagens localizadas.
+
+A flag `PlayerFlag_CanIllusionAll` é mecanismo de gating. Sem essa flag, apenas monstros marcados como `isIllusionable() == true` podem ser imitados. Isso previne imitation de bosses ou criaturas especiais que quebraria gameplay.
+
+A duração de 180 segundos (3 minutos) é longa comparado a outros buffs (5-15 segundos), permitindo exploração prolongada e roleplay. A condition usa condition padrão `CONDITION_OUTFIT`, mesma usado por outros spells de transformação como Creature Illusion.
+
+Mana de 100 é moderada para level 23, tornando accessível cedo na progressão. Sem requisito premium indica design de acesso livre ao spell.
+
+O efeito visual `CONST_ME_MAGIC_RED` é característico de transformação. Diferente de buffs azuis (dispel) ou verdes (haste), red indica mudança cosmética/mágica profunda.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_CREATURE_ILLUSION`: Som característico de transformação
+
+**Mensagens ao Jogador:**
+- Se monstro não existe: Mensagem RETURNVALUE_CREATUREDOESNOTEXIST (engine traduz)
+- Se não illusionable e sem flag: Mensagem RETURNVALUE_NOTPOSSIBLE (engine traduz)
+- Sucesso: Nenhuma mensagem verbal, apenas efeito visual MAGIC_RED
+
+## 📌 Resumo
+
+**Creature Illusion** é um spell de suporte gratuito para Druids e Sorcerers (level 23+) que transforma aparência do caster em qualquer monstro válido por 3 minutos. O spell requer 100 de mana, cooldown de 2 segundos, e parâmetro string com nome do monstro. A validação multi-camada (existência de MonsterType, flag isIllusionable, ou override com PlayerFlag_CanIllusionAll) garante segurança contra exploits. A implementação utiliza RETURNVALUE constants para centralizar error handling. É spell de roleplay e exploração, permitindo imitation visual de monstros para fins táticos ou narrativos durante toda a duração de 3 minutos.
+
+A implementação segue padrão parametrizado com lookup dinâmico, diferenciando-se por: (1) requerir parâmetro string (nome monstro), (2) lookup dinâmico de MonsterType, (3) multi-camada de validação, (4) flag override mechanism, (5) RETURNVALUE centralized error handling, (6) duração longa (3 minutos) para exploração prolongada.

@@ -1,0 +1,543 @@
+---
+title: "ondroploot_hazard.lua"
+description: "Sistema de hazard loot drops com múltiplos rolls baseado em hazard system points, aplicando multiplicadores de chance e extra drops"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Event callback especializado que implementa **sistema de hazard loot drops** quando um monstro com hazard status morre. Valida se monstro é hazard-enabled, confirma player válido, calcula número de loot rolls baseado em player hazard points (multiplicados por configurable multiplier), aplica probabilidade fracional para rolls não-inteiros, gera múltiplos loot rolls acumulando resultados, e anexa mensagem de suffix indicando rolls extras. Padrão de **multiplicative loot** onde cada roll pode gerar novo set de items, stackando com item count especificado.
+
+**Caminho Original**: `data/scripts/eventcallbacks/monster/ondroploot_hazard.lua`
+
+**Tipo**: EventCallback (monsterOnDropLoot trigger)
+
+**Dependências**:
+- EventCallback API (engine C++)
+- Monster/Player/Corpse objects (userdata)
+- configManager API (para hazard multipliers e party share flag)
+- Constants: `ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX`, hazard config keys
+
+<Aside>
+Este callback é **mais complexo** que base/boosted - implementa sistema probabilístico com rolls múltiplos. Calcula chance fracional (rolling decimal into probability) e acumula gerações sucessivas em uma tabela, criando "extra loot rolls" do hazard system. Integra configManager para balanceamento.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `ondroploot_hazard.lua` implementa **gerador de hazard-based loot** que intercepta `monsterOnDropLoot` para monstros com hazard status ativado. Executa validações (hazard() check, player validity), calcula número de rolls baseado em `hazard_points * hazard_multiplier_config`, aplica arredondamento probabilístico (fractional rolls convertidos em chance), gera múltiplos loot rolls em loop acumulando resultados em única tabela, adiciona ao corpse, e anexa mensagem indicando quantos rolls extras foram aplicados (se config permite mostrar).
+
+### Arquitetura de Componentes
+
+```
+Hazard Loot Handler
+│
+├─ EARLY GUARDS (3 validações)
+│  ├── monster:hazard() → boolean (is hazard enabled?)
+│  ├── player valid and canReceiveLoot()
+│  └── mType must exist
+│
+├─ HAZARD POINTS CALCULATION (4 operações)
+│  ├── hazardPoints = player:getHazardSystemPoints()
+│  ├── multiplier = configManager.getNumber(HAZARD_LOOT_BONUS_MULTIPLIER)
+│  ├── chance = 2 * hazardPoints * multiplier
+│  └── rolls = chance / 100
+│
+├─ FRACTIONAL ROLL HANDLING (3 operações)
+│  ├── fractional = rolls % 1 (decimal part)
+│  ├── random(0, 100) < fractional * 100? ceil(rolls) : floor(rolls)
+│  └── Converte decimal em probabilidade
+│
+├─ MULTIPLE LOOT GENERATION (1 loop)
+│  └── for _ = 1, rolls do
+│      └── accumulate loot from generateLootRoll()
+│
+├─ MESSAGE ASSEMBLY (2 operações)
+│  ├── Format: "X extra rolls" ou "hazard system"
+│  ├── Respeta PARTY_SHARE_LOOT_BOOSTS config
+│  └── Concatena com existingSuffix
+│
+└─ ATTRIBUTION (1)
+   └── corpse:setAttribute(LOOTMESSAGE_SUFFIX, ...)
+```
+
+### Fluxo de Cálculo de Rolls
+
+```
+Player com Hazard Status mata Monstro
+    │
+    ├─ hazardPoints = player:getHazardSystemPoints() (ex: 50)
+    ├─ multiplier = configManager.getNumber(HAZARD_LOOT_BONUS_MULTIPLIER) (ex: 0.5)
+    │
+    ├─ chance = 2 * 50 * 0.5 = 50
+    │  └─ Cada 50 points = 50% chance de 1 roll extra
+    │
+    ├─ rolls = 50 / 100 = 0.5
+    │  └─ 0.5 rolls = 50% chance de realizar 1 roll
+    │
+    ├─ fractional = 0.5 % 1 = 0.5
+    ├─ random(0, 100) < 0.5 * 100 (< 50%) ? 
+    │  └─ true (ex: 30 < 50): ceil(0.5) = 1 roll
+    │  └─ false (ex: 60 > 50): floor(0.5) = 0 rolls
+    │
+    ├─ Resultado: 1 roll extra (ou 0, probabilístico)
+    │
+    └─ Loop n times: gera n conjunto de items
+```
+
+---
+
+## Detalhes da Função Global
+
+### `callback.monsterOnDropLoot(monster, corpse)`
+
+**Tipo**: EventCallback hook
+
+**Descrição**: Função disparada quando monstro com hazard status morre. Calcula número de loot rolls dados à player de forma probabilística baseado em hazard points. Gera múltiplos rolls acumulando loot, então anexa mensagem de feedback.
+
+**Parâmetros**:
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `monster` | userdata | Monstro com hazard status |
+| `corpse` | userdata | Corpse destination para loot |
+
+**Retorna**: 
+- `nil` (implícito)
+
+**Algoritmo Completo**:
+
+```lua
+function callback.monsterOnDropLoot(monster, corpse)
+    -- GUARD 1: Hazard check
+    if not monster:hazard() then
+        return  -- Não é hazard monster
+    end
+    
+    -- GUARD 2: Player validation
+    local player = Player(corpse:getCorpseOwner())
+    if not player or not player:canReceiveLoot() then
+        return
+    end
+    
+    -- GUARD 3: Monster type
+    local mType = monster:getType()
+    if not mType then
+        return
+    end
+
+    -- CALCULATION: Hazard rolls
+    local factor = 1.0  -- Sem multiplicador de drop
+    local msgSuffix = ""
+    
+    -- chance baseado em hazard points e multiplier config
+    local chance = (2 * player:getHazardSystemPoints() * 
+                    configManager.getNumber(configKeys.HAZARD_LOOT_BONUS_MULTIPLIER))
+    -- Ex: 2 * 50 points * 0.5 multiplier = 50 chance
+    
+    local rolls = chance / 100
+    -- rolls = 0.5 (0.5 rolls = 50% chance de 1 roll)
+    
+    -- Probabilistic rounding: fractional rolls
+    if math.random(0, 100) < (rolls % 1) * 100 then
+        rolls = math.ceil(rolls)  -- Round up (1 roll)
+    else
+        rolls = math.floor(rolls)  -- Round down (0 rolls)
+    end
+    -- Result: 1 roll ou 0 rolls, 50/50 chance
+
+    -- MESSAGE ASSEMBLY: Prepare suffix
+    local existingSuffix = corpse:getAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX) or ""
+
+    if configManager.getBoolean(configKeys.PARTY_SHARE_LOOT_BOOSTS) and rolls > 1 then
+        -- Party boost enabled AND multiple rolls: show count
+        msgSuffix = string.len(existingSuffix) > 0 and 
+            string.format(", hazard system %s extra rolls", rolls) or 
+            string.format("hazard system %s extra rolls", rolls)
+    elseif rolls == 1 then
+        -- Exactly 1 roll: generic message
+        msgSuffix = string.len(existingSuffix) > 0 and ", hazard system" or "hazard system"
+    end
+    -- If rolls == 0: msgSuffix = "" (sem bonus)
+
+    -- GENERATION: Multiple loot rolls
+    local lootTable = {}
+    for _ = 1, rolls do
+        -- Each iteration: generateLootRoll accumulates into lootTable
+        lootTable = mType:generateLootRoll({ factor = factor, gut = false }, lootTable, player)
+        -- lootTable keeps growing: [item1, item2...] → [item1, ..., itemN+1, itemN+2...]
+    end
+
+    -- ADD LOOT: All accumulated items
+    corpse:addLoot(lootTable)
+    
+    -- ATTRIBUTE: Message
+    corpse:setAttribute(
+        ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX,
+        existingSuffix .. msgSuffix
+    )
+end
+```
+
+**Características Principais**:
+
+| Característica | Valor | Notas |
+|---|---|---|
+| Hazard Check | monster:hazard() | Guard 1 |
+| Points Source | player:getHazardSystemPoints() | Dinâmico |
+| Multiplier Config | HAZARD_LOOT_BONUS_MULTIPLIER | Configurável |
+| Fractional Rounding | Probabilístico | (rolls % 1) * 100 |
+| Multiple Rolls | Loop acumulativo | Loot table cresce |
+| Party Sharing Config | PARTY_SHARE_LOOT_BOOSTS | Define message |
+| Message Format | Dinâmico | "X extra rolls" ou "hazard system" |
+
+---
+
+## Detalhes das Variáveis Locais
+
+### `factor` (number)
+
+**Tipo**: number
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local factor = 1.0`
+
+**Descrição**: Multiplicador de loot fixado em 1.0 para hazard drops. Sem bonuses de vocation/level.
+
+### `msgSuffix` (string)
+
+**Tipo**: string
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local msgSuffix = ""`
+
+**Descrição**: Mensagem de feedback sobre hazard bonus. Construída condicionalmente baseado em:
+1. Se `rolls > 1` e party sharing enabled: "hazard system X extra rolls"
+2. Se `rolls == 1`: generic "hazard system"
+3. Se `rolls == 0`: vazio (sem bonus)
+
+**Exemplos**:
+```lua
+msgSuffix = ""                          -- Sem rolls (0)
+msgSuffix = "hazard system"             -- 1 roll
+msgSuffix = "hazard system 3 extra rolls"  -- 3 rolls (party sharing enabled)
+```
+
+### `chance` (number)
+
+**Tipo**: number
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local chance = (2 * player:getHazardSystemPoints() * configManager.getNumber(configKeys.HAZARD_LOOT_BONUS_MULTIPLIER))`
+
+**Descrição**: Chance bruta antes de normalizar para 0-100. Calculada como:
+```
+chance = 2 * hazardPoints * multiplier
+```
+
+**Exemplo**:
+```lua
+hazardPoints = 50
+multiplier = 0.5
+chance = 2 * 50 * 0.5 = 50  -- 50% chance
+```
+
+**Significado**:
+- chance = 50 → 0.5 rolls (50% de 1 roll)
+- chance = 100 → 1.0 rolls (garantido 1 roll)
+- chance = 300 → 3.0 rolls (+ possível +1 via fractional)
+
+### `rolls` (number)
+
+**Tipo**: number (float)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local rolls = chance / 100`
+
+**Descrição**: Número de rolls normalizado (0.0-N). Divida chance por 100 converter percentual em rolls.
+
+**Antes de Rounding**:
+- 0.5 rolls (50% probabilidade de 1 roll)
+- 0.8 rolls (80% probabilidade de 1 roll)
+- 1.3 rolls (100% + 30% de 1 extra roll)
+- 2.5 rolls (100% + 100% + 50% de 1 extra roll)
+
+### `lootTable` (table)
+
+**Tipo**: `table<number, item_struct>`
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local lootTable = {}`
+
+**Descrição**: Array acumulativo de items gerados. Começa vazio, cresce em cada iteração do loop de rolls.
+
+**Evolução**:
+```lua
+-- Iteração 1
+lootTable = {}
+lootTable = mType:generateLootRoll({...}, lootTable, player)
+-- lootTable = [{itemId=x, count=y}, ...]
+
+-- Iteração 2
+lootTable = mType:generateLootRoll({...}, lootTable, player)
+-- lootTable = [{itemId=x, count=y}, {itemId=z, count=w}, ...]
+
+-- etc...
+```
+
+**Padrão Acumulativo**:
+```lua
+for _ = 1, rolls do
+    lootTable = mType:generateLootRoll({...}, lootTable, player)
+    -- Cada call: recebe lootTable anterior, adiciona novos items, retorna ampliado
+end
+```
+
+### `existingSuffix` (string)
+
+**Tipo**: string
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local existingSuffix = corpse:getAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX) or ""`
+
+**Descrição**: Mensagem de suffix já anexada por callbacks anteriores. Recuperada para concatenar com nova msgSuffix de hazard.
+
+---
+
+## Padrões & Implementação
+
+### 1. Padrão de Probabilistic Rounding (Fractional Distribution)
+
+Converter decimal em probabilidade ao invés de truncar:
+
+```lua
+-- ❌ Truncate: Perde fração
+rolls = 1.5 → floor(1.5) = 1 roll (perde 0.5 roll)
+
+-- ✅ Probabilistic: Preserva expectativa
+rolls = 1.5
+fractional = rolls % 1 = 0.5
+if random(0, 100) < 0.5 * 100 then  -- 50% chance
+    rolls = ceil(1.5) = 2
+else
+    rolls = floor(1.5) = 1
+end
+-- Expectativa: 50% de 1 roll, 50% de 2 rolls
+```
+
+**Vantagem**: Equilibra probabilidade - 1.5 rolls significa "metade da chance de +1 roll"
+
+**Aplicação**:
+```lua
+rolls = chance / 100  -- Ex: 150/100 = 1.5
+
+if math.random(0, 100) < (rolls % 1) * 100 then
+    rolls = math.ceil(rolls)   -- 50% de chance: 2
+else
+    rolls = math.floor(rolls)  -- 50% de chance: 1
+end
+```
+
+### 2. Padrão de Loop Acumulativo
+
+Gerar múltiplos sets de items acumulando em tabela:
+
+```lua
+-- ❌ Substituição (último roll sobrescreve)
+local lootTable
+for _ = 1, rolls do
+    lootTable = generateLootRoll(...)  -- Sobrescreve anterior
+end
+-- Result: Apenas último roll
+
+-- ✅ Acumulação (cada roll adiciona)
+local lootTable = {}
+for _ = 1, rolls do
+    lootTable = generateLootRoll({...}, lootTable, ...)
+    -- Passa lootTable anterior para accumulate
+end
+-- Result: Todos os rolls combinados
+```
+
+**Aplicação**:
+```lua
+local lootTable = {}
+for _ = 1, rolls do
+    -- generateLootRoll receive anterior table, adds items, returns bigger table
+    lootTable = mType:generateLootRoll({ factor = factor, gut = false }, lootTable, player)
+end
+-- Final lootTable tem all items from all rolls
+```
+
+### 3. Padrão de Conditional Messaging
+
+Formatar mensagem baseado em múltiplas condições:
+
+```lua
+if condition1 and condition2 then
+    msgSuffix = format1
+elseif condition3 then
+    msgSuffix = format2
+else
+    msgSuffix = format3 (possibly "")
+end
+```
+
+**Aplicação no Hazard**:
+```lua
+if configManager.getBoolean(PARTY_SHARE_LOOT_BOOSTS) and rolls > 1 then
+    -- Party sharing + multiple rolls: show count
+    msgSuffix = "hazard system X extra rolls"
+elseif rolls == 1 then
+    -- Single roll: generic message
+    msgSuffix = "hazard system"
+else
+    -- No rolls: empty
+    msgSuffix = ""
+end
+```
+
+**Razão**: Não mostrar "hazard system 1 extra rolls" (verboso), usar "hazard system"
+
+---
+
+## Fluxo de Operação
+
+### Caso: Hazard Monster com 50 Points
+
+```
+[Monster Death - Hazard Monster]
+    │
+    ├─ Monster morre com hazard() = true
+    ├─ Player hazard points = 50
+    ├─ Multiplier config = 0.5
+    │
+    ├─ ▶️ chance = 2 * 50 * 0.5 = 50
+    │    rolls = 50 / 100 = 0.5
+    │
+    ├─ fractional = 0.5 % 1 = 0.5
+    ├─ random(0, 100) = 30 < 50? YES
+    │  └─ rolls = ceil(0.5) = 1 roll
+    │
+    ├─ Loop 1:
+    │  └─ lootTable = generateLootRoll({...}, {}, player)
+    │     └─ lootTable = [{itemId=x, count=y}]
+    │
+    ├─ corpse:addLoot(lootTable)
+    ├─ MessageFormat: rolls == 1 → "hazard system"
+    │
+    └─ Player recebe: "You received loot. [hazard system]"
+```
+
+### Caso: Hazard Monster com 150 Points
+
+```
+[Monster Death - Hazard Monster]
+    │
+    ├─ hazardPoints = 150
+    ├─ chance = 2 * 150 * 0.5 = 150
+    │
+    ├─ rolls = 150 / 100 = 1.5
+    ├─ fractional = 0.5
+    ├─ random(0, 100) < 50?
+    │  └─ YES (60 < 50? NO) → rolls = floor(1.5) = 1
+    │  └─ NO (30 < 50? YES) → rolls = ceil(1.5) = 2
+    │
+    ├─ [Assume rolls = 2]
+    │
+    ├─ Loop iteration 1:
+    │  └─ lootTable = generateLootRoll({...}, {}, player)
+    │     └─ [{itemId=x, count=y}]
+    │
+    ├─ Loop iteration 2:
+    │  └─ lootTable = generateLootRoll({...}, lootTable_previous, player)
+    │     └─ [{itemId=x, count=y}, {itemId=z, count=w}]  ← Acumulado
+    │
+    ├─ corpse:addLoot(lootTable)
+    ├─ MessageFormat: rolls > 1 (if party sharing) → "hazard system 2 extra rolls"
+    │
+    └─ Player recebe: "You received loot. [hazard system 2 extra rolls]"
+```
+
+### Caso: Hazard Monster, Party Share Disabled
+
+```
+[Monster Death - Hazard Monster, Party Share OFF]
+    │
+    ├─ rolls = 3 (3 rolls extras)
+    │
+    ├─ if PARTY_SHARE_LOOT_BOOSTS and rolls > 1: FALSE (disabled)
+    ├─ if rolls == 1: FALSE (3 rolls)
+    │
+    ├─ msgSuffix = "" (vazio)
+    │
+    └─ Player recebe: "You received loot." (sem hazard mention)
+       └─ Comportamento: recebe loot mas sem feedback de hazard bonus
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+**Versão da Documentação**: 1.0
+
+**Última Atualização**: 2026-02-19
+
+**Tipo de Complexidade**: 🟡 **Média**
+- Arquivo com 42 linhas de código
+- 1 função callback
+- 6 variáveis locais
+- Lógica: hazard points calculation, fractional rolling, multiple roll generation, conditional messaging
+- Padrões: probabilistic rounding, loop accumulation, conditional messaging
+- Tempo estimado de aprendizado: 25-30 minutos
+
+**Cobertura de Tópicos**:
+- ✅ Variáveis locais (6)
+- ✅ Função global
+- ✅ Padrões de implementação
+- ✅ Fluxo de operação
+- ✅ Casos de uso
+
+**Referências Relacionadas**:
+- [ARQUITETURA_PROJETO.mdx](../../../ARQUITETURA_PROJETO.mdx) - Event callbacks
+- ondroploot_base.lua - Callback base
+- ondroploot_boosted.lua - Callback boosted
+- ondroploot_gem_atelier.lua - Callback gem
+- Player:getHazardSystemPoints() API
+- Hazard system documentation
+
+**Status de Implementação**: ✅ **Completamente Implementado**
+- Hazard detection operacional
+- Fractional rounding funcional
+- Multiple roll accumulation verificado
+- Conditional messaging em place
+
+**Padrões Principais Implementados**:
+1. ✅ Probabilistic rounding (fractional rolls)
+2. ✅ Loop accumulative generation
+3. ✅ Conditional messaging (3 paths)
+4. ✅ Config-based behavior (party sharing)
+5. ✅ Multiple param calculation
+
+**Notas para Futuros Desenvolvedores**:
+1. **Fractional rolls**: `(rolls % 1) * 100` converte decimal em % chance
+2. **Loop accumulation**: Sempre passer lootTable anterior a geterate para grow
+3. **Config dependent**: Party share flag modifica mensagem (não afeta rolls)
+4. **Zero rolls**: Pode ocorrer se hazardPoints muito baixo - msgSuffix vazio (OK)
+5. **Hazard validation**: Sempre check `monster:hazard()` primeiro antes processingpoints
+
+**Potencial de Debugging**:
+- Log rolls calculado: `print("Hazard rolls:", rolls)`
+- Log fractional: `print("Random vs fractional:", random, fractional * 100)`
+- Log loot generation: `print("Loot table size:", #lootTable)`
+

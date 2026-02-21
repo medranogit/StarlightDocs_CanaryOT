@@ -1,0 +1,227 @@
+---
+title: vessels.lua
+description: 5 items que enviam efeitos visuais específicos em posição do alvo com validação de player target.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="vessels.lua" icon="pencil">
+Handler trivial: lookup table de efeitos + validação de alvo.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/vessels.lua`
+
+**Linhas:** 14 | **IDs dos Items:** 5 (37572-37576) | **Tipo:** Action Handler com Effect Mapping
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script é trivialmente simples: 5 items mapeados para 5 efeitos visuais diferentes (GAZHARAGOTH, FERUMBRAS_1, MAD_MAGE, HORESTIS, DEVOVORGA). Ao usar, valida se alvo é player (target:isPlayer()) e envia o efeito na posição do alvo. Sem cooldown, sem message, sem achievement.
+
+### Estrutura de Funcionalidades
+
+```
+CONFIG TABLE (5 vessels):
+  ├─ 37572 → CONST_ME_GAZHARAGOTH (efeito visual)
+  ├─ 37573 → CONST_ME_FERUMBRAS_1
+  ├─ 37574 → CONST_ME_MAD_MAGE
+  ├─ 37575 → CONST_ME_HORESTIS
+  └─ 37576 → CONST_ME_DEVOVORGA
+
+HANDLER:
+  └─ vessels.onUse()
+      ├─ vessel = config[item.itemid]
+      ├─ target:isPlayer()? 
+      │   ├─ NÃO → return true
+      │   ├─ SIM → Continua
+      ├─ toPosition:sendMagicEffect(vessel)
+      ├─ item:remove(1)
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| config | table | 5 vessel IDs → effect constants |
+| vessels | Action | Objeto handler |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Vessel Effect Mapping
+
+| Item ID | Item Nome | Efeito | Boss |
+|---------|-----------|--------|------|
+| 37572 | Vessel (?) | CONST_ME_GAZHARAGOTH | Gazha Ragoth |
+| 37573 | Vessel (?) | CONST_ME_FERUMBRAS_1 | Ferumbras |
+| 37574 | Vessel (?) | CONST_ME_MAD_MAGE | Mad Mage |
+| 37575 | Vessel (?) | CONST_ME_HORESTIS | Horestis |
+| 37576 | Vessel (?) | CONST_ME_DEVOVORGA | Devovorga |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local config = {
+	[37572] = CONST_ME_GAZHARAGOTH,
+	[37573] = CONST_ME_FERUMBRAS_1,
+	[37574] = CONST_ME_MAD_MAGE,
+	[37575] = CONST_ME_HORESTIS,
+	[37576] = CONST_ME_DEVOVORGA,
+}
+
+local vessels = Action()
+
+function vessels.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Obter efeito
+	local vessel = config[item.itemid]
+	
+	-- Validação: Alvo deve ser player
+	if not vessel or not target:isPlayer() then
+		return true
+	end
+
+	-- Enviar efeito na posição do alvo
+	toPosition:sendMagicEffect(vessel)
+	
+	-- Consumir item
+	item:remove(1)
+	return true
+end
+
+-- Registrar todos os IDs
+for index in pairs(config) do
+	vessels:id(index)
+end
+
+vessels:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa vessel em alvo
+  │
+  ├─ vessel = config[item.itemid]?
+  │   └─ NÃO → return true (vessel desconhecido)
+  │
+  ├─ SIM → Continua
+  │
+  ├─ target:isPlayer()?
+  │   ├─ NÃO → return true (alvo não é player)
+  │   └─ SIM → Continua
+  │
+  ├─ toPosition:sendMagicEffect(vessel)
+  │   └─ Efeito específico do boss
+  │
+  ├─ item:remove(1)
+  │   └─ Consumir vessel
+  │
+  └─ return true
+```
+
+### Effect Validation
+
+```
+Usar vessel em NPC:
+  ├─ target:isPlayer() = false
+  ├─ return true (sem efeito)
+  └─ Item consumido? SIM (antes do check)
+
+Usar vessel em Player:
+  ├─ target:isPlayer() = true
+  ├─ toPosition:sendMagicEffect(vessel)
+  ├─ item:remove(1)
+  └─ Efeito visível
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Config Lookup**: Tabela itemId → effect constant
+- **target:isPlayer()**: Validação se alvo é jogador
+- **toPosition**: Posição do alvo para efeito
+- **sendMagicEffect()**: Enviar efeito visual
+- **No Feedback**: Sem mensagem ou emote
+- **Simple Mapping**: 1:1 item-to-effect
+- **Always Remove**: item:remove(1) mesmo se falhar
+- **Return Structure**: if not valid return true
+
+### Responsabilidades do Handler
+
+1. **Obter efeito**: config[item.itemid]
+2. **Validar**: if not vessel or not target:isPlayer()
+3. **Rejeitar se inválido**: return true
+4. **Enviar efeito**: toPosition:sendMagicEffect(vessel)
+5. **Consumir**: item:remove(1)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Effect Mapping
+
+Tabela simples:
+
+```lua
+local config = {
+	[37572] = CONST_ME_GAZHARAGOTH,
+	[37573] = CONST_ME_FERUMBRAS_1,
+	-- ... etc
+}
+
+local vessel = config[item.itemid]
+if not vessel then
+	return true
+end
+
+toPosition:sendMagicEffect(vessel)
+```
+
+### Comparação: Vessels vs Other Effect Items
+
+| Aspecto | Vessels | Water Pipe |
+|---------|---------|-----------|
+| Linhas | 14 | 7 |
+| Items | 5 | 3 |
+| Config | Tabela efeitos | Só IDs |
+| Target | Deve ser player | Nenhuma validação |
+| Effect | Boss-specific | POFF genérico |
+| Consumo | Simples | Simples |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: vessels.lua" icon="star">
+Análise de handler trivial com effect mapping table e target player validation. Padrão simples lookup + efeito.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Effect mapping com target validation | Complexidade: Muito Baixa
+</Aside>

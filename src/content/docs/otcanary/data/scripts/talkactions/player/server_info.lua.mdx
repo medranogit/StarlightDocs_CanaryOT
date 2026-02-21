@@ -1,0 +1,336 @@
+---
+title: Server Information
+description: Comando PLAYER para exibir informações completas do servidor
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# 🛠️ Documentação: server_info.lua
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Arquivo** | `server_info.lua` |
+| **Tipo** | TalkAction (Comando de Jogador) |
+| **Acesso** | normal (PLAYER) |
+| **Comando** | `!serverinfo` |
+| **Descrição** | Exibir informações completas do servidor em diálogo |
+| **Parâmetro** | Nenhum |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/server_info.lua
+```
+
+## 💡 Utilidade
+
+Este comando fornece uma visualização completa das configurações do servidor, incluindo taxas de experiência/skill/magia/loot, informações sobre casas, proteção, PVP e horário de save. O comando suporta dois modos: simples (taxas fixas) e baseado em stages (taxas por nível/skill).
+
+## 📄 Visão Geral do Código Resumo Executivo
+
+O script `server_info.lua` implementa um sistema informativo de servidor:
+
+- **Detecção de Modo**: Verifica se sistema usa stages ou taxas fixas
+- **Construção Dinâmica**: Monta texto baseado no modo configurado
+- **Modo Simples**: Exibe taxas fixas (exp, skill, magia, loot, spawn)
+- **Modo Stages**: Exibe taxas variáveis por nível/skill do jogador
+- **Informações Adicionais**: Exibe settings de casa, proteção, PVP, save
+- **Diálogo de Texto**: Apresenta em janela de diálogo com scroll
+
+### Fluxo Lógico Resumido
+
+1. Verifica se está em modo stages
+2. Constrói texto de taxas (simples ou stages)
+3. Adiciona info de casa, proteção, kills, save
+4. Calcula dias até casa ser perdida por inatividade
+5. Exibe tudo em diálogo de texto
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal: `serverInfo.onSay()`
+
+```lua
+function serverInfo.onSay(player, words, param)
+    local text
+    local useStages = configManager.getBoolean(configKeys.RATE_USE_STAGES)
+    
+    if not useStages then
+        text = "Server Info Rates: \n"
+            .. "\nExp rate: "
+            .. configManager.getNumber(configKeys.RATE_EXPERIENCE)
+            .. "x"
+            .. "\nSkill rate: "
+            .. configManager.getNumber(configKeys.RATE_SKILL)
+            .. "x"
+            .. "\nMagic rate: "
+            .. configManager.getNumber(configKeys.RATE_MAGIC)
+            .. "x"
+            .. "\nLoot rate: "
+            .. configManager.getNumber(configKeys.RATE_LOOT)
+            .. "x"
+            .. "\nSpawns rate: "
+            .. configManager.getNumber(configKeys.RATE_SPAWN)
+            .. "x"
+    else
+        local configRateSkill = configManager.getNumber(configKeys.RATE_SKILL)
+        text = "Server Info Stages Rates: \n"
+            .. "\nExp rate stages: "
+            .. getRateFromTable(experienceStages, player:getLevel(), expstagesrate)
+            .. "x"
+            .. "\nSword Skill Stages rate: "
+            .. getRateFromTable(skillsStages, player:getSkillLevel(SKILL_SWORD), configRateSkill)
+            .. "x"
+            .. "\nClub Skill Stages rate: "
+            .. getRateFromTable(skillsStages, player:getSkillLevel(SKILL_CLUB), configRateSkill)
+            .. "x"
+            .. "\nAxe Skill Stages rate: "
+            .. getRateFromTable(skillsStages, player:getSkillLevel(SKILL_AXE), configRateSkill)
+            .. "x"
+            .. "\nDistance Skill Stages rate: "
+            .. getRateFromTable(skillsStages, player:getSkillLevel(SKILL_DISTANCE), configRateSkill)
+            .. "x"
+            .. "\nShield Skill Stages rate: "
+            .. getRateFromTable(skillsStages, player:getSkillLevel(SKILL_SHIELD), configRateSkill)
+            .. "x"
+            .. "\nFist Skill Stages rate: "
+            .. getRateFromTable(skillsStages, player:getSkillLevel(SKILL_FIST), configRateSkill)
+            .. "x"
+            .. "\nMagic rate: "
+            .. getRateFromTable(magicLevelStages, player:getBaseMagicLevel(), configManager.getNumber(configKeys.RATE_MAGIC))
+            .. "x"
+            .. "\nLoot rate: "
+            .. configManager.getNumber(configKeys.RATE_LOOT)
+            .. "x"
+            .. "\nSpawns rate: "
+            .. configManager.getNumber(configKeys.RATE_SPAWN)
+            .. "x"
+    end
+    
+    local loseHouseText = configManager.getNumber(configKeys.HOUSE_LOSE_AFTER_INACTIVITY) > 0 and configManager.getNumber(configKeys.HOUSE_LOSE_AFTER_INACTIVITY) .. " days" or "never"
+    text = text
+        .. "\n\nMore Server Info: \n"
+        .. "\nLevel to buy house: "
+        .. configManager.getNumber(configKeys.HOUSE_BUY_LEVEL)
+        .. "\nLose house after inactivity: "
+        .. loseHouseText
+        .. "\nProtection level: "
+        .. configManager.getNumber(configKeys.PROTECTION_LEVEL)
+        .. "\nWorldType: "
+        .. configManager.getString(configKeys.WORLD_TYPE)
+        .. "\nKills/day to red skull: "
+        .. configManager.getNumber(configKeys.DAY_KILLS_TO_RED)
+        .. "\nKills/week to red skull: "
+        .. configManager.getNumber(configKeys.WEEK_KILLS_TO_RED)
+        .. "\nKills/month to red skull: "
+        .. configManager.getNumber(configKeys.MONTH_KILLS_TO_RED)
+        .. "\nServer Save: "
+        .. configManager.getString(configKeys.GLOBAL_SERVER_SAVE_TIME)
+    
+    player:showTextDialog(34266, text)
+    return true
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavra-chave do comando
+- `param` (string): Parâmetro vazio (sem uso)
+
+**Retorno:**
+- `true`: Comando executado com sucesso
+
+#### Lógica Detalhada
+
+1. **Detecção de Modo**:
+   - `configManager.getBoolean(configKeys.RATE_USE_STAGES)`
+   - Se false: usa modo simples (taxas fixas)
+   - Se true: usa modo stages (taxas por nível)
+
+2. **Modo Simples (Taxas Fixas)**:
+   - Obtém valores numéricos de:
+     - `RATE_EXPERIENCE`: Taxa de experiência
+     - `RATE_SKILL`: Taxa de skills (armas)
+     - `RATE_MAGIC`: Taxa de magic level
+     - `RATE_LOOT`: Taxa de loot
+     - `RATE_SPAWN`: Taxa de spawn
+   - Exibe com "x" para indicar multiplicador
+
+3. **Modo Stages (Taxas Variáveis)**:
+   - `getRateFromTable()`: Função que busca taxa em tabela de stages
+   - Para cada skill, obtém nível do jogador e busca taxa correspondente:
+     - **Experiência**: usa `player:getLevel()` + `experienceStages`
+     - **Sword/Club/Axe/Distance/Shield/Fist**: usa `player:getSkillLevel()` + `skillsStages`
+     - **Magic**: usa `player:getBaseMagicLevel()` + `magicLevelStages`
+   - Loot e Spawn são iguais para todos (não variam)
+
+4. **Construção de Informações Adicionais**:
+   - **Perda de Casa**: Calcula dias com operador ternário
+     - Se `HOUSE_LOSE_AFTER_INACTIVITY > 0`: exibe número de dias
+     - Se `<= 0`: exibe "never"
+   
+5. **Adição de Configurações**:
+   - `HOUSE_BUY_LEVEL`: Nível mínimo para comprar casa
+   - `PROTECTION_LEVEL`: Nível até qual PVP é protegido
+   - `WORLD_TYPE`: Tipo de mundo (PVE/PVP/Open)
+   - `DAY_KILLS_TO_RED`: Kills por dia que geram skull vermelho
+   - `WEEK_KILLS_TO_RED`: Kills por semana para skull vermelho
+   - `MONTH_KILLS_TO_RED`: Kills por mês para skull vermelho
+   - `GLOBAL_SERVER_SAVE_TIME`: Horário de save do servidor
+
+6. **Exibição**:
+   - `player:showTextDialog(34266, text)`: Exibe em diálogo ID 34266
+
+### Variáveis Globais Utilizadas
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `experienceStages` | table | Tabela de taxas de experiência por nível |
+| `expstagesrate` | table | Tabela de multiplicadores de experiência |
+| `skillsStages` | table | Tabela de taxas de skills por nível |
+| `magicLevelStages` | table | Tabela de taxas de magic por nível |
+| `SKILL_SWORD` | number | Constante do skill espada |
+| `SKILL_CLUB` | number | Constante do skill clava |
+| `SKILL_AXE` | number | Constante do skill machado |
+| `SKILL_DISTANCE` | number | Constante do skill distância |
+| `SKILL_SHIELD` | number | Constante do skill escudo |
+| `SKILL_FIST` | number | Constante do skill punho |
+
+### Funções Globais Utilizadas
+
+| Função | Origem | Descrição |
+|--------|--------|-----------|
+| `configManager.getBoolean(key)` | Config Manager | Obtém valor booleano da config |
+| `configManager.getNumber(key)` | Config Manager | Obtém valor numérico da config |
+| `configManager.getString(key)` | Config Manager | Obtém valor string da config |
+| `getRateFromTable(table, value, multiplier)` | Global | Busca taxa em tabela de stages |
+| `player:getLevel()` | Object Player | Retorna nível do jogador |
+| `player:getSkillLevel(skill)` | Object Player | Retorna nível de um skill |
+| `player:getBaseMagicLevel()` | Object Player | Retorna magic level base |
+| `player:showTextDialog(dialogId, text)` | Object Player | Exibe diálogo de texto |
+
+### Chaves de Configuração Utilizadas
+
+| Chave | Tipo | Descrição |
+|-------|------|-----------|
+| `RATE_USE_STAGES` | bool | Ativa modo de taxas por stage |
+| `RATE_EXPERIENCE` | number | Taxa de experiência (modo simples) |
+| `RATE_SKILL` | number | Taxa de skills (modo simples) |
+| `RATE_MAGIC` | number | Taxa de magic level |
+| `RATE_LOOT` | number | Taxa de loot |
+| `RATE_SPAWN` | number | Taxa de spawn de creatures |
+| `HOUSE_BUY_LEVEL` | number | Nível mínimo para comprar casa |
+| `HOUSE_LOSE_AFTER_INACTIVITY` | number | Dias para perder casa (0 = never) |
+| `PROTECTION_LEVEL` | number | Nível de proteção PVP |
+| `WORLD_TYPE` | string | Tipo de mundo (PVE/PVP/Open) |
+| `DAY_KILLS_TO_RED` | number | Kills por dia para skull vermelho |
+| `WEEK_KILLS_TO_RED` | number | Kills por semana para skull vermelho |
+| `MONTH_KILLS_TO_RED` | number | Kills por mês para skull vermelho |
+| `GLOBAL_SERVER_SAVE_TIME` | string | Horário de save (ex: "08:00") |
+
+## 🤖 Informações da Documentação
+
+| Info | Detalhe |
+|------|---------|
+| **Versão Documentada** | Build Canary - Estrutura Completa |
+| **Tipo de Documento** | Documentação Técnica de TalkAction |
+| **Completude** | Análise Completa do Código-Fonte |
+| **Últimas Verificações** | Validação de Sintaxe Lua, Fluxo Lógico |
+
+---
+
+## 📋 Resumo de Implementação
+
+**Padrão de Registro:**
+
+```lua
+serverInfo:separator(" ")
+serverInfo:groupType("normal")
+serverInfo:register()
+```
+
+**Uso Prático:**
+
+Quando um jogador digita `!serverinfo`:
+
+1. Sistema verifica modo de taxas (simples vs stages)
+2. Monta texto base com informações de taxa
+3. Adiciona informações adicionais (casa, proteção, kills, save)
+4. Calcula dias de inatividade
+5. Exibe tudo em diálogo de texto com scroll
+
+**Exemplo de Saída (Modo Simples):**
+
+```
+Server Info Rates:
+
+Exp rate: 3x
+Skill rate: 2x
+Magic rate: 2x
+Loot rate: 2x
+Spawns rate: 1x
+
+More Server Info:
+
+Level to buy house: 20
+Lose house after inactivity: 30 days
+Protection level: 8
+WorldType: PvP
+Kills/day to red skull: 3
+Kills/week to red skull: 5
+Kills/month to red skull: 10
+Server Save: 08:00
+```
+
+**Exemplo de Saída (Modo Stages):**
+
+```
+Server Info Stages Rates:
+
+Exp rate stages: 3x (baseado no seu nível)
+Sword Skill Stages rate: 2x (baseado no seu nível de sword)
+Club Skill Stages rate: 2x (baseado no seu nível de club)
+[...]
+Magic rate: 2x (baseado no seu magic level)
+Loot rate: 2x
+Spawns rate: 1x
+
+More Server Info:
+[mesmas informações acima]
+```
+
+**Contexto de Uso:**
+
+Este comando é essencial para:
+- Jogadores entenderem as taxas de progresso
+- Determinar se servidor é PVE ou PVP
+- Saber requisitos para comprar casa
+- Entender mecânicas de skull (kills)
+- Consultar horário de save
+
+---
+
+## 📋 Modos de Operação
+
+**Modo Simples:**
+- Taxas fixas para todos os jogadores
+- Mesmo exp/skill rate independente de nível
+- Mais fácil de configurar e comunicar
+
+**Modo Stages:**
+- Taxas variam por nível/skill do jogador
+- Experiência varia por nível
+- Skills variam por skill level
+- Magic varia por magic level
+- Oferece progressão mais customizada
+
+---
+
+## 🔗 Relacionados
+
+- **Arquivo de Padrão**: `data/npclib/npc_system/custom_modules.lua.mdx`
+- **Sistema**: TalkActions (Comandos de Conversa)
+- **Acesso**: PLAYER (normal)
+- **Configuração**: configManager (rates, house, protection)
+- **Detalhe Arquitetura**: Ver `ARQUITETURA_PROJETO.mdx` para contexto completo

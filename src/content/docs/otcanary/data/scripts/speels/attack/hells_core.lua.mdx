@@ -1,0 +1,457 @@
+---
+title: "Spell - hells_core.lua"
+description: "Spell de núcleo infernal para sorcerers level 60 com self-target AOE fire"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `hells_core.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 24 |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 60 |
+| **Mana Requerida** | 1100 |
+| **Words** | exevo gran mas flam |
+| **Alcance** | 0 (self-target) |
+| **Área** | CIRCLE5X5 (AOE grande!) |
+| **Cooldown** | 40s |
+| **GroupCooldown** | 4s + 40s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level EXTREMA (10-14 coef!) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_HELL_SCORE |
+| **isSelfTarget** | Sim |
+| **Bloqueia Walls** | Não especificado |
+| **Grupos** | "attack", "focus" |
+| **Linhas de Código** | 26 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Spell de núcleo infernal para sorcerers nível 60 (mid-late). Dano fogo self-target com AOE CIRCLE5X5 (grande!). Magic-level EXTREMAMENTE escalável (10-14 coef - MÁXIMO!). isSelfTarget: true (não precisa de target). Mana MUITO custosa (1100!). Cooldown 40s. Premium only. Efeito FIREAREA. Spell AOE poderosa mid-late!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/hells_core.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack", "focus")
+spell:id(24)
+spell:name("Hell's Core")
+spell:words("exevo gran mas flam")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_HELL_SCORE)
+spell:level(60)
+spell:mana(1100)
+spell:isSelfTarget(true)
+spell:isPremium(true)
+spell:cooldown(40 * 1000)
+spell:groupCooldown(4 * 1000, 40 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Núcleo Infernal - Fire AOE Self-Target Magic-Level Extremo**
+
+Este spell implementa um sistema de AOE self-target com magic-level EXTREMAMENTE alto:
+
+1. **Magic-Level EXTREMO:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 10)
+   - max = (level/5) + (maglevel × 14)
+   - Coef 10-14 = MÁXIMO POSSÍVEL!
+   - Fogo intenso!
+
+2. **Self-Target AOE:**
+   - isSelfTarget: true
+   - CIRCLE5X5 (grande!)
+   - Não precisa target
+   - Efeito FIREAREA
+
+3. **Mana MUITO Custosa:**
+   - 1100 mana (EXTREMAMENTE caro!)
+   - Cooldown: 40s (longo!)
+   - GroupCooldown: 4s + 40s
+   - Premium only
+
+4. **Mid-Late Fire:**
+   - Level 60 (mid-late)
+   - Magic escalação máxima
+   - Grupo "focus" (special)
+   - Endgame fire!
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 60, mlvl 30:
+  min = 12 + 300 = 312
+  max = 12 + 420 = 432
+
+Sorcerer lvl 80, mlvl 40:
+  min = 16 + 400 = 416
+  max = 16 + 560 = 576
+
+Sorcerer lvl 100, mlvl 50:
+  min = 20 + 500 = 520
+  max = 20 + 700 = 720
+```
+
+**Diferencial:** Fire self-target AOE magic-level EXTREMO!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `hells_core` oferece dano fogo AOE self-target com magic-level EXTREMO:
+
+- **Dano:** COMBAT_FIREDAMAGE magic-level
+- **Fórmula:** (level/5) + (mlvl × 10/14) (EXTREMA!)
+- **Mana:** 1100 (extremamente caro!)
+- **Level:** 60 (mid-late)
+- **Área:** CIRCLE5X5 (grande!)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: FIREDAMAGE
+├─ Effect: FIREAREA
+├─ Area: CIRCLE5X5
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max magic-level EXTREMO 10-14!
+
+spell.onCastSpell(creature, variant)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_FIREAREA)
+combat:setArea(createCombatArea(AREA_CIRCLE5X5))
+```
+
+**Propósito:** Combat de dano fogo AOE self-target.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_FIREAREA | Efeito fogo área |
+| `Area` | CIRCLE5X5 | AOE grande! |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 10)
+	local max = (level / 5) + (maglevel * 14)
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano fogo magic-level EXTREMO.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 10)
+max = (level / 5) + (maglevel * 14)
+```
+
+**Pesos (EXTREMAMENTE ALTOS!):**
+- Level: 0.2 por ponto
+- Maglevel min: 10 (EXTREMO!)
+- Maglevel max: 14 (EXTREMO!)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 60 | 20 | 212 | 292 |
+| 60 | 30 | 312 | 432 |
+| 80 | 40 | 416 | 576 |
+| 100 | 50 | 520 | 720 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, variant)
+	return combat:execute(creature, variant)
+end
+```
+
+**Propósito:** Handler simples executa combat.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `variant` | Variant | (self-target, não usado) |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Núcleo lançado |
+| `false` | Falha |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callbacks magic |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Magic-Level EXTREMO
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 10)
+	local max = (level / 5) + (maglevel * 14)
+	return -min, -max
+end
+```
+
+**Benefício:** Escalável EXTREMAMENTE alto magic-level!
+
+### Padrão 2: Self-Target AOE Grande
+
+```lua
+spell:isSelfTarget(true)
+combat:setArea(createCombatArea(AREA_CIRCLE5X5))
+```
+
+**Benefício:** AOE sem target, radius grande!
+
+### Padrão 3: Mana Extremamente Custosa
+
+```lua
+spell:mana(1100)
+spell:cooldown(40 * 1000)
+spell:groupCooldown(4 * 1000, 40 * 1000)
+```
+
+**Benefício:** Custo alto = poder alto!
+
+### Padrão 4: Focus Group
+
+```lua
+spell:group("attack", "focus")
+```
+
+**Benefício:** Categoria especial "focus"!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano fogo self-target magic-level EXTREMO.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Sorcerer |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(sorcerer, 60, 30)
+// min = 12 + 300 = 312
+// max = 12 + 420 = 432
+// Retorna: -312, -432
+```
+
+---
+
+### spell.onCastSpell(creature, variant)
+
+**Descrição:** Lança núcleo infernal self-target AOE.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `variant` | Variant | (self-target, não usado) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Núcleo lançado |
+| `false` | Falha |
+
+**Requisitos:**
+- Level 60+
+- 1100 mana (MUITO caro!)
+- Self-target (não precisa alvo)
+- Premium account
+- Cooldown 40s
+
+**Efeito:**
+- Efeito FIREAREA
+- CIRCLE5X5 grande!
+- Dano magic-level EXTREMO
+- Self-target automation
+- Grupo "focus"
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 80, MLvl 40
+spell.onCastSpell(sorcerer, selfVariant)
+// Validações:
+//   ✓ Level 80 >= 60
+//   ✓ Mana 1100 disponível
+//   ✓ Self-target automático
+// Combat executa
+// Area CIRCLE5X5 AOE grande
+// Dano: -416 a -576
+// Efeito fogo área
+// Targets em radius: destruídos!
+// Cooldown 40s
+// Resultado: Núcleo infernal!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Mid-Late Fire AOE
+
+```lua
+-- Sorcerer lvl 60+
+// Hell's Core = AOE fogo poderoso
+// Self-target convenience
+// Magic-level escalação máxima
+```
+
+### Caso 2: Focus Farming
+
+```lua
+-- Sorcerer mob farming
+// Hell's Core = group "focus"
+// Self-target = automático
+// CIRCLE5X5 ampla cobertura
+// 40s cooldown = big spell
+```
+
+### Caso 3: Magic Leveling
+
+```lua
+-- Premium Sorcerer training
+// Hell's Core = magic skill boost
+// 1100 mana = custoso training
+// But escalação EXTREMO = worth!
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_FIREDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Areas:** AREA_CIRCLE5X5
+- **Effects:** CONST_ME_FIREAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | AOE fogo self-target |
+| **Dano Type** | COMBAT_FIREDAMAGE |
+| **Fórmula** | (lvl/5) + (mlvl × 10/14) |
+| **Mana** | 1100 (extremo!) |
+| **Area** | CIRCLE5X5 (grande!) |
+| **Level** | 60 (mid-late) |
+| **Cooldown** | 40s (longo) |
+| **Premium** | Sim |
+| **Magic-Level** | EXTREMO (10-14 coef) |
+| **Self-Target** | Sim |
+| **Grupos** | "attack", "focus" |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | Self-target AOE + magic-level EXTREMO + mana custosa |

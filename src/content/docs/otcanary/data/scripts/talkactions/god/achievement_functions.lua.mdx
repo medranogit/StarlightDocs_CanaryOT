@@ -1,0 +1,247 @@
+---
+title: Achievement Functions
+description: Comandos GOD para gerenciar conquistas/achievements de jogadores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `achievement_functions.lua` |
+| **Tipo de Sistema** | Comandos Talk Action (GOD) |
+| **Funcionalidade Principal** | Adicionar/remover/verificar achievements |
+| **Comandos** | `/addachievement`, `/removeachievement`, `/checkachievements` |
+| **Requisito** | Acesso de God |
+| **Separador** | Espaço e vírgula |
+| **Sistema** | Achievements com ID e Nome |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/achievement_functions.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Arquivo que gerencia 3 operações de achievement. Suporta busca por ID (numérica) ou Nome (string). Funções `Game.getAchievementInfoById()` e `Game.getAchievementInfoByName()` com fallback automático. Validação de resultados via `achievementInfo.id == 0`. Operador `or` para lógica de fallback. Mensagens de sucesso diferenciadas para cada operação.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `achievement_functions.lua` implementa 3 comandos TalkAction (`/addachievement`, `/removeachievement`, `/checkachievements`) para gerenciar conquistas de jogadores. O sistema suporta busca por ID ou Nome, valida existência de achievements, aplica operações via métodos de player, e fornece feedback detalhado. Ferramenta completa de auditoria e administração de conquistas.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **1. /addachievement - Adicionar Achievement**
+
+```lua
+local addAchievement = TalkAction("/addachievement")
+
+function addAchievement.onSay(player, words, param)
+    logCommand(player, words, param)
+    
+    -- Parse: playerName, achievementId|Name
+    local params = param:split(",")
+    if #params < 2 then
+        player:sendCancelMessage("Usage: /addachievement playerName, achievementId|Name")
+        return true
+    end
+    
+    -- Extrair parâmetros
+    local targetPlayerName = params[1]
+    local achievementIdentifier = params[2]
+    
+    -- Buscar jogador online
+    local targetPlayer = Player(targetPlayerName)
+    if not targetPlayer then
+        player:sendCancelMessage("Player " .. targetPlayerName .. " is not online.")
+        return true
+    end
+    
+    -- Buscar achievement por ID ou Nome
+    local achievementId = tonumber(achievementIdentifier)
+    local achievementName = tostring(achievementIdentifier):lower():trimSpace():titleCase()
+    local achievementInfo = achievementId and Game.getAchievementInfoById(achievementId) 
+                           or Game.getAchievementInfoByName(achievementName)
+    
+    -- Validar resultado
+    if achievementInfo.id == 0 or achievementInfo.name == nil then
+        player:sendCancelMessage("Invalid achievement. Use valid ID or name.")
+        return true
+    end
+    
+    -- Adicionar achievement
+    targetPlayer:addAchievement(achievementInfo.id, true)
+    player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+        "Achievement " .. achievementInfo.name .. " added successfully to " .. targetPlayerName .. ".")
+    
+    return true
+end
+
+addAchievement:separator(" ")
+addAchievement:groupType("god")
+addAchievement:register()
+```
+
+### **2. /removeachievement - Remover Achievement**
+
+```lua
+local removeAchievement = TalkAction("/removeachievement")
+
+function removeAchievement.onSay(player, words, param)
+    logCommand(player, words, param)
+    
+    -- Parse: playerName, achievementId
+    local params = param:split(",")
+    if #params < 2 then
+        player:sendCancelMessage("Usage: /removeachievement playerName, achievementId")
+        return true
+    end
+    
+    local targetPlayerName = params[1]
+    local achievementIdentifier = params[2]
+    
+    -- Buscar jogador
+    local targetPlayer = Player(targetPlayerName)
+    if not targetPlayer then
+        player:sendCancelMessage("Player " .. targetPlayerName .. " is not online.")
+        return true
+    end
+    
+    -- Buscar achievement
+    local achievementId = tonumber(achievementIdentifier)
+    local achievementName = tostring(achievementIdentifier):lower():trimSpace():titleCase()
+    local achievementInfo = achievementId and Game.getAchievementInfoById(achievementId) 
+                           or Game.getAchievementInfoByName(achievementName)
+    
+    if not achievementInfo then
+        player:sendCancelMessage("Invalid achievement identifier. Use either ID or name.")
+        return true
+    end
+    
+    -- Remover achievement
+    targetPlayer:removeAchievement(achievementInfo.id)
+    player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+        "Achievement " .. achievementInfo.name .. " removed successfully.")
+    
+    return true
+end
+
+removeAchievement:separator(" ")
+removeAchievement:groupType("god")
+removeAchievement:register()
+```
+
+### **3. /checkachievements - Verificar Achievements**
+
+```lua
+local checkAchievements = TalkAction("/checkachievements")
+
+function checkAchievements.onSay(player, words, param)
+    logCommand(player, words, param)
+    
+    if param == "" then
+        player:sendCancelMessage("Usage: /checkachievements playerName")
+        return true
+    end
+    
+    -- Buscar jogador
+    local targetPlayer = Player(param)
+    if not targetPlayer then
+        player:sendCancelMessage("Player " .. param .. " is not online.")
+        return true
+    end
+    
+    -- Obter achievements do jogador
+    local ACHIEVEMENTS = targetPlayer:getAchievements()
+    local message = "Achievements: "
+    
+    -- Construir mensagem com todos achievements
+    for _, achievementId in pairs(ACHIEVEMENTS) do
+        local achievementInfo = Game.getAchievementInfoById(achievementId)
+        message = message .. achievementInfo.name .. ", "
+    end
+    
+    player:sendTextMessage(MESSAGE_EVENT_ADVANCE, message)
+    return true
+end
+
+checkAchievements:separator(" ")
+checkAchievements:groupType("god")
+checkAchievements:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **addAchievement.onSay(player, words, param)**
+
+**Descrição:** Adiciona achievement a jogador online por ID ou Nome.
+
+**Parâmetros:**
+- `param` (string): `playerName, achievementId|Name`
+
+**Formato de Comando:**
+```
+/addachievement Player1, 1           -- Por ID
+/addachievement Player1, First Steps -- Por Nome
+```
+
+**Fluxo:**
+1. Parse 2 parâmetros (playerName, identifier)
+2. Busca jogador (deve estar online)
+3. Busca achievement por ID: `Game.getAchievementInfoById(id)`
+4. Se falhar, busca por Nome: `Game.getAchievementInfoByName(name)`
+5. Valida `achievementInfo.id == 0` (inválido)
+6. Adiciona via `targetPlayer:addAchievement(id, true)`
+7. Feedback: "Achievement X added successfully to PlayerName"
+
+---
+
+### **removeAchievement.onSay(player, words, param)**
+
+**Descrição:** Remove achievement de jogador online.
+
+**Parâmetros:**
+- `param` (string): `playerName, achievementId`
+
+**Fluxo Similar ao Add:**
+1. Busca jogador + achievement
+2. Valida resultado
+3. Remove via `targetPlayer:removeAchievement(id)`
+
+---
+
+### **checkAchievements.onSay(player, words, param)**
+
+**Descrição:** Lista todos achievements de um jogador.
+
+**Parâmetros:**
+- `param` (string): Nome do jogador (sem vírgula)
+
+**Fluxo:**
+1. Busca jogador
+2. Obtém array via `targetPlayer:getAchievements()`
+3. Itera cada ID
+4. Busca nome via `Game.getAchievementInfoById()`
+5. Concatena em mensagem
+
+---
+
+### **Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `tonumber(str)` | Converte para número |
+| `tostring(val):lower():trimSpace():titleCase()` | Normaliza nome |
+| `Game.getAchievementInfoById(id)` | Busca achievement por ID |
+| `Game.getAchievementInfoByName(name)` | Busca achievement por Nome |
+| `targetPlayer:addAchievement(id, bool)` | Adiciona achievement |
+| `targetPlayer:removeAchievement(id)` | Remove achievement |
+| `targetPlayer:getAchievements()` | Retorna array de IDs |
+
+---
+
+## 📌 Resumo
+
+O arquivo `achievement_functions.lua` é gerenciador completo de achievements. Implementação com busca dupla (ID/Nome), validação rigorosa, e feedback diferenciado. Essencial para administradores gerenciar conquistas, auditar progressão, ou corrigir erros. Design robusto com fallback inteligente.

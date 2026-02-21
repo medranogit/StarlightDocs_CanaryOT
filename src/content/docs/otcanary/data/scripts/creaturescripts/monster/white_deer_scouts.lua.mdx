@@ -1,0 +1,253 @@
+---
+title: white_deer_scouts.lua
+description: CreatureEvent "WhiteDeerScoutsDeath" que cria 2 Elf Scouts com 10% de chance ao morrer e envia mensagem.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="white_deer_scouts.lua" icon="pencil">
+Listener de morte que spawna scouts por chance com efeito visual.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/monster/white_deer_scouts.lua`
+
+**Linhas:** 21 | **Event:** CreatureEvent "WhiteDeerScoutsDeath" | **Tipo:** onDeath Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener de morte para White Deer Scouts. Ao morrer: valida se é wild monster (sem master), gera random 1-100, se &lt;= 10 (10% chance): loop 2 vezes para criar "Elf Scout" na mesma posição, cada um recebe magic effect TELEPORT, scout diz mensagem sobre elves. Padrão simples de spawn condicional em loop.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT: "WhiteDeerScoutsDeath"
+  └─ onDeath(creature, corpse, killer, mostDamageKiller, lastHitUnjustified, mostDamageUnjustified)
+      ├─ Validação: targetMonster:getMaster()?
+      │   ├─ SIM → return true (tem master, pula)
+      │   └─ NÃO → Continua (wild monster)
+      │
+      ├─ chance = math.random(100)  -- 1-100
+      │   └─ Gera número aleatório
+      │
+      ├─ if chance <= 10:  -- 10% de chance
+      │   │
+      │   ├─ for i = 1, 2:  -- Cria 2 scouts
+      │   │   ├─ spawnMonster = Game.createMonster("Elf Scout", position, true, true)
+      │   │   ├─ if spawnMonster:
+      │   │   │   └─ spawnMonster:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+      │   │   │
+      │   │   └─ targetMonster:say("The elves came too late to save the deer...")
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| whiteDeerScoutsDeath | CreatureEvent | Listener de morte |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| Game.createMonster | função | Cria monster no mundo |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| creature | Monster | White Deer Scout que morreu |
+| corpse | Item | Corpo deixado |
+| killer | Player | Assassino |
+| mostDamageKiller | Player | Player com mais dano |
+| lastHitUnjustified | bool | Last hit injustificado |
+| mostDamageUnjustified | bool | Most damage injustificado |
+
+### Spawn Constants
+
+| Constante | Valor | Descrição |
+|-----------|-------|-----------|
+| Chance Threshold | 10 | 10% de chance (1-100) |
+| Scout Count | 2 | Quantidade de scouts a criar |
+| Scout Name | "Elf Scout" | Nome do monster |
+| CONST_ME_TELEPORT | effect | Magic effect visível |
+| TALKTYPE_MONSTER_SAY | type | Tipo de fala |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local whiteDeerScoutsDeath = CreatureEvent("WhiteDeerScoutsDeath")
+
+function whiteDeerScoutsDeath.onDeath(creature, corpse, killer, mostDamageKiller, lastHitUnjustified, mostDamageUnjustified)
+	local targetMonster = creature:getMonster()
+	if not targetMonster or targetMonster:getMaster() then
+		return true
+	end
+
+	local chance = math.random(100)
+	if chance <= 10 then
+		for i = 1, 2 do
+			local spawnMonster = Game.createMonster("Elf Scout", targetMonster:getPosition(), true, true)
+			if spawnMonster then
+				spawnMonster:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+			end
+		end
+		targetMonster:say("The elves came too late to save the deer, however they might avenge it.", TALKTYPE_MONSTER_SAY)
+	end
+	return true
+end
+
+whiteDeerScoutsDeath:register()
+```
+
+### Árvore de Decisão
+
+```
+White Deer Scout morre
+  │
+  ├─ targetMonster = creature:getMonster()
+  │   └─ Obtem monster data
+  │
+  ├─ targetMonster exists && not:getMaster()?
+  │   ├─ NÃO (nulo ou tem master) → return true (pula)
+  │   └─ SIM (wild monster) → Continua
+  │
+  ├─ chance = math.random(100)
+  │   └─ Número aleatório 1-100
+  │
+  ├─ chance <= 10?
+  │   │   (10% de probabilidade)
+  │   │
+  │   ├─ SIM:
+  │   │   │
+  │   │   ├─ for i = 1 to 2:
+  │   │   │   │
+  │   │   │   ├─ spawnMonster = Game.createMonster("Elf Scout", ...)
+  │   │   │   │   └─ Cria elf scout
+  │   │   │   │
+  │   │   │   └─ if spawnMonster:
+  │   │   │       └─ sendMagicEffect(TELEPORT)
+  │   │   │           └─ Efeito visual
+  │   │   │
+  │   │   └─ targetMonster:say("The elves came too late...")
+  │   │       └─ Scout fala
+  │   │
+  │   └─ NÃO: Nada acontece
+  │
+  └─ return true (sucesso)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onDeath**: Callback disparado ao morrer
+- **creature:getMonster()**: Obtem monster data
+- **getMaster()**: Valida se tem dono (summon)
+- **math.random(100)**: Número aleatório 1-100
+- **Chance Threshold**: `if chance <= 10` (menor ou igual)
+- **Loop for i = 1, 2**: Criar múltiplos monsters
+- **Game.createMonster()**: Cria novo monster no mundo
+- **getPosition()**: Obtem position
+- **sendMagicEffect()**: Efeito visual
+
+### Responsabilidades do Handler
+
+1. **Validar**: É wild monster (sem master)?
+2. **Gerar**: Número aleatório 1-100
+3. **Testar**: 10% de chance?
+4. **Loop**: 2 vezes para criar scouts
+5. **Criar**: Game.createMonster("Elf Scout")
+6. **Efeito**: Teleport magic effect
+7. **Falar**: Scout diz mensagem
+8. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Chance Threshold
+
+Teste de probabilidade simples:
+
+```lua
+local chance = math.random(100)
+if chance <= 10 then
+	-- 10% de probabilidade
+end
+```
+
+### Padrão Monster Validation
+
+Validar se é wild monster:
+
+```lua
+local targetMonster = creature:getMonster()
+if not targetMonster or targetMonster:getMaster() then
+	return true
+end
+```
+
+### Padrão Loop Creation with Effect
+
+Criar múltiplos monsters em loop:
+
+```lua
+for i = 1, 2 do
+	local spawnMonster = Game.createMonster("Elf Scout", targetMonster:getPosition(), true, true)
+	if spawnMonster then
+		spawnMonster:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+	end
+end
+```
+
+### Comparação: White Deer vs Scouts
+
+| Aspecto | Death | Scouts |
+|---------|-------|--------|
+| Chance Logic | Cumulativa (30/100) | Threshold (&lt;= 10) |
+| Monsters Criados | 1 | 2 |
+| Config | Table | Hardcoded |
+| Loop Type | for each config | for i = 1, 2 |
+| Complexidade | Média | Trivial |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: white_deer_scouts.lua" icon="star">
+Análise de listener de morte com spawn condicional. Demonstra chance threshold, loop-based creation e validação de wild monsters.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Conditional monster spawn in loop | Complexidade: Trivial-Média
+</Aside>

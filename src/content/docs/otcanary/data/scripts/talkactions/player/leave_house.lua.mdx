@@ -1,0 +1,256 @@
+---
+title: Leave House
+description: Comando PLAYER para abandonar propriedade de uma casa
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# 🛠️ Documentação: leave_house.lua
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Arquivo** | `leave_house.lua` |
+| **Tipo** | TalkAction (Comando de Jogador) |
+| **Acesso** | normal (PLAYER) |
+| **Comando** | `!leavehouse` |
+| **Descrição** | Abandonar propriedade de uma casa e transferir hirelings |
+| **Parâmetro** | Nenhum |
+| **Ativação Condicional** | Apenas se `CYCLOPEDIA_HOUSE_AUCTION` = false |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/leave_house.lua
+```
+
+## 💡 Utilidade
+
+Este comando permite que proprietários de casas abandonem sua propriedade de forma segura. O sistema valida múltiplas condições (localização, propriedade, transferências pendentes) e retorna hirelings ao lamp antes de remover ownership.
+
+## 📄 Visão Geral do Código Resumo Executivo
+
+O script `leave_house.lua` implementa um sistema robusto de abandono de casa:
+
+- **Validação de Localização**: Verifica se jogador está dentro de uma casa
+- **Validação de Propriedade**: Confirma se é o proprietário legítimo
+- **Validação de Transição**: Garante que não há transferência de ownership pendente
+- **Gestão de Hirelings**: Retorna todos os hirelings para seu lamp antes de abandonar
+- **Remoção de Ownership**: Limpa ownership da casa no banco de dados
+- **Registro Condicional**: Só registra comando se House Auction está desabilitado
+
+### Fluxo Lógico Resumido
+
+1. Valida se jogador está dentro de uma casa
+2. Valida se jogador é o proprietário
+3. Valida se não há transferência de ownership pendente
+4. Retorna todos hirelings para seu lamp
+5. Remove ownership da casa
+6. Confirma sucesso ao jogador
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal: `leaveHouse.onSay()`
+
+```lua
+function leaveHouse.onSay(player, words, param)
+    local playerPosition = player:getPosition()
+    local playerTile = Tile(playerPosition)
+    local house = playerTile and playerTile:getHouse()
+    
+    if not house then
+        player:sendCancelMessage("You are not inside a house.")
+        playerPosition:sendMagicEffect(CONST_ME_POFF)
+        return true
+    end
+
+    if house:getOwnerGuid() ~= player:getGuid() then
+        player:sendCancelMessage("You are not the owner of this house.")
+        playerPosition:sendMagicEffect(CONST_ME_POFF)
+        return true
+    end
+
+    if house:hasNewOwnership() then
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You cannot leave this house. Ownership is already scheduled to be transferred upon the next server restart.")
+        playerPosition:sendMagicEffect(CONST_ME_POFF)
+        return true
+    end
+
+    -- Move hireling back to lamp
+    local tiles = house:getTiles()
+    if tiles then
+        for i, tile in pairs(tiles) do
+            if tile then
+                local position = Position(tile:getPosition())
+                local hireling = getHirelingByPosition(position)
+                if hireling then
+                    hireling:returnToLamp(player:getGuid())
+                end
+            end
+        end
+    end
+
+    house:setNewOwnerGuid(0)
+    player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have successfully left your house.")
+    playerPosition:sendMagicEffect(CONST_ME_POFF)
+    return true
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavra-chave do comando
+- `param` (string): Parâmetro vazio (sem uso)
+
+**Retorno:**
+- `true`: Comando processado com sucesso
+
+#### Lógica Detalhada
+
+1. **Obtenção de Posição e Casa**:
+   - `player:getPosition()`: Obtém coordenadas do jogador
+   - `Tile(playerPosition)`: Cria/obtém objeto Tile na posição
+   - `playerTile:getHouse()`: Verifica se há uma casa neste tile
+   - Valida com `not house`: Se não há casa, retorna erro
+
+2. **Validação de Propriedade**:
+   - `house:getOwnerGuid()`: Obtém GUID do proprietário atual
+   - `player:getGuid()`: Obtém GUID do jogador
+   - Compara: Se não é proprietário, retorna erro
+
+3. **Validação de Transferência Pendente**:
+   - `house:hasNewOwnership()`: Verifica se há transferência de ownership agendada
+   - Se houver: informa que não pode abandonar (será transferida no restart)
+
+4. **Processamento de Hirelings**:
+   - `house:getTiles()`: Obtém lista de tiles que pertencem à casa
+   - Loop através de tiles: Verifica cada tile para encontrar hirelings
+   - `getHirelingByPosition(position)`: Busca hireling no tile
+   - `hireling:returnToLamp(playerGuid)`: Retorna hireling ao seu lamp
+
+5. **Remoção de Ownership**:
+   - `house:setNewOwnerGuid(0)`: Define proprietário como 0 (removes ownership)
+   - Envia mensagem de confirmação
+
+### Variáveis Globais Utilizadas
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `CONST_ME_POFF` | number | Efeito mágico de brilho roxo |
+| `MESSAGE_EVENT_ADVANCE` | number | Tipo de mensagem (evento importante/status) |
+
+### Funções Globais Utilizadas
+
+| Função | Origem | Descrição |
+|--------|--------|-----------|
+| `player:getPosition()` | Object Player | Retorna posição atual do jogador |
+| `Tile(position)` | Core de Tiles | Obtém/cria objeto Tile em coordenada |
+| `playerTile:getHouse()` | Object Tile | Retorna casa do tile (ou nil) |
+| `house:getOwnerGuid()` | Object House | Retorna GUID do proprietário |
+| `player:getGuid()` | Object Player | Retorna GUID único do jogador |
+| `house:hasNewOwnership()` | Object House | Verifica se há transferência pendente |
+| `house:getTiles()` | Object House | Retorna lista de tiles da casa |
+| `tile:getPosition()` | Object Tile | Retorna coordenadas do tile |
+| `Position(x, y, z)` | Core de Posições | Cria objeto Position a partir de coordenadas |
+| `getHirelingByPosition(position)` | Global | Busca hireling em posição específica |
+| `hireling:returnToLamp(playerGuid)` | Object Hireling | Retorna hireling ao lamp do jogador |
+| `house:setNewOwnerGuid(guid)` | Object House | Define novo proprietário (0 = remove) |
+| `player:sendTextMessage(type, text)` | Object Player | Envia mensagem de texto ao jogador |
+| `player:sendCancelMessage(text)` | Object Player | Envia mensagem de cancelamento |
+| `playerPosition:sendMagicEffect(effect)` | Object Position | Envia efeito mágico na posição |
+
+## 🤖 Informações da Documentação
+
+| Info | Detalhe |
+|------|---------|
+| **Versão Documentada** | Build Canary - Estrutura Completa |
+| **Tipo de Documento** | Documentação Técnica de TalkAction |
+| **Completude** | Análise Completa do Código-Fonte |
+| **Últimas Verificações** | Validação de Sintaxe Lua, Fluxo Lógico |
+
+---
+
+## 📋 Resumo de Implementação
+
+**Padrão de Registro (Condicional):**
+
+```lua
+if not configManager.getBoolean(configKeys.CYCLOPEDIA_HOUSE_AUCTION) then
+    leaveHouse:separator(" ")
+    leaveHouse:groupType("normal")
+    leaveHouse:register()
+end
+```
+
+**Importante:** Este comando APENAS é registrado quando `CYCLOPEDIA_HOUSE_AUCTION` está DESABILITADO. Se o sistema de leilão de casas está habilitado, o comando não fica disponível.
+
+**Uso Prático:**
+
+Quando um jogador digita `!leavehouse`:
+
+1. Sistema verifica se está dentro de uma casa
+2. Valida se é o proprietário
+3. Verifica se não há transferência pendente
+4. Move todos hirelings de volta ao lamp
+5. Remove ownership da casa
+6. Confirma sucesso
+
+**Exemplos de Execução:**
+
+```
+--- Sucesso ---
+Jogador: !leavehouse (dentro de sua casa)
+Sistema: "You have successfully left your house."
+Efeito: Brilho roxo
+Casa: Ownership removido
+Hirelings: Retornados ao lamp
+
+--- Erro: Não está em casa ---
+Jogador: !leavehouse (fora, em rua)
+Sistema: "You are not inside a house."
+Efeito: POFF
+
+--- Erro: Não é proprietário ---
+Jogador: !leavehouse (em casa de outro jogador)
+Sistema: "You are not the owner of this house."
+Efeito: POFF
+
+--- Erro: Transferência pendente ---
+Jogador: !leavehouse (com transferência agendada)
+Sistema: "You cannot leave this house. Ownership is already scheduled..."
+Efeito: POFF
+```
+
+**Contexto de Uso:**
+
+Este comando é crítico para:
+- Liberar casas que jogadores já não querem
+- Gerenciar hirelings associados à casa
+- Permitir que outros jogadores comprem a propriedade
+- Manutenção do sistema de propriedades
+
+---
+
+## 📋 Sistemas Relacionados
+
+**Gerenciamento de Hirelings:**
+- Cada hireling está associado a um lamp na casa
+- `returnToLamp()` retorna hireling ao seu recipiente original
+
+**Validações Cascata:**
+1. Localização (dentro da casa)
+2. Propriedade (é o dono)
+3. Estado (transferência pendente)
+4. Limpeza (retornar hirelings)
+5. Finalização (remover ownership)
+
+---
+
+## 🔗 Relacionados
+
+- **Arquivo de Padrão**: `data/npclib/npc_system/custom_modules.lua.mdx`
+- **Sistema**: TalkActions (Comandos de Conversa)
+- **Acesso**: PLAYER (normal)
+- **Relacionados**: House Management, Hireling System
+- **Detalhe Arquitetura**: Ver `ARQUITETURA_PROJETO.mdx` para contexto completo

@@ -1,0 +1,286 @@
+---
+title: scroll_of_ascension.lua
+description: Scroll que transforma appearance em outfit temporário (90% Demon, 10% Ferumbras) com validação de ambiente aquático.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="scroll_of_ascension.lua" icon="pencil">
+Item de transformação outfit com RNG bimodal e validação de posição aquática.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/scroll_of_ascension.lua`
+
+**Linhas:** 16 | **ID do Item:** 22771 | **Tipo:** Action Handler com Outfit Transform
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa scroll mágico que transforma o jogador em outfit temporário com seleção RNG bimodal: 90% Demon ou 10% Ferumbras. Inclui validação de ambiente (não pode usarem água, pois o scroll ficaria molhado), cooldown de 1 hora e duração de transformação de 5 minutos. Envia feedback visual e textual da transformação.
+
+### Estrutura de Funcionalidades
+
+```
+scrollOfAscension (Action)
+  ├─ Validação cooldown: "scroll-of-ascension"
+  │
+  ├─ Validação ambiente: tile.getGround() em swimmingTiles?
+  │   └─ SIM → reject ("The scroll could get wet...")
+  │
+  ├─ RNG bimodal:
+  │   ├─ 90%: setMonsterOutfit("Demon", 5 min)
+  │   └─ 10%: setMonsterOutfit("Ferumbras", 5 min)
+  │
+  ├─ Feedback:
+  │   ├─ Say "Magical sparks whirl around..."
+  │   ├─ Effect: HITBYFIRE
+  │   └─ Cooldown: setExhaustion(60 min)
+  │
+  └─ register() → ID 22771
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| scrollOfAscension | Action | Objeto handler para o scroll |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | Valor | Descrição |
+|------|-------|-----------|
+| Scroll ID | 22771 | ID item para trigger |
+| Cooldown | scroll-of-ascension | ID único do cooldown |
+| Duração Cooldown | 60*60 | 3600 segundos = 1 hora |
+| Duração Outfit | 5*60*1000 | 300.000 ticks = 5 minutos |
+| Outfit 1 | Demon | 90% chance |
+| Outfit 2 | Ferumbras | 10% chance |
+| Efeito Visual | CONST_ME_HITBYFIRE | Fogo mágico |
+| Mensagem | Magical sparks whirl around... | Descrição textual |
+| Rejeição Água | The scroll could get wet... | Mensagem de rejeição |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function scrollOfAscension.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação 1: Cooldown
+	if player:hasExhaustion("scroll-of-ascension") then
+		return true  -- Item NÃO removido
+	end
+
+	-- Validação 2: Ambiente (não em água)
+	local playerTile = Tile(player:getPosition())
+	if playerTile and playerTile:getGround() and table.contains(swimmingTiles, playerTile:getGround():getId()) then
+		player:say("The scroll could get wet, step out of the water first.", TALKTYPE_MONSTER_SAY)
+		return true  -- Item NÃO removido
+	end
+
+	-- RNG bimodal: 90% Demon, 10% Ferumbras
+	player:setMonsterOutfit(math.random(10) > 1 and "Demon" or "Ferumbras", 5 * 60 * 1000)
+	
+	-- Feedback ao jogador
+	player:say("Magical sparks whirl around the scroll as you read it and then your appearance is changing.", TALKTYPE_MONSTER_SAY)
+	player:getPosition():sendMagicEffect(CONST_ME_HITBYFIRE)
+	
+	-- Ativar cooldown
+	player:setExhaustion("scroll-of-ascension", 60 * 60)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa scroll_of_ascension (22771)
+  │
+  ├─ hasExhaustion("scroll-of-ascension")?
+  │   ├─ SIM → Bloqueado por cooldown
+  │   │         Item NÃO removido
+  │   │         return true
+  │   │
+  │   └─ NÃO → Continua...
+  │
+  ├─ playerTile = Tile(position)
+  │
+  ├─ playerTile.getGround() em swimmingTiles?
+  │   ├─ SIM → Rejeitado (água detectada)
+  │   │   ├─ Say "The scroll could get wet..."
+  │   │   ├─ Item NÃO removido
+  │   │   └─ return true
+  │   │
+  │   └─ NÃO → Continua...
+  │
+  ├─ RNG: math.random(10) > 1?
+  │   ├─ SIM (1/10 chance) → Ferumbras (10%)
+  │   └─ NÃO (9/10 chance) → Demon (90%)
+  │
+  ├─ setMonsterOutfit(outfitName, 5 min)
+  │
+  ├─ Feedback:
+  │   ├─ Say "Magical sparks whirl around..."
+  │   └─ Effect: HITBYFIRE
+  │
+  ├─ Cooldown:
+  │   └─ setExhaustion(60 min)
+  │
+  └─ return true
+```
+
+### RNG Bimodal Logic
+
+```lua
+math.random(10) > 1 and "Demon" or "Ferumbras"
+
+Breakdown:
+  ├─ math.random(10) → gera 1-10
+  │   ├─ Se 1: 1 > 1? = false
+  │   │          → "Ferumbras"
+  │   │
+  │   ├─ Se 2-10: N > 1? = true
+  │   │           → "Demon"
+  │   └─ Portanto: 1/10 (10%) Ferumbras, 9/10 (90%) Demon
+
+Resultado de Probabilidade:
+  └─ Demon: 9/10 (90%)
+     Ferumbras: 1/10 (10%)
+```
+
+### Validação Aquática
+
+```
+Verificação em cadeia:
+
+1° - playerTile = Tile(player:getPosition())
+     └─ Obtém tile na posição atual
+
+2° - playerTile existe?
+     └─ Sim, continua; Não, skip
+
+3° - playerTile:getGround() existe?
+     └─ Sim, continua; Não, skip
+
+4° - getGround():getId() em swimmingTiles?
+     └─ Sim: Rejeitar (está em água)
+        Não: Continua (ambiente seguro)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **RNG Bimodal**: `math.random(10) > 1` para probabilidades 90/10
+- **setMonsterOutfit()**: Transforma appearance em outfit específico
+- **Outfit Duration**: Em ticks (5*60*1000 = 5 minutos)
+- **Tile Validation**: Obter tile + getGround() para validar ambiente
+- **swimmingTiles**: Variável global com IDs de tiles aquáticos
+- **table.contains()**: Verificar se ID está em lista de swimming tiles
+- **Cooldown Próprio**: "scroll-of-ascension" (não compartilhado)
+- **Say Longo**: Mensagem de rejeição como fala para ambientação
+- **Item NÃO Removido**: Nenhum consumo até sucesso completo
+
+### Responsabilidades do Handler
+
+1. **Validar cooldown**: hasExhaustion("scroll-of-ascension")
+2. **Rejeitar se em cooldown**: return true sem remover
+3. **Obter tile atual**: Tile(player:getPosition())
+4. **Validar ambiente**: Checar se em água via swimmingTiles
+5. **Rejeitar se em água**: Mensagem de rejeição
+6. **Selecionar outfit**: RNG 90% Demon, 10% Ferumbras
+7. **Aplicar transformação**: setMonsterOutfit(name, 5 min)
+8. **Feedback visual**: Say + Effect HITBYFIRE
+9. **Ativar cooldown**: setExhaustion(60 min)
+10. **Sempre retornar**: return true (nunca falha)
+
+---
+
+## Patterns e Implementação
+
+### Padrão RNG Bimodal Ternário
+
+Este script usa ternário para 90/10 split:
+
+```lua
+math.random(10) > 1 and "Demon" or "Ferumbras"
+
+-- Equivalente a:
+if math.random(10) > 1 then
+	outfit = "Demon"  -- 90%
+else
+	outfit = "Ferumbras"  -- 10%
+end
+```
+
+### Padrão Validação de Tile Aquático
+
+Verificação segura com nil-checks:
+
+```lua
+local playerTile = Tile(player:getPosition())
+if playerTile and playerTile:getGround() and 
+   table.contains(swimmingTiles, playerTile:getGround():getId()) then
+	-- Jogador está em água
+end
+```
+
+### Comparação: Scroll vs Party Hat vs Sandscourge
+
+| Aspecto | Scroll Ascension | Party Hat | Sandscourge |
+|---------|---|---|---|
+| Tipo | Outfit temporário | Validação de slot | Familiar |
+| Duração | 5 min (outfit) | Infinito | Infinito |
+| Cooldown | 60 min próprio | Nenhum | Nenhum |
+| Validação | Ambiente aquático | Slot equip | Vocação |
+| RNG | Sim (90/10) | Não | Não |
+| Consumível | Não | Não | Sim |
+
+### Outfit Transform Mechanics
+
+```
+Aplicação:
+  T0: setMonsterOutfit("Demon", 5 min) chamado
+  T0+0: Outfit aplicado (Demon appearance)
+  T0+300s: Outfit expira automaticamente
+  T0+300s+1: Volta para appearance original
+
+Cooldown é independente:
+  T0: setExhaustion(60 min) ativada
+  T0+60 min: Cooldown expira
+  └─ Pode usar novamente mesmo com outfit ativo
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: scroll_of_ascension.lua" icon="star">
+Análise de scroll com RNG bimodal (90% Demon, 10% Ferumbras), validação de ambiente aquático e outfit temporário. Padrão de transformação com proteção ambiental.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Outfit temporary com RNG | Complexidade: Baixa-Média
+</Aside>

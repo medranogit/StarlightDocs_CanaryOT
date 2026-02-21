@@ -1,0 +1,120 @@
+---
+title: Others - Bootstrap Loader
+description: Documentação técnica do arquivo load.lua, que funciona como bootstrap carregando os módulos dawnport.lua e soulpit.lua da pasta lib/others/.
+sidebar:
+  order: 2
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **load.lua** é um **arquivo loader (bootstrap)** que centraliza o carregamento dos dois módulos principais da pasta `lib/others/`.
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/others/load.lua`
+</Card>
+
+<Aside type="tip">
+**Tipo**: Bootstrap/Loader  
+**Padrão**: Central dofile() hub  
+**Total de Arquivos Carregados**: 2  
+**Propósito**: Inicializar todo o subsystem de others
+</Aside>
+
+## 📄 Visão Geral
+
+Arquivo **mínimo** contendo apenas 2 linhas de `dofile()`:
+
+```lua
+dofile(DATA_DIRECTORY .. "/lib/others/dawnport.lua")
+dofile(DATA_DIRECTORY .. "/lib/others/soulpit.lua")
+```
+
+## 🗂️ Arquivos Carregados
+
+| # | Arquivo | Descrição |
+|---|---------|-----------|
+| 1 | dawnport.lua | Starter area config (vocação, skills, contrabando) |
+| 2 | soulpit.lua | Soul Pit quest system (waves, bosses) |
+
+## 🔄 Fluxo de Carregamento
+
+```
+[Server Bootstrap]
+  ↓
+[load.lua carregado]
+  ↓
+dofile(dawnport.lua) → Dawnport config + functions criados
+  ├─ Dawnport.skillsLimit table
+  ├─ Player.changeVocation() function
+  ├─ isSkillGrowthLimited() function
+  └─ removeMainlandSmugglingItems() function
+  ↓
+dofile(soulpit.lua) → SoulPit config + functions criados
+  ├─ SoulPit.SoulCoresConfiguration
+  ├─ SoulPit.waves
+  ├─ SoulPit.zone setup
+  ├─ SoulPit.getMonsterVariationNameBySoulCore() function
+  ├─ SoulPit.getSoulCoreMonster() function
+  └─ SoulPit.onFuseSoulCores() function
+  ↓
+[Todos globals/funcs disponíveis para scripts]
+```
+
+## 💡 Padrão: Centralized Bootstrap
+
+Como quest.lua na pasta quests/, este arquivo segue **padrão de hub centralizador**.
+
+**Vantagem**: 
+- Single entry point para others system
+- Fácil adicionar/remover modules
+- Order of loading é explícito
+- Evita circular dependencies
+
+## 🎯 Padrão de Extensão
+
+Para **adicionar novo módulo** em `lib/others/`:
+
+```lua
+-- Adicionar antes ou depois existentes:
+dofile(DATA_DIRECTORY .. "/lib/others/my_new_module.lua")
+```
+
+Para **remover módulo**:
+
+```lua
+-- Comentar/deletar linha:
+-- dofile(DATA_DIRECTORY .. "/lib/others/soulpit.lua")
+```
+
+## 📊 Análise de Globals Criados
+
+Após este arquivo carregar, os seguintes globals existem:
+
+```lua
+-- dawnport.lua
+Dawnport { skillsLimit }
+Player.changeVocation()
+isSkillGrowthLimited()
+removeMainlandSmugglingItems()
+
+-- soulpit.lua
+SoulPit { 
+  SoulCoresConfiguration, 
+  waves, 
+  playerPositions,
+  zone,
+  -- ... mais propriedades
+}
+SoulPit.getMonsterVariationNameBySoulCore()
+SoulPit.getSoulCoreMonster()
+SoulPit.onFuseSoulCores()
+```
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Completo  
+**Tipo**: Bootstrap/Loader

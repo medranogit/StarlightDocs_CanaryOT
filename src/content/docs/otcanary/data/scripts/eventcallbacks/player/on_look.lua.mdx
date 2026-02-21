@@ -1,0 +1,721 @@
+---
+title: "Player - on_look.lua"
+description: "Callback de visualização de objeto para jogadores"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `on_look.lua` |
+| **Localização** | `data/scripts/eventcallbacks/player/` |
+| **Tipo de Script** | EventCallback |
+| **Callback Principal** | `PlayerOnLookBaseEvent` |
+| **Função Registrada** | `playerOnLook(player, inspectedThing, inspectedPosition, lookDistance)` |
+| **Linhas de Código** | 70 |
+| **Complexidade** | Trivial-Médium |
+| **Dependências** | Cask ranges, Familiar system, Admin groups |
+
+**Descrição:**
+Callback responsável por processar e formatar mensagens de visualização quando um jogador usa a ação "look" em objetos, criaturas ou posições. Fornece descrições contextualizadas, informações de itens especiais (barris/kegs), dados de familiares e acesso a detalhes administrativos para moderadores.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/eventcallbacks/player/on_look.lua
+```
+
+**Pré-requisitos:**
+- EventCallback API (`EventCallback` função global)
+- Constants: `ITEM_HEALTH_CASK_START`, `ITEM_HEALTH_CASK_END`, `ITEM_MANA_CASK_START`, `ITEM_MANA_CASK_END`, `ITEM_SPIRIT_CASK_START`, `ITEM_SPIRIT_CASK_END`, `ITEM_KEG_START`, `ITEM_KEG_END`
+- Constants: `ITEM_MAGICWALL`, `ITEM_MAGICWALL_SAFE`, `ITEM_WILDGROWTH`, `ITEM_WILDGROWTH_SAFE`
+- Constants: `MESSAGE_LOOK`, `ITEM_ATTRIBUTE_DOORID`, `FAMILIARSNAME`
+- Player group access system
+- Familiar system integration
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Visualização (Look)**
+
+Quando um jogador executa a ação "look":
+
+1. **Classificação**: Script determina se é item ou criatura
+2. **Geração Base**: Chama função apropriada (handleItemDescription ou handleCreatureDescription)
+3. **Filtragem de Acesso**: Magic walls e wild growths são ocultados para non-admins
+4. **Enriquecimento Admin**: Se flag de acesso ativo, injeta IDs, atributos, transformações
+5. **Envio**: Mensagem final enviada via `player:sendTextMessage(MESSAGE_LOOK, descriptionText)`
+
+**Exemplo de Fluxo - Item Especial (Cask):**
+```
+Item ID 7854 (Health Cask) → isSpecialItem(7854) = true → 
+Retorna: "You see health cask\nIt has 3 refillings left."
+```
+
+**Exemplo de Fluxo - Familiar:**
+```
+Inspeção criatura → isMaster exists → name == "dragon" → 
+Retorna: "You see a dragon (Master: PlayerName). It will disappear in 2 hours and 30 minutes"
+```
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `on_look.lua` implementa o sistema completo de visualização de objetos e criaturas no servidor. Quando um jogador observa algo ("look"), este script:
+
+- **Gera descrições apropriadas** baseadas no tipo (item/criatura)
+- **Detecta itens especiais** (barris de poção, kegs) e mostra refillings/charges
+- **Integra sistema de familiares** exibindo tempo restante de summon
+- **Oculta informações sensíveis** como magic walls para non-admins
+- **Injeta dados administrativos** para staff (IDs, atributos, transformações, IP)
+
+### Arquitetura
+
+O script usa **decomposição em funções especializadas**:
+
+```
+playerOnLook (entrada)
+  ├─ handleItemDescription (para items)
+  │  ├─ isSpecialItem (verifica ranges)
+  │  └─ getPositionDescription (formata posição)
+  ├─ handleCreatureDescription (para criaturas)
+  │  └─ getMaster check (familiares)
+  └─ appendAdminDetails (se acesso admin)
+     ├─ Item details (IDs, atributos, transformações)
+     └─ Creature details (Health, Mana, Speed, IP)
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Processamento | Saída |
+|---------|---------------|-------|
+| Item especial (cask/keg) | Detecta via range, retorna charges | "You see [desc]\nIt has X refillings left." |
+| Criatura normal | getDescription() + name | "You see [desc]" |
+| Familiar | Busca master, calcula tempo restante | "You see [name] (Master: X). It will disappear in [tempo]" |
+| Não-admin vê magic wall | Substitui descrição | "You see a magic wall." |
+| Admin vê item | Injeta Client ID, Action ID, Unique ID, Door ID, Transforms, Decay | "[desc]\nClient ID: 123, Action ID: 456..." |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Funções Locais
+
+#### 1. **isSpecialItem(itemId)**
+
+```lua
+local function isSpecialItem(itemId)
+	for _, range in ipairs(specialItemRanges) do
+		if itemId >= range.rangeStart and itemId <= range.rangeEnd then
+			return true
+		end
+	end
+	return false
+end
+```
+
+**Propósito:** Verifica se um item ID pertence à tabela de ranges especiais (casks e kegs).
+
+**Algoritmo:**
+- Itera sobre `specialItemRanges` (health cask, mana cask, spirit cask, keg)
+- Se itemId está dentro de qualquer range [start, end], retorna `true`
+- Senão retorna `false`
+
+**Complexidade:** O(n) onde n = número de ranges (tipicamente 4)
+
+**Uso:** `if isSpecialItem(inspectedThing.itemid) then`
+
+---
+
+#### 2. **getPositionDescription(position)**
+
+```lua
+local function getPositionDescription(position)
+	if position.x == 65535 then
+		return "Position: In your inventory."
+	else
+		return string.format("Position: (%d, %d, %d)", position.x, position.y, position.z)
+	end
+end
+```
+
+**Propósito:** Formata descrição de posição, detectando items em inventário vs coordenadas.
+
+**Lógica:**
+- Se `position.x == 65535`, é item em inventário (retorna texto especial)
+- Senão, retorna coordenadas (x, y, z)
+
+**Uso:** Chamado em `appendAdminDetails()` para mostrar informações de admin
+
+---
+
+#### 3. **handleItemDescription(inspectedThing, lookDistance, player)**
+
+```lua
+local function handleItemDescription(inspectedThing, lookDistance, player)
+	local descriptionText = inspectedThing:getDescription(lookDistance)
+
+	if not player:getGroup():getAccess() then
+		if inspectedThing:getId() == ITEM_MAGICWALL or inspectedThing:getId() == ITEM_MAGICWALL_SAFE then
+			return "You see a magic wall."
+		elseif inspectedThing:getId() == ITEM_WILDGROWTH or inspectedThing:getId() == ITEM_WILDGROWTH_SAFE then
+			return "You see rush wood."
+		end
+	end
+	if isSpecialItem(inspectedThing.itemid) then
+		local itemCharges = inspectedThing:getCharges()
+		if itemCharges > 0 then
+			return string.format("You see %s\nIt has %d refillings left.", descriptionText, itemCharges)
+		end
+	else
+		return "You see " .. descriptionText
+	end
+
+	return descriptionText
+end
+```
+
+**Propósito:** Gera descrição para items com tratamento de casos especiais.
+
+**Fluxo:**
+1. Obtém base description via `getDescription(lookDistance)`
+2. **Filtragem de acesso:** Se jogador é não-admin:
+   - Magic wall/safe → oculta e retorna "You see a magic wall."
+   - Wild growth/safe → oculta e retorna "You see rush wood."
+3. **Items especiais:** Se é cask/keg:
+   - Se tem charges > 0 → "You see [desc]\nIt has X refillings left."
+4. **Items normais:** Senão → "You see [desc]"
+
+**Pattern:** Early return para não-admins, after-text injection para items especiais
+
+---
+
+#### 4. **handleCreatureDescription(inspectedThing, lookDistance)**
+
+```lua
+local function handleCreatureDescription(inspectedThing, lookDistance)
+	local descriptionText = inspectedThing:getDescription(lookDistance)
+
+	if inspectedThing:isMonster() then
+		local monsterMaster = inspectedThing:getMaster()
+		if monsterMaster and table.contains(FAMILIARSNAME, inspectedThing:getName():lower()) then
+			local summonTimeRemaining = monsterMaster:kv():get("familiar-summon-time") or 0
+			descriptionText = string.format("%s (Master: %s). It will disappear in %s", descriptionText, monsterMaster:getName(), Game.getTimeInWords(summonTimeRemaining - os.time()))
+		end
+	end
+
+	return "You see " .. descriptionText
+end
+```
+
+**Propósito:** Gera descrição para criaturas com detecção de familiares.
+
+**Fluxo:**
+1. Obtém base description
+2. Se é monstro E tem master E nome está em FAMILIARSNAME:
+   - Recupera `familiar-summon-time` de kv (key-value)
+   - Calcula tempo restante: `summonTime - currentTime`
+   - Formata: "[desc] (Master: PlayerName). It will disappear in [time]"
+3. Prependa "You see " e retorna
+
+**Pattern:** Sistema de familiares com armazenamento assíncrono via kv(), formatação de tempo via `Game.getTimeInWords()`
+
+---
+
+#### 5. **appendAdminDetails(descriptionText, inspectedThing, inspectedPosition)**
+
+```lua
+local function appendAdminDetails(descriptionText, inspectedThing, inspectedPosition)
+	if inspectedThing:isItem() then
+		descriptionText = string.format("%s\nClient ID: %d", descriptionText, inspectedThing:getId())
+
+		local itemActionId = inspectedThing:getActionId()
+		if itemActionId ~= 0 then
+			descriptionText = string.format("%s, Action ID: %d", descriptionText, itemActionId)
+		end
+
+		local itemUniqueId = inspectedThing:getUniqueId()
+		if itemUniqueId > 0 and itemUniqueId < 65536 then
+			descriptionText = string.format("%s, Unique ID: %d", descriptionText, itemUniqueId)
+		end
+
+		local doorIdAttribute = inspectedThing:getAttribute(ITEM_ATTRIBUTE_DOORID)
+		if doorIdAttribute and doorIdAttribute > 0 then
+			descriptionText = string.format("%s, Door ID: %d", descriptionText, doorIdAttribute)
+		end
+
+		local itemType = inspectedThing:getType()
+		local transformOnEquipId = itemType:getTransformEquipId()
+		local transformOnDeEquipId = itemType:getTransformDeEquipId()
+
+		if transformOnEquipId ~= 0 then
+			descriptionText = string.format("%s\nTransforms to: %d (onEquip)", descriptionText, transformOnEquipId)
+		elseif transformOnDeEquipId ~= 0 then
+			descriptionText = string.format("%s\nTransforms to: %d (onDeEquip)", descriptionText, transformOnDeEquipId)
+		end
+
+		local itemDecayId = itemType:getDecayId()
+		if itemDecayId ~= -1 then
+			descriptionText = string.format("%s\nDecays to: %d", descriptionText, itemDecayId)
+		end
+	elseif inspectedThing:isCreature() then
+		local healthDescription, creatureId = "%s\n%s\nHealth: %d / %d"
+		if inspectedThing:isPlayer() and inspectedThing:getMaxMana() > 0 then
+			creatureId = string.format("Player ID: %i", inspectedThing:getGuid())
+			healthDescription = string.format("%s, Mana: %d / %d", healthDescription, inspectedThing:getMana(), inspectedThing:getMaxMana())
+		elseif inspectedThing:isMonster() then
+			creatureId = string.format("Monster ID: %i", inspectedThing:getId())
+		elseif inspectedThing:isNpc() then
+			creatureId = string.format("NPC ID: %i", inspectedThing:getId())
+		end
+
+		descriptionText = string.format(healthDescription, descriptionText, creatureId, inspectedThing:getHealth(), inspectedThing:getMaxHealth())
+	end
+
+	descriptionText = string.format("%s\n%s", descriptionText, getPositionDescription(inspectedPosition))
+
+	if inspectedThing:isCreature() then
+		local creatureBaseSpeed = inspectedThing:getBaseSpeed()
+		local creatureCurrentSpeed = inspectedThing:getSpeed()
+		descriptionText = string.format("%s\nSpeed Base: %d\nSpeed: %d", descriptionText, creatureBaseSpeed, creatureCurrentSpeed)
+
+		if inspectedThing:isPlayer() then
+			descriptionText = string.format("%s\nIP: %s", descriptionText, Game.convertIpToString(inspectedThing:getIp()))
+		end
+	end
+
+	return descriptionText
+end
+```
+
+**Propósito:** Injeta detalhes administrativos na descrição para staff/moderadores.
+
+**Seções:**
+
+**a) Item Details:**
+- Client ID (sempre injetado)
+- Action ID (se != 0)
+- Unique ID (se 0 < uniqueId < 65536)
+- Door ID (se atributo != 0)
+- Transform onEquip (se != 0)
+- Transform onDeEquip (elsif != 0)
+- Decay ID (se != -1)
+
+**b) Creature Details:**
+- Health XXX / XXX (sempre)
+- Creature ID (formato varia por tipo):
+  - Player: GUID
+  - Monster: ID
+  - NPC: ID
+- Mana (only para players com maxMana > 0)
+
+**c) Position Info:**
+- Chama `getPositionDescription()` para inventory vs coords
+
+**d) Speed Info (criatures only):**
+- Base speed
+- Current speed
+
+**e) IP Info (players only):**
+- IP formatado via `Game.convertIpToString()`
+
+**Pattern:** Conditional building incremental via string.format(), tipo-specific metadata injection
+
+---
+
+### Função Principal (Callback)
+
+#### **playerOnLook(player, inspectedThing, inspectedPosition, lookDistance)**
+
+```lua
+function callback.playerOnLook(player, inspectedThing, inspectedPosition, lookDistance)
+	local descriptionText
+
+	if inspectedThing:isItem() then
+		descriptionText = handleItemDescription(inspectedThing, lookDistance, player)
+	elseif inspectedThing:isCreature() then
+		descriptionText = handleCreatureDescription(inspectedThing, lookDistance)
+	end
+
+	if player:getGroup():getAccess() then
+		descriptionText = appendAdminDetails(descriptionText, inspectedThing, inspectedPosition)
+	end
+
+	player:sendTextMessage(MESSAGE_LOOK, descriptionText)
+end
+```
+
+**Propósito:** Entry point do callback. Orquestra geração de descrição e envio ao cliente.
+
+**Fluxo de Execução:**
+
+1. **Classificação:** Determina tipo (item vs criatura)
+   - Se `inspectedThing:isItem()` → `handleItemDescription()`
+   - Senão se `inspectedThing:isCreature()` → `handleCreatureDescription()`
+
+2. **Filtragem de Acesso Admin:**
+   - Se `player:getGroup():getAccess()` é verdadeiro:
+     - Chama `appendAdminDetails()` para injetar metadata
+
+3. **Envio:** Transmite mensagem ao cliente via MESSAGE_LOOK channel
+
+**Parâmetros:**
+- `player` - Player object executando a ação
+- `inspectedThing` - Item ou Creature objeto sendo observado
+- `inspectedPosition` - Position table `{x, y, z}` do objeto
+- `lookDistance` - Distância da observação (affects description)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Tabelas/Constantes Locais
+
+| Nome | Tipo | Descrição | Exemplo |
+|------|------|-----------|---------|
+| `specialItemRanges` | Table of ranges | Ranges de item IDs para items especiais (casks/kegs) | `{rangeStart = 7864, rangeEnd = 7870}` |
+
+### Constantes Globais Referenciadas
+
+| Constante | Uso | Descrição |
+|-----------|-----|-----------|
+| `ITEM_HEALTH_CASK_START`, `ITEM_HEALTH_CASK_END` | isSpecialItem | Range de Health Cask IDs |
+| `ITEM_MANA_CASK_START`, `ITEM_MANA_CASK_END` | isSpecialItem | Range de Mana Cask IDs |
+| `ITEM_SPIRIT_CASK_START`, `ITEM_SPIRIT_CASK_END` | isSpecialItem | Range de Spirit Cask IDs |
+| `ITEM_KEG_START`, `ITEM_KEG_END` | isSpecialItem | Range de Keg IDs |
+| `ITEM_MAGICWALL`, `ITEM_MAGICWALL_SAFE` | handleItemDescription | Magic wall items (ocultados de non-admins) |
+| `ITEM_WILDGROWTH`, `ITEM_WILDGROWTH_SAFE` | handleItemDescription | Wild growth items (ocultados de non-admins) |
+| `MESSAGE_LOOK` | playerOnLook | Chat message type para "look" responses |
+| `ITEM_ATTRIBUTE_DOORID` | appendAdminDetails | Atributo que armazena door IDs |
+| `FAMILIARSNAME` | handleCreatureDescription | Tabela de nomes válidos de familiares |
+
+### Variáveis Locais (escopo de função)
+
+| Variável | Escopo | Tipo | Descrição |
+|----------|--------|------|-----------|
+| `descriptionText` | playerOnLook | string | String acumulativo de descrição final |
+| `itemActionId` | appendAdminDetails | int | Action ID do item (0 = nenhum) |
+| `itemUniqueId` | appendAdminDetails | int | Unique ID do item |
+| `doorIdAttribute` | appendAdminDetails | int | Door ID attribute |
+| `itemType` | appendAdminDetails | ItemType | Tipo do item (para transforms/decay) |
+| `transformOnEquipId` | appendAdminDetails | int | ID de item ao equipar (0 = nenhum) |
+| `transformOnDeEquipId` | appendAdminDetails | int | ID de item ao desequipar (0 = nenhum) |
+| `itemDecayId` | appendAdminDetails | int | ID de item quando decai (-1 = nenhum) |
+| `healthDescription` | appendAdminDetails | string | Format template para creatures |
+| `creatureId` | appendAdminDetails | string | String de ID (Player/Monster/NPC) |
+| `monsterMaster` | handleCreatureDescription | Player or nil | Master de familiar (nil = não familiar) |
+| `summonTimeRemaining` | handleCreatureDescription | int | Timestamp de desaparecer |
+| `itemCharges` | handleItemDescription | int | Refillings/charges do item |
+| `creatureBaseSpeed` | appendAdminDetails | int | Speed base da criatura |
+| `creatureCurrentSpeed` | appendAdminDetails | int | Speed current da criatura |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Range-Based Classification (Item Detection)
+
+**Técnica:** Usar table de ranges para classificação baseada em ID ranges.
+
+```lua
+local specialItemRanges = {
+	{ rangeStart = ITEM_HEALTH_CASK_START, rangeEnd = ITEM_HEALTH_CASK_END },
+	-- ...
+}
+
+local function isSpecialItem(itemId)
+	for _, range in ipairs(specialItemRanges) do
+		if itemId >= range.rangeStart and itemId <= range.rangeEnd then
+			return true
+		end
+	end
+end
+```
+
+**Vantagem:** Fácil adicionar novos ranges sem editar lógica de comparação. Centralizado.
+
+**Aplicação:** Detectar casks, kegs, herbs, runes - qualquer item que usa ranges contíguas de IDs.
+
+---
+
+### Padrão 2: Early Return for Access Control
+
+**Técnica:** Validar acesso de forma early para evitar processamento desnecessário.
+
+```lua
+if not player:getGroup():getAccess() then
+	if inspectedThing:getId() == ITEM_MAGICWALL then
+		return "You see a magic wall."  -- Early return, sem processar mais
+	end
+end
+```
+
+**Vantagem:** Reduz indentação, melhora legibilidade, evita processamento desnecessário.
+
+**Aplicação:** Qualquer filtragem de acesso ou validação condicional.
+
+---
+
+### Padrão 3: Familiar System Integration
+
+**Técnica:** Usar kv() (key-value storage) para dados persistentes de summonables.
+
+```lua
+local monsterMaster = inspectedThing:getMaster()
+if monsterMaster and table.contains(FAMILIARSNAME, inspectedThing:getName():lower()) then
+	local summonTimeRemaining = monsterMaster:kv():get("familiar-summon-time") or 0
+	descriptionText = string.format("%s (Master: %s). It will disappear in %s",
+		descriptionText, monsterMaster:getName(),
+		Game.getTimeInWords(summonTimeRemaining - os.time()))
+end
+```
+
+**Vantagem:** Decoplado do banco de dados, usa storage in-memory. Cálculo de tempo dinâmico.
+
+**Aplicação:** Qualquer feature que necessite armazenar dados por jogador (buffs, eventos agendados, limitações).
+
+---
+
+### Padrão 4: Conditional String Building
+
+**Técnica:** Injetar detalhes conditionally usando string.format() incremental.
+
+```lua
+local descriptionText = inspectedThing:getDescription(lookDistance)
+
+if itemCharges > 0 then
+	descriptionText = string.format("You see %s\nIt has %d refillings left.",
+		descriptionText, itemCharges)
+else
+	descriptionText = "You see " .. descriptionText
+end
+```
+
+**Vantagem:** Cada condição é responsável por sua própria injeção. Evita if/else grandes.
+
+**Aplicação:** Construir strings dinâmicas com seções condicionais.
+
+---
+
+### Padrão 5: Type-Specific Metadata Extraction
+
+**Técnica:** Usar predicados (isItem, isCreature, isPlayer, isMonster, isNpc) para estruturar metadata different por tipo.
+
+```lua
+if inspectedThing:isItem() then
+	-- Extract: ID, Action ID, Unique ID, Door ID, Transforms, Decay
+elseif inspectedThing:isCreature() then
+	if inspectedThing:isPlayer() then
+		-- Extract: GUID, Mana, IP
+	elseif inspectedThing:isMonster() then
+		-- Extract: Monster ID
+	elseif inspectedThing:isNpc() then
+		-- Extract: NPC ID
+	end
+end
+```
+
+**Vantagem:** Clarifique estrutura, evita casts desnecessários, Lua-idiomatic.
+
+**Aplicação:** Qualquer sistema multi-tipo (items, creatures, players).
+
+---
+
+### Padrão 6: Guard Clauses for Optional Values
+
+**Técnica:** Validar valor antes de usar em descrição.
+
+```lua
+local itemActionId = inspectedThing:getActionId()
+if itemActionId ~= 0 then  -- Guard: só adiciona se != 0
+	descriptionText = string.format("%s, Action ID: %d", descriptionText, itemActionId)
+end
+```
+
+**Vantagem:** Evita clutter visual. Descrições "clean" sem IDs insignificantes.
+
+**Aplicação:** Qualquer campo que tenha "valor padrão" (0, -1, nil).
+
+---
+
+### Padrão 7: Time Calculation & Formatting
+
+**Técnica:** Armazenar timestamps absolutos, calcular delta em tempo de exibição.
+
+```lua
+local summonTimeRemaining = monsterMaster:kv():get("familiar-summon-time") or 0
+-- Use Game.getTimeInWords() para formatação human-readable
+Game.getTimeInWords(summonTimeRemaining - os.time())  -- "2 hours and 30 minutes"
+```
+
+**Vantagem:** Timestamps imóveis. Cálculo dinâmico. Suporta edição de server time sem recalcular.
+
+**Aplicação:** Systems com deadline (buffs, cooldowns, summons).
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Jogador observa Health Cask com 3 refillings
+
+```
+playerOnLook(player, healthCask, position, distance)
+  ├─ inspectedThing:isItem() → true
+  ├─ handleItemDescription(healthCask, distance, player)
+  │  ├─ descriptionText = healthCask:getDescription(distance) → "health cask"
+  │  ├─ player:getGroup():getAccess() → false (non-admin)
+  │  ├─ isSpecialItem(7864) → true (matches ITEM_HEALTH_CASK range)
+  │  ├─ itemCharges = healthCask:getCharges() → 3
+  │  ├─ itemCharges > 0 → true
+  │  └─ return "You see health cask\nIt has 3 refillings left."
+  ├─ player:getGroup():getAccess() → false (não injeta admin details)
+  └─ player:sendTextMessage(MESSAGE_LOOK, "You see health cask\nIt has 3 refillings left.")
+```
+
+**Mensagem Final ao Cliente:**
+```
+You see health cask
+It has 3 refillings left.
+```
+
+---
+
+### Cenário 2: Admin observa Magic Wall
+
+```
+playerOnLook(adminPlayer, magicWall, position, distance)
+  ├─ inspectedThing:isItem() → true
+  ├─ handleItemDescription(magicWall, distance, adminPlayer)
+  │  ├─ descriptionText = magicWall:getDescription(distance) → "[magic wall description]"
+  │  ├─ adminPlayer:getGroup():getAccess() → true (admin)
+  │  ├─ inspectedThing:getId() == ITEM_MAGICWALL → true
+  │  └─ return "[original description]"  (não substitui para admin)
+  ├─ adminPlayer:getGroup():getAccess() → true
+  ├─ appendAdminDetails(desc, magicWall, position)
+  │  ├─ magicWall:isItem() → true
+  │  ├─ Injeta: Client ID, Action ID, Unique ID, Door ID, Transforms, Decay
+  │  ├─ Injeta: Position info
+  │  └─ return "[original]\nClient ID: 2345\nAction ID: 0\nDecays to: 1234\nPosition: (100, 100, 7)"
+  └─ adminPlayer:sendTextMessage(MESSAGE_LOOK, "[full admin description]")
+```
+
+**Mensagem Final ao Admin:**
+```
+[magic wall description]
+Client ID: 2345
+Decays to: 1234
+Position: (100, 100, 7)
+```
+
+---
+
+### Cenário 3: Jogador observa Familiar (Dragon)
+
+```
+playerOnLook(player, dragon, position, distance)
+  ├─ inspectedThing:isItem() → false
+  ├─ inspectedThing:isCreature() → true
+  ├─ handleCreatureDescription(dragon, distance)
+  │  ├─ descriptionText = dragon:getDescription(distance) → "a green dragon"
+  │  ├─ dragon:isMonster() → true
+  │  ├─ monsterMaster = dragon:getMaster() → PlayerObj
+  │  ├─ table.contains(FAMILIARSNAME, "dragon") → true
+  │  ├─ summonTimeRemaining = master:kv():get("familiar-summon-time") → 1708347600
+  │  ├─ Game.getTimeInWords(1708347600 - os.time()) → "2 hours and 30 minutes"
+  │  └─ return "You see a green dragon (Master: PlayerName). It will disappear in 2 hours and 30 minutes"
+  ├─ player:getGroup():getAccess() → false (não injeta admin details)
+  └─ player:sendTextMessage(MESSAGE_LOOK, "You see a green dragon (Master: PlayerName). It will disappear in 2 hours and 30 minutes")
+```
+
+**Mensagem Final ao Cliente:**
+```
+You see a green dragon (Master: PlayerName). It will disappear in 2 hours and 30 minutes
+```
+
+---
+
+### Cenário 4: Admin observa outro Player
+
+```
+playerOnLook(adminPlayer, targetPlayer, position, distance)
+  ├─ targetPlayer:isCreature() → true
+  ├─ handleCreatureDescription(targetPlayer, distance)
+  │  ├─ targetPlayer:isMonster() → false (skip familiar check)
+  │  └─ return "You see PlayerName the Soultaker"
+  ├─ adminPlayer:getGroup():getAccess() → true
+  ├─ appendAdminDetails("You see PlayerName the Soultaker", targetPlayer, position)
+  │  ├─ targetPlayer:isCreature() → true
+  │  ├─ targetPlayer:isPlayer() → true
+  │  ├─ creatureId = "Player ID: 42" (GUID)
+  │  ├─ healthDescription = "You see PlayerName the Soultaker\nPlayer ID: 42\nHealth: 785 / 785, Mana: 515 / 515"
+  │  ├─ creatureBaseSpeed = 220; creatureCurrentSpeed = 220
+  │  ├─ Injeta: Position, Speed info, IP
+  │  └─ return full admin view
+  └─ adminPlayer:sendTextMessage(MESSAGE_LOOK, "[complete admin description with all IDs and IP]")
+```
+
+**Mensagem Final ao Admin:**
+```
+You see PlayerName the Soultaker
+Player ID: 42
+Health: 785 / 785, Mana: 515 / 515
+Position: (100, 100, 7)
+Speed Base: 220
+Speed: 220
+IP: 192.168.1.100
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial-Médium |
+| **Estimativa de Aprendizado** | 20-25 minutos |
+| **Tópicos Principais** | Range classification, Access control, Type predicates, String building, Familiar system, Admin metadata injection |
+| **Padrões Documentados** | 7 padrões principais |
+| **Cenários Documentados** | 4 casos de uso |
+| **Funções Locais** | 5 (isSpecialItem, getPositionDescription, handleItemDescription, handleCreatureDescription, appendAdminDetails) |
+| **Função Principal** | playerOnLook (callback entry) |
+| **Callbacks Registrados** | PlayerOnLookBaseEvent |
+| **Dependências Maiores** | Group access system, Familiar system, kv() storage, Game.getTimeInWords() |
+
+### Curva de Aprendizado
+
+**Iniciante (0-10 min):** Entender fluxo principal (classify → describe → optionally_inject_admin).
+
+**Intermediário (10-20 min):** Aprender cada função especializada (item handling, creature handling, admin details).
+
+**Avançado (20-25 min):** Compreender padrões de design (range classification, guard clauses, type-specific metadata, familiar integration).
+
+### Pontos Críticos
+
+1. **Access Control:** Flag `getAccess()` determina se admin details são injetados
+2. **Item Classification:** Range-based não por individual ID checks
+3. **Familiar Integration:** Usa kv() storage + master relationship
+4. **Position Magic:** x=65535 indica inventário vs coordenadas reais
+5. **Type Predicates:** Lua idioms para tipo-checking sem casts
+
+### Melhorias Potenciais
+
+- [ ] Cachear `specialItemRanges` se ranges grandes (unlikely, são 4)
+- [ ] Parametrizar mensagens de "You see X" para i18n
+- [ ] Adicionar logging para admin views para audit trail
+- [ ] Position description para negative z (underwater levels)
+
+---
+
+**Documentado em:** Februari 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete com 7 padrões documentados, 4 cenários, 5 funções especializadas

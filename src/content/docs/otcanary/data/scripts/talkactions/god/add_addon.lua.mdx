@@ -1,0 +1,221 @@
+---
+title: Add Addon
+description: Comando GOD para adicionar addons de appearance a jogadores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `add_addon.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Adicionar addons de roupa/appearance |
+| **Comando** | `/addaddon <playername>, <looktype \| all>, <value>` |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Valores de Addon** | 0-3 (0=nenhum, 1=addon1, 2=addon2, 3=ambos) |
+| **Tabela Looktypes** | ~200+ IDs (female + male) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/add_addon.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que valida addon value (0-3), oferece modo "all" para aplicar a todos os looktypes da tabela (140+), ou específico via looktype numérico. Iteração via ipairs para "all". Tab de looktypes separada em female (primeira metade) e male (segunda metade). Validação de range simples. Feedback diferenciado para single vs all.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `add_addon.lua` implementa um comando TalkAction (`/addaddon`) que adiciona addons de appearance a jogadores. O sistema valida parâmetros (nome, looktype, value), oferece modo "all" para aplicar a 140+ looktypes predefinidos, ou modo single para looktype específico, aplica via `addOutfitAddon()`, e fornece feedback claro. Ferramenta de cosmética de personagem.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- Tabela de Looktypes (Female + Male)
+local looktypes = {
+    -- Female Outfits (136-1681)
+    136, 137, 138, ... -- ~70+ female looktypes
+    
+    -- Male Outfits (128-1776)
+    1714, 1723, 1726, ... -- ~70+ male looktypes
+}
+
+local addaddon = TalkAction("/addaddon")
+
+function addaddon.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Parse: playerName, looktype|all, value
+    local split = param:split(",")
+    if #split < 3 then
+        player:sendCancelMessage("Usage: /addaddon <player name>, <looktype or 'all'>, <value>")
+        return true
+    end
+    
+    -- Extrair parâmetros
+    local playerName = split[1]
+    local target = Player(playerName)
+    
+    if not target then
+        player:sendCancelMessage("Player not found.")
+        return true
+    end
+    
+    -- Parâmetro addon
+    local addonParam = string.trim(split[2])
+    local addonValue = tonumber(string.trim(split[3]))
+    
+    -- Validação de addonValue
+    if not addonValue or addonValue < 0 or addonValue > 3 then
+        player:sendCancelMessage("Invalid addon value. It should be between 0 and 3.")
+        return true
+    end
+    
+    -- Modo "all": aplicar a todos looktypes
+    if addonParam == "all" then
+        for _, looktype in ipairs(looktypes) do
+            target:addOutfitAddon(looktype, addonValue)
+        end
+        
+        target:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("%s has added addon %d to all your looktypes.", player:getName(), addonValue))
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("You have successfully added addon %d to all looktypes of player %s.", addonValue, target:getName()))
+    else
+        -- Modo single: looktype específico
+        local looktype = tonumber(addonParam)
+        if not looktype then
+            player:sendCancelMessage("Invalid looktype.")
+            return true
+        end
+        
+        target:addOutfitAddon(looktype, addonValue)
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("Addon %d for looktype %d set for player %s.", addonValue, looktype, target:getName()))
+        target:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("%s has added addon %d for looktype %d to you.", player:getName(), addonValue, looktype))
+    end
+    
+    return true
+end
+
+addaddon:separator(" ")
+addaddon:groupType("god")
+addaddon:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **addaddon.onSay(player, words, param)**
+
+**Descrição:** Função callback que adiciona addons de appearance (roupas) a jogador.
+
+**Parâmetros:**
+- `param` (string): `<playername>, <looktype|all>, <value>`
+
+**Formato de Comando:**
+```
+/addaddon Player1, 136, 1           -- Addon 1 para looktype 136 (female)
+/addaddon Player1, 128, 3           -- Addon 3 (ambos) para looktype 128 (male)
+/addaddon Player1, all, 2           -- Addon 2 para TODOS os looktypes
+```
+
+**Fluxo de Execução:**
+
+1. **Validação de Parâmetro:**
+   - Se vazio: "Command param required."
+
+2. **Parse:**
+   ```lua
+   local split = param:split(",")
+   -- Exemplo: "Player1, 136, 1" -> {"Player1", " 136", " 1"}
+   ```
+
+3. **Busca de Jogador:**
+   - Se não encontrado: "Player not found."
+
+4. **Extração de Parâmetros:**
+   ```lua
+   local addonParam = string.trim(split[2])   -- "136" ou "all"
+   local addonValue = tonumber(string.trim(split[3]))  -- 1, 2, ou 3
+   ```
+
+5. **Validação de Valor:**
+   - Deve ser número entre 0 e 3
+   - 0 = nenhum addon
+   - 1 = primeiro addon
+   - 2 = segundo addon
+   - 3 = ambos addons
+
+6. **Modo "all" - Aplicar a Todos:**
+   ```lua
+   if addonParam == "all" then
+       for _, looktype in ipairs(looktypes) do
+           target:addOutfitAddon(looktype, addonValue)
+       end
+   ```
+   - Itera 140+ looktypes
+   - Aplica mesmo addonValue
+   - Feedback: "added addon X to all your looktypes"
+
+7. **Modo Single - Looktype Específico:**
+   ```lua
+   else
+       local looktype = tonumber(addonParam)
+       target:addOutfitAddon(looktype, addonValue)
+   ```
+   - Converte string para número
+   - Valida se é número válido
+   - Aplica addon a um looktype
+
+**Exemplo de Uso:**
+
+```
+Server GM: /addaddon TestPlayer, all, 3
+
+Resultado:
+- Target: TestPlayer
+- Para cada looktype em {136,137,138,...,1776}:
+  - addOutfitAddon(looktype, 3)
+- TestPlayer recebe ambos addons para todos outfits
+- GM vê: "You have successfully added addon 3 to all looktypes of TestPlayer."
+- TestPlayer vê: "[GM] has added addon 3 to all your looktypes."
+```
+
+**Tabela de Looktypes:**
+
+| Categoria | Range | Exemplos |
+|---|---|---|
+| Female Outfits | 136-1681 | 136, 137, 138, ..., 1681 |
+| Male Outfits | 128-1776 | 128, 129, 130, ..., 1776 |
+
+**Total:** ~140+ looktypes predefinidos
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `string.trim(str)` | Remove espaços em branco |
+| `tonumber(str)` | Converte para número |
+| `ipairs(table)` | Itera índices numéricos |
+| `Player(name)` | Busca jogador |
+| `target:addOutfitAddon(looktype, value)` | Adiciona addon |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `add_addon.lua` é ferramenta de customização de appearance. Implementação com validação rigorosa de valores, modo "all" para aplicação em lote, modo single para precisão, e tabela predefinida de 140+ looktypes. Essencial para administradores conceder cosmética a jogadores. Design flexível prioriza usabilidade com "all" e precisão com looktype específico.

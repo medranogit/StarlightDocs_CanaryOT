@@ -1,0 +1,442 @@
+---
+title: "Spell - groundshaker.lua"
+description: "Spell de sacudida de terra para knights level 33 com AOE circle skill-based"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `groundshaker.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 106 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Knight, Elite Knight |
+| **Level Requerido** | 33 |
+| **Mana Requerida** | 160 |
+| **Words** | exori mas |
+| **Alcance** | 0 (self/melee) |
+| **Área** | CIRCLE3X3 (AOE melee) |
+| **Cooldown** | 8s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Skill-based escalável ((skill+attack)×0.5/1.1 × 1.28) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_GROUNDSHAKER |
+| **BLOCKARMOR** | 1 (ignora armadura!) |
+| **USECHARGES** | 1 |
+| **Requer Weapon** | Sim (needWeapon) |
+| **Bloqueia Walls** | Não especificado |
+| **TODO** | Use New Real Formula instead of an % |
+| **Linhas de Código** | 33 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de sacudida de terra premium para knights nível 33 (early-mid). AOE circle CIRCLE3X3 de alcance melee. Dano físico skill-based com fórmula escalável ((skill+attack) × 0.5/1.1 × 1.28 multiplicador). BLOCKARMOR ignora armadura. USECHARGES consome weapon. 160 mana (custoso). Cooldown 8s. Requer weapon. TODO fórmula. Early AOE knight!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/groundshaker.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(106)
+spell:name("Groundshaker")
+spell:words("exori mas")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_GROUNDSHAKER)
+spell:level(33)
+spell:mana(160)
+spell:isPremium(true)
+spell:needWeapon(true)
+spell:cooldown(8 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("knight;true", "elite knight;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Sacudida de Terra - AOE Melee Skill-Based Early**
+
+Este spell implementa um sistema de AOE melee físico com skill-based escalável:
+
+1. **AOE Circle Melee:**
+   - AREA_CIRCLE3X3 (3x3 circle)
+   - Self-target melee
+   - Efeito GROUNDSHAKER
+
+2. **Skill-Based Escalável:**
+   - Usa CALLBACK_PARAM_SKILLVALUE
+   - min = (level/5) + (skill+attack) × 0.5
+   - max = (level/5) + (skill+attack) × 1.1
+   - Multiplicador final: × 1.28
+
+3. **Early-Mid Knight:**
+   - Level 33 (cedo!)
+   - 160 mana (custoso)
+   - Premium only
+   - Cooldown 8s
+
+4. **Weapon-Based:**
+   - needWeapon: true
+   - BLOCKARMOR: 1 (ignora defesa)
+   - USECHARGES: 1 (consome charges)
+   - Melee range
+
+**Fórmula Visual:**
+```
+Knight lvl 33, skill 80, attack 40:
+  min = 6.6 + (80+40) × 0.5 = 6.6 + 60 = 66.6
+  max = 6.6 + (80+40) × 1.1 = 6.6 + 132 = 138.6
+  final_min = 66.6 × 1.28 = 85.25
+  final_max = 138.6 × 1.28 = 177.41
+
+Knight lvl 33, skill 100, attack 50:
+  min = 6.6 + (100+50) × 0.5 = 6.6 + 75 = 81.6
+  final_min = 81.6 × 1.28 = 104.45
+```
+
+**Diferencial:** AOE melee skill-based early com 1.28 multiplicador!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `groundshaker` oferece dano físico AOE melee em circle:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE skill-based
+- **Fórmula:** ((skill+attack) × 0.5/1.1) × 1.28 (ESCALÁVEL!)
+- **Mana:** 160 (custoso)
+- **Level:** 33 (early)
+- **Área:** CIRCLE3X3 (melee AOE)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ Effect: GROUNDSHAKER
+├─ BLOCKARMOR: 1
+├─ USECHARGES: 1
+├─ Area: CIRCLE3X3
+└─ Callback: onGetFormulaValues (SKILLVALUE)
+
+onGetFormulaValues(player, skill, attack, factor)
+└─ min/max skill-based escalável × 1.28
+
+spell.onCastSpell(creature, var)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_GROUNDSHAKER)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+```
+
+**Propósito:** Combat de dano físico AOE melee.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_GROUNDSHAKER | Efeito terra |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Ignora armadura! |
+| `COMBAT_PARAM_USECHARGES` | 1 | Consome charges |
+| `Area` | CIRCLE3X3 | AOE circle |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local level = player:getLevel()
+	local min = (level / 5) + (skill + attack) * 0.5
+	local max = (level / 5) + (skill + attack) * 1.1
+	return -min * 1.28, -max * 1.28
+end
+```
+
+**Propósito:** Calcula dano físico skill-based escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Attack power |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min * 1.28` | number | Dano mínimo × 1.28 |
+| `-max * 1.28` | number | Dano máximo × 1.28 |
+
+**Fórmula:**
+```
+level = player:getLevel()
+
+min = (level / 5) + (skill + attack) * 0.5
+max = (level / 5) + (skill + attack) * 1.1
+
+final_min = min * 1.28
+final_max = max * 1.28
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Skill+Attack min coef: 0.5
+- Skill+Attack max coef: 1.1
+- Multiplicador final: 1.28 (28% boost!)
+
+**Exemplos:**
+
+| Level | Skill | Attack | Min | Max |
+|---|---|---|---|
+| 33 | 80 | 40 | 85 | 177 |
+| 40 | 100 | 50 | 104 | 224 |
+| 50 | 120 | 60 | 138 | 290 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples executa combat.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight |
+| `var` | Variant | (não usado, melee) |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sacudida ativada |
+| `false` | Falha |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callbacks skill |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `level` | number | Level jogador |
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Skill-Based com Multiplicador Final
+
+```lua
+return -min * 1.28, -max * 1.28
+```
+
+**Benefício:** Escalável skill com boost final!
+
+### Padrão 2: Circle3x3 Melee
+
+```lua
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+```
+
+**Benefício:** AOE compacto melee.
+
+### Padrão 3: BLOCKARMOR + USECHARGES
+
+```lua
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+```
+
+**Benefício:** Ignora armadura + consome charges.
+
+### Padrão 4: TODO Comment
+
+```lua
+-- TODO : Use New Real Formula instead of an %
+```
+
+**Indicação:** Fórmula será revisada!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, skill, attack, factor)
+
+**Descrição:** Calcula dano melee skill-based com multiplicador.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Attack power |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min * 1.28` | number | Dano mínimo |
+| `-max * 1.28` | number | Dano máximo |
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Lança sacudida de terra AOE melee.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight |
+| `var` | Variant | (melee, não usado) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Sacudida ativada |
+| `false` | Falha |
+
+**Requisitos:**
+- Level 33+
+- 160 mana
+- Weapon equipped
+- Premium account
+- Cooldown 8s
+
+**Efeito:**
+- Efeito GROUNDSHAKER
+- Area CIRCLE3X3
+- Dano skill-based × 1.28
+- Ignora armadura
+- Weapon charges usado
+
+**Exemplo:**
+
+```lua
+-- Knight lvl 33, skill 80, attack 40
+spell.onCastSpell(knight, selfVariant)
+// Validações OK (33+ level, 160 mana, weapon equipped)
+// Combat executa em circle
+// Area CIRCLE3X3 AOE melee
+// Dano: -85 a -177
+// Ignora armadura targets
+// Weapon charges consumido
+// Cooldown 8s
+// Resultado: Sacudida terra!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Early Knight AOE
+
+```lua
+-- Novo Knight level 33
+// Groundshaker = primeiro AOE melee
+// Circle3x3 early magic training
+// Skill-based escalável
+```
+
+### Caso 2: Weapon Melee Training
+
+```lua
+-- Knight farming com weapon
+// Groundshaker = AOE melee
+// BLOCKARMOR penetration
+// Weapon charges consumption
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callback:** CALLBACK_PARAM_SKILLVALUE
+- **Areas:** AREA_CIRCLE3X3
+- **Parameters:** BLOCKARMOR, USECHARGES
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | AOE melee skill-based |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | ((skill+attack) × 0.5/1.1) × 1.28 |
+| **Mana** | 160 |
+| **Area** | CIRCLE3X3 |
+| **Level** | 33 (early) |
+| **Cooldown** | 8s |
+| **Premium** | Sim |
+| **BLOCKARMOR** | 1 |
+| **USECHARGES** | 1 |
+| **Weapon Required** | Sim |
+| **Vocações** | Knight, Elite Knight |
+| **Padrão** | Skill-based + BLOCKARMOR + multiplicador × 1.28 |

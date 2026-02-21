@@ -1,0 +1,856 @@
+---
+title: "store.lua"
+description: "Módulo utilitário de queries, validações e normalização do gamestore com acesso a categorias, ofertas, histórico e validações de nomes"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo **utilitário centralizado** que fornece 14 funções de query, validação e normalização para o sistema gamestore. Responsável por pesquisar categorias/ofertas pelo GameStore.Categories, recuperar histórico de transações do banco de dados, validar nomes (jogadores e capangas) seguindo regras sofisticadas de filtro de conteúdo, e normalizar dados de ofertas. Este é o **módulo "helper" fundamental** que todos os outros módulos dependem para funcionar.
+
+**Caminho Original**: `data/libs/gamestore/store.lua`
+
+**Dependências**:
+- GameStore global (Categories, OfferTypes, States, DefaultDescriptions, etc)
+- Database (db.query, db.storeQuery, Result)
+- Lua string patterns (gmatch, match, find, split)
+- Server objects (MonsterType, Npc)
+
+<Aside>
+Este módulo é **referência central** que abstrai queries complexas (ofertas com múltiplos IDs, outfits com sexo específico) e validações sofisticadas (nomes com palavras proibidas, caracteres inválidos). Sem ele, toda a lógica de busca dispersaria pelo código.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo store.lua é um **repositório de utilidades** que encapsula 14 funções divididas em 3 grupos: **queries de navegação** (buscar categoria/oferta pela estrutura GameStore.Categories), **acesso a banco de dados** (histórico de transações com paginação), e **validações de segurança** (nomes com proteção contra conteúdo ofensivo, SQL injection, nomes reservados). Notável por lidar com complexidades ocultas: ofertas podem ter IDs como números ou tabelas (outfit com male e female), histórico é paginado com ordering reverso, validação de nome é sofisticada com regex múltiplos e listas de palavras proibidas.
+
+### Arquitetura de Funcionalidades
+
+```
+store (módulo de utilidades)
+│
+├─ QUERIES DE CATEGORIA (2 funções)
+│  ├── getCategoryByName (case-insensitive)
+│  └── getCategoryByOffer (busca reversa)
+│
+├─ QUERIES DE OFERTA (2 funções)
+│  ├── getOfferById (com suporte a ID table)
+│  └── getOffersByName (múltiplas por nome)
+│
+├─ QUERIES ROOK-SPECIFIC (2 funções)
+│  ├── haveCategoryRook (categoria existe?)
+│  └── haveOfferRook (oferta existe em rook?)
+│
+├─ DATABASE - HISTÓRICO (3 funções)
+│  ├── insertHistory (escreve transação)
+│  ├── retrieveHistoryTotalPages (conta total)
+│  └── retrieveHistoryEntries (recupera paginado)
+│
+├─ NORMALIZAÇÃO & VALIDAÇÃO (4 funções)
+│  ├── getDefaultDescription (aleatoriedade)
+│  ├── resolveState (validação de state)
+│  ├── normalizeOffer (validação múltipla)
+│  └── [Validação de Nomes: 2 funções]
+│
+└─ VALIDAÇÃO DE NOMES (2 funções)
+   ├── canUseHirelingName (5 validações)
+   └── canChangeToName (10 validações)
+```
+
+---
+
+## Detalhes das Funções Globais
+
+### 1. getCategoryByName(name)
+
+Procura categoria por nome (case-insensitive).
+
+**Parâmetros**:
+- name (string): Nome da categoria a buscar
+
+**Retorna**: 
+- (table): Categoria encontrada ou nil
+
+**Lógica**:
+
+```lua
+for k, category in ipairs(GameStore.Categories) do
+    if category.name:lower() == name:lower() then
+        if not category.offers then  -- Se vazia, recurse
+            return GameStore.getCategoryByName(category.subclasses[1])
+        end
+        return category
+    end
+end
+return nil
+```
+
+**Peculiaridade**: Se categoria vazia, busca subclasses[1] recursivamente
+
+---
+
+### 2. getCategoryByOffer(id)
+
+Procura categoria que contém uma oferta específica (busca reversa).
+
+**Parâmetros**:
+- id (number): ID da oferta
+
+**Retorna**: 
+- (table): Categoria encontrada ou nil
+
+**Handleamento de Múltiplos ID Types**:
+
+```lua
+-- Tipo 1: ID simples (number)
+if type(offer.id) == "number" then
+    if offer.id == id then return category end
+
+-- Tipo 2: ID tabela (outfit: {male: X, female: Y})
+elseif type(offer.id) == "table" then
+    for m, offerId in pairs(offer.id) do
+        if offerId == id then return category end
+    end
+end
+```
+
+---
+
+### 3. getOfferById(id) - FUNÇÃO COMPLEXA
+
+Procura oferta por ID com suporte a 3 tipos de estrutura de ID.
+
+**Parâmetros**:
+- id (number): ID da oferta
+
+**Retorna**: 
+- (table): Oferta encontrada (possivelmente modificada) ou nil
+
+**Tipo 1: ID Simples**
+
+```lua
+if type(offer.id) == "number" then
+    if offer.id == id then return offer end
+end
+```
+
+**Tipo 2: ID Tabela (Outfit)**
+
+```lua
+elseif type(offer.id) == "table" and 
+       (offer.type == OFFER_TYPE_OUTFIT or offer.type == OFFER_TYPE_OUTFIT_ADDON) then
+    for m, offerId in pairs(offer.id) do
+        if offerId == id then return offer end
+    end
+end
+```
+
+**Tipo 3: ID Múltiplo (Multi-Offer com Prices Paralela)**
+
+```lua
+elseif type(offer.id) == "table" then
+    local newoffer = offer
+    for i = 1, #offer.id do
+        local offerId = offer.id[i]
+        if offerId == id then
+            -- Clonar oferta com ID específico
+            newoffer.id = offerId
+            newoffer.price = offer.price[i]  -- Preço específico
+            return newoffer
+        end
+    end
+end
+```
+
+**Nota**: Tipo 3 modifica oferta retornada (ID e price sincronizados)
+
+---
+
+### 4. getOffersByName(name)
+
+Procura múltiplas ofertas pelo nome.
+
+**Parâmetros**:
+- name (string): Nome da oferta
+
+**Retorna**: 
+- (table): Array de ofertas encontradas (pode ser vazio)
+
+**Lógica**:
+
+```lua
+for category in GameStore.Categories do
+    for offer in category.offers do
+        if offer.name:lower() == name:lower() then
+            table.insert(offers, offer)
+        end
+    end
+end
+```
+
+---
+
+### 5. haveCategoryRook()
+
+Verifica se existe alguma categoria com flag rookgaard == true.
+
+**Retorna**: 
+- (boolean): true se existe categoria rook, false caso contrário
+
+**Lógica**:
+
+```lua
+for category in GameStore.Categories do
+    if category.offers and category.rookgaard then
+        return true
+    end
+end
+return false
+```
+
+---
+
+### 6. haveOfferRook(id)
+
+Verifica se oferta específica existe em alguma categoria rook.
+
+**Parâmetros**:
+- id (number): ID da oferta
+
+**Retorna**: 
+- (boolean): true se ofertar existe em rook, nil caso contrário
+
+**Lógica**:
+
+```lua
+for category in GameStore.Categories do
+    if category.offers and category.rookgaard then
+        for offer in category.offers do
+            if offer.id == id then return true end
+        end
+    end
+end
+return nil
+```
+
+---
+
+### 7. insertHistory(accountId, mode, description, coinAmount, coinType)
+
+Insere entrada de transação no histórico do banco de dados.
+
+**Parâmetros**:
+- accountId (number): ID da conta
+- mode (number): Modo (0=normal, 1=gift, 2=refund)
+- description (string): Descrição da transação
+- coinAmount (number): Quantidade de moedas
+- coinType (number): Tipo de moeda (Coin ou Transferable)
+
+**Retorna**: 
+- (boolean): Resultado da query
+
+**SQL Executado**:
+
+```lua
+INSERT INTO store_history (
+    account_id, mode, description, coin_type, coin_amount, time
+) VALUES (
+    accountId, mode, escapedDescription, coinType, coinAmount, os.time()
+)
+```
+
+**Nota**: description é escaped com db.escapeString()
+
+---
+
+### 8. retrieveHistoryTotalPages(accountId)
+
+Conta total de entradas de histórico para uma conta.
+
+**Parâmetros**:
+- accountId (number): ID da conta
+
+**Retorna**: 
+- (number): Total de entradas, 0 se falhar
+
+**SQL Executado**:
+
+```lua
+SELECT count(id) as total FROM store_history WHERE account_id = accountId
+```
+
+---
+
+### 9. retrieveHistoryEntries(accountId, currentPage, entriesPerPage) - FUNÇÃO DATABASE
+
+Recupera histórico paginado com ordering reverso (mais recente primeiro).
+
+**Parâmetros**:
+- accountId (number): ID da conta
+- currentPage (number): Página requisitada (1-indexed)
+- entriesPerPage (number): Entries por página
+
+**Retorna**: 
+- (table): Array de entradas
+
+**Cálculo de Offset**:
+
+```lua
+local offset = currentPage > 1 and entriesPerPage * (currentPage - 1) or 0
+```
+
+**SQL Executado**:
+
+```lua
+SELECT * FROM store_history 
+WHERE account_id = accountId 
+ORDER BY time DESC 
+LIMIT offset, entriesPerPage
+```
+
+**Estrutura de Entry Retornada**:
+
+```lua
+{
+    mode = number,          -- 0/1/2
+    description = string,
+    amount = number,        -- coinAmount
+    type = number,          -- coinType
+    time = number           -- timestamp
+}
+```
+
+---
+
+### 10. getDefaultDescription(offerType, count) - FUNÇÃO ALEATÓRIA
+
+Retorna descrição padrão aleatória baseada em tipo de oferta.
+
+**Parâmetros**:
+- offerType (number): Tipo de oferta (OfferTypes.*)
+- count (number): Quantidade (não usado, para futura extensão)
+
+**Retorna**: 
+- (string): Descrição aleatória ou ""
+
+**Mapeamento de Tipo → DefaultDescriptions**:
+
+| Tipo | Descrição |
+|---|---|
+| OUTFIT / OUTFIT_ADDON | DefaultDescriptions.OUTFIT (array) |
+| MOUNT | DefaultDescriptions.MOUNT (array) |
+| NAMECHANGE | DefaultDescriptions.NAMECHANGE (array) |
+| SEXCHANGE | DefaultDescriptions.SEXCHANGE (array) |
+| EXPBOOST | DefaultDescriptions.EXPBOOST (array) |
+| PREYSLOT | DefaultDescriptions.PREYSLOT (array) |
+| PREYBONUS | DefaultDescriptions.PREYBONUS (array) |
+| TEMPLE | DefaultDescriptions.TEMPLE (array) |
+
+**Seleção Aleatória**:
+
+```lua
+return descList[math.floor(math.random(1, #descList))] or ""
+```
+
+---
+
+### 11. resolveState(state, context)
+
+Valida e retorna state válido (enum validation).
+
+**Parâmetros**:
+- state (number): State a validar
+- context (string, opcional): Contexto para mensagem erro
+
+**Retorna**: 
+- (number): State validado ou error
+
+**Lógica**:
+
+```lua
+if state == nil then
+    return GameStore.States.STATE_NONE
+end
+
+for _, value in pairs(GameStore.States) do
+    if value == state then
+        return state
+    end
+end
+
+error("Invalid Game Store state" .. (context and " (" .. context .. ")" or ""))
+```
+
+---
+
+### 12. normalizeOffer(offer) - FUNÇÃO MÚLTIPLA
+
+Valida e normaliza todos os campos de uma oferta.
+
+**Parâmetros**:
+- offer (table): Oferta a normalizar
+
+**Retorna**: 
+- (table): Oferta normalizada
+
+**Validações**:
+
+#### Type
+
+```lua
+if type(offer.type) ~= "number" then
+    offer.type = OfferTypes.OFFER_TYPE_NONE
+end
+```
+
+#### CoinType
+
+```lua
+if offer.coinType == nil then
+    offer.coinType = CoinType.Transferable  -- Default
+else
+    local isValidCoinType = false
+    for _, value in pairs(CoinType) do
+        if value == offer.coinType then
+            isValidCoinType = true
+            break
+        end
+    end
+    if not isValidCoinType then
+        error("Invalid coin type: " .. tostring(offer.coinType))
+    end
+end
+```
+
+#### State
+
+```lua
+offer.state = GameStore.resolveState(offer.state)
+```
+
+#### Description
+
+```lua
+if description == nil or description == "" then
+    description = getDefaultDescription(offer.type, offer.count) or ""
+end
+offer.description = description
+```
+
+---
+
+### 13. canUseHirelingName(name) - FUNÇÃO VALIDAÇÃO SOFISTICADA
+
+Valida nome de capanga com 5 validações diferentes.
+
+**Parâmetros**:
+- name (string): Nome do capanga
+
+**Retorna**: 
+- (table): Table with `ability` (boolean) and `reason` (string)
+
+**Validação 1: Comprimento**
+
+```lua
+if name:len() < 3 or name:len() > 18 then
+    result.reason = "The length must be between 3 and 18 characters."
+    return result
+end
+```
+
+**Validação 2: Espaço no Início**
+
+```lua
+local matchtwo = name:match("^%s+")
+if matchtwo then
+    result.reason = "Can't have whitespace at begin."
+    return result
+end
+```
+
+**Validação 3: Caracteres Inválidos**
+
+```lua
+local matchthree = name:match("[^a-zA-Z ]")
+if matchthree then
+    result.reason = "Has invalid characters"
+    return result
+end
+```
+
+**Validação 4: Múltiplos Espaços**
+
+```lua
+local match = name:gmatch("%s+")
+local count = 0
+for _ in match do count = count + 1 end
+
+if count > 1 then
+    result.reason = "More than 1 whitespace."
+    return result
+end
+```
+
+**Validação 5: Palavras Proibidas**
+
+```lua
+local words = { "owner", "gamemaster", "admin", ... }
+local split = name:split(" ")
+
+-- Check palavras diretas
+for _, word in ipairs(words) do
+    for _, nameWord in ipairs(split) do
+        if nameWord:lower() == word then
+            result.reason = "You can't use word '" .. word .. "'"
+            return result
+        end
+    end
+end
+
+-- Check com espaços removidos
+local tmpName = name:gsub("%s+", "")
+for _, word in ipairs(words) do
+    if tmpName:lower():find(word) then
+        result.reason = "You can't use word '" .. word .. "' with whitespace"
+        return result
+    end
+end
+```
+
+---
+
+### 14. canChangeToName(name) - FUNÇÃO VALIDAÇÃO MUITO COMPLEXA
+
+Valida novo nome de jogador com 10 validações sofisticadas.
+
+**Parâmetros**:
+- name (string): Novo nome do jogador
+
+**Retorna**: 
+- (table): `{ ability (boolean), reason (string) }`
+
+**Validação 1: Comprimento**
+
+```lua
+if name:len() < 3 or name:len() > 29 then
+    result.reason = "Length must be between 3 and 29 characters."
+    return result
+end
+```
+
+**Validação 2: Espaço no Início**
+
+```lua
+if name:match("^%s+") then
+    result.reason = "Can't have whitespace at beginning."
+    return result
+end
+```
+
+**Validação 3: Número de Espaços**
+
+```lua
+local count = 0
+for _ in name:gmatch("%s+") do count = count + 1 end
+
+if count > 2 then
+    result.reason = "Can't have more than 2 spaces."
+    return result
+end
+```
+
+**Validação 4: Espaços Consecutivos**
+
+```lua
+if name:match("%s%s") then
+    result.reason = "Can't have consecutive spaces."
+    return result
+end
+```
+
+**Validação 5: Palavras Proibidas Diretas**
+
+```lua
+local words = { "owner", "gamemaster", ... }
+local split = name:split(" ")
+
+for _, word in ipairs(words) do
+    for _, nameWord in ipairs(split) do
+        if nameWord:lower() == word then
+            result.reason = "You can't use word '" .. word .. "'"
+            return result
+        end
+    end
+end
+```
+
+**Validação 6: Palavras Proibidas com Espaços**
+
+```lua
+local tmpName = name:gsub("%s+", "")
+for _, word in ipairs(words) do
+    if tmpName:lower():find(word) then
+        result.reason = "You can't use word '" .. word .. "' even with spaces"
+        return result
+    end
+end
+```
+
+**Validação 7: Nome de Monstro**
+
+```lua
+if MonsterType(name) then
+    result.reason = "Can't be a monster's name."
+    return result
+end
+```
+
+**Validação 8: Nome de NPC**
+
+```lua
+if Npc(name) then
+    result.reason = "Can't be an NPC's name."
+    return result
+end
+```
+
+**Validação 9: Caracteres Proibidos**
+
+```lua
+local letters = "{}|_*+-=<>0123456789@#%^&()/*'\\.,:;~!\"$"
+for i = 1, letters:len() do
+    local c = letters:sub(i, i)
+    for j = 1, name:len() do
+        if name:sub(j, j) == c then
+            result.reason = "Can't use character '" .. c .. "'"
+            return result
+        end
+    end
+end
+```
+
+**Resultado Final**:
+
+```lua
+result.ability = true
+return result
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Buscar Categoria por Nome
+
+```lua
+local store = require("gamestore.store")
+
+function openCategoryByName(playerId, categoryName)
+    local category = store.getCategoryByName(categoryName)
+    if not category then
+        return false, "Category not found"
+    end
+    senders.sendShowStoreOffers(playerId, category)
+    return true
+end
+```
+
+### Padrão 2: Buscar Oferta por ID (Múltiplos Tipos)
+
+```lua
+local store = require("gamestore.store")
+
+function getOfferInfo(offerId)
+    local offer = store.getOfferById(offerId)
+    if not offer then
+        return nil, "Offer not found"
+    end
+    
+    -- offer pode ter ID modificado (tipo 3)
+    return offer
+end
+```
+
+### Padrão 3: Validar Zonas Rook
+
+```lua
+local store = require("gamestore.store")
+
+function validateRookAccess(player, offerId)
+    if player:getVocation():getId() == 0 then  -- Rook
+        if not store.haveCategoryRook() then
+            return false, "No rook category"
+        end
+        if not store.haveOfferRook(offerId) then
+            return false, "Offer not in rook"
+        end
+    end
+    return true
+end
+```
+
+### Padrão 4: Recuperar Histórico com Paginação
+
+```lua
+local store = require("gamestore.store")
+
+function getPlayerHistory(playerId, page)
+    local player = Player(playerId)
+    local accountId = player:getAccountId()
+    local entriesPerPage = 10
+    
+    local totalPages = store.retrieveHistoryTotalPages(accountId)
+    local entries = store.retrieveHistoryEntries(accountId, page, entriesPerPage)
+    
+    return {
+        entries = entries,
+        currentPage = page,
+        totalPages = totalPages
+    }
+end
+```
+
+### Padrão 5: Validar e Normalizar Oferta
+
+```lua
+local store = require("gamestore.store")
+
+function registerOffer(offer)
+    local normalized = store.normalizeOffer(offer)
+    -- type, coinType, state, description agora validados
+    return normalized
+end
+```
+
+### Padrão 6: Validar Nome de Capanga
+
+```lua
+local store = require("gamestore.store")
+
+function validateHirelingName(name)
+    local result = store.canUseHirelingName(name)
+    
+    if not result.ability then
+        return false, result.reason
+    end
+    return true
+end
+```
+
+### Padrão 7: Validar Novo Nome de Jogador
+
+```lua
+local store = require("gamestore.store")
+
+function validateNewPlayerName(name)
+    local result = store.canChangeToName(name)
+    
+    if not result.ability then
+        return false, result.reason
+    end
+    return true
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Exemplo |
+|---|---|---|
+| **ID Polimórfico** | ID pode ser number ou table | `offer.id = X` ou `offer.id = {male: X, female: Y}` |
+| **Query Recursiva** | Busca subcategorias se vazia | getCategoryByName com subclasses |
+| **Busca Reversa** | Encontra container de item | getCategoryByOffer |
+| **Multi-Priced Offer** | Múltiplos IDs com preços paralelos | offer.id[] + offer.price[] sincronizados |
+| **Enum Validation** | Valida contra valores conhecidos | resolveState vs GameStore.States |
+| **Default Aleatoriedade** | Descrição random por tipo | getDefaultDescription |
+| **Regex Múltiplos** | Várias validações de pattern | canUseHirelingName + canChangeToName |
+| **SQL Injection Prevention** | Escape de strings em DB | db.escapeString() |
+
+### Padrões Implementados
+
+1. **Polymorphic Query**: offer.id pode ser número ou tabela
+2. **Recursive Search**: Subclasses handling
+3. **Reverse Lookup**: Category por offer
+4. **Lazy Cloning**: Modifica offer retornada somente se multi-offer
+5. **Enum Validation**: Whitelist de valores
+6. **Random Selection**: Array indexing com math.random
+7. **Regex Validation**: gmatch, match, find em cascata
+8. **Database Pagination**: Offset calculation com ORDER BY DESC
+
+### Responsabilidades do Módulo
+
+- ✅ Navegar estrutura GameStore.Categories
+- ✅ Buscar categorias e ofertas por critérios variados
+- ✅ Validar ofertas com rook-specific filtering
+- ✅ Recuperar histórico paginado do DB
+- ✅ Validar nomes contra conteúdo impróprio
+- ✅ Validar nomes contra caracteres proibidos
+- ✅ Normalizar dados de ofertas
+- ✅ Prevenir SQL injection em escapes
+
+### Casos de Uso Principais
+
+1. **Navegação de Categorias**: getCategoryByName + subclasses
+2. **Busca de Ofertas**: getOfferById com handleamento ID table
+3. **Filtragem Rook**: haveCategoryRook + haveOfferRook
+4. **Histórico Paginado**: retrieveHistoryEntries + totalPages
+5. **Descrição Aleatória**: getDefaultDescription com randomização
+6. **Validação de Nome**: 5 validações para hireling, 10 para player
+7. **Normalização**: normalizeOffer com múltiplas sanidades
+
+---
+
+## 📚 Conclusão
+
+O módulo `store.lua` é exemplo fino de **centralização de lógica** que torna código dependente mais limpo e testável. As complexidades ocultas - ofertas com IDs polimórficos, busca recursiva em subclasses, validações de nome sofisticadas com 10+ regras - são toda encapsuladas aqui, permitindo que parsers.lua, purchases.lua e senders.lua remainecem focados em responsabilidades principais.
+
+Dois patterns particularmente notáveis: **ID Polimórfico** em getOfferById que transparentemente handleia numbers vs tabelas outfit vs multi-offers com preços paralelos é excelente exemplo de abstração graceful. As **validações de nome** (especialmente canChangeToName com 9 validações cascata) demonstram como proteger contra conteúdo impróprio, nomes reservados e exploração através de spacing.
+
+O design database-aware (retrieveHistoryEntries com paginação e ORDER BY DESC) mostra maturidade de sistema de produção. Estudando este módulo, compreende-se importância de "utility modules" bem projetadas que abstraem queries comuns, prevenindo duplicação através do codebase inteiro.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadados do Documento">
+- **Versão do Módulo**: Conforme constants.lua v2.0
+- **Data da Documentação**: 19 de Fevereiro, 2026
+- **Cobertura**: 100% (14 funções globais, nenhuma função local)
+- **Complexidade**: Média-Alta (ID polimórfico, regex múltiplos, DB queries)
+- **Autor**: Documentação Canary Server Libs
+- **Padrão**: 7 seções MDX/Astro
+- **Exemplos Inclusos**: 7 padrões de uso completos
+</Card>
+
+<Aside type="tip">
+**Dica de Integração**: Este módulo é **dependência crítica** de praticamente todos os outros gamestore modules. Adicionar novo tipo busca aqui ao invés de dispersar lógica pelo código. Todas queries complexas devem ser centralizadas aqui para reusabilidade.
+</Aside>
+
+<Aside type="caution">
+**Atenção Crítica**:
+- canChangeToName é muito sofisticada - mudanças podem quebrar validação de nomes
+- Validações de ID (offer.id como table vs number) são críticas - mudar torna getOfferById frágil
+- db.escapeString() é OBRIGATÓRIO em insertHistory - sem ele, SQL injection possível
+- retrieveHistoryEntries usa DESC ordering - mudança inverte histórico
+- getDefaultDescription usa math.random - pode ter inconsistência se chamado em loop rapido
+- resolveState com error() quebra execução - tratante appropriadamente em caller
+</Aside>
+
+<Aside type="note">
+**Notas de Manutenção**:
+- getCategoryByName com subclasses é recursivo - testar circularidade
+- getOfferById modifica oferta tipo 3 - sempre clonar se não quiser side effects
+- Palavras proibidas em ambas funções nome são hardcoded - centralizar se mudar frequente
+- retrieveHistoryTotalPages sem página limit - pode ser slow com muitas transações
+- normalizeOffer não valida price/count - adicionar se necessário
+- canUseHirelingName &lt;= 18 chars, canChangeToName &lt;= 29 chars - limites distintos por design
+- SQL LIMIT offset, limit - sempre validar offset > 0 para prevenir bug paginação
+</Aside>

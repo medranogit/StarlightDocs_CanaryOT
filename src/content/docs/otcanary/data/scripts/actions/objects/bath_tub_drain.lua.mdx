@@ -1,0 +1,181 @@
+---
+title: bath_tub_drain.lua
+description: Objeto que transforma bathtub preenchido em vazio, com validação de criatura no tile.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="bath_tub_drain.lua" icon="pencil">
+Handler minimalista de banheira com tile creature validation.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/objects/bath_tub_drain.lua`
+
+**Linhas:** 14 | **ID do Object:** 1 (BATHTUB_FILLED) | **Tipo:** Action Handler
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script é handler trivial que transforma bathtub preenchida em vazia (drenagem). Valida que nenhuma criatura está na tile antes de permitir transform. Usa BATHTUB_FILLED e BATHTUB_EMPTY como constantes globais. Sem consumo de item, sem mensagem, apenas transform direto.
+
+### Estrutura de Funcionalidades
+
+```
+HANDLER:
+  └─ bathtubDrain.onUse(player, item, fromPosition, itemEx, toPosition)
+      ├─ tile = Tile(fromPosition)
+      ├─ tile:getTopCreature()? (validação)
+      │   └─ SIM → return false (bloqueado)
+      ├─ NÃO → Continua
+      ├─ item:transform(BATHTUB_EMPTY)
+      │   └─ BATHTUB_FILLED → BATHTUB_EMPTY
+      └─ (implicit return true)
+
+REGISTRO:
+  └─ ID: BATHTUB_FILLED
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| bathtubDrain | Action | Objeto handler |
+
+---
+
+## Constantes Externas
+
+| Constante | Significado |
+|-----------|-------------|
+| BATHTUB_FILLED | ID do objeto preenchido |
+| BATHTUB_EMPTY | ID do objeto vazio |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local bathtubDrain = Action()
+
+function bathtubDrain.onUse(player, item, fromPosition, itemEx, toPosition)
+	-- Obter tile
+	local tile = Tile(fromPosition)
+	
+	-- Validação: Criatura no topo?
+	if tile:getTopCreature() then
+		return false
+	end
+
+	-- Transform (sem remover, apenas muda ID)
+	item:transform(BATHTUB_EMPTY)
+end
+
+-- Registrar
+bathtubDrain:id(BATHTUB_FILLED)
+bathtubDrain:register()
+```
+
+### Execução Simples
+
+```
+Jogador clica em bathtub preenchida
+  │
+  ├─ tile = Tile(fromPosition)
+  │
+  ├─ tile:getTopCreature()?
+  │   ├─ SIM (criatura no topo) → return false
+  │   │   (banheira não pode drenar com criatura)
+  │   │
+  │   └─ NÃO (sem criatura) → continua
+  │
+  ├─ item:transform(BATHTUB_EMPTY)
+  │   └─ Transforma em versão vazia
+  │
+  └─ (implicit return true - sem mención explícita)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Tile Creation**: Tile(fromPosition) constrói objeto
+- **getTopCreature()**: Verifica criatura no topo
+- **Return False**: Bloqueia ação se criatura presente
+- **item:transform()**: Muda versão sem remover
+- **BATHTUB Constants**: Global IDs utilizados
+- **No Explicit Return**: return true implícito ao fim
+- **Simple Validation**: Apenas 1 check
+
+### Responsabilidades do Handler
+
+1. **Criar tile**: Tile(fromPosition)
+2. **Validar criatura**: getTopCreature()
+3. **Return false**: Se criatura presente
+4. **Transform**: item:transform(BATHTUB_EMPTY)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Creature Blocking
+
+Validação simples:
+
+```lua
+local tile = Tile(fromPosition)
+if tile:getTopCreature() then
+	return false  -- Bloqueado
+end
+```
+
+### Padrão Transform
+
+Sem remover:
+
+```lua
+item:transform(BATHTUB_EMPTY)
+-- Não remove item, apenas muda o ID
+-- BATHTUB_FILLED → BATHTUB_EMPTY
+```
+
+### Comparação: Bath Tub vs Carpets
+
+| Aspecto | Bath Tub | Carpets |
+|---------|----------|---------|
+| Linhas | 14 | 210 |
+| Transformações | 1 (preenchido → vazio) | 70+ (bidirecional) |
+| Tile Checks | 1 (getTopCreature) | 3 (tile, house, items) |
+| Complexity | Trivial | Média |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: bath_tub_drain.lua" icon="star">
+Análise de handler trivial com creature blocking validation. Demonstra item:transform() para mudança de estado sem remoção.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Transform com creature validation | Complexidade: Muito Baixa
+</Aside>

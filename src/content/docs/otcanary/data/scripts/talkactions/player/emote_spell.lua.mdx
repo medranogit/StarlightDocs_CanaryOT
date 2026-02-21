@@ -1,0 +1,177 @@
+---
+title: Emote Spell
+description: Comando PLAYER para ativar/desativar encantamentos de emote personalizado
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# 🛠️ Documentação: emote_spell.lua
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Arquivo** | `emote_spell.lua` |
+| **Tipo** | TalkAction (Comando de Jogador) |
+| **Acesso** | normal (PLAYER) |
+| **Comando** | `!emote` |
+| **Descrição** | Ativar/desativar encantamentos de emote personalizado |
+| **Parâmetro** | `on` (ativar) ou `off` (desativar) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/emote_spell.lua
+```
+
+## 💡 Utilidade
+
+Este comando permite que jogadores controlem se desejam ativar ou desativar o sistema de encantamentos de emote. O encantamento se baseia na configuração global `EMOTE_SPELLS` e pode ser alternado individualmente pelo jogador via Storage Value.
+
+## 📄 Visão Geral do Código Resumo Executivo
+
+O script `emote_spell.lua` implementa um sistema de alternância de emotes:
+
+- **Verificação de Habilitação Global**: Valida se o sistema está habilitado no servidor
+- **Validação de Parâmetro**: Garante que o jogador forneceu "on" ou "off"
+- **Armazenamento de Preferência**: Utiliza Storage Value para persistir escolha do jogador
+- **Feedback Visual**: Confirm com mensagem ao jogador qual estado foi ativado
+
+### Fluxo Lógico Resumido
+
+1. Verifica se `EMOTE_SPELLS` está habilitado no servidor
+2. Valida se parâmetro foi fornecido
+3. Se "on": ativa emotes (Storage = 1)
+4. Se "off": desativa emotes (Storage = 0)
+5. Retorna mensagem de confirmação
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal: `emoteSpell.onSay()`
+
+```lua
+function emoteSpell.onSay(player, words, param)
+    if configManager.getBoolean(configKeys.EMOTE_SPELLS) == false then
+        player:sendTextMessage(MESSAGE_LOOK, "Emote spells have been disabled by the administrator.")
+        return true
+    end
+
+    if param == "" then
+        player:sendCancelMessage("Please specify the parameter: 'on' to activate or 'off' to deactivate.")
+        return true
+    end
+
+    if param == "on" then
+        player:setStorageValue(STORAGEVALUE_EMOTE, 1)
+        player:sendTextMessage(MESSAGE_LOOK, "You have activated emote spells.")
+    elseif param == "off" then
+        player:setStorageValue(STORAGEVALUE_EMOTE, 0)
+        player:sendTextMessage(MESSAGE_LOOK, "You have deactivated emote spells.")
+    end
+    return true
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavra-chave do comando
+- `param` (string): Parâmetro "on" ou "off"
+
+**Retorno:**
+- `true`: Comando processado com sucesso
+
+#### Lógica Detalhada
+
+1. **Verificação de Habilitação Global**:
+   - `configManager.getBoolean(configKeys.EMOTE_SPELLS)` obtém valor da configuração
+   - Se `false`: cancela comando e informa ao jogador que foi desabilitado pelo admin
+   - Se `true`: continua processo
+
+2. **Validação de Parâmetro**:
+   - Verifica se `param == ""` (vazio)
+   - Se vazio: envia mensagem de cancelamento pedindo "on" ou "off"
+   - Se preenchido: continua
+
+3. **Processamento de "on"**:
+   - `player:setStorageValue(STORAGEVALUE_EMOTE, 1)`: Define storage como ativado
+   - Envia mensagem de confirmação: "You have activated emote spells."
+
+4. **Processamento de "off"**:
+   - `player:setStorageValue(STORAGEVALUE_EMOTE, 0)`: Define storage como desativado
+   - Envia mensagem de confirmação: "You have deactivated emote spells."
+
+### Variáveis Globais Utilizadas
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `STORAGEVALUE_EMOTE` | number | Constante de Storage para armazenar estado de emotes do jogador |
+| `configKeys.EMOTE_SPELLS` | string | Chave de configuração para habilitar/desabilitar emotes globalmente |
+| `MESSAGE_LOOK` | number | Tipo de mensagem (comunicação visual/narração) |
+
+### Funções Globais Utilizadas
+
+| Função | Origem | Descrição |
+|--------|--------|-----------|
+| `configManager.getBoolean(key)` | Config Manager | Retorna valor booleano da configuração |
+| `player:setStorageValue(key, value)` | Object Player | Armazena valor persistente para jogador |
+| `player:sendTextMessage(type, text)` | Object Player | Envia mensagem de texto ao jogador |
+| `player:sendCancelMessage(text)` | Object Player | Envia mensagem de cancelamento (geralmente vermelha) |
+
+## 🤖 Informações da Documentação
+
+| Info | Detalhe |
+|------|---------|
+| **Versão Documentada** | Build Canary - Estrutura Completa |
+| **Tipo de Documento** | Documentação Técnica de TalkAction |
+| **Completude** | Análise Completa do Código-Fonte |
+| **Últimas Verificações** | Validação de Sintaxe Lua, Fluxo Lógico |
+
+---
+
+## 📋 Resumo de Implementação
+
+**Padrão de Registro:**
+
+```lua
+emoteSpell:separator(" ")
+emoteSpell:groupType("normal")
+emoteSpell:register()
+```
+
+**Uso Prático:**
+
+Quando um jogador digita `!emote on` ou `!emote off`:
+
+1. Sistema verifica se `EMOTE_SPELLS` está habilitado globalmente
+2. Se habilitado e parâmetro é válido, altera Storage Value
+3. Envia confirmação visual ao jogador
+
+**Exemplos de Execução:**
+
+```
+Jogador: !emote on
+Sistema: "You have activated emote spells."
+Storage: STORAGEVALUE_EMOTE = 1
+
+---
+
+Jogador: !emote off
+Sistema: "You have deactivated emote spells."
+Storage: STORAGEVALUE_EMOTE = 0
+
+---
+
+(Se admin desabilitou EMOTE_SPELLS globalmente)
+Jogador: !emote on
+Sistema: "Emote spells have been disabled by the administrator."
+```
+
+---
+
+## 🔗 Relacionados
+
+- **Arquivo de Padrão**: `data/npclib/npc_system/custom_modules.lua.mdx`
+- **Sistema**: TalkActions (Comandos de Conversa)
+- **Acesso**: PLAYER (normal)
+- **Tipo de Storage**: Player Storage Value
+- **Detalhe Arquitetura**: Ver `ARQUITETURA_PROJETO.mdx` para contexto completo

@@ -1,0 +1,167 @@
+---
+title: Amulet of Loss Purchase
+description: Comando PLAYER para comprar um Amulet of Loss
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | aol.lua |
+| **Tipo de Sistema** | Item Purchase (PLAYER) |
+| **Funcionalidade Principal** | Comprar Amulet of Loss |
+| **Comando** | !aol |
+| **Requisito** | Sem restrição (normal) |
+| **Separador** | Nenhum |
+| **Sistema** | Bank Money + Item (3057) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/aol.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Custo base 50000 + fee adicional (configManager.getNumber BUY_AOL_COMMAND_FEE, default 0). removeMoneyBank(total). Se sucesso: addItem(3057, 1), MAGIC_BLUE effect, feedback positivo. Se falha: POFF effect, cancela mensagem com custo total.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo aol.lua implementa comando de compra de Amulet of Loss. Dispõe de custo configurável, validação de dinheiro banco, magic effects feedback, item adição automática. Ferramenta essencial de item marketplace.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Variáveis Locais**
+
+```lua
+-- Sem variáveis locais persistentes
+```
+
+---
+
+### **TalkAction !aol**
+
+```lua
+local aol = TalkAction("!aol")
+
+function aol.onSay(player, words, param)
+	-- Calcular custo total
+	local totalCost = 50000 + (configManager.getNumber(configKeys.BUY_AOL_COMMAND_FEE) or 0)
+	
+	-- Tentar remover dinheiro do banco
+	if player:removeMoneyBank(totalCost) then
+		-- Sucesso: ef eito mágico + item + feedback
+		player:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+		player:addItem(3057, 1)
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("You have bought an amulet of loss for %i gold!", totalCost))
+	else
+		-- Falha: efeito negativo + erro
+		player:getPosition():sendMagicEffect(CONST_ME_POFF)
+		player:sendCancelMessage(string.format("You do not have enough money. You need %i gold to buy aol!", totalCost))
+	end
+	return true
+end
+
+aol:groupType("normal")
+aol:register()
+```
+
+**Comando:** `!aol`
+
+**Fluxo:**
+1. Calcula custo = 50000 + fee
+2. Tenta remover dinheiro banco
+3. Se OK: adiciona item 3057 (Amulet of Loss)
+4. Se falha: feedback de erro
+
+---
+
+## **Preço e Configuração**
+
+**Custo Base:** 50.000 gold coins
+
+**Fee Adicional:** Configurável via `configKeys.BUY_AOL_COMMAND_FEE`
+- Default: 0 (sem fee)
+- Customizável: N gold coins
+
+**Custo Total = 50000 + Fee**
+
+---
+
+**Exemplos de Uso:**
+
+```
+Player: !aol
+Fee config: 0
+
+Fluxo:
+1. totalCost = 50000 + 0 = 50000
+2. Bank balance >= 50000?
+3. SIM: removeMoneyBank(50000) = true
+4. addItem(3057, 1)
+5. MAGIC_BLUE effect
+6. Feedback: "You have bought an amulet of loss for 50000 gold!"
+
+Resultado:
+- 50000 removidos do banco
+- 1x Amulet of Loss adicionado ao inventário
+- Efeito azul confirmação
+
+---
+
+Player: !aol
+Fee config: 5000
+Bank balance: 52000
+
+Fluxo:
+1. totalCost = 50000 + 5000 = 55000
+2. 52000 < 55000 = true (falha)
+3. removeMoneyBank(55000) = false
+4. POFF effect (negativo)
+5. Feedback: "You do not have enough money. You need 55000 gold to buy aol!"
+
+Resultado:
+- Sem dinheiro removido
+- Sem item adicionado
+- Efeito negativo (POFF)
+- Mensagem de erro com custo total
+```
+
+---
+
+**Configuração Necessária**
+
+```lua
+-- config.lua
+BUY_AOL_COMMAND_FEE = 0  -- Fee adicional (0 = sem fee)
+```
+
+---
+
+**Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `configManager.getNumber(key, default)` | Obtém config numérico |
+| `player:removeMoneyBank(amount)` | Remove do banco |
+| `player:getPosition()` | Posição do player |
+| `position:sendMagicEffect(effect)` | Efeito visual |
+| `player:addItem(id, count)` | Adiciona item |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+| `player:sendCancelMessage(msg)` | Envia erro |
+| `string.format(fmt, ...)` | Formata string |
+
+**Constantes:**
+- `configKeys.BUY_AOL_COMMAND_FEE`
+- `MESSAGE_EVENT_ADVANCE`
+- `CONST_ME_MAGIC_BLUE`, `CONST_ME_POFF`
+
+**Retorno:** `true`
+
+---
+
+## 📌 Resumo
+
+O arquivo aol.lua é ferramenta simples de item purchase. Implementação com custo configurável, validação banco, magic effects feedback. Essencial para players comprar proteção anti-loot. Design minimalista focado em acessibilidade.

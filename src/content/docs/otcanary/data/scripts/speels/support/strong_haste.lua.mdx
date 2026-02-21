@@ -1,0 +1,242 @@
+---
+title: Strong Haste
+description: Spell de suporte para Druids, Sorcerers e Monks que aplica haste premium com sincronização proporcional de summons
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `strong_haste.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Druid / Elder Druid / Sorcerer / Master Sorcerer / Monk / Exalted Monk |
+| **Spell ID** | 39 |
+| **Mana Requerida** | 100 |
+| **Level Requerido** | 20 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração da Haste** | 22 segundos (22.000 ms) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utani gran hur` |
+| **Efeito Visual** | `CONST_ME_MAGIC_GREEN` |
+| **Auto-Target** | Sim (Próprio + summons) |
+| **Agressividade** | Não (buff ofensivo) |
+| **Grupos** | support |
+| **Condition Type** | CONDITION_HASTE |
+| **Haste Formula** | 1.7x velocidade, -40 offset |
+| **Vocações Totais** | 6 (druids, sorcerers, monks) |
+| **Familiar Sync** | Sim (sincronização proporcional) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/strong_haste.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell é versão premium forte de Haste com duração longa (22s vs padrão) e fórmula agressiva (1.7x vs 1.3x). Aplica ao caster e sincroniza summons familiares automaticamente. A sincronização calcula deltaSpeed = max(creature speed - summon speed, 0), depois aplica FamiliarSpeed = ((summon speed + deltaSpeed) * 0.7) - 56 para manter proporcionalidade. Mana de 100 é razoável para level 20, tornando spell caro mas acessível premium-only. A duração de 22 segundos permite exploração sustentada antes de recast.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `strong_haste.lua` implementa haste premium de alto-impacto para Druids, Sorcerers e Monks (level 20+) que aplica velocidade aumentada ao caster e sincroniza velocidade proporcional em summons familiares. É versão premium mais forte de Haste com fórmula (1.7, 40) ofensiva e duração longa (22s). O spell cria condition de haste, executa combat com efeito visual, itera sobre summons do caster, valida se é familiar, calcula sincronização proporcional de velocidade mantendo delta entre caster e summon, aplica condition proporcional ao familiar, e retorna. A implementação demonstra padrão avançado de sincronização multi-target com cálculo proporcional.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Variável de Duração
+local spellDuration = 10000
+
+-- 2. Instância Combat com Haste
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_GREEN)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+
+-- 2.1 Condition Haste
+local condition = Condition(CONDITION_HASTE)
+condition:setParameter(CONDITION_PARAM_TICKS, spellDuration)
+condition:setFormula(1.7, 40, 1.7, 40)
+combat:addCondition(condition)
+
+-- 3. Instância do Spell
+local spell = Spell("instant")
+
+-- 4. Função de Cast Principal
+function spell.onCastSpell(creature, var)
+    -- 4.1 Obtenção de Summons
+    -- 4.2 Iteração sobre Summons
+    -- 4.3 Validação de Familiar
+    -- 4.4 Cálculo de Sincronização Proporcional
+    -- 4.5 Aplicação de Haste ao Familiar
+    -- 4.6 Execução de Combat (caster)
+    -- 4.7 Retorno de Status
+end
+
+-- 5. Configuração de Propriedades do Spell
+spell:name("Strong Haste")
+spell:words("utani gran hur")
+spell:group("support")
+spell:vocation(
+    "druid;true", "elder druid;true",
+    "sorcerer;true", "master sorcerer;true",
+    "monk;true", "exalted monk;true"
+)
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_STRONG_HASTE)
+spell:id(39)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(20)
+spell:mana(100)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `spellDuration` | `number` | Local | Duração em ms (22000) |
+| `combat` | `Combat` | Local | Combat com condition de haste |
+| `condition` | `Condition` | Local | Condition de CONDITION_HASTE aplicada ao combat |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Druid/Sorcerer/Monk que executa o spell |
+| `var` | `Variant` | Parâmetro | Dados variáveis (self target) |
+| `summons` | `table` | Local (onCastSpell) | Tabela de summons do caster |
+| `summon` | `Creature` | Local (loop) | Summon individual sendo processado |
+| `summon_t` | `MonsterType` | Local (loop) | Tipo de creature do summon |
+| `deltaSpeed` | `number` | Local (loop) | Diferença de velocidade entre caster e summon |
+| `FamiliarSpeed` | `number` | Local (loop) | Velocidade proporcional calculada para familiar |
+| `FamiliarHaste` | `Condition` | Local (loop) | Condition de haste do familiar |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Sincronização de Summons**
+```lua
+local summons = creature:getSummons()
+if summons and type(summons) == "table" and #summons > 0 then
+    for i = 1, #summons do
+```
+Validação tripla: existência, tipo, quantidade antes de iterar.
+
+### 2. **Padrão de Cálculo Proporcional de Velocidade**
+```lua
+local deltaSpeed = math.max(creature:getBaseSpeed() - summon:getBaseSpeed(), 0)
+local FamiliarSpeed = ((summon:getBaseSpeed() + deltaSpeed) * 0.7) - 56
+```
+Mantém proporcionalidade: delta speed multiplicado por 0.7 (70% da diferença) com offset -56.
+
+### 3. **Padrão de Validação de Familiar**
+```lua
+local summon_t = summon:getType()
+if summon_t and summon_t:familiar() then
+```
+Apenas familiares recebem sincronização, não summons genéricos.
+
+### 4. **Padrão de Condition Manual em Loop**
+```lua
+for i = 1, #summons do
+    ...
+    local FamiliarHaste = Condition(CONDITION_HASTE)
+    FamiliarHaste:setParameter(CONDITION_PARAM_TICKS, 22000)
+    FamiliarHaste:setParameter(CONDITION_PARAM_SPEED, FamiliarSpeed)
+    summon:addCondition(FamiliarHaste)
+end
+```
+Cria condition individual para cada familiar com velocidade calculada.
+
+### 5. **Padrão de Fórmula Agressiva**
+```lua
+condition:setFormula(1.7, 40, 1.7, 40)
+```
+1.7x velocidade vs 1.3x em Haste padrão - versão premium mais forte.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, var)`
+
+**Descrição:** Função principal de execução do spell. Aplica haste ao caster e sincroniza velocidade em summons familiares.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Druid/Sorcerer/Monk que executa o spell.
+- `var` (Variant): Dados variáveis (self target).
+
+**Fluxo de Execução:**
+
+1. **Obtenção de Summons**:
+   - `summons = creature:getSummons()`
+
+2. **Validação de Summons**:
+   - Se existe AND é tabela AND tem elementos:
+     - Procede com loop
+   - Senão:
+     - Pula sincronização
+
+3. **Iteração sobre Summons**:
+   - Para cada summon na tabela (índice 1 até #summons)
+
+4. **Validação de Familiar**:
+   - `summon_t = summon:getType()`
+   - Se é familiar:
+     - Processa
+   - Senão:
+     - Pula
+
+5. **Cálculo de Delta Speed**:
+   - `deltaSpeed = math:max(creature:getBaseSpeed() - summon:getBaseSpeed(), 0)`
+   - Garante não negativo
+
+6. **Cálculo de Velocidade Proporcional**:
+   - `FamiliarSpeed = ((summon:getBaseSpeed() + deltaSpeed) * 0.7) - 56`
+   - Mantém delta multiplicado por 0.7 (proporcionalidade)
+   - Subtrai 56 (offset padrão)
+
+7. **Criação de Condition de Familiar**:
+   - `FamiliarHaste = Condition(CONDITION_HASTE)`
+   - Duration: 22000 ms (22 segundos, sincronizado com caster)
+   - Speed: FamiliarSpeed calculado
+
+8. **Aplicação ao Familiar**:
+   - `summon:addCondition(FamiliarHaste)`
+
+9. **Execução de Combat (Caster)**:
+   - `return combat:execute(creature, var)`
+   - Aplica condition de haste ao caster
+   - Efeito visual CONST_ME_MAGIC_GREEN
+
+10. **Retorno**:
+    - Retorna resultado do combat:execute
+
+**Valores de Retorno:**
+- `true`: Haste aplicada, mana de 100 consumida
+- Familiar sync aplicada (se existir familiar)
+
+**Lógica Detalhada:**
+
+O spell implementa sincronização multi-alvo inteligente mantendo proporcionalidade de velocidade. A fórmula (1.7, 40) é 31% mais agressiva que Haste padrão (1.3), tornando premium justificado.
+
+A duração de 22 segundos permite exploração sustentada. O cooldown de 2 segundos permite aplicação frequente em grupo.
+
+O cálculo proporcional garante que se caster é X% mais rápido que familiar, familiar ganha 0.7X% da diferença (70% inherit). Isso mantém proporcionalidade sem deixar familiar tão rápido quanto caster.
+
+O offset -56 é padrão em cálculos de velocidade no engine, representando velocidade base mínima.
+
+A validação de familiar (summon_t:familiar()) previne aplicar a summons genéricos que não tem relação com jogador (pets de dungeon, etc).
+
+A mana de 100 é razoável para level 20 premium - não trivial.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_STRONG_HASTE`: Som característico
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+
+## 📌 Resumo
+
+**Strong Haste** é um spell de suporte premium para Druids, Sorcerers e Monks (level 20+) que aplica haste agressiva (1.7x, -40) ao caster por 22 segundos e sincroniza proporcional de velocidade em summons familiares mantendo delta de velocidade. O spell requer 100 de mana e cooldown de 2 segundos. A implementação itera sobre summons do caster, valida se é familiar via MonsterType:familiar(), calcula velocidade proporcional via formula ((summon speed + deltaSpeed) * 0.7) - 56, aplica condition individual ao familiar com duração sincronizada. É ferramenta ofensiva essencial para Druids/Sorcerers/Monks com familiares, permitindo boost simultâneo de caster e summon com velocidade proporcional.
+
+A implementação segue padrão avançado de sincronização multi-target, diferenciando-se por: (1) validação tripla de summons, (2) filtragem por familiar, (3) cálculo proporcional de velocidade, (4) formula agressiva premium (1.7x), (5) duração longa (22s).

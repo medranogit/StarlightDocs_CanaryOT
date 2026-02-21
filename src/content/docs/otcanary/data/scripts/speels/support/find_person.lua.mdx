@@ -1,0 +1,273 @@
+---
+title: Find Person
+description: Spell de localização que encontra player específico por nome e fornece direção e distância relativa
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `find_person.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Todas (Druid/Elder Druid, Knight/Elite Knight, Paladin/Royal Paladin, Sorcerer/Master Sorcerer, Monk/Exalted Monk) |
+| **Spell ID** | 20 |
+| **Mana Requerida** | 20 |
+| **Level Requerido** | 8 |
+| **Status Premium** | Não (acesso livre) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exiva` |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Parâmetro** | Nome do player (string) |
+| **Requer Player Name Param** | Sim (hasPlayerNameParam true) |
+| **Auto-Target** | Não (requer nome específico) |
+| **Agressividade** | Não (suporte informativo) |
+| **Tipo de Mensagem** | MESSAGE_LOOK |
+| **Validação de Access** | Verifica se alvo tem access higher |
+| **Acesso Livre ao Spell** | Sim, mas pode ser bloqueado por access level do alvo |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/find_person.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell é variante simples de Find Fiend mas direcionado a players. Recebe nome do player como parâmetro via `variant:getString()` e tenta obter Player object. Validação de access garante que players com status admin (GameMasters, comunity managers) não podem ser localizados por players normais - `if target:getGroup():getAccess() and not creature:getGroup():getAccess() then return error`. A lógica de direção é idêntica a Find Fiend (trigonometria com thresholds). Mana de 20 e level 8 tornam acessível extremamente cedo na progressão.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `find_person.lua` implementa localizador de players para todos (level 8+) que encontra player específico por nome e fornece inteligência de localização (direção, distância, nível). É variante player-specific de Find Fiend com lógica similar de trigonometria para direção. O spell recebe nome como parâmetro, obtém Player object via lookup, valida se player tem access maior (previne localização de admins), calcula diferença de posição, determina direção via cálculo de ângulo, classifica distância e nível, e fornece relatório de localização. A implementação demonstra padrão parametrizado com validação de access para segurança administrativa.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Constantes de Nível Vertical
+local LEVEL_LOWER = 1
+local LEVEL_SAME = 2
+local LEVEL_HIGHER = 3
+
+-- 2. Constantes de Distância
+local DISTANCE_BESIDE = 1
+local DISTANCE_CLOSE = 2
+local DISTANCE_FAR = 3
+local DISTANCE_VERYFAR = 4
+
+-- 3. Mapa de Direções
+local directions = {
+    [DIRECTION_NORTH] = "north",
+    [DIRECTION_SOUTH] = "south",
+    ... (8 direções total)
+}
+
+-- 4. Mapa de Mensagens
+local messages = {
+    [DISTANCE_BESIDE] = {...},
+    [DISTANCE_CLOSE] = {...},
+    [DISTANCE_FAR] = "is far to the",
+    [DISTANCE_VERYFAR] = "is very far to the",
+}
+
+-- 5. Instância do Spell
+local spell = Spell("instant")
+
+-- 6. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 6.1 Lookup de Player por Nome
+    -- 6.2 Validação de Existência
+    -- 6.3 Validação de Access (previne localizar admins)
+    -- 6.4 Cálculo de Posição Relativa
+    -- 6.5 Cálculo de Direção via Trigonometria
+    -- 6.6 Classificação de Distância
+    -- 6.7 Classificação de Nível Vertical
+    -- 6.8 Construção de Mensagem
+    -- 6.9 Send Mensagem ao Player
+    -- 6.10 Efeito Visual
+    -- 6.11 Retorno de Status
+end
+
+-- 7. Configuração de Propriedades do Spell
+spell:name("Find Person")
+spell:words("exiva")
+spell:group("support")
+spell:vocation(...todas vocações...)
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_FIND_PERSON)
+spell:id(20)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(8)
+spell:mana(20)
+spell:hasParams(true)
+spell:hasPlayerNameParam(true)
+spell:isAggressive(false)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `LEVEL_LOWER`, `LEVEL_SAME`, `LEVEL_HIGHER` | `number` | Constante | Indicadores de nível vertical relativo |
+| `DISTANCE_BESIDE`, `DISTANCE_CLOSE`, `DISTANCE_FAR`, `DISTANCE_VERYFAR` | `number` | Constante | Indicadores de distância relativa |
+| `directions` | `table` | Constante | Mapa de DIRECTION_* para strings de direção |
+| `messages` | `table` | Constante | Mapa aninhado de mensagens por (distância, nível) |
+| `creature` | `Creature/Player` | Parâmetro | Player que executa o spell |
+| `variant` | `Variant` | Parâmetro | Contém nome do player alvo como string |
+| `target` | `Player` | Local | Object do player localizado |
+| `targetPosition` | `Position` | Local | Posição do player localizado |
+| `creaturePosition` | `Position` | Local | Posição do caster |
+| `positionDifference` | `table` | Local | Tabela com x, y, z differences |
+| `maxPositionDifference` | `number` | Local | max(|x|, |y|) - distância máxima |
+| `direction` | `number` | Local | DIRECTION_* calculado |
+| `positionTangent` | `number` | Local | Razão y/x para cálculo de ângulo |
+| `level` | `number` | Local | LEVEL_LOWER/SAME/HIGHER |
+| `distance` | `number` | Local | DISTANCE_BESIDE/CLOSE/FAR/VERYFAR |
+| `message` | `string` | Local | Mensagem formatada |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Lookup de Player por Nome**
+```lua
+local target = Player(variant:getString())
+if not target or target:getGroup():getAccess() and not creature:getGroup():getAccess() then
+    creature:sendCancelMessage(RETURNVALUE_PLAYERWITHTHISNAMEISNOTONLINE)
+    return false
+end
+```
+Obtém Player via string, valida existência E validação de access.
+
+### 2. **Padrão de Validação de Access (Segurança Administrativa)**
+```lua
+if target:getGroup():getAccess() and not creature:getGroup():getAccess() then
+    -- target tem access E caster NÃO tem
+    -- Bloqueia localização
+end
+```
+Previne que players normais localizem admins/moderators.
+
+### 3. **Padrão de Cálculo de Direção Idêntico a Find Fiend**
+```lua
+local maxPositionDifference, direction = math.max(math.abs(positionDifference.x), math.abs(positionDifference.y))
+if maxPositionDifference >= 5 then
+    local positionTangent = positionDifference.x ~= 0 and positionDifference.y / positionDifference.x or 10
+```
+Algoritmo trigonométrico reusado de Find Fiend, com thresholds para 8 direções.
+
+### 4. **Padrão de Classificação de Distância Idêntico**
+```lua
+local distance = maxPositionDifference < 5 and DISTANCE_BESIDE or maxPositionDifference < 101 and DISTANCE_CLOSE or maxPositionDifference < 275 and DISTANCE_FAR or DISTANCE_VERYFAR
+```
+Mesmos thresholds: 5 (beside), 101 (close), 275 (far).
+
+### 5. **Padrão de Construção de Mensagem Simplificada**
+```lua
+creature:sendTextMessage(MESSAGE_LOOK, target:getName() .. " " .. message .. ".")
+```
+Diferente de Find Fiend, aqui é simpler: apenas "PlayerName [direction message].".
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Localiza player específico por nome e fornece direção, distância e nível relativo.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Player que executa o spell.
+- `variant` (Variant): Contém nome do player alvo como string via `getString()`.
+
+**Fluxo de Execução:**
+
+1. **Lookup de Player**:
+   - Chama `target = Player(variant:getString())`
+   - Convertendo string para Player object
+   - Se não encontrado: `target` é null
+
+2. **Validações de Existência e Access**:
+   - Verifica `if not target` (player não existe)
+   - Verifica acesso: `target:getGroup():getAccess() and not creature:getGroup():getAccess()`
+     - Se target tem access (admin/support) E caster NÃO tem access:
+       - Bloqueia localização (segurança)
+   - Se alguma condição falha:
+     - Envia `RETURNVALUE_PLAYERWITHTHISNAMEISNOTONLINE` (engine traduz para mensagem)
+     - Aplica efeito visual erro `CONST_ME_POFF`
+     - Retorna `false`
+
+3. **Cálculo de Diferença de Posição**:
+   - `targetPosition = target:getPosition()`
+   - `creaturePosition = creature:getPosition()`
+   - `positionDifference = {x: diff_x, y: diff_y, z: diff_z}`
+
+4. **Cálculo de Distância Máxima**:
+   - `maxPositionDifference = max(|diff_x|, |diff_y|)`
+
+5. **Cálculo de Direção (se >= 5)**:
+   - Idêntico a Find Fiend:
+     - Calcula tangente: `positionTangent = diff_y / diff_x`
+     - Usa 3 thresholds:
+       - `|tan| < 0.4142`: EAST/WEST
+       - `|tan| < 2.4142`: NE/SE/NW/SW
+       - Senão: NORTH/SOUTH
+
+6. **Classificação de Nível Vertical**:
+   - Se `z > 0`: LEVEL_HIGHER
+   - Se `z < 0`: LEVEL_LOWER
+   - Senão: LEVEL_SAME
+
+7. **Classificação de Distância**:
+   - `< 5`: DISTANCE_BESIDE
+   - `< 101`: DISTANCE_CLOSE
+   - `< 275`: DISTANCE_FAR
+   - Senão: DISTANCE_VERYFAR
+
+8. **Obtenção de Mensagem**:
+   - Obtém `messages[distance][level]` se existe
+   - Se não: usa `messages[distance]` (genérica)
+   - Se não beside: concatena `directions[direction]`
+
+9. **Construção de Mensagem Final**:
+   - `message = target:getName() .. " " .. message .. "."`
+   - Exemplo: `"PlayerName is to the north."`
+
+10. **Envio de Mensagem**:
+    - `creature:sendTextMessage(MESSAGE_LOOK, message)`
+    - Efeito visual: `creaturePosition:sendMagicEffect(CONST_ME_MAGIC_BLUE)`
+
+11. **Retorno**:
+    - Retorna `true` (localização bem-sucedida)
+
+**Valores de Retorno:**
+- `true`: Player encontrado, informação enviada, mana de 20 consumida
+- `false`: Player não existe ou access check failed
+
+**Lógica Detalhada:**
+
+O spell implementa localizador player-específico simples mas poderoso. A validação de access é crítica - previne que players normais localizem staff members que optaram por invisibilidade administrativa. A lógica é:
+- Admins (access > 0) não podem ser localizados por players normais
+- Mas admins PODEM localizar players (access override)
+
+A trigonometria é idêntica a Find Fiend, reusando mesmos cálculos e thresholds. O algoritmo oferece boa resolução angular (8 direções) sem custoso arcsine/arccosine.
+
+A mana minimal (20) e level baixíssimo (8) tornam acessível logo no início do jogo. Original Tibia permite Find Person desde level 8, indicando que é ferramenta básica de mobilidade social.
+
+O hasPlayerNameParam true indica que cliente fornecerá autocomplete/interface para seleção de player. O spell não requer invocação de nome exato - client pode fornecer verificação de typo.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_FIND_PERSON`: Som característico
+
+**Mensagens ao Jogador:**
+- Sucesso: `"PlayerName [direction and distance description]."`
+  - Exemplos:
+    - "Player is standing next to you."
+    - "Player is to the north."
+    - "Player is far to the south-west."
+- Falha (não existe ou access denied): RETURNVALUE_PLAYERWITHTHISNAMEISNOTONLINE (traduzido pelo engine)
+
+## 📌 Resumo
+
+**Find Person** é um spell informativo gratuito para todos (level 8+) que localiza player específico por nome e fornece relatório de localização incluindo direção (8 pontos cardeais), distância relativa (beside/close/far/veryfar), e nível vertical (above/same/below). O spell requer apenas 20 de mana e cooldown de 2 segundos. A implementação inclui validação de access para segurança - admins/staff não podem ser localizados por players normais, prevenindo stalking. O parâmetro requer nome de player via hasPlayerNameParam, permitindo autocomplete do client. É ferramenta social fundamental, permitindo players encontrar amigos, guildmates, ou rivais em mundos grandes. O cálculo trigonométrico oferece 8 direções via thresholds de tangente.
+
+A implementação segue padrão informativo parametrizado com validação de access, diferenciando-se por: (1) lookup de player por nome, (2) validação de access para segurança, (3) trigonometria para 8-direções, (4) classificação dinâmica de distância, (5) mensagem simplificada comparada a Find Fiend, (6) acesso extremamente cedo (level 8).

@@ -1,0 +1,880 @@
+---
+title: "Script Lib - register_spells.lua"
+description: "Biblioteca de áreas pré-definidas para spells e funções utilitárias de casting com dano escalado e party support"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `register_spells.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Utility Library / Asset Registry |
+| **Padrão** | Pre-defined Constants + Global Function Extensions |
+| **Linhas de Código** | 720 |
+| **Áreas Pré-definidas** | 50+ (waves, beams, circles, squares, walls, custom) |
+| **Funções Globais** | 3 (addDamageCondition, addPartyCondition, conjureItem) |
+| **Tabelas Globais** | 1 (RANGE - damage escalation) |
+| **Complexidade** | Médium |
+| **Status** | Complete spell area + casting utility library |
+
+**Descrição:**
+Biblioteca centralizada com 50+ áreas pré-definidas para spells em diferentes padrões geométricos (waves, beams, circles, squares, walls) com suporte a directional variants (diagonal, north/south, etc). Inclui tabela global RANGE para mapear damage levels a rounds, e 3 funções utilitárias: `Creature:addDamageCondition()` para damage over time com escalação exponencial, `Player:addPartyCondition()` para spells de party com mana reduction, e `Player:conjureItem()` para conjuração de items/runes com validação de reagentes.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/register_spells.lua
+```
+
+**Tipo de Carregamento:** Executado durante inicialização, registra áreas globais e estende classes Creature/Player
+
+**Contexto de Uso:** Spell system - áreas são usadas em spells para definir pattern de efeito, funções em combat/casting
+
+**Pré-requisitos:**
+- Classe global `Creature`, `Player` (native C++)
+- Tabelas de `Area` support no engine
+- Condition system para damage/buffs
+- Party system para party spells
+- Item system para conjuração
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de Spell Areas & Casting Utilities (Reusable Patterns)**
+
+Spells frequentemente usam mesmos patterns de área (waves, circles, etc):
+
+**Sem pré-definidas:**
+```lua
+-- Spell 1
+local area = {
+	{0, 1, 1, 1, 0},
+	{1, 1, 1, 1, 1},
+	{1, 1, 3, 1, 1},
+	{1, 1, 1, 1, 1},
+	{0, 1, 1, 1, 0}
+}
+
+-- Spell 2 (mesmo pattern, copy-paste)
+local area = {
+	{0, 1, 1, 1, 0},
+	{1, 1, 1, 1, 1},
+	{1, 1, 3, 1, 1},
+	{1, 1, 1, 1, 1},
+	{0, 1, 1, 1, 0}
+}
+```
+
+**Com pré-definidas:**
+```lua
+-- Spell 1
+local combat = Combat()
+combat:setArea(AREA_CIRCLE2X2)
+
+-- Spell 2
+local combat = Combat()
+combat:setArea(AREA_CIRCLE2X2)
+-- Reutiliza, sem copy-paste
+```
+
+**Damage Conditions:**
+```lua
+-- Sem escalonamento:
+condition:addDamage(1, 4000, -10)  -- 10 dano por 4s, uma vez
+-- Repetitivo, sem estratégia
+
+-- Com escalação:
+Creature:addDamageCondition(target, COMBAT_FIRE, 1, 15, 4000)
+-- Auto-escalona: 15→14→13...→1 com rounds variáveis
+```
+
+**Party Spells:**
+```lua
+-- Sem party support:
+-- Manual validate party, cada membro, mana reduction etc
+-- Complexo
+
+-- Com Player:addPartyCondition():
+Player:addPartyCondition(combat, variant, condition, 100)
+-- Auto-valida party, aplica range check, reduz mana
+```
+
+**Benefício:** DRY (Don't Repeat Yourself), consistent patterns, utilities reutilizáveis
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `register_spells.lua` fornece **spell infrastructure** centralizado:
+
+- **Define 50+ áreas pré-feitas** em 6 categorias (waves, beams, circles, squares, walls, custom)
+- **Registra tabela RANGE** para damage escalation logic
+- **Estende Creature** com `addDamageCondition()` para DoT com escalação
+- **Estende Player** com `addPartyCondition()` para group spells
+- **Estende Player** com `conjureItem()` para rune/potion conjuration
+- **Suporta directional variants** (diagonal, multi-directional)
+
+### Arquitetura
+
+Script usa padrão de **pre-made constant registry + global function extensions**:
+
+```lua
+-- Pre-made areas
+AREA_CIRCLE2X2 = { {...}, {...} }
+AREA_CIRCLE3X3 = { {...}, {...} }
+-- ... 50+ áreas
+
+-- Global damage escalation table
+RANGE = { [1] = {19,20}, [2] = {10,10}, ... }
+
+-- Function extensions
+function Creature:addDamageCondition(target, ...) ... end
+function Player:addPartyCondition(combat, ...) ... end
+function Player:conjureItem(reagentId, ...) ... end
+```
+
+### Fluxo Lógico Resumido
+
+| Contexto | Uso | Exemplo |
+|----------|-----|---------|
+| **Spell Definition** | Combat executado com área | `combat:setArea(AREA_CIRCLE2X2)` |
+| **Damage Condition** | DoT com escalation automática | `creature:addDamageCondition(target, COMBAT_FIRE, 1, 20, 4000)` |
+| **Party Spell** | Spell aplica a membros do party | `player:addPartyCondition(combat, variant, condition, 100)` |
+| **Rune Conjuration** | Player cria rune com reagente | `player:conjureItem(3458, 3449, 1, CONST_ME_MAGIC_RED)` |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Categoria 1: Waves (8+ áreas)
+
+Padrão linear em direção progressiva:
+
+```lua
+AREA_WAVE4 = {
+	{ 1, 1, 1, 1, 1 },
+	{ 0, 1, 1, 1, 0 },
+	{ 0, 1, 1, 1, 0 },
+	{ 0, 0, 3, 0, 0 },
+}
+```
+
+**Geometria:** Frente com target (3) na base, alarga/estreita conforme sobe
+
+**Variantes:**
+- `AREA_WAVE3` até `AREA_WAVE13` - Diferentes larguras
+- `AREADIAGONAL_WAVE*` - Diagonal northeast/southwest
+- `AREA_SHORTWAVE3` - Curta
+
+**Uso Típico:** Spells lineares (beams, explosões direcionadas)
+
+---
+
+### Categoria 2: Beams (8+ áreas)
+
+Padrão reto em linha reta:
+
+```lua
+AREA_BEAM5 = {
+	{ 1 },
+	{ 1 },
+	{ 1 },
+	{ 1 },
+	{ 3 },
+}
+```
+
+**Geometria:** Coluna única com target na base
+
+**Variantes:**
+- `AREA_BEAM1` até `AREA_BEAM10` - Diferentes comprimentos
+- `AREADIAGONAL_BEAM5`, `AREADIAGONAL_BEAM7` - Diagonais
+
+**Uso Típico:** Spells straight-line (rune throws, focused attacks)
+
+---
+
+### Categoria 3: Circles (10+ áreas)
+
+Padrão circular com target no centro:
+
+```lua
+AREA_CIRCLE2X2 = {
+	{ 0, 1, 1, 1, 0 },
+	{ 1, 1, 1, 1, 1 },
+	{ 1, 1, 3, 1, 1 },
+	{ 1, 1, 1, 1, 1 },
+	{ 0, 1, 1, 1, 0 },
+}
+
+AREA_CIRCLE3X3 = {
+	{ 0, 0, 1, 1, 1, 0, 0 },
+	{ 0, 1, 1, 1, 1, 1, 0 },
+	{ 1, 1, 1, 1, 1, 1, 1 },
+	{ 1, 1, 1, 3, 1, 1, 1 },
+	{ 1, 1, 1, 1, 1, 1, 1 },
+	{ 0, 1, 1, 1, 1, 1, 0 },
+	{ 0, 0, 1, 1, 1, 0, 0 },
+}
+```
+
+**Variantes:**
+- `AREA_CIRCLE1X1` - Simples cross (+ shape)
+- `AREA_CIRCLE2X2` até `AREA_CIRCLE6X6` - Raios incrementais
+- `AREA_CIRCLE3X32`, `AREA_CIRCLE3X33` - Variações (quadrado completo, parcial)
+- `AREA_CIRCLE3X3X3`, `AREA_CIRCLE3X4` - Extra-large
+
+**Uso Típico:** AOE spells (explosões, buffs em área)
+
+---
+
+### Categoria 4: Squares (5+ áreas)
+
+Padrão quadrado com corners:
+
+```lua
+AREA_SQUARE1X1 = {
+	{ 1, 1, 1 },
+	{ 1, 3, 1 },
+	{ 1, 1, 1 },
+}
+
+AREA_SQUAREWAVE5 = {
+	{ 1, 1, 1 },
+	{ 1, 1, 1 },
+	{ 1, 1, 1 },
+	{ 0, 1, 0 },
+	{ 0, 3, 0 },
+}
+```
+
+**Uso Típico:** Single-target ou small area effects
+
+---
+
+### Categoria 5: Specialized Areas
+
+Custom areas para condicionalidades especiais:
+
+#### AREA_BALANCED_BRAWL (Monk)
+```lua
+AREA_BALANCED_BRAWL = {
+	-- 8 linhas, 13 colunas
+	-- Center caster (2) rodeado de large area
+}
+```
+
+**Propósito:** Skill Monk "Balanced Brawl" com area grande
+
+#### AREA_FLURRY_OF_BLOWS (Monk)
+```lua
+AREA_FLURRY_OF_BLOWS = {
+	{ 0, 0, 1, 0, 0 },
+	{ 0, 1, 1, 1, 0 },
+	{ 0, 1, 3, 1, 0 },
+	{ 0, 1, 0, 1, 0 },
+	{ 0, 0, 0, 0, 0 },
+}
+```
+
+**Propósito:** Monk melee multi-hit area
+
+#### AREA_SPIRITUAL_OUTBURST_* (Directional)
+```lua
+AREA_SPIRITUAL_OUTBURST_NORTH = { ... }
+AREA_SPIRITUAL_OUTBURST_EAST = { ... }
+AREA_SPIRITUAL_OUTBURST_WEST = { ... }
+AREA_SPIRITUAL_OUTBURST_SOUTH = { ... }
+```
+
+**Propósito:** 4-directional spell (aplica em direção específica)
+
+#### AREA_MASS_SPIRIT_MEND (Healing)
+```lua
+AREA_MASS_SPIRIT_MEND = {
+	-- 11 linhas, 11 colunas
+	-- Large healing area circular
+}
+```
+
+#### AREA_FEAR_OPRESSOR, AREA_ROOT_OPRESSOR (Large)
+```lua
+AREA_FEAR_OPRESSOR = {
+	{ 0, 1, 1, 1, 0 },
+	{ 1, 1, 1, 1, 1 },
+	{ 1, 1, 3, 1, 1 },
+	{ 1, 1, 1, 1, 1 },
+	{ 0, 1, 1, 1, 0 },
+}
+
+AREA_ROOT_OPRESSOR = {
+	-- 15 linhas, 15 colunas (giant area com hole no centro)
+}
+```
+
+---
+
+### Tabela Global: RANGE (Damage Escalation)
+
+```lua
+RANGE = {
+	[1] = { 19, 20 },   -- Damage 1: 19-20 rounds
+	[2] = { 10, 10 },   -- Damage 2: exactly 10 rounds
+	[3] = { 6, 7 },     -- Damage 3: 6-7 rounds
+	...
+	[19] = { 1, 2 },    -- Damage 19: 1-2 rounds
+}
+```
+
+**Propósito:** Mapear damage levels a "rounds" (quantidade de ticks que dano persiste).
+
+**Lógica:**
+- Damage alto (1-2) dura muito (19-20 rounds)
+- Damage médio (10-12) dura médio (1-2 rounds)
+- Damage baixo (19+) dura pouco (1 round)
+
+**Uso:** Em `Creature:addDamageCondition()` com `listType == 1`
+
+---
+
+### Função Global: Creature:addDamageCondition()
+
+```lua
+function Creature:addDamageCondition(target, conditionType, listType, damage, time, rounds)
+	if target:isImmune(conditionType) then
+		return false
+	end
+
+	local condition = Condition(conditionType)
+	condition:setParameter(CONDITION_PARAM_OWNER, self:getId())
+	condition:setParameter(CONDITION_PARAM_DELAYED, true)
+
+	if listType == 0 then
+		-- Exponential escalation
+	elseif listType == 1 then
+		-- RANGE-based escalation
+	elseif listType == 2 then
+		-- Fixed rounds with random timing
+	end
+
+	target:addCondition(condition)
+	return true
+end
+```
+
+**Propósito:** Adicionar damage-over-time com escalação automática de damage.
+
+**Fluxo:**
+
+1. **Validar Immunidade**
+   ```lua
+   if target:isImmune(conditionType) then
+       return false
+   end
+   ```
+   - Se alvo é imune, falha imediatamente
+
+2. **Criar Condition**
+   ```lua
+   local condition = Condition(conditionType)
+   condition:setParameter(CONDITION_PARAM_OWNER, self:getId())
+   condition:setParameter(CONDITION_PARAM_DELAYED, true)
+   ```
+   - Estabelece owner (para display/tracking)
+   - DELAYED = true (ticks no background, não imediato)
+
+3. **Escolher Estratégia via listType**
+
+#### listType == 0: Exponential Escalation
+
+```lua
+if listType == 0 then
+	local exponent, value = -10, 0
+	while value < damage do
+		value = math.floor(10 * math.pow(1.2, exponent) + 0.5)
+		condition:addDamage(1, time or 4000, -value)
+
+		if value >= damage then
+			local permille = math.random(10, 1200) / 1000
+			condition:addDamage(1, time or 4000, -math.max(1, math.floor(value * permille + 0.5)))
+		else
+			exponent = exponent + 1
+		end
+	end
+end
+```
+
+**Algoritmo:**
+- Começa com exponent = -10 (muito pequeno)
+- Formula: `value = 10 * 1.2^exponent` → escalação exponencial
+- Incrementa exponent até `value >= damage`
+- Última hit: valor aleatório entre 10%-120% de value
+
+**Exemplo:** damage = 20
+- Round 1: 1 dano
+- Round 2: 1 (1.2^-9)
+- ...
+- Round N: ~20 dano (1.2^exponent chega a 20)
+- Round N+1: 2-20 dano (random 10%-120%)
+
+**Uso Típico:** Poison (escalação suave)
+
+#### listType == 1: RANGE-Based Escalation
+
+```lua
+elseif listType == 1 then
+	rounds = rounds or RANGE
+	if rounds[damage] then
+		condition:addDamage(math.random(1, rounds[damage][2]), time or 4000, -damage)
+		damage = damage - 1
+	end
+
+	while damage > 0 do
+		condition:addDamage(rounds[damage] and math.random(rounds[damage][1], rounds[damage][2]) or 1, 
+			time or 4000, -damage)
+		damage = damage - (damage > 21 and math.floor(damage / 20) + math.random(0, 1) or 1)
+	end
+end
+```
+
+**Algoritmo:**
+- Começa com `damage` máximo (ex: 20)
+- Lookup em `RANGE[damage]` para descobrir quantos rounds ticks
+- Adiciona dano escalado: damage → damage-1 → damage-2 → ... → 1
+- Próximo damage = damage - (damage > 21 ? floor(damage/20) + random : 1)
+
+**Exemplo:** damage = 20, RANGE\[20\] = \{1,2\}
+- Rounds 1-2: 20 dano por round
+- Rounds 3-4: 19 dano
+- Rounds 5-?: 18 dano
+- ... até 1 dano
+
+**Uso Típico:** Fire damage (escalação por RANGE table)
+
+#### listType == 2: Fixed Rounds with Random Timing
+
+```lua
+elseif listType == 2 then
+	for _ = 1, rounds do
+		condition:addDamage(1, math.random(time[1], time[2]) * 1000, -damage)
+	end
+end
+```
+
+**Algoritmo:**
+- Executa `rounds` vezes (ex: 10 ticks)
+- Timing de cada tick é aleatório entre `time[1]` e `time[2]` (em ms)
+- Dano é constante (sempre `-damage`)
+
+**Usar Típico:** Debuff com duração fixa (slow, etc)
+
+---
+
+### Função Global: Player:addPartyCondition()
+
+```lua
+function Player:addPartyCondition(combat, variant, condition, baseMana)
+	local party = self:getParty()
+	if not party then
+		self:sendCancelMessage(RETURNVALUE_NOPARTYMEMBERSINRANGE)
+		self:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local members = party:getMembers()
+	members[#members + 1] = party:getLeader()
+
+	local position = self:getPosition()
+	local affectedMembers = {}
+	for _, member in ipairs(members) do
+		if member:getPosition():getDistance(position) <= 36 then
+			affectedMembers[#affectedMembers + 1] = member
+		end
+	end
+
+	if #affectedMembers <= 1 then
+		self:sendCancelMessage(RETURNVALUE_NOPARTYMEMBERSINRANGE)
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local mana = math.ceil(math.pow(0.9, #affectedMembers - 1) * baseMana * #affectedMembers)
+	if self:getMana() < mana then
+		self:sendCancelMessage(RETURNVALUE_NOTENOUGHMANA)
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	if not combat:execute(self, variant) then
+		self:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	self:addMana(baseMana - mana, false)
+	self:addManaSpent(mana - baseMana)
+
+	for _, member in ipairs(affectedMembers) do
+		member:addCondition(condition)
+	end
+	return true
+end
+```
+
+**Propósito:** Aplicar spell de buff/debuff a todos membros do party com mana reduction baseado em quantidade de membros.
+
+**Fluxo:**
+
+1. **Validar Party**
+   ```lua
+   local party = self:getParty()
+   if not party then
+       return false  -- Player sem party
+   end
+   ```
+
+2. **Coletar Members**
+   ```lua
+   local members = party:getMembers()
+   members[#members + 1] = party:getLeader()  -- Adiciona líder (é membro?)
+   ```
+
+3. **Filtrar por Range (36 tiles)**
+   ```lua
+   for _, member in ipairs(members) do
+       if member:getPosition():getDistance(position) <= 36 then
+           affectedMembers[#affectedMembers + 1] = member
+       end
+   end
+   ```
+   - Range = 36 tiles (aprox 36 SQM)
+
+4. **Validar Mínimo de Membros**
+   ```lua
+   if #affectedMembers <= 1 then
+       return false  -- Precisa mínimo 2 membres (caster + 1)
+   end
+   ```
+
+5. **Calcular Mana com Reduction**
+   ```lua
+   local mana = math.ceil(math.pow(0.9, #affectedMembers - 1) * baseMana * #affectedMembers)
+   ```
+
+   **Fórmula:**
+   - `baseMana * #affectedMembers` - Custo base (por member)
+   - `* 0.9^(#affectedMembers - 1)` - Reduction exponencial
+
+   **Exemplos:**
+   - 2 members: 100 * 2 * 0.9^1 = 180 mana
+   - 3 members: 100 * 3 * 0.9^2 = 243 mana
+   - 4 members: 100 * 4 * 0.9^3 = 291.6 ~ 292 mana
+
+   **Benefício:** Multiplicar players não exponencia o custo (0.9^x desconta cada membro adicional)
+
+6. **Validar Mana**
+   ```lua
+   if self:getMana() < mana then
+       return false
+   end
+   ```
+
+7. **Executar Combat**
+   ```lua
+   if not combat:execute(self, variant) then
+       return false
+   end
+   ```
+
+8. **Deduzir Mana**
+   ```lua
+   self:addMana(baseMana - mana, false)  -- Custo = mana - baseMana
+   self:addManaSpent(mana - baseMana)    -- Rastreamento
+   ```
+
+9. **Aplicar Condition a Todos**
+   ```lua
+   for _, member in ipairs(affectedMembers) do
+       member:addCondition(condition)
+   end
+   ```
+
+---
+
+### Função Global: Player:conjureItem()
+
+```lua
+function Player:conjureItem(reagentId, conjureId, conjureCount, effect)
+	if not conjureCount and conjureId ~= 0 then
+		local itemType = ItemType(conjureId)
+		if itemType:getId() == 0 then
+			return false
+		end
+
+		local charges = itemType:getCharges()
+		if charges ~= 0 then
+			conjureCount = charges
+		end
+	end
+
+	if reagentId ~= 0 and not self:removeItem(reagentId, 1, -1) then
+		self:sendCancelMessage(RETURNVALUE_YOUNEEDAMAGICITEMTOCASTSPELL)
+		self:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local item = self:addItem(conjureId, conjureCount)
+	if not item then
+		self:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		self:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	if item:hasAttribute(ITEM_ATTRIBUTE_DURATION) then
+		item:decay()
+	end
+
+	self:getPosition():sendMagicEffect(item:getType():isRune() and CONST_ME_MAGIC_RED or effect)
+	return true
+end
+```
+
+**Propósito:** Conjurar item (rune, potion) com validação de reagentes e quantidade.
+
+**Fluxo:**
+
+1. **Auto-detect Quantidade (opcional)**
+   ```lua
+   if not conjureCount and conjureId ~= 0 then
+       local itemType = ItemType(conjureId)
+       if itemType:getId() == 0 then
+           return false  -- Item inválido
+       end
+
+       local charges = itemType:getCharges()
+       if charges ~= 0 then
+           conjureCount = charges  -- Use charges se não specified
+       end
+   end
+   ```
+
+   **Lógica:**
+   - Se `conjureCount` não foi passado, tenta usar charges do itemType
+   - Runes geralmente têm charges (8, 16, etc)
+
+2. **Consumir Reagente (opcional)**
+   ```lua
+   if reagentId ~= 0 and not self:removeItem(reagentId, 1, -1) then
+       return false
+   end
+   ```
+
+   **Nota:** `-1` = procura em qualquer lugar (backpack, equipment, etc)
+
+3. **Criar Item**
+   ```lua
+   local item = self:addItem(conjureId, conjureCount)
+   if not item then
+       return false
+   end
+   ```
+
+4. **Handle Duração (Decay)**
+   ```lua
+   if item:hasAttribute(ITEM_ATTRIBUTE_DURATION) then
+       item:decay()  -- Inicia decaying (temporizador de expiry)
+   end
+   ```
+
+5. **Magic Effect**
+   ```lua
+   self:getPosition():sendMagicEffect(
+       item:getType():isRune() and CONST_ME_MAGIC_RED or effect
+   )
+   ```
+
+   **Lógica:** Runes = vermelho, others = custom effect
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Globais Criadas
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `AREA_*` (50+) | table (2D array) | Global | Áreas pré-definidas para spells |
+| `AREADIAGONAL_*` | table (2D array) | Global | Variantes diagonais de áreas |
+| `RANGE` | table (lookup) | Global | Damage-to-rounds escalation table |
+
+### Estrutura de AREA
+
+```lua
+AREA_CIRCLE2X2 = {
+	{ 0, 1, 1, 1, 0 },      -- Linha 0 (norte)
+	{ 1, 1, 1, 1, 1 },      -- Linha 1
+	{ 1, 1, 3, 1, 1 },      -- Linha 2 (center, 3 = caster)
+	{ 1, 1, 1, 1, 1 },      -- Linha 3
+	{ 0, 1, 1, 1, 0 },      -- Linha 4 (sul)
+}
+```
+
+**Valores:**
+- `0` - Não afetado
+- `1` - Afetado normalmente
+- `2` - Afetado com dano/buffo reduzido (outer area)
+- `3` - Caster position (center)
+
+### Métodos Estendidos
+
+| Classe | Método Adicionado | Descrição |
+|--------|------------------|-----------|
+| `Creature` | `addDamageCondition(target, cond, listType, damage, time, rounds)` | Adiciona DoT escalado |
+| `Player` | `addPartyCondition(combat, variant, condition, baseMana)` | Aplica buff/debuff ao party |
+| `Player` | `conjureItem(reagentId, conjureId, count, effect)` | Conjura item com reagente |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrón 1: Pre-made Area Constants
+
+**Técnica:** Definir áreas como constantes globais para reutilização.
+
+```lua
+AREA_CIRCLE2X2 = { {...}, {...} }
+AREA_CIRCLE3X3 = { {...}, {...} }
+-- Uso em múltiplos spells
+combat1:setArea(AREA_CIRCLE2X2)
+combat2:setArea(AREA_CIRCLE2X2)
+```
+
+**Vantagem:**
+- DRY: sem copy-paste de arrays
+- Consistent: todos usam mesma geometria
+- Maintainable: mudar 1 lugar afeta tudo
+- Performance: não aloca arrays no runtime
+
+**Aplicação:** Shared constant libraries.
+
+---
+
+### Padrón 2: Damage Escalation by Strategy
+
+**Técnica:** Múltiplos algoritmos de escalação para diferentes tipos de dano.
+
+```lua
+if listType == 0 then
+	-- Exponential: suave, ideal para poison
+elseif listType == 1 then
+	-- RANGE-based: tabela, ideal para fire/magic
+elseif listType == 2 then
+	-- Fixed rounds: previsível, ideal para debuff
+end
+```
+
+**Vantagem:**
+- Flexible: diferentes spells usam estratégia apropriada
+- Realistic: poison escalation diferente de fire
+- Balanced: economicamente equilibrado
+
+**Aplicação:** Conditional damage systems.
+
+---
+
+### Padrón 3: Party Scaling Mana Cost
+
+**Técnica:** Custo de mana reduz com exponential falloff, não linear.
+
+```lua
+mana = math.ceil(math.pow(0.9, #affectedMembers - 1) * baseMana * #affectedMembers)
+```
+
+**Vantagem:**
+- Incentiva party play (não caro demais)
+- Sem exploits (exponent falloff previne "free mana")
+- Escaláveis: funciona para 2-10+ members
+
+**Aplicação:** Party-based spell balance.
+
+---
+
+### Padrón 4: Directional Area Variants
+
+**Técnica:** Definir mesma área em 4 direções para spells directional.
+
+```lua
+AREA_SPIRITUAL_OUTBURST_NORTH = { ... }
+AREA_SPIRITUAL_OUTBURST_EAST = { ... }
+AREA_SPIRITUAL_OUTBURST_WEST = { ... }
+AREA_SPIRITUAL_OUTBURST_SOUTH = { ... }
+```
+
+**Vantagem:**
+- Directional: spell muda conforme player face
+- Balanced: cada direção tem coverage similar
+- Implementation-ready: código já tem variants
+
+**Aplicação:** Directional spell mechanics.
+
+---
+
+### Padrón 5: Automatic Item Charge Detection
+
+**Técnica:** Se quantidade não é specified, usa charges do itemType.
+
+```lua
+if not conjureCount and conjureId ~= 0 then
+	local charges = ItemType(conjureId):getCharges()
+	if charges ~= 0 then
+		conjureCount = charges
+	end
+end
+```
+
+**Vantagem:**
+- Ergonomic: não precisa specify charges manualmente
+- Consistent: sem hardcoding (segue itemType)
+- Future-proof: muda charges → auto-updates
+
+**Aplicação:** Magic system usability.
+
+---
+
+## 🤖 Informações da Documentação
+
+| Meta | Valor |
+|------|-------|
+| **Arquivo Documentado** | register_spells.lua |
+| **Versão de Análise** | v1 (720 linhas) |
+| **Linguagem** | Lua 5.1+ com Canary extensions |
+| **Áreas Pré-definidas** | 50+ (categorizadas em 6 grupos) |
+| **Funções Globais** | 3 (addDamageCondition, addPartyCondition, conjureItem) |
+| **Tabelas Globais** | 1 (RANGE damage escalation) |
+| **Padrões Identificados** | 5 |
+| **Data de Documentação** | February 20, 2026 |
+
+**Notas de Análise:**
+- Arquivo é asset registry + utility functions (híbrido)
+- Áreas organizam-se em categorias lógicas (waves, beams, circles, etc)
+- 3 estratégias de dano escalação oferecem flexibilidade
+- Party spells implementam economia de mana com falloff exponencial
+- Directional areas suportam spells que mudam com rotação
+- Item conjuration auto-detects charge count (UX improvement)
+
+**Possíveis Melhorias:**
+- Documentação de cada AREA (nome não é auto-obvious)
+- Asset browser/viewer para preview de áreas
+- Mais "square" areas (único 1X1 definido)
+- Teste de balance da fórmula party mana (0.9^x pode ser tweaked)
+- Comments em areas para explicar uso (Monk-specific, etc)

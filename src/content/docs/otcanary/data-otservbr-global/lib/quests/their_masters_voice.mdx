@@ -1,0 +1,399 @@
+---
+title: Their Masters' Voice - Wave Spawner System
+description: Documentação técnica do arquivo their_masters_voice.lua, que implementa um sistema de ondas crescentes de servants culminando em um Mad Mage boss.
+sidebar:
+  order: 11
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **their_masters_voice.lua** implementa um **sistema de wave spawning** onde servants spawn em ondas progressivas, jogadores removem slimes, e culmina em um Mad Mage boss.
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/quests/their_masters_voice.lua`
+</Card>
+
+<Aside type="caution">
+**Tipo**: Event/Wave System  
+**Boss Final**: Mad Mage  
+**Mechanic**: Slime removal → Wave progression  
+**Duração**: 60 minutos (configurável)  
+**Padrão**: Config table + Event handlers
+</Aside>
+
+## 📄 Visão Geral
+
+Quest onde:
+1. **Slime Removal**: Jogadores coletam e removem 25 slimes usando Gobbler
+2. **Wave Progression**: A cada 25 slimes, nova onda de servants spawna
+3. **Max Waves**: 25 ondas de servants
+4. **Final Boss**: Onda 25 = Mad Mage spawna ao invés de servants
+5. **Timeout**: Tudo reverte após 60 minutos
+
+## 🔧 Configuração
+
+### Config Table
+
+```lua
+local config = {
+  quest_duration = 60,    -- 60 minutos até revert quest
+  slime_exhaust = 5,      -- Cooldown de 5 seg por uso de Gobbler
+  slimes_needed = 25,     -- Slimes para participar na quest
+  max_slimes = 100,       -- Max slimes antes de onda
+  max_waves = 25,         -- Max ondas (25ª = Mad Mage)
+}
+```
+
+### Posições
+
+#### Servants (25 posições)
+
+```lua
+local servant_positions = {
+  { x = 33313, y = 31852, z = 9 },
+  { x = 33313, y = 31881, z = 9 },
+  { x = 33328, y = 31860, z = 9 },
+  { x = 33328, y = 31873, z = 9 },
+  -- ... (21 mais)
+}
+```
+
+- **Total**: 25 spawn points
+- **Z-level**: Floor 9
+- **Padrão**: Distribuído em grid na arena
+
+#### Mage (3 posições possíveis)
+
+```lua
+local mage_positions = {
+  { x = 33328, y = 31859, z = 9 },
+  { x = 33367, y = 31873, z = 9 },
+  { x = 33349, y = 31899, z = 9 },
+}
+```
+
+- **Random spawn**: Uma de 3 posições
+- **Floor**: 9
+
+### Slime Items
+
+```lua
+local slime_ids = { 12059, 12060, 12061, 12062, 12063 }
+```
+
+- **5 tipos** de slimes diferentes (visual variation)
+
+### Servants (3 tipos)
+
+```lua
+local servants = {
+  { 10, "diamond servant" },    -- 10% chance
+  { 40, "golden servant" },     -- 40% chance (cumulative: 10-50%)
+  { 100, "iron servant" },      -- 100% chance (50%+ chance)
+}
+```
+
+**Mecânica de Spawn**:
+```
+random 1-100
+  ├─ 1-10: Diamond servant
+  ├─ 11-40: Golden servant
+  └─ 41-100: Iron servant
+```
+
+Tipo mais forte tem maior chance.
+
+## 🎮 Fluxo de Quest
+
+### Fase 1: Slime Collection
+
+```
+Player busca Gobbler item
+  ↓
+Clica em slime (item 12059-12063)
+  ↓
+[Check] Exhaust >= 5 seg?
+  ├─ SIM: Cancel ("you are exhausted")
+  └─ NÃO: Continua
+  ↓
+Slime removido, contador += 1
+  ├─ Primeiro slime?
+  │   └─ Sim: Agenda revert em 60 min
+  │
+  └─ Contador >= slimes_needed (25)?
+      └─ Sim: Marca player como "valid_participant"
+  ↓
+[Check] Total slimes >= max_slimes (100)?
+  ├─ NÃO: Continue
+  └─ SIM: startServantWave()
+```
+
+### Função: Gobbler_onUse
+
+```lua
+function Gobbler_onUse(player, item, fromPosition, target, toPosition, isHotkey)
+  -- 1. Valida target é slime
+  if not target or not table.contains(slime_ids, target.itemid) then
+    return false
+  end
+
+  -- 2. Check exhaust (5 seg cooldown)
+  local time = os.time()
+  if slime_exhaust[player.uid] and slime_exhaust[player.uid] >= os.time() then
+    player:sendCancelMessage(RETURNVALUE_YOUAREEXHAUSTED)
+    fromPosition:sendMagicEffect(CONST_ME_POFF)
+    return true
+  end
+
+  -- 3. Set exhaust para próximas 5 seg
+  slime_exhaust[player.uid] = time + config.slime_exhaust
+
+  -- 4. Monster message
+  player:say("The slime gobbler gobbles large chunks of the slime fungus...",
+             TALKTYPE_MONSTER_SAY)
+
+  -- 5. Pequena recompensa
+  player:addExperience(20, true, true)
+
+  -- 6. Registra slime removido
+  slimes_removed[#slimes_removed + 1] = {
+    cid = player.uid,
+    id = target.itemid,
+    pos = toPosition
+  }
+
+  -- 7. Transforma slime em viscous slime (12065)
+  target:transform(12065)
+
+  -- 8. Valida participante se >= 25 slimes
+  if not table.contains(valid_participants, player.uid) then
+    local slime_count = 0
+    for i = 1, #slimes_removed do
+      if slimes_removed[i].cid == player.uid then
+        slime_count = slime_count + 1
+        if slime_count >= config.slimes_needed then
+          player:say("You gobbled enough slime to get good grip...",
+                     TALKTYPE_MONSTER_SAY)
+          valid_participants[#valid_participants + 1] = player.uid
+          break
+        end
+      end
+    end
+  end
+
+  -- 9. Agenda eventos se slimes atingem limite
+  if #slimes_removed == 1 then
+    addEvent(revertQuest, config.quest_duration * 60 * 1000)
+  elseif #slimes_removed >= config.max_slimes and current_wave == 0 then
+    player:say("COME! My servants! RISE!", TALKTYPE_MONSTER_SAY)
+    startServantWave()
+  end
+  
+  return true
+end
+```
+
+## 🌊 Wave System
+
+### Função: startServantWave
+
+```lua
+function startServantWave()
+  -- 1. Check se é onda final (25) → Spawn Mad Mage
+  if current_wave == config.max_waves and not mageSpawned then
+    local mage = Game.createMonster("Mad Mage",
+                   mage_positions[math.random(#mage_positions)], true, true)
+    if mage then
+      mageSpawned = true
+      mage:registerEvent("MageDeath")
+    end
+    return
+  end
+
+  -- 2. Increment onda
+  current_wave = current_wave + 1
+  current_servants = {}
+
+  -- 3. Spawn 25 servants (um por posição)
+  for pos_key = 1, #servant_positions do
+    local random = math.random(100)
+    for servant_key = 1, #servants do
+      if random <= servants[servant_key][1] then
+        local servant = Game.createMonster(
+          servants[servant_key][2],
+          servant_positions[pos_key],
+          true, true
+        )
+        if servant then
+          current_servants[#current_servants + 1] = servant.uid
+          servant:registerEvent("ServantDeath")
+          break
+        end
+      end
+    end
+  end
+end
+```
+
+**Lógica**:
+1. Se onda 25: Spawn Mad Mage (não servants)
+2. Senão: Spawn 25 servants (1 por position, tipo randômico)
+3. Cada servant registra death event
+
+## ⚔️ Death Handling
+
+### Função: Servant_onDeath
+
+```lua
+function Servant_onDeath(creature, corpse, killer, mostDamageKiller,
+                        lastHitUnjustified)
+  -- 1. Remove servant do array
+  for i = 1, #current_servants do
+    if current_servants[i] == creature.uid then
+      table.remove(current_servants, i)
+      break
+    end
+  end
+
+  -- 2. Se nenhum servant vivo, próxima onda!
+  if #current_servants < 1 then
+    startServantWave()
+  end
+  return true
+end
+```
+
+**Workflow**:
+- Matam servant → Remove array
+- Todos servants mortos → próxima onda
+
+### Função: Mage_onDeath
+
+```lua
+function Mage_onDeath(creature, corpse, killer, mostDamageKiller,
+                     lastHitUnjustified)
+  -- 1. Check se killer é participante válido
+  if killer and table.contains(valid_participants, killer.uid) then
+    -- add achievements if needed
+  end
+  return true
+end
+```
+
+**Apenas participantes válidos** (que removeram 25+ slimes) ganham rewards.
+
+## 🔄 Quest Revert
+
+### Função: revertQuest
+
+```lua
+local function revertQuest()
+  -- 1. Remove todos servants vivos
+  for i = 1, #current_servants do
+    local servant = Creature(current_servants[i])
+    if servant then
+      servant:remove()
+    end
+  end
+  current_servants = {}
+
+  -- 2. Remove Mage se spawned
+  local mage = Creature(current_mage)
+  if mage then
+    mage:remove()
+  end
+  current_mage = 0
+
+  -- 3. Restaura todos slimes à original
+  for i = 1, #slimes_removed do
+    local ground = Tile(slimes_removed[i].pos):getGround()
+    if ground then
+      ground:transform(slimes_removed[i].id)
+    end
+  end
+  slimes_removed = {}
+  current_wave = 0
+end
+```
+
+**Triggered ao**: quest_duration minutos (60 min default)
+
+**Efeito**:
+- Servants/Mage removidos
+- Slimes restaurados (12065 → original)
+- Quest resetada (current_wave = 0)
+
+## 📊 Progresso das Ondas
+
+```
+Slimes Removidos: 0
+  ↓ (1º slime)
+Inicia revert timer (60 min)
+  ↓
+Slimes Removidos: 1-24
+  ↓ (25º slime)
+Player é valid_participant
+  ↓
+Slimes Removidos: 26-99
+  ↓ (100º slime)
+WAVE 1 Spawna:
+  - 25 servants (tipos random)
+  - Players matam → Removem array
+  ↓ (Todos mortos)
+WAVE 2 Spawna
+  ↓
+... (Waves 3-24)
+  ↓
+WAVE 25 Completada
+  ↓
+MAD MAGE Spawna (random position)
+  ↓ (Killer = valid_participant)
+Quest Completada! Rewards
+  ↓ (60 min elapsed)
+revertQuest() executado
+Quest resetada
+```
+
+## 💾 State Management
+
+### Global Tables
+
+```lua
+local slime_exhaust = {}              -- player_uid → timestamp
+local slimes_removed = {}             -- { cid, id, pos }
+local current_servants = {}           -- { creature.uid }
+local current_mage = 0                -- mage creature id
+local current_wave = 0                -- wave number (0-25)
+local valid_participants = {}         -- { player.uid }
+local mageSpawned = false             -- boolean flag
+```
+
+## 🎯 Padrão de Uso
+
+```lua
+-- Quest dispatcher setup
+OnEventName("GobberUse", Gobbler_onUse)
+OnEventName("ServantDeath", Servant_onDeath)
+OnEventName("MageDeath", Mage_onDeath)
+
+-- Player joins quest
+player:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+grimvaleSpectators()  -- Initiate
+```
+
+## ⚠️ Notas Técnicas
+
+1. **Persistent state**: Tudo em globals (não save/load)
+2. **No validation**: Pode ser abusado (spam Gobbler?)
+3. **Timing-based**: Usa `os.time()` para exhaust
+4. **Event callbacks**: Dependent em registry externa
+5. **Linear progression**: Sem retry ou mulh choices
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Completo  
+**System Type**: Sequential Wave Spawner + Slime Collection

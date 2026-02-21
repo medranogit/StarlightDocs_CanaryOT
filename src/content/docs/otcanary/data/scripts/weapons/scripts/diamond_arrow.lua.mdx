@@ -1,0 +1,236 @@
+---
+title: Diamond Arrow
+description: Arma de projétil flecha diamante com dano físico em AoE 5x5, fórmula distance skill calculada, level 150 requirement e dual ID
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `diamond_arrow.lua` |
+| **Tipo de Arma** | Ammo (flecha premium) |
+| **IDs do Item** | 25757, 35901 (dual ID) |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Efeito Visual** | CONST_ME_ENERGYHIT |
+| **Efeito Distância** | CONST_ANI_DIAMONDARROW |
+| **Área de Efeito** | 5x5 grid (diamante) |
+| **Ataque Base** | 37 |
+| **Chance de Acerto** | 100% |
+| **Level Requerido** | 150 |
+| **Ação** | removecount (consome ammo) |
+| **Wield Improperly** | true (pode usar abaixo level) |
+| **Som Cast** | SOUND_EFFECT_TYPE_DIST_ATK_BOW |
+| **Som Impacto** | SOUND_EFFECT_TYPE_DIAMOND_ARROW_EFFECT |
+| **Fórmula** | Distance skill + level scaling |
+
+## 📍 Caminho Original
+
+```
+data/scripts/weapons/scripts/diamond_arrow.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Diamond Arrow é flecha premium require level 150 com area 5x5 em padrão diamante. Usa callback custom onGetFormulaValues para calcular dano baseado em distance skill = min (level/5), max (0.09 * factor * distSkill * attack + level/5). Permite wield improperly (usar abaixo level com penalidade). Dual ID permite rarity variation. Efeito energy hit com diamante animation indica tier elevado. DefiniÇão de função inline no combat para formula.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `diamond_arrow.lua` implementa weapon ammo premium com dano físico em AoE 5x5 padrão diamante, requerendo level 150. Script define Combat com callback custom onGetFormulaValues que calcula dano baseado em distance skill e attack stats. Fórmula: min = level/5, max = 0.09 * factor * distanceSkill * attack + level/5, permitindo escalamento progressivo com skill. Weapon registra com dual IDs (25757, 35901) para variações de raridade, ataque 37, 100% hit chance, ação removecount. Implementação inclui wieldUnproperly flag para permitir uso abaixo level com penalties. Padrão avançado de ranged weapon com fórmula skill scaling.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Área de Efeito (5x5 Diamante)
+local area = createCombatArea({
+	{ 0, 1, 1, 1, 0 },
+	{ 1, 1, 1, 1, 1 },
+	{ 1, 1, 3, 1, 1 },  -- 3 = centro
+	{ 1, 1, 1, 1, 1 },
+	{ 0, 1, 1, 1, 0 },
+})
+
+-- 2. Configuração de Combat
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYHIT)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_DIAMONDARROW)
+combat:setParameter(COMBAT_PARAM_IMPACTSOUND, SOUND_EFFECT_TYPE_DIAMOND_ARROW_EFFECT)
+combat:setParameter(COMBAT_PARAM_CASTSOUND, SOUND_EFFECT_TYPE_DIST_ATK_BOW)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, true)
+
+-- 3. Fórmula de Dano com Callback
+function onGetFormulaValues(player, skill, attack, factor)
+	local distanceSkill = player:getEffectiveSkillLevel(SKILL_DISTANCE)
+	local min = (player:getLevel() / 5)
+	local max = (0.09 * factor) * distanceSkill * attack + (player:getLevel() / 5)
+	return -min, -max
+end
+
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+combat:setArea(area)
+
+-- 4. Instância de Weapon
+local diamondArrow = Weapon(WEAPON_AMMO)
+
+-- 5. Handler de Uso
+function diamondArrow.onUseWeapon(player, variant)
+	return combat:execute(player, variant)
+end
+
+-- 6. Configuração do Item
+diamondArrow:id(25757)
+diamondArrow:id(35901)  -- Dual ID
+diamondArrow:level(150)
+diamondArrow:attack(37)
+diamondArrow:action("removecount")
+diamondArrow:ammoType("arrow")
+diamondArrow:shootType(CONST_ANI_DIAMONDARROW)
+diamondArrow:maxHitChance(100)
+diamondArrow:wieldUnproperly(true)
+diamondArrow:register()
+```
+
+## 📊 Parâmetros de Combat
+
+| Parâmetro | Valor | Descrição |
+|---|---|---|
+| COMBAT_PARAM_TYPE | COMBAT_PHYSICALDAMAGE | Tipo de dano físico |
+| COMBAT_PARAM_EFFECT | CONST_ME_ENERGYHIT | Visual energia ao impacto |
+| COMBAT_PARAM_DISTANCEEFFECT | CONST_ANI_DIAMONDARROW | Animação diamante em voo |
+| COMBAT_PARAM_BLOCKARMOR | true | Armor reduz dano |
+| COMBAT_PARAM_IMPACTSOUND | SOUND_EFFECT_TYPE_DIAMOND_ARROW_EFFECT | Som impacto |
+| COMBAT_PARAM_CASTSOUND | SOUND_EFFECT_TYPE_DIST_ATK_BOW | Som arco |
+
+## 📊 Fórmula de Dano
+
+**Função:** `onGetFormulaValues(player, skill, attack, factor)`
+
+**Cálculo:**
+
+```
+min = level / 5
+max = (0.09 * factor) * distanceSkill * attack + (level / 5)
+return -min, -max  (valores negativos = dano)
+```
+
+**Exemplo (Player Level 200, Distance Skill 100, Attack 37, Factor 1.0):**
+
+```
+min = 200 / 5 = 40 dano
+max = (0.09 * 1.0) * 100 * 37 + 40 = 0.09 * 3700 + 40 = 333 + 40 = 373 dano
+Resultado: 40-373 dano
+```
+
+**Escalamento:**
+- Aumenta linear com level (min)
+- Aumenta por distance skill e attack (max)
+- Factor multiplica a base (1.0 aqui)
+
+## 🎯 Padrões de Implementação
+
+### 1. **Padrão de Área 5x5 Diamante**
+
+```lua
+local area = createCombatArea({
+	{ 0, 1, 1, 1, 0 },
+	{ 1, 1, 1, 1, 1 },
+	{ 1, 1, 3, 1, 1 },
+	{ 1, 1, 1, 1, 1 },
+	{ 0, 1, 1, 1, 0 },
+})
+```
+
+Grid 5x5 com cantos (0) vazios = padrão diamante. 21 tiles hit.
+
+### 2. **Padrão de Fórmula com Callback**
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local distanceSkill = player:getEffectiveSkillLevel(SKILL_DISTANCE)
+	local min = (player:getLevel() / 5)
+	local max = (0.09 * factor) * distanceSkill * attack + (player:getLevel() / 5)
+	return -min, -max
+end
+
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+Callback inline formula com scaling distance skill + level.
+
+### 3. **Padrão de Dual ID**
+
+```lua
+diamondArrow:id(25757)
+diamondArrow:id(35901)
+```
+
+Registra mesmo weapon com 2 IDs para variações de item.
+
+### 4. **Padrão de Wield Improperly**
+
+```lua
+diamondArrow:level(150)
+diamondArrow:wieldUnproperly(true)
+```
+
+Permite usar abaixo level 150 com penalidades internas.
+
+## 🤖 Documentação de Funções
+
+### **onGetFormulaValues(player, skill, attack, factor)**
+
+**Descrição:** Callback custom que calcula dano baseado em stats do player.
+
+**Parâmetros:**
+- `player` (Player): Player disparo
+- `skill` (number): Distance skill level
+- `attack` (number): Attack stat do item
+- `factor` (number): Multiplicador base (1.0)
+
+**Lógica:**
+1. Pega distance skill efetiva do player
+2. Min = level / 5 (base de dano)
+3. Max = 0.09 * factor * distanceSkill * attack + level / 5
+4. Retorna -min, -max (negativos indicam dano)
+
+**Retorno:**
+- `min` (number): Dano mínimo (negativo)
+- `max` (number): Dano máximo (negativo)
+
+**Exemplo:**
+```lua
+-- Player 200/100 skill dispara diamond arrow
+-- min = 40, max = 373
+-- Dano: 40-373 físico
+```
+
+---
+
+### **Combat:setCallback(type, functionName)**
+
+**Descrição:** Define callback para cálculo dinâmico de dano.
+
+**Parâmetro:**
+- `CALLBACK_PARAM_SKILLVALUE` = usa distance skill
+
+**Diamond Arrow:**
+- Callback = onGetFormulaValues
+- Permite dano escalável por skill do player
+
+---
+
+### **Weapon:wieldUnproperly(boolean)**
+
+**Descrição:** Permite usar item abaixo level requirement.
+
+**Valor:** `true`
+- Permite uso level < 150
+- Provavelmente com penalidade de dano interna
+
+## 📌 Resumo
+
+**Diamond Arrow** é weapon ammo premium (level 150) com dano físico escalável em AoE 5x5 padrão diamante. Implementação usa callback custom onGetFormulaValues para calcular dano com scaling distance skill + level. Fórmula: min = level/5, max = 0.09 * factor * distSkill * attack + level/5, permitindo progression contínua. Dual ID (25757, 35901) permite variações de raridade/loot. Ataque 37 premium com 100% hit chance. Wield improperly flag permite usar abaixo level com penalties. Sistema avançado de ranged weapon com fórmula skill scaling para late-game.
+
+Diferencia-se por: (1) fórmula custom callback, (2) AoE 5x5 diamante, (3) scaling distance skill + level, (4) dual ID support, (5) level 150 requirement, (6) wield improperly flag, (7) efeito energy hit.

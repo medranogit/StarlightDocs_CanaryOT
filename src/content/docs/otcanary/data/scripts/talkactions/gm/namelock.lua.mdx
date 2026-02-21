@@ -1,0 +1,255 @@
+---
+title: Namelock
+description: Comando GM para trancar nome de jogador (online ou offline) com motivo obrigatório e integração webhook
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `namelock.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Trancar nome de jogador |
+| **Comando** | `/namelock <player>, <reason>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | player, reason |
+| **Separador** | Vírgula |
+| **Armazenamento** | KV storage "namelock" |
+| **Suporta** | Online e offline |
+| **Integração** | Webhook Discord, Callback CheckNamelock |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/namelock.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Sistema de namelock com suporte a jogadores online e offline. Parse com `param:find(",")` para separar jogador e motivo, `string.trim()` para remover espaços. Valida motivo não vazio (obrigatório). Busca jogador online via `Player(name)` ou offline via `Game.getOfflinePlayer()`. Armazena em KV storage: `target:kv():set("namelock", reason)`. Se online, chama `CheckNamelock()` para forçar troca de nome. Webhook para auditoria com motivo. Log de servidor.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `namelock.lua` implementa um comando TalkAction (`/namelock`) que trancar nomes de jogadores (online ou offline) com motivo obrigatório. O sistema parsa parâmetro separado por vírgula, valida motivo não vazio, busca jogador em ambos os modos (online/offline), armazena em KV storage, executa callback `CheckNamelock()` se online para forçar troca de nome, e envia notificação via webhook Discord. Sistema robusto de moderação de nomes inadequados.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local namelock = TalkAction("/namelock")
+
+-- 2. Função Principal (onSay)
+function namelock.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Inicializar variáveis
+    local name = param
+    local reason = ""
+    
+    -- Parse: separar player e motivo por vírgula
+    local separatorPos = param:find(",")
+    if separatorPos then
+        -- Nome: tudo antes da vírgula
+        name = param:sub(0, separatorPos - 1)
+        -- Motivo: tudo após vírgula (trim espaços)
+        reason = string.trim(param:sub(separatorPos + 1))
+    end
+    
+    -- Validação: motivo obrigatório
+    if reason == "" then
+        player:sendCancelMessage("You must specify a reason.")
+        return true
+    end
+    
+    -- Busca: tentar jogador online primeiro
+    local target = Player(name)
+    local online = true
+    
+    if not target then
+        -- Se offline, buscar no banco de dados
+        target = Game.getOfflinePlayer(name)
+        online = false
+    end
+    
+    -- Validação: busca bem-sucedida e é player
+    if target and target:isPlayer() then
+        -- Armazenar motivo em KV storage
+        target:kv():set("namelock", reason)
+        
+        -- Construir mensagem
+        local text = target:getName() .. " has been namelocked"
+        
+        -- Log de servidor
+        logger.info(text .. ", reason: " .. reason)
+        
+        -- Mensagem ao GM
+        player:sendTextMessage(MESSAGE_ADMINISTRATOR, text)
+        
+        -- Webhook para auditoria
+        Webhook.sendMessage(
+            "Player Namelocked",
+            text .. " reason: " .. reason .. ".",
+            WEBHOOK_COLOR_YELLOW,
+            announcementChannels["serverAnnouncements"]
+        )
+        
+        -- Se online: forçar troca de nome
+        if online then
+            CheckNamelock(target)
+        end
+    else
+        -- Jogador não encontrado
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, name .. " was not found.")
+    end
+end
+
+-- 3. Configuração de Registro
+namelock:separator(" ")
+namelock:groupType("gamemaster")
+namelock:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **namelock.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/namelock` é utilizado. Trancar nome de jogador com motivo obrigatório.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando (GM)
+- `words` (string): Palavras do comando (`/namelock`)
+- `param` (string): **[OBRIGATÓRIO]** `playername, reason` (separado por vírgula)
+
+**Formato de Comando:**
+```
+/namelock PlayerName, Inappropriate name
+/namelock ViniPlus, Offensive content
+/namelock TestChar, Name against rules
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Inicialização:**
+   ```lua
+   local name = param
+   local reason = ""
+   ```
+
+4. **Parse com Validação de Vírgula:**
+   ```lua
+   local separatorPos = param:find(",")  -- Busca posição de vyrgula
+   if separatorPos then
+       name = param:sub(0, separatorPos - 1)           -- Antes da vyrgula
+       reason = string.trim(param:sub(separatorPos + 1))  -- Após (trimmed)
+   else
+       -- Se sem vyrgula: name = param, reason = ""
+   end
+   ```
+
+5. **Validação de Motivo Obrigatório:**
+   - Se reason == "", retorna "You must specify a reason."
+
+6. **Busca de Jogador:**
+   ```lua
+   local target = Player(name)        -- Tenta online
+   local online = true
+   
+   if not target then
+       target = Game.getOfflinePlayer(name)  -- Tenta offline (database)
+       online = false
+   end
+   ```
+
+7. **Validação de Busca:**
+   - Se target nulo ou não é player: retorna `` `{name}` was not found.``
+
+8. **Armazenamento em KV:**
+   ```lua
+   target:kv():set("namelock", reason)
+   ```
+   - KV (Key-Value) storage persistente
+   - Chave: "namelock"
+   - Valor: motivo fornecido
+
+9. **Notificações e Logs:**
+   - Mensagem ao GM: `MESSAGE_ADMINISTRATOR`
+   - Log de servidor: `logger.info()`
+   - Webhook Discord: YELLOW color
+
+10. **Callback se Online:**
+    ```lua
+    if online then
+        CheckNamelock(target)  -- Força cliente a pedir novo nome
+    end
+    ```
+
+**Exemplo de Saída:**
+
+```
+GM executa: /namelock Spam, Advertising in chat
+
+Resultado:
+- KV storage: namelock = "Advertising in chat"
+- Jogador recebe callback para mudar nome
+- GM vê: "Spam has been namelocked"
+- Log: "Spam has been namelocked, reason: Advertising in chat"
+- Webhook: "Player Namelocked" - "Spam has been namelocked reason: Advertising in chat."
+- Se offline: suporte ao namelock ativado no próximo login
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Player(name)` | Busca jogador online por nome |
+| `Game.getOfflinePlayer(name)` | Busca jogador offline no banco |
+| `target:isPlayer()` | Verifica se é instância de player |
+| `target:kv()` | Obtém storage de chave-valor |
+| `target:kv():set(key, value)` | Armazena par chave-valor persistente |
+| `string.trim(str)` | Remove espaços antes/após string |
+| `CheckNamelock(player)` | Força cliente a solicitar novo nome |
+| `Webhook.sendMessage()` | Envia webhook Discord |
+| `logger.info()` | Log de servidor |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+### **Funcionalidade de KV Storage**
+
+**Descrição:** Sistema de armazenamento persistente de pares chave-valor ligados ao jogador.
+
+**Uso:**
+```lua
+target:kv():set("namelock", "Reason for namelock")
+-- Armazena permanentemente até remoção
+```
+
+**Verificação (implementação externa):**
+```lua
+local namelock = player:kv():get("namelock")
+if namelock then
+    -- Jogador está namelocked, forçar mudança de nome
+end
+```
+
+---
+
+## 📌 Resumo
+
+O arquivo `namelock.lua` é sistema completo de moderação de nomes. Implementação que suporta jogadores online e offline, parse flexível de parâmetros com validação de motivo obrigatório, persistência em KV storage, callback automático de troca de nome se online, e webhook de auditoria. Essencial para moderação de nomes inadequados, offensive, ou contra regras, com rastreamento completo e notificação múltipla (chat, logs, Discord).

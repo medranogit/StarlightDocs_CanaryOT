@@ -1,0 +1,301 @@
+---
+title: Create NPC
+description: Comando GOD para criar NPCs temporários ou permanentes (salva em XML)
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `create_npc.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Criar NPCs |
+| **Comando** | `/n <npcname>, [true]` |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Tipo Criação** | Temporário (padrão) ou Permanente |
+| **Arquivo XML** | `world/{MAP_NAME}-npc.xml` |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/create_npc.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que cria NPC temporário ou permanente. Temporário usa `Game.createNpc()` com `setMasterPos()`. Permanente append ao arquivo XML (MAP_NAME-npc.xml) via io.open(), validando existência do arquivo e tag de fechamento. String.format para criar XML entry. Validações de NOROOM e file ops.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `create_npc.lua` implementa um comando TalkAction (`/n`) que cria NPCs temporários ou permanentes. O sistema valida parâmetro, cria NPC via `Game.createNpc()`, oferece modo permanente que append ao XML (MAP_NAME-npc.xml), valida arquivo e tag, aplica magic effect RED, fornece feedback diferenciado. Ferramenta de NPC creation.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- To summon a temporary npc use /n npcname
+-- To summon a permanent npc use /n npcname,true
+
+local createNpc = TalkAction("/n")
+
+function createNpc.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    -- Validação: parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Parse: npcName, permanentFlag
+    local split = param:split(",")
+    local name = split[1]
+    local permanentStr = split[2]
+    
+    -- Obter posição do GM
+    local position = player:getPosition()
+    
+    -- Criar NPC temporário
+    local npc = Game.createNpc(name, position)
+    if npc then
+        -- Seta master position (onde foi criado)
+        npc:setMasterPos(position)
+        position:sendMagicEffect(CONST_ME_MAGIC_RED)
+        
+        -- Modo permanente: append ao XML
+        if permanentStr and permanentStr == "true" then
+            -- Obter nome do mapa (ex: "canary")
+            local mapName = configManager.getString(configKeys.MAP_NAME)
+            local mapNpcsPath = mapName .. "-npc.xml"
+            local filePath = string.format("%s/world/%s", DATA_DIRECTORY, mapNpcsPath)
+            
+            -- Validação 1: existe arquivo?
+            local npcsFile = io.open(filePath, "r")
+            if not npcsFile then
+                player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+                    "There was an error when trying to add permanent NPC. NPC File not found.")
+                return true
+            end
+            
+            -- Ler arquivo completo
+            local fileContent = npcsFile:read("*all")
+            npcsFile:close()
+            
+            -- Validação 2: exists closing tag?
+            local endTag = "</npcs>"
+            if not fileContent:find(endTag, 1, true) then
+                player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+                    "There was an error when trying to add permanent NPC. The NPC file format is incorrect. Missing end tag " .. endTag .. ".")
+                return true
+            end
+            
+            -- Construir entrada XML
+            local textToAdd = string.format(
+                '\t<npc centerx="%i" centery="%i" centerz="%i" radius="1">\n\t\t<npc name="%s" x="0" y="0" z="%i" spawntime="60" />\n\t</npc>',
+                position.x, position.y, position.z, name, position.z
+            )
+            
+            -- Substituir tag de fechamento
+            local newFileContent = fileContent:gsub(endTag, textToAdd .. "\n" .. endTag)
+            
+            -- Validação 3: pode escrever arquivo?
+            npcsFile = io.open(filePath, "w")
+            if not npcsFile then
+                player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+                    "There was an error when trying to write to the NPC file.")
+                return true
+            end
+            
+            -- Escrever novo conteúdo
+            npcsFile:write(newFileContent)
+            npcsFile:close()
+            
+            -- Feedback de sucesso
+            player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Permanent NPC added successfully.")
+        end
+    else
+        -- Falha ao criar NPC
+        player:sendCancelMessage("There is not enough room.")
+        position:sendMagicEffect(CONST_ME_POFF)
+    end
+    
+    return true
+end
+
+createNpc:separator(" ")
+createNpc:groupType("god")
+createNpc:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **createNpc.onSay(player, words, param)**
+
+**Descrição:** Função callback que cria NPCs temporários ou permanentes.
+
+**Parâmetros:**
+- `param` (string): `<npcname>, [true]`
+
+**Formato de Comando:**
+```
+/n Thalas                   -- Cria NPC "Thalas" temporário
+/n Thales, true            -- Cria NPC "Thalas" permanente (append XML)
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Parse:**
+   ```lua
+   local split = param:split(",")
+   local name = split[1]
+   local permanentStr = split[2]
+   ```
+   - name: "Thalas"
+   - permanentStr: nil ou "true"
+
+4. **Obter Posição do GM:**
+   ```lua
+   local position = player:getPosition()
+   ```
+
+5. **Criar NPC Temporário:**
+   ```lua
+   local npc = Game.createNpc(name, position)
+   if npc then
+       npc:setMasterPos(position)
+       position:sendMagicEffect(CONST_ME_MAGIC_RED)
+   ```
+   - Cria na posição do GM
+   - Seta master position
+   - Magic effect RED
+
+6. **Modo Permanente - Append XML:**
+   ```lua
+   if permanentStr and permanentStr == "true" then
+   ```
+
+7. **Validações de Arquivo:**
+   
+   **Validação 1: Arquivo existe?**
+   ```lua
+   local filePath = string.format("%s/world/%s", DATA_DIRECTORY, mapName .. "-npc.xml")
+   local npcsFile = io.open(filePath, "r")
+   if not npcsFile then
+       player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "NPC File not found.")
+       return true
+   end
+   ```
+
+   **Validação 2: Tag de fechamento existe?**
+   ```lua
+   local endTag = "</npcs>"
+   if not fileContent:find(endTag, 1, true) then
+       player:sendTextMessage(..., "Missing end tag </npcs>.")
+       return true
+   end
+   ```
+
+8. **Construir Entrada XML:**
+   ```lua
+   local textToAdd = string.format(
+       '<npc centerx="%i" centery="%i" centerz="%i" radius="1">\n\t\t<npc name="%s" x="0" y="0" z="%i" spawntime="60" />\n\t</npc>',
+       position.x, position.y, position.z, name, position.z
+   )
+   ```
+
+9. **Substituir Tag:**
+   ```lua
+   local newFileContent = fileContent:gsub(endTag, textToAdd .. "\n" .. endTag)
+   ```
+
+10. **Escrever Arquivo:**
+    ```lua
+    npcsFile = io.open(filePath, "w")
+    if not npcsFile then
+        player:sendTextMessage(..., "Error writing to NPC file.")
+        return true
+    end
+    npcsFile:write(newFileContent)
+    npcsFile:close()
+    ```
+
+**Estrutura XML Gerada:**
+
+```xml
+<npc centerx="100" centery="200" centerz="7" radius="1">
+    <npc name="Thalas" x="0" y="0" z="7" spawntime="60" />
+</npc>
+```
+
+**Exemplos de Uso:**
+
+```
+Comando: /n Thalas
+
+Resultado (Temporário):
+- NPC "Thalas" criado na posição do GM
+- Magic effect RED na posição
+- Desaparece após reload
+
+---
+
+Comando: /n Thalas, true
+
+Resultado (Permanente):
+- NPC "Thalas" criado temporariamente
+- Arquivo world/canary-npc.xml modificado
+- Entrada append antes de </npcs>
+- Feedback: "Permanent NPC added successfully."
+- Persiste após reload
+```
+
+**Mensagens de Erro:**
+
+```
+"Command param required."
+(param vazio)
+
+"There is not enough room."
+(sem espaço para criar NPC)
+
+"NPC File not found."
+(arquivo XML não encontrado)
+
+"Missing end tag </npcs>."
+(arquivo XML format incorreto)
+
+"Error writing to NPC file."
+(falha em io.open write)
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Game.createNpc(name, position)` | Cria NPC na posição |
+| `npc:setMasterPos(position)` | Define master position |
+| `param:split(sep)` | Divide por separador |
+| `configManager.getString(key)` | Obtém string de config |
+| `string.format(fmt, ...)` | Formata string |
+| `io.open(path, mode)` | Abre arquivo (r/w) |
+| `file:read("*all")` | Lê arquivo completo |
+| `file:close()` | Fecha arquivo |
+| `fileContent:gsub(pattern, repl)` | Substitui pattern |
+| `file:write(content)` | Escreve ao arquivo |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `create_npc.lua` é ferramenta de NPC creation. Implementação com modo temporário (default) e permanente (append XML), validações de arquivo rigorosas, magic effect RED, parsing simples. Essencial para GMs colocar NPCs no mundo dinâmicamente ou permanentemente. Design com fallback temporário garante funcionamento mesmo se XML falhar.

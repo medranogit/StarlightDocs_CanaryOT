@@ -1,0 +1,429 @@
+---
+title: "Spell - front_sweep.lua"
+description: "Spell de varredura frontal para knights level 70 com wave direcionada"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `front_sweep.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 59 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Knight, Elite Knight |
+| **Level Requerido** | 70 |
+| **Mana Requerida** | 200 |
+| **Words** | exori min |
+| **Alcance** | -1 (direction) |
+| **Área** | WAVE6+AREADIAGONAL_WAVE6 (onda direcionada) |
+| **Cooldown** | 6s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Skill-based escalável (0.04-0.08 coef × 1.1) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_FRONT_SWEEP |
+| **BLOCKARMOR** | 1 (ignora armadura!) |
+| **USECHARGES** | 1 |
+| **Requer Weapon** | Sim (needWeapon) |
+| **Requer Direction** | Sim (needDirection) |
+| **Bloqueia Walls** | Não especificado |
+| **TODO** | Use New Real Formula instead of an % |
+| **Linhas de Código** | 32 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de varredura frontal premium para knights nível 70 (mid-late). Dano físico skill-based com onda direcionada WAVE6+AREADIAGONAL_WAVE6 para cobertura ampla. Fórmula skill-based escalável com coef 0.04-0.08 × 1.1. BLOCKARMOR ignora armadura. USECHARGES consome weapon. 200 mana (custoso). Direction required (não target). Cooldown 6s. Premium only.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/front_sweep.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(59)
+spell:name("Front Sweep")
+spell:words("exori min")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_FRONT_SWEEP)
+spell:level(70)
+spell:mana(200)
+spell:isPremium(true)
+spell:needDirection(true)
+spell:needWeapon(true)
+spell:cooldown(6 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("knight;true", "elite knight;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Varredura Frontal - Wave Direcionada Skill-Based**
+
+Este spell implementa um sistema de wave direcionada física com escalabilidade skill-based:
+
+1. **Wave Direcionada (Mid-Late!):**
+   - AREA_WAVE6 (linha)
+   - AREADIAGONAL_WAVE6 (diagonais)
+   - Cobertura ampla direcionada
+
+2. **Skill-Based Escalável:**
+   - Usa CALLBACK_PARAM_SKILLVALUE
+   - min = (skillTotal × 0.04 + 31) × 1.1
+   - max = (skillTotal × 0.08 + 45) × 1.1
+   - skillTotal = skill × attack
+
+3. **Mid-Late Knight:**
+   - Level 70
+   - 200 mana (custoso)
+   - Premium only
+   - Cooldown 6s (moderado)
+
+4. **Weapon-Based:**
+   - needWeapon: true
+   - BLOCKARMOR: 1 (ignora defesa)
+   - USECHARGES: 1 (consome charges)
+   - Direction required
+
+**Fórmula Visual:**
+```
+Knight lvl 70, skill 80, attack 40:
+  skillTotal = 80 × 40 = 3200
+  min = (3200 × 0.04 + 31) × 1.1 = 385.1
+  max = (3200 × 0.08 + 45) × 1.1 = 291.5
+
+Knight lvl 70, skill 100, attack 50:
+  skillTotal = 100 × 50 = 5000
+  min = (5000 × 0.04 + 31) × 1.1 = 220.11
+  max = (5000 × 0.08 + 45) × 1.1 = 440.55
+```
+
+**Diferencial:** Wave mid-late física skill-based direcionada!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `front_sweep` oferece dano físico AOE em wave direcionada:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE skill-based
+- **Fórmula:** Skill × attack escalável × 1.1 (multiplicador!)
+- **Mana:** 200 (custoso)
+- **Level:** 70 (mid-late)
+- **Área:** WAVE6 + diagonal
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ Effect: HITAREA
+├─ BLOCKARMOR: 1
+├─ USECHARGES: 1
+├─ Area: WAVE6 + AREADIAGONAL_WAVE6
+└─ Callback: onGetFormulaValues (SKILLVALUE)
+
+onGetFormulaValues(player, skill, attack, factor)
+└─ min/max skill-based escalável
+
+spell.onCastSpell(creature, var)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITAREA)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+combat:setArea(createCombatArea(AREA_WAVE6, AREADIAGONAL_WAVE6))
+```
+
+**Propósito:** Combat de dano físico AOE com wave.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITAREA | Efeito impacto |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Ignora armadura! |
+| `COMBAT_PARAM_USECHARGES` | 1 | Consome weapon charges |
+| `Area` | WAVE6 + AREADIAGONAL_WAVE6 | Wave ampla |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local skillTotal = skill * attack
+	local levelTotal = player:getLevel() / 5
+	return -(((skillTotal * 0.04) + 31) + levelTotal) * 1.1, 
+	       -(((skillTotal * 0.08) + 45) + levelTotal) * 1.1
+end
+```
+
+**Propósito:** Calcula dano físico skill-based escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Attack power |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min * 1.1` | number | Dano mínimo × 1.1 |
+| `-max * 1.1` | number | Dano máximo × 1.1 |
+
+**Fórmula:**
+```
+skillTotal = skill × attack
+levelTotal = level / 5
+
+min = ((skillTotal × 0.04 + 31) + levelTotal) × 1.1
+max = ((skillTotal × 0.08 + 45) + levelTotal) × 1.1
+```
+
+**Pesos:**
+- skillTotal: 0.04-0.08 (baixo coef)
+- Bônus: +31/+45
+- Level: 0.2 por ponto
+- Multiplicador final: 1.1 (boost!)
+
+**Exemplos:**
+
+| Level | Skill | Attack | Min | Max |
+|---|---|---|---|
+| 70 | 80 | 40 | 385 | 291 |
+| 70 | 100 | 50 | 220 | 440 |
+| 80 | 120 | 60 | 427 | 737 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples executa combat.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight |
+| `var` | Variant | Direction |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Varredura ativada |
+| `false` | Direction falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callbacks skill |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `skillTotal` | number | skill × attack |
+| `levelTotal` | number | level / 5 |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Wave Direcionada Dupla
+
+```lua
+combat:setArea(createCombatArea(AREA_WAVE6, AREADIAGONAL_WAVE6))
+```
+
+**Benefício:** Linha + diagonal = cobertura ampla.
+
+### Padrão 2: Skill-Based com Multiplicador
+
+```lua
+return -(((skillTotal * 0.04) + 31) + levelTotal) * 1.1,
+       -(((skillTotal * 0.08) + 45) + levelTotal) * 1.1
+```
+
+**Benefício:** Escalável skill com boost final.
+
+### Padrão 3: Direction + Weapon Required
+
+```lua
+spell:needDirection(true)
+spell:needWeapon(true)
+```
+
+**Benefício:** Direção flexível, weapon obrigatório.
+
+### Padrão 4: TODO Comment
+
+```lua
+-- TODO : Use New Real Formula instead of an %
+```
+
+**Indicação:** Fórmula será revisada!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, skill, attack, factor)
+
+**Descrição:** Calcula dano varredura skill-based escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Attack power |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min * 1.1` | number | Dano mínimo |
+| `-max * 1.1` | number | Dano máximo |
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura varredura frontal em direção.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight |
+| `var` | Variant | Direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Varredura ativada |
+| `false` | Direction falhou |
+
+**Requisitos:**
+- Level 70+
+- 200 mana
+- Weapon equipped
+- Direction required
+- Premium account
+- Cooldown 6s
+
+**Efeito:**
+- Efeito impacto área
+- Wave6 + diagonal
+- Dano skill escalável
+- Ignora armadura
+- Weapon charges usado
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Mid-Late Knight AOE
+
+```lua
+-- Knight lvl 70+
+// Front Sweep = varredura ampla
+// Wave direcionada
+// Skill-based dano escalável
+```
+
+### Caso 2: Weapon Training
+
+```lua
+-- Knight farming com wave
+// Front Sweep = AOE direcionado
+// Weapon charges consumption
+// Mid-late training
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callback:** CALLBACK_PARAM_SKILLVALUE
+- **Areas:** AREA_WAVE6, AREADIAGONAL_WAVE6
+- **Parameters:** BLOCKARMOR, USECHARGES
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Varredura frontal AOE |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | (skillTotal × 0.04-0.08 + bônus) × 1.1 |
+| **Mana** | 200 |
+| **Area** | WAVE6 + AREADIAGONAL_WAVE6 |
+| **Level** | 70 (mid-late) |
+| **Cooldown** | 6s |
+| **Premium** | Sim |
+| **BLOCKARMOR** | 1 |
+| **USECHARGES** | 1 |
+| **Weapon Required** | Sim |
+| **Direction Required** | Sim |
+| **Vocações** | Knight, Elite Knight |
+| **Padrão** | Skill-based wave + BLOCKARMOR + direction AOE |

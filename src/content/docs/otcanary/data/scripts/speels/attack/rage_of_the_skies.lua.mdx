@@ -1,0 +1,426 @@
+---
+title: "Spell - rage_of_the_skies.lua"
+description: "Spell de fúria dos céus para sorcerers level 55 com self-target AOE EXTREMA"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `rage_of_the_skies.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 119 |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 55 |
+| **Mana Requerida** | 600 |
+| **Words** | exevo gran mas vis |
+| **Alcance** | Self-target |
+| **Área** | CIRCLE6X6 (GRANDE!) |
+| **Cooldown** | 40s (MUITO LONGO!) |
+| **GroupCooldown** | 4s / 40s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level EXTREMAMENTE ALTA (7-14 coef - MAX!) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_RAGE_OF_THE_SKIES |
+| **Requer Self-Target** | Sim (isSelfTarget) |
+| **Bloqueia Walls** | Não |
+| **Grupos** | attack, focus |
+| **Linhas de Código** | 32 |
+| **Complexidade** | Alta |
+
+**Descrição:**
+Spell único de fúria dos céus para sorcerers nível 55 (end-game). Self-target AOE EXTREMA CIRCLE6X6 (tudo ao redor!). Dano energia EXTREMAMENTE escalável magic-level (7-14 coef - MÁXIMO!). 600 mana (MUITO CARO!). Self-target (não requer target). Cooldown 40s (MUITO LONGO!). Premium only. Focus group. Ultimate AOE spell!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/rage_of_the_skies.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack", "focus")
+spell:id(119)
+spell:name("Rage of the Skies")
+spell:words("exevo gran mas vis")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_RAGE_OF_THE_SKIES)
+spell:level(55)
+spell:mana(600)
+spell:isSelfTarget(true)
+spell:isPremium(true)
+spell:cooldown(40 * 1000)
+spell:groupCooldown(4 * 1000, 40 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fúria dos Céus - Ultimate AOE Self-Target Magic-Level MÁXIMA**
+
+Este spell implementa um sistema ÚNICO de AOE self-target com escalabilidade EXTREMA:
+
+1. **Self-Target AOE CIRCLE6X6:**
+   - isSelfTarget: true (automático!)
+   - Area CIRCLE6X6 (tudo ao redor!)
+   - Não requer target
+   - AOE automático = convenient!
+
+2. **Magic-Level EXTREMAMENTE Alto:**
+   - min = (level/5) + (maglevel × 7)
+   - max = (level/5) + (maglevel × 14)
+   - Coef MÁXIMOS (7-14!)
+   - Linear escalabilidade!
+
+3. **End-Game Premium:**
+   - Level 55 (HIGH!)
+   - 600 mana (MUITO CARO!)
+   - Premium only
+   - Cooldown 40s (muito longo!)
+   - Focus group (special)
+
+4. **Tipo Energia:**
+   - COMBAT_ENERGYDAMAGE
+   - Effect BIGCLOUDS
+   - Self-target = automático
+   - AOE ao redor = único!
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 55, mlvl 10:
+  min = 11 + 70 = 81
+  max = 11 + 140 = 151
+
+Sorcerer lvl 55, mlvl 30:
+  min = 11 + 210 = 221
+  max = 11 + 420 = 431
+
+Sorcerer lvl 55, mlvl 50:
+  min = 11 + 350 = 361
+  max = 11 + 700 = 711
+```
+
+**Diferencial:** Ultimate AOE self-target magic-level MÁXIMA focus spell!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `rage_of_the_skies` oferece damage AOE self-target EXTREMO:
+
+- **Dano:** COMBAT_ENERGYDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel × 7/14) (MÁXIMA!)
+- **Mana:** 600 (MUITO caro)
+- **Level:** 55 (end-game)
+- **Area:** CIRCLE6X6 (AOE grande!)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: ENERGYDAMAGE
+├─ Effect: BIGCLOUDS
+├─ Area: CIRCLE6X6
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max magic-level MÁXIMA
+
+function spell.onCastSpell(creature, var)
+└─ combat:execute() + isSelfTarget
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_BIGCLOUDS)
+combat:setArea(createCombatArea(AREA_CIRCLE6X6))
+```
+
+**Propósito:** Combat de dano energia AOE huge.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ENERGYDAMAGE | Dano energia |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_BIGCLOUDS | Efeito nuvem grande |
+| `Area` | AREA_CIRCLE6X6 | AOE círculo 6x6 |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 7)
+	local max = (level / 5) + (maglevel * 14)
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano energia AOE EXTREMAMENTE escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 7)
+max = (level / 5) + (maglevel * 14)
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 7 (MÁXIMO!)
+- Maglevel max: 14 (MÁXIMO!)
+- Sem bônus fixo (linear!)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 55 | 10 | 81 | 151 |
+| 55 | 20 | 151 | 291 |
+| 55 | 30 | 221 | 431 |
+| 55 | 50 | 361 | 711 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Fúria ativada |
+| `false` | Combate falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | AOE CIRCLE6X6 |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Magic-Level MÁXIMA Linear
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 7)
+	local max = (level / 5) + (maglevel * 14)
+	return -min, -max
+end
+```
+
+**Benefício:** Escalabilidade MÁXIMA linear!
+
+### Padrão 2: Self-Target AOE
+
+```lua
+spell:isSelfTarget(true)
+combat:setArea(createCombatArea(AREA_CIRCLE6X6))
+```
+
+**Benefício:** AOE automático ao redor!
+
+### Padrão 3: Focus Group + Long Cooldown
+
+```lua
+spell:group("attack", "focus")
+spell:cooldown(40 * 1000)
+```
+
+**Benefício:** Focus class skill com timing específico!
+
+### Padrão 4: Expensive Mana (Balanced)
+
+```lua
+spell:mana(600)
+spell:level(55)
+```
+
+**Benefício:** Resource management end-game!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano energia AOE EXTREMAMENTE escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(sorcerer, 55, 30)
+// min = 11 + 210 = 221
+// max = 11 + 420 = 431
+// Retorna: -221, -431
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura fúria dos céus AOE.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Ignorado (self-target) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Fúria ativada |
+| `false` | Combate falhou |
+
+**Requisitos:**
+- Level 55+
+- 600 mana (MUITO caro!)
+- Self-target (automático)
+- Premium account
+- Cooldown 40s (MUITO longo!)
+
+**Efeito:**
+- AOE CIRCLE6X6
+- Efeito nuvem grande
+- Dano magic-level MÁXIMA
+- Self-target = automático
+- Múltiplos targets
+- Muito poder!
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: End-Game AOE Focus
+
+```lua
+-- Sorcerer lvl 55+ premium
+// Rage of the Skies = ultimate AOE
+// Self-target = automático!
+// 600 mana = caro spell
+// 40s CD = timing crítico
+// CIRCLE6X6 = tudo ao redor!
+```
+
+### Caso 2: Group Coordination
+
+```lua
+-- Premium sorcerer em grupo
+// Rage of the Skies = aoe contra múltiplos
+// Focus group = timing síncrono
+// 40s CD = spell important
+// Magic-level MÁXIMA = damage INSANO
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_ENERGYDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Effects:** CONST_ME_BIGCLOUDS
+- **Areas:** AREA_CIRCLE6X6
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Ultimate AOE self-target |
+| **Dano Type** | COMBAT_ENERGYDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*7), max=(lvl/5)+(mlvl*14) |
+| **Mana** | 600 (MUITO caro!) |
+| **Area** | CIRCLE6X6 |
+| **Level** | 55 (end-game) |
+| **Cooldown** | 40s (MUITO longo!) |
+| **Premium** | Sim |
+| **Self-Target** | Sim (automático) |
+| **Group** | attack, focus |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | Magic-level MÁXIMA + self-target AOE + focus + expensive |

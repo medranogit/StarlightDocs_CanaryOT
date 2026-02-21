@@ -1,0 +1,459 @@
+---
+title: "Spell - brutal_strike.lua"
+description: "Spell de brutality física para knights iniciante level 16"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `brutal_strike.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 61 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Knight, Elite Knight |
+| **Level Requerido** | 16 |
+| **Mana Requerida** | 30 |
+| **Words** | exori ico |
+| **Alcance** | 1 (melee melee) |
+| **Área** | Single target |
+| **Cooldown** | 6s |
+| **GroupCooldown** | 2s |
+| **Premium** | Não |
+| **Requer Weapon** | Sim |
+| **Requer Target** | Sim |
+| **Fórmula** | Skill-low based (0.02-0.04 skill) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_BRUTAL_STRIKE |
+| **Som Impacto** | (Padrão) |
+| **Bloqueio Armor** | Sim |
+| **Usa Charges** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 40 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de brutality física para knights nível 16 (iniciante mid). Dano skill-based muito baixo (0.02-0.04). Mana barato (30). Sem premium. 6s cooldown. Alcance melee (1). Requer weapon + target. Free-to-play friendly. Primer physical spell knight.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/brutal_strike.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(61)
+spell:name("Brutal Strike")
+spell:words("exori ico")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_BRUTAL_STRIKE)
+spell:level(16)
+spell:mana(30)
+spell:isPremium(false)
+spell:range(1)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:needWeapon(true)
+spell:cooldown(6 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("knight;true", "elite knight;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Golpe Brutal - Physical Starter Knight**
+
+Este spell implementa um **sistema de dano físico muito escalável para iniciantes**:
+
+1. **Skill-Based Muito Baixo:**
+   - Usa CALLBACK_PARAM_SKILLVALUE
+   - skillTotal = skill × attack
+   - Multiplicadores PEQUENOS (0.02-0.04)
+
+2. **Fórmula Escalável Iniciante:**
+   - min = (skillTotal × 0.02 + 4 + levelTotal) × 1.28
+   - max = (skillTotal × 0.04 + 9 + levelTotal) × 1.28
+   - Baixa escala = training friendly
+
+3. **Iniciante Premium:**
+   - Level 16 (cedo)
+   - 30 mana (barato)
+   - Sem premium
+   - Cooldown 6s
+
+4. **Melee Physical:**
+   - Alcance 1 (melee)
+   - Requer weapon
+   - BlockArmor
+   - Usa charges
+
+**Fórmula Visual:**
+```
+Knight lvl 16, skill 20, attack 5:
+  skillTotal = 20 × 5 = 100
+  levelTotal = 16 / 5 = 3.2
+  min = (100×0.02 + 4 + 3.2) × 1.28 = 11.3
+  max = (100×0.04 + 9 + 3.2) × 1.28 = 20.2
+
+Knight lvl 50, skill 75, attack 15:
+  skillTotal = 75 × 15 = 1125
+  levelTotal = 50 / 5 = 10
+  min = (1125×0.02 + 4 + 10) × 1.28 = 49.7
+  max = (1125×0.04 + 9 + 10) × 1.28 = 73.2
+```
+
+**Diferencial:** Muito skill-low para training puro!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `brutal_strike` oferece dano físico escalável iniciante:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE skill-low based
+- **Fórmula:** Skilltotal muito baixa (0.02-0.04)
+- **Mana:** 30 (barato)
+- **Level:** 16 (cedo)
+- **Range:** 1 (melee)
+
+### Arquitetura
+
+Combat com callback skill lowscale:
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ Effect: HITAREA
+├─ Distance: WEAPONTYPE
+├─ BlockArmor: sim
+├─ UseCharges: sim
+└─ Callback: onGetFormulaValues (SKILL)
+
+onGetFormulaValues(player, skill, attack, factor)
+└─ min/max skill-low
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_WEAPONTYPE)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+```
+
+**Propósito:** Combat de dano iniciante.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITAREA | Efeito hit |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_WEAPONTYPE | Projétil weapon |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Bloqueia armor |
+| `COMBAT_PARAM_USECHARGES` | 1 | Usa charges |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local skillTotal = skill * attack
+	local levelTotal = player:getLevel() / 5
+	return -(((skillTotal * 0.02) + 4) + levelTotal) * 1.28, -(((skillTotal * 0.04) + 9) + levelTotal) * 1.28
+end
+```
+
+**Propósito:** Calcula dano brutal iniciante.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Weapon attack |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+skillTotal = skill × attack
+levelTotal = level / 5
+
+min = (skillTotal × 0.02 + 4 + levelTotal) × 1.28
+max = (skillTotal × 0.04 + 9 + levelTotal) × 1.28
+```
+
+**Variáveis Locais:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `skillTotal` | number | skill × attack |
+| `levelTotal` | number | level / 5 |
+
+**Exemplos:**
+
+| Level | Skill | Attack | Min | Max |
+|---|---|---|---|---|
+| 16 | 20 | 5 | 11 | 20 |
+| 30 | 50 | 10 | 34 | 51 |
+| 60 | 100 | 15 | 76 | 113 |
+| 100 | 150 | 25 | 171 | 256 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Brutal strike ativado |
+| `false` | Target/weapon falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback skill-low |
+| `spell` | Spell | Arquivo | Instância do spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `skillTotal` | number | skill × attack |
+| `levelTotal` | number | level / 5 |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Skill-Low Multiplier
+
+```lua
+local skillTotal = skill * attack
+return -(((skillTotal * 0.02) + 4) + levelTotal) * 1.28, -(((skillTotal * 0.04) + 9) + levelTotal) * 1.28
+```
+
+**Benefício:** Muito baixa escala skill = training.
+
+### Padrão 2: Mana Barato
+
+```lua
+spell:mana(30)
+```
+
+**Benefício:** Repetição fácil.
+
+### Padrão 3: Acesso Free-to-Play
+
+```lua
+spell:isPremium(false)
+```
+
+**Benefício:** Todos knights podem acessar.
+
+### Padrão 4: Cooldown Normal
+
+```lua
+spell:cooldown(6 * 1000)
+```
+
+**Benefício:** Regulado para escalabilidade.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, skill, attack, factor)
+
+**Descrição:** Calcula dano brutal iniciante.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Weapon attack |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(knight, 50, 10, 0)
+// skillTotal = 50 × 10 = 500
+// levelTotal = 30 / 5 = 6
+// min = (500×0.02 + 4 + 6) × 1.28 = 22.4
+// max = (500×0.04 + 9 + 6) × 1.28 = 36.74
+// Retorna: -22, -37
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura golpe brutal em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight conjurador |
+| `var` | Variant | Target (obrigatório) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Golpe ativado |
+| `false` | Target/weapon inválido |
+
+**Requisitos:**
+- Level 16+
+- 30 mana
+- Weapon equipado
+- Target próximo (range 1)
+- Não premium
+- Cooldown 6s
+
+**Efeito:**
+- Efeito HITAREA
+- Projétil weapon type
+- Dano skill-low escalável
+- Bloqueia armor
+- Usa charges weapon
+
+**Exemplo:**
+
+```lua
+-- Knight lvl 30, skill 50, attack 10
+spell.onCastSpell(knight, targetVariant)
+// Validações:
+//   ✓ Level 30 >= 16
+//   ✓ Mana 30 disponível
+//   ✓ Weapon equipado
+//   ✓ Target próximo
+// Combat executa
+// skillTotal = 50 × 10 = 500
+// Dano: -22 a -37
+// Armor bloqueia parcial
+// Weapon charges reduzem
+// Resultado: Golpe básico forte!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Primeiro Spell
+
+```lua
+-- Knight nivel 16
+// Brutal Strike = primeiro physical spell
+// Escalável com skill/attack
+```
+
+### Caso 2: Training Skill
+
+```lua
+-- Farming monstros
+// 30 mana = spam fácil
+// 6s cooldown = training
+// Skill-low = progresso
+```
+
+### Caso 3: Free-to-Play
+
+```lua
+-- Sem premium
+// Acessível cedo
+// Tudo gratuito
+// Fundamental knight
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callback:** CALLBACK_PARAM_SKILLVALUE
+- **Effects:** CONST_ME_HITAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Dano brutal físico iniciante |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | min=(skillTotal*0.02+4+lvl/5)*1.28, max=(skillTotal*0.04+9+lvl/5)*1.28 |
+| **Mana** | 30 |
+| **Range** | 1 (melee) |
+| **Level** | 16 (cedo/mid) |
+| **Cooldown** | 6s |
+| **Premium** | Não |
+| **Vocações** | Knight, Elite Knight |
+| **Padrão** | Skill-low multiplier + mana barato |

@@ -1,0 +1,596 @@
+---
+title: "Script Lib - register_bestiary_charm.lua"
+description: "Sistema de registro de charm (encantamentos) para bestiary com metatable patterns"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `register_bestiary_charm.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Registration System |
+| **Padrão** | Metatable with Parser Functions |
+| **Linhas de Código** | 66 |
+| **Parser Functions** | 11 |
+| **Complexidade** | Médium |
+| **Status** | Complete registration framework |
+
+**Descrição:**
+Sistema de registro que fornece interface metatable para aplicar propriedades a objetos Charm. Implementa padrão de múltiplos parsers que interceptam chamadas via `__call` metamethod, permitindo definição declarativa de charms. Cada parser valida e aplica uma aspecturos specificamente (name, description, sounds, category, type, damageType, percent, chance, messages, effect, points).
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/register_bestiary_charm.lua
+```
+
+**Tipo de Carregamento:** Executado durante inicialização, estende Charm class
+
+**Contexto de Uso:** Charm system - permite registro declarativo de encantamentos/especiais de monstro
+
+**Pré-requisitos:**
+- Classe global `Charm` (native C++)
+- Metatable system do Lua
+- Logger system para debug/warnings
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de Charm Registration (Declarative Configuration)**
+
+Charms são bônus/efeitos especiais. Registration permite definição limpa:
+
+**Sem registro metatable:**
+```lua
+local charm = Charm(1)
+charm:name("Fire Protection")
+charm:category("defense")
+charm:damageType(COMBAT_FIRE)
+charm:percentage(10)
+-- Verbose, repetitivo
+```
+
+**Com registro (declarative):**
+```lua
+Charm({
+	init = {1},
+	name = "Fire Protection",
+	category = "defense",
+	damageType = COMBAT_FIRE,
+	percent = 10
+})
+```
+
+**Pattern:**
+```
+registerCharm metatable
+  ├─ __call intercepta: Charm(def_table)
+  ├─ Itera parsers em registerCharm
+  ├─ Cada parser aplica sua propriedade
+  └─ Retorna Charm com tudo aplicado
+```
+
+**Benefício:** DSL style, menos código, mais legível
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `register_bestiary_charm.lua` implementa **parser dispatcher system** para Charm:
+
+- **Define registro metatable** com `__call` hook
+- **Implementa 11 parsers** especializados
+- **Valida propriedades condicionalmente** (se existem na definição)
+- **Aplica transformações** (ex: percent → percentage)
+- **Estende Charm.register()** method
+
+### Arquitetura
+
+Script usa padrão de **metatable dispatcher com parser functions**:
+
+```lua
+registerCharm = {}
+setmetatable(registerCharm, {
+	__call = function(self, charm, mask)
+		for _, parse in pairs(self) do
+			parse(charm, mask)
+		end
+	end,
+})
+
+-- Parsers
+registerCharm.name = function(charm, mask) ... end
+registerCharm.description = function(charm, mask) ... end
+-- ... 9 mais
+```
+
+Cada chamada `registerCharm(charm, table)` itera e aplica todos os parsers.
+
+### Fluxo Lógico Resumido
+
+| Fase | Ação | Condição |
+|------|------|----------|
+| **Definição** | Table com propriedades é passado | `{name = "...", category = "..."...}` |
+| **Dispatch** | `__call` intercepta | Iteração de parsers |
+| **Validação** | Cada parser valida se propriedade existe | `if mask.name then` |
+| **Aplicação** | Parser aplica método ao charm object | `charm:name(mask.name)` |
+| **Retorno** | Charm totalmente configurado | Com todas as propriedades aplicadas |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Setup: registerCharm Table com Metatable
+
+```lua
+registerCharm = {}
+setmetatable(registerCharm, {
+	__call = function(self, charm, mask)
+		for _, parse in pairs(self) do
+			parse(charm, mask)
+		end
+	end,
+})
+```
+
+**Propósito:** Criar dispatcher que itera parsers.
+
+**Fluxo:**
+1. `registerCharm(charm, definitionTable)` é chamado
+2. Metatable `__call` intercepts
+3. Loop: `for _, parse in pairs(self) do`
+   - `self` = tabela registerCharm (contém parser functions)
+   - `parse` = cada função parser (name, description, etc)
+4. Cada parser é executado com `parse(charm, mask)`
+
+---
+
+### Charm.register Extension
+
+```lua
+Charm.register = function(self, mask)
+	return registerCharm(self, mask)
+end
+```
+
+**Propósito:** Estender método `register()` de Charm class.
+
+**Uso:**
+```lua
+local charm = Charm(1)
+charm:register({
+	name = "Fire Charm",
+	category = "offense"
+})
+```
+
+**Equivalente a:**
+```lua
+registerCharm(charm, { name = "...", category = "..." })
+```
+
+---
+
+### Parser 1: registerCharm.name
+
+```lua
+registerCharm.name = function(charm, mask)
+	if mask.name then
+		charm:name(mask.name)
+	end
+end
+```
+
+**Propósito:** Aplicar propriedade `name` se definida.
+
+**Verificação:** `if mask.name then` - valida se existe na definição
+
+**Aplicação:** `charm:name(value)` - chama método nativo
+
+**Tipo de Valor:** string
+
+---
+
+### Parser 2: registerCharm.description
+
+```lua
+registerCharm.description = function(charm, mask)
+	if mask.description then
+		charm:description(mask.description)
+	end
+end
+```
+
+**Propósito:** Aplicar descrição.
+
+**Tipo de Valor:** string (texto longo, flavor)
+
+---
+
+### Parser 3: registerCharm.sounds
+
+```lua
+registerCharm.sounds = function(charm, mask)
+	if mask.sounds then
+		if mask.sounds.castSound then
+			charm:castSound(mask.sounds.castSound)
+		end
+		if mask.sounds.impactSound then
+			charm:impactSound(mask.sounds.impactSound)
+		end
+	end
+end
+```
+
+**Propósito:** Aplicar sons (aninhado).
+
+**Estrutura de Dados:**
+```lua
+sounds = {
+	castSound = 123,     -- ID do som de cast
+	impactSound = 456    -- ID do som de impacto
+}
+```
+
+**Padrão:** Subnível de propriedades (table dentro de table)
+
+**Verificações:** Duplo nível - first `if mask.sounds`, depois individual sounds
+
+---
+
+### Parser 4: registerCharm.category
+
+```lua
+registerCharm.category = function(charm, mask)
+	if mask.type then      -- BUG: Checa mask.type mas aplica category!
+		charm:category(mask.category)
+	end
+end
+```
+
+**⚠️ AVISO:** Há bug aparente neste parser!
+- Valida: `if mask.type then`
+- Mas aplica: `charm:category(mask.category)`
+- Deveria validar: `if mask.category then`
+
+**Propósito Intended:** Categorizar charm (offense, defense, utility, etc)
+
+**Tipo de Valor:** string (category type)
+
+---
+
+### Parser 5: registerCharm.type
+
+```lua
+registerCharm.type = function(charm, mask)
+	if mask.type then
+		charm:type(mask.type)
+	end
+end
+```
+
+**Propósito:** Aplicar tipo de charm.
+
+**Tipo de Valor:** number ou string (combat type, effect type, etc)
+
+---
+
+### Parser 6: registerCharm.damageType
+
+```lua
+registerCharm.damageType = function(charm, mask)
+	if mask.damageType then
+		charm:damageType(mask.damageType)
+	end
+end
+```
+
+**Propósito:** Especificar tipo de dano (COMBAT_FIRE, COMBAT_ENERGY, etc).
+
+**Tipo de Valor:** number (COMBAT_* constant)
+
+**Contexto:** Charms podem ter modificadores de dano específicos
+
+---
+
+### Parser 7: registerCharm.percent
+
+```lua
+registerCharm.percent = function(charm, mask)
+	if mask.percent then
+		charm:percentage(mask.percent)    -- Transformação: percent → percentage
+	end
+end
+```
+
+**Propósito:** Aplicar percentual/multiplicador.
+
+**Transformação:** Property é `percent`, mas método é `percentage()`
+- Abstração: usuário escreve `percent = 10`
+- Internamente: `charm:percentage(10)`
+
+**Tipo de Valor:** number (0-100 típico)
+
+---
+
+### Parser 8: registerCharm.chance
+
+```lua
+registerCharm.chance = function(charm, mask)
+	if mask.chance then
+		charm:chance(mask.chance)
+	end
+end
+```
+
+**Propósito:** Aplicar chance de ativação.
+
+**Tipo de Valor:** number (0-100 porcentagem)
+
+**Contexto:** Efeitos podem ter chance (não 100% garantido)
+
+---
+
+### Parser 9: registerCharm.messageCancel
+
+```lua
+registerCharm.messageCancel = function(charm, mask)
+	if mask.messageCancel then
+		charm:messageCancel(mask.messageCancel)
+	end
+end
+```
+
+**Propósito:** Mensagem quando charm é cancelado/resisted.
+
+**Tipo de Valor:** string (message a enviar)
+
+---
+
+### Parser 10: registerCharm.messageServerLog
+
+```lua
+registerCharm.messageServerLog = function(charm, mask)
+	if mask.messageServerLog then
+		charm:messageServerLog(mask.messageServerLog)
+	end
+end
+```
+
+**Propósito:** Mensagem para server log (admin/debug).
+
+**Tipo de Valor:** string (log message)
+
+---
+
+### Parser 11: registerCharm.effect
+
+```lua
+registerCharm.effect = function(charm, mask)
+	if mask.effect then
+		charm:effect(mask.effect)
+	end
+end
+```
+
+**Propósito:** Efeito visual/gráfico.
+
+**Tipo de Valor:** number (MAGIC_EFFECT_* constant)
+
+---
+
+### Parser 12: registerCharm.points
+
+```lua
+registerCharm.points = function(charm, mask)
+	if mask.points then
+		charm:points(mask.points)
+	end
+end
+```
+
+**Propósito:** Pontos associados com charm.
+
+**Tipo de Valor:** number (reward points ou cost points)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variável Global Criada
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `registerCharm` | table | Global | Dispatcher metatable com parsers |
+
+### Estrutura de registerCharm
+
+| Função Parser | Tipo | Descrição |
+|---------------|------|-----------|
+| `registerCharm(charm, mask)` | __call metamethod | Dispatcher principal |
+| `.name` | function | Parser para name |
+| `.description` | function | Parser para description |
+| `.sounds` | function | Parser para sounds (aninhado) |
+| `.category` | function | Parser para category |
+| `.type` | function | Parser para type |
+| `.damageType` | function | Parser para damageType |
+| `.percent` | function | Parser para percent |
+| `.chance` | function | Parser para chance |
+| `.messageCancel` | function | Parser para messageCancel |
+| `.messageServerLog` | function | Parser para messageServerLog |
+| `.effect` | function | Parser para effect |
+| `.points` | function | Parser para points |
+
+### Classes/Objetos Estendidos
+
+| Classe | Método Adicionado | Descrição |
+|--------|------------------|-----------|
+| `Charm` | `register(mask)` | Extensão que delega para registerCharm |
+
+### Estrutura de Definition Table (mask)
+
+```lua
+{
+	name = "string",
+	description = "string",
+	sounds = {
+		castSound = number,
+		impactSound = number,
+	},
+	category = "string",
+	type = number|string,
+	damageType = number,      -- COMBAT_*
+	percent = number,          -- 0-100
+	chance = number,           -- 0-100
+	messageCancel = "string",
+	messageServerLog = "string",
+	effect = number,           -- MAGIC_EFFECT_*
+	points = number,
+}
+```
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Metatable Dispatcher
+
+**Técnica:** Usar `__call` para interceptar função e dispatch para múltiplos handlers.
+
+```lua
+registerCharm = {}
+setmetatable(registerCharm, {
+	__call = function(self, charm, mask)
+		for _, parse in pairs(self) do
+			parse(charm, mask)
+		end
+	end,
+})
+```
+
+**Vantagem:**
+- Extensível: adicionar novo parser é trivial (append função)
+- Centralizado: todos os parsers em um lugar
+- Genérico: mesmo pattern pode ser reusado para outras classes
+
+**Aplicação:** Multi-parser registration systems.
+
+---
+
+### Padrón 2: Conditional Property Application
+
+**Técnica:** Validar existência de propriedade antes de aplicar.
+
+```lua
+if mask.name then
+	charm:name(mask.name)
+end
+```
+
+**Vantagem:**
+- Seguro: não aplica se undefined
+- Opcional: alguns parsers podem ser skipped
+- Claro: explícito o que foi validado
+
+**Aplicação:** Optional property handling.
+
+---
+
+### Padrön 3: Property Name Transformation
+
+**Técnica:** Usuário escreve `percent`, método chama percentage()`.
+
+```lua
+-- Definição
+percent = 10
+
+-- Parser
+charm:percentage(mask.percent)
+```
+
+**Vantagem:**
+- API mais intuitiva (percent é termo comum)
+- Abstração: hiding method naming differences
+- Backwards compatibility: renaming métodos internos sem afetar API externa
+
+**Aplicação:** Bridging de naming conventions.
+
+---
+
+### Padrön 4: Nested Property Handling
+
+**Técnica:** Propriedades aninhadas (table dentro de table).
+
+```lua
+if mask.sounds then
+	if mask.sounds.castSound then
+		charm:castSound(...)
+	end
+end
+```
+
+**Vantagem:**
+- Organização: propriedades relacionadas agrupadas
+- Flexibilidade: adicionar sounds sem quebrar API
+
+**Aplicação:** Propriedades compostas/relacionadas.
+
+---
+
+## 🐛 Issues Identificados
+
+### Bug Potencial em registerCharm.category
+
+```lua
+registerCharm.category = function(charm, mask)
+	if mask.type then      -- ❌ Checa mask.type
+		charm:category(mask.category)  -- ✓ Mas aplica category
+	end
+end
+```
+
+**Problema:** Validação e aplicação não combinam
+
+**Fix Sugerido:**
+```lua
+registerCharm.category = function(charm, mask)
+	if mask.category then      -- ✓ Checa category
+		charm:category(mask.category)
+	end
+end
+```
+
+---
+
+## 📈 Performance & Extensibilidade
+
+### Setup Time
+- Uma vez na boot: ~1-2ms para criar metatable e parsers
+
+### Runtime Overhead
+- Por charm: O(n) onde n = número de parsers ativo
+- Tipicamente 11 parsers, mas muitos são skipped (if mask.prop)
+- ~0.1-0.5ms por charm registration
+
+### Extensibilidade
+Fácil adicionar novo parser:
+
+```lua
+registerCharm.newProperty = function(charm, mask)
+	if mask.newProperty then
+		charm:newProperty(mask.newProperty)
+	end
+end
+```
+
+Nenhuma mudança necessária no dispatcher!

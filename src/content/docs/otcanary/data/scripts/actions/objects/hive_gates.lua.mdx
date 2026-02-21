@@ -1,0 +1,282 @@
+---
+title: hive_gates.lua
+description: Sistema de 11 portais de colmeia com teleporte posicional (vertical/horizontal) e validação de eixo.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="hive_gates.lua" icon="pencil">
+Handler complexo de teleporte com ajuste dinâmico de posição baseado em eixo.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/objects/hive_gates.lua`
+
+**Linhas:** 25 | **IDs dos Objects:** 11 portais (6 verticais + 5 horizontais) | **Tipo:** Action Handler com Position Logic
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema de portais de colmeia que teleportam jogador com ajuste automático de posição. Diferencia entre gates verticais (Y-axis, IDs 13278-13283) e horizontais (X-axis, IDs 13290-13294). Valida se movimento é possível no eixo (position.y == toPosition.y bloqueia vertical). Ajusta coordenada dinâmicamente (pata na frente vs atrás).
+
+### Estrutura de Funcionalidades
+
+```
+VERTICAL GATES (Y-axis):
+  ├─ 13278, 13279, 13280, 13281, 13282, 13283
+  ├─ position.y == toPosition.y? → return false (bloqueado)
+  ├─ toPosition.y = position.y > toPosition.y ? 
+  │                    (toPosition.y - 1) : (toPosition.y + 1)
+  └─ Teleporte com ajuste Y
+
+HORIZONTAL GATES (X-axis):
+  ├─ 13290, 13291, 13292, 13293, 13294
+  ├─ position.x == toPosition.x? → return false (bloqueado)
+  ├─ toPosition.x = position.x > toPosition.x ?
+  │                    (toPosition.x - 1) : (toPosition.x + 1)
+  └─ Teleporte com ajuste X
+
+HANDLER:
+  └─ hiveGates.onUse()
+      ├─ position = player:getPosition()
+      ├─ if vertical gates:
+      │   ├─ position.y == toPosition.y? → false
+      │   ├─ Ajusta toPosition.y (±1)
+      ├─ elseif horizontal gates:
+      │   ├─ position.x == toPosition.x? → false
+      │   ├─ Ajusta toPosition.x (±1)
+      ├─ player:teleportTo(toPosition)
+      ├─ Effect: TELEPORT
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| hiveGates | Action | Objeto handler |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Portal Groups
+
+| Grupo | IDs | Tipo | Eixo | Validação |
+|-------|-----|------|------|-----------|
+| Vertical | 13278-13283 (6) | Gates | Y | position.y == toPosition.y? bloqueia |
+| Horizontal | 13290-13294 (5) | Gates | X | position.x == toPosition.x? bloqueia |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local hiveGates = Action()
+
+function hiveGates.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Obter posição do jogador
+	local position = player:getPosition()
+	
+	-- ========== VERTICAL GATES (Y-axis) ==========
+	if item:getId() == 13278 or item:getId() == 13279 or 
+	   item:getId() == 13280 or item:getId() == 13281 or 
+	   item:getId() == 13282 or item:getId() == 13283 then
+		-- Validação: Portal na mesma linha Y?
+		if position.y == toPosition.y then
+			return false  -- Bloqueado
+		end
+
+		-- Ajustar Y dinamicamente
+		-- Se jogador está acima (menor Y), ir mais acima (Y-1)
+		-- Se jogador está abaixo (maior Y), ir mais abaixo (Y+1)
+		toPosition.y = position.y > toPosition.y and toPosition.y - 1 or toPosition.y + 1
+	
+	-- ========== HORIZONTAL GATES (X-axis) ==========
+	elseif item:getId() == 13290 or item:getId() == 13291 or 
+	       item:getId() == 13292 or item:getId() == 13293 or 
+	       item:getId() == 13294 then
+		-- Validação: Portal na mesma linha X?
+		if position.x == toPosition.x then
+			return false  -- Bloqueado
+		end
+
+		-- Ajustar X dinamicamente
+		-- Se jogador está à esquerda (menor X), ir mais à esquerda (X-1)
+		-- Se jogador está à direita (maior X), ir mais à direita (X+1)
+		toPosition.x = position.x > toPosition.x and toPosition.x - 1 or toPosition.x + 1
+	end
+
+	-- Executar teleporte
+	player:teleportTo(toPosition)
+	toPosition:sendMagicEffect(CONST_ME_TELEPORT)
+	return true
+end
+
+hiveGates:id(13278, 13279, 13280, 13281, 13282, 13283, 13290, 13291, 13292, 13293, 13294)
+hiveGates:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa hive gate
+  │
+  ├─ position = player:getPosition()
+  │
+  ├─ if vertical gates (13278-13283):
+  │   │
+  │   ├─ position.y == toPosition.y?
+  │   │   └─ SIM → return false (mesmo Y, bloqueado)
+  │   │
+  │   └─ NÃO → Continua
+  │       ├─ position.y > toPosition.y?
+  │       │   ├─ SIM (jogador acima) → toPosition.y = toPosition.y - 1
+  │       │   └─ NÃO (jogador abaixo) → toPosition.y = toPosition.y + 1
+  │
+  ├─ elseif horizontal gates (13290-13294):
+  │   │
+  │   ├─ position.x == toPosition.x?
+  │   │   └─ SIM → return false (mesmo X, bloqueado)
+  │   │
+  │   └─ NÃO → Continua
+  │       ├─ position.x > toPosition.x?
+  │       │   ├─ SIM (à esquerda) → toPosition.x = toPosition.x - 1
+  │       │   └─ NÃO (à direita) → toPosition.x = toPosition.x + 1
+  │
+  ├─ player:teleportTo(toPosition)
+  │
+  ├─ Effect: TELEPORT
+  │
+  └─ return true
+```
+
+### Ternário Example
+
+```lua
+-- Padrão ternário (condicional compacto)
+toPosition.y = position.y > toPosition.y and toPosition.y - 1 or toPosition.y + 1
+
+-- Expansão lógica:
+local resultado
+if position.y > toPosition.y then
+	resultado = toPosition.y - 1  -- Ir mais para cima
+else
+	resultado = toPosition.y + 1  -- Ir mais para baixo
+end
+toPosition.y = resultado
+```
+
+### Position Adjustment Examples
+
+```
+Vertical Gate (Y-axis):
+
+Jogador em Y=100, Gate em Y=95:
+  ├─ position.y (100) > toPosition.y (95)? SIM
+  ├─ toPosition.y = 95 - 1 = 94
+  ├─ Teleporta para Y=94 (ainda acima do gate)
+  └─ Efeito garante movimento
+
+Jogador em Y=100, Gate em Y=105:
+  ├─ position.y (100) > toPosition.y (105)? NÃO
+  ├─ toPosition.y = 105 + 1 = 106
+  ├─ Teleporta para Y=106 (abaixo do gate)
+  └─ Efeito garante movimento
+
+Horizontal Gate (X-axis):
+
+Jogador em X=50, Gate em X=60:
+  ├─ position.x (50) > toPosition.x (60)? 
+  │   (jogador à esquerda do gate)
+  ├─ SIM (não é) → NÃO (não é)
+  ├─ toPosition.x = 60 + 1 = 61
+  └─ Teleporta para X=61 (à direita do gate)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Axis-based Gating**: Vertical validate Y, Horizontal validate X
+- **Ternário Operator**: `condition and valueA or valueB`
+- **Position Adjustment**: ±1 em eixo específico
+- **Blocking Logic**: return false se movimento impossível
+- **getPosition()**: Obtém coordinates do jogador
+- **teleportTo()**: Teleporta com nova position
+- **Multiple IDs**: 11 gates (6 vertical + 5 horizontal)
+- **Automatic Direction**: Detecta em qual lado da porta está
+
+### Responsabilidades do Handler
+
+1. **Obter posição**: player:getPosition()
+2. **Detectar tipo**: if vertical/horizontal gates
+3. **Validar eixo**: position.axis == toPosition.axis? → false
+4. **Ajustar posição**: ±1 no eixo apropriado
+5. **Teleportar**: player:teleportTo(toPosition)
+6. **Efeito**: TELEPORT
+7. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Axis Validation
+
+Validate movimento no eixo:
+
+```lua
+if position.y == toPosition.y then
+	return false  -- Não pode atravessar na mesma linha
+end
+```
+
+### Padrão Position Adjustment
+
+Ternário para ajuste dinâmico:
+
+```lua
+toPosition.y = position.y > toPosition.y and toPosition.y - 1 or toPosition.y + 1
+```
+
+### Comparação: Hive Gates vs Daily Shrine
+
+| Aspecto | Hive Gates | Daily Shrine |
+|---------|-----------|---|
+| Linhas | 25 | 7 |
+| IDs | 11 | 6 |
+| Lógica | Complexa (position) | Delegada |
+| Teleporte | Sim | Não |
+| Validação | Axis check | Nenhuma |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: hive_gates.lua" icon="star">
+Análise de sistema de teleporte com validação de eixo e ajuste dinâmico de posição. Demonstra ternário operator e position-based blocking.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Axis-based teleport with position adjustment | Complexidade: Média
+</Aside>

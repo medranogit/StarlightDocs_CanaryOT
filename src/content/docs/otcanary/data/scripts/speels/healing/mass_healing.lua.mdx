@@ -1,0 +1,524 @@
+---
+title: "Spell - mass_healing.lua"
+description: "Spell de cura em massa premium level 36 druid com wheel support"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `mass_healing.lua` |
+| **Localização** | `data/scripts/spells/healing/` |
+| **Tipo de Script** | Spell (Instant - Area) |
+| **Tipo** | Healing Combat (Area - Monsters Only) |
+| **Vocações** | Druid, Elder Druid |
+| **Level Requerido** | 36 |
+| **Mana Requerida** | 150 |
+| **Soul Requerida** | Nenhuma |
+| **Words** | exura gran mas res |
+| **Grupo** | healing |
+| **Spell ID** | 82 |
+| **Cooldown** | 2s |
+| **GroupCooldown** | 1s |
+| **Premium** | Sim |
+| **Agressivo** | Não |
+| **Tipo Combat** | Healing ÁREA (Monsters Only) |
+| **Efeito Visual** | CONST_ME_MAGIC_BLUE |
+| **Som de Casting** | SOUND_EFFECT_TYPE_SPELL_MASS_HEALING |
+| **Áreas** | AREA_CIRCLE3X3 (normal) + AREA_CIRCLE3X4 (wheel) |
+| **Linhas de Código** | 58 |
+| **Complexidade** | Alta |
+
+**Descrição:**
+Spell de cura em massa premium level 36 druid exclusive. Sistema Combat com fórmula healing dinâmica. Cura ÁREA apenas monsters (filtra players + boss-specific). 150 mana (alto!). Cooldown 2s. Spell ID 82. Premium exclusive. 2 vocações: Druid, Elder Druid. Duas areas: AREA_CIRCLE3X3 (normal) e AREA_CIRCLE3X4 (com wheel spell additional area). Callback onTargetCreature com boss filter (leiden, ravennous hunger, etc). Wheel support (getWheelSpellAdditionalArea). Spell cura em MASSA druid PREMIUM MID!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/healing/mass_healing.lua
+```
+
+**Tipo Spell:** Instant (Area)
+
+**Registração:**
+```lua
+spell:name("Mass Healing")
+spell:words("exura gran mas res")
+spell:group("healing")
+spell:vocation("druid;true", "elder druid;true")
+spell:id(82)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(1 * 1000)
+spell:level(36)
+spell:mana(150)
+spell:isPremium(true)
+spell:isAggressive(false)
+spell:needLearn(false)
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_MASS_HEALING)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Cura em Massa - Premium Level 36 Druid Area Healing**
+
+Este spell implementa um sistema de cura em massa com callbacks avançados:
+
+1. **Cura em Massa Premium:**
+   - Level 36 (MID!)
+   - 150 mana (alto!)
+   - Fórmula healing: ((player:getLevel() / 5) + (player:getMagicLevel() * 5.7) + 26) até ((player:getLevel() / 5) + (player:getMagicLevel() * 10.43) + 62)
+   - Cura em massa premium mid druid!
+
+2. **Druid Exclusive Premium:**
+   - 2 vocações: Druid + Elder Druid
+   - Spell ID 82
+   - Premium exclusive
+   - Group healing
+   - Druid exclusive cura massa!
+
+3. **Callback com Boss Filter:**
+   - onTargetCreature filtra alvos
+   - Cura APENAS monsters
+   - IGNORA players totalmente
+   - Boss filter: leiden, ravennous hunger, dorokoll, eshtaba, eliz, mezlon, malkhar, containment crystal
+   - Smart targeting!
+
+4. **Wheel Support (WOD):**
+   - Detecta wheel spell additional area
+   - AREA_CIRCLE3X3 (normal)
+   - AREA_CIRCLE3X4 (wheel expanded!)
+   - Scaling wheel support!
+
+**Uso Típico:**
+```
+Druid/Elder Druid lvl 36+ (Premium)
+// Mass Healing = mid cura em massa
+// Cura ÁREA monsters: fórmula dinâmica
+// Ignora players + boss-specific filtering
+// Wheel spell: area expandida CIRCLE3X4
+// 150 mana = investimento médio!
+// Cooldown 2s = moderado!
+// Spell cura em massa druid premium!
+```
+
+**Diferencial:** Cura em massa druid premium com callback filtering smart + wheel support!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `mass_healing` oferece cura em massa para monsters em área com callback filtering e wheel support:
+
+- **Tipo:** Healing Combat (Area - Monsters Only)
+- **Spell ID:** 82
+- **Mana:** 150 (alto!)
+- **Level:** 36 (mid!)
+- **Fórmula Healing:** ((level / 5) + (magicLevel * 5.7) + 26) até ((level / 5) + (magicLevel * 10.43) + 62)
+- **Cooldown:** 2s
+- **Vocações:** 2 (druid exclusive!)
+- **Área:** AREA_CIRCLE3X3 (normal) / AREA_CIRCLE3X4 (wheel)
+
+### Arquitetura
+
+```
+local function targetFunction(creature, target)
+├─ Calcula min/max healing
+├─ Boss filter table: leiden, ravennous hunger, etc
+├─ Validação: target:isMonster() e não master
+├─ doTargetCombatHealth() executa healing
+
+local function createCombat(area, combatFunc)
+├─ Combat instance
+├─ setCallback(CALLBACK_PARAM_TARGETCREATURE, combatFunc)
+├─ setParameter EFFECT + AGGRESSIVE + DISPEL
+├─ setArea(createCombatArea(area))
+└─ return combat
+
+local combat = createCombat(AREA_CIRCLE3X3, "onTargetCreature")
+local combatWOD = createCombat(AREA_CIRCLE3X4, "onTargetCreatureWOD")
+
+local spell = Spell("instant")
+├─ onCastSpell(creature, var)
+│  ├─ Detecta wheel spell additional area
+│  ├─ if wheel: return combatWOD:execute()
+│  └─ else: return combat:execute()
+└─ Configuração spell
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = createCombat(AREA_CIRCLE3X3, "onTargetCreature")
+```
+
+**Propósito:** Instância do sistema Combat para cura em massa 3x3.
+
+**Tipo:** Combat
+
+**Parâmetros Configurados:**
+- COMBAT_PARAM_EFFECT: CONST_ME_MAGIC_BLUE
+- COMBAT_PARAM_AGGRESSIVE: 0
+- COMBAT_PARAM_DISPEL: CONDITION_PARALYZE
+- Area: AREA_CIRCLE3X3
+
+---
+
+### Variável Global: combatWOD
+
+```lua
+local combatWOD = createCombat(AREA_CIRCLE3X4, "onTargetCreatureWOD")
+```
+
+**Propósito:** Instância do sistema Combat para cura em massa wheelstone (3x4 expandido).
+
+**Tipo:** Combat
+
+**Parâmetros Configurados:**
+- COMBAT_PARAM_EFFECT: CONST_ME_MAGIC_BLUE
+- COMBAT_PARAM_AGGRESSIVE: 0
+- COMBAT_PARAM_DISPEL: CONDITION_PARALYZE
+- Area: AREA_CIRCLE3X4 (expandido!)
+
+---
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell de cura em massa.
+
+**Tipo:** Instant (sem cast time)
+
+---
+
+### Função Local: targetFunction
+
+```lua
+local function targetFunction(creature, target)
+	local player = creature:getPlayer()
+	local min = ((player:getLevel() / 5) + (player:getMagicLevel() * 5.7) + 26)
+	local max = ((player:getLevel() / 5) + (player:getMagicLevel() * 10.43) + 62)
+
+	local bosses = { "leiden", "ravennous hunger", "dorokoll the mystic", "eshtaba the conjurer", "eliz the unyielding", "mezlon the defiler", "malkhar deathbringer", "containment crystal" }
+	local master = target:getMaster()
+	if target:isMonster() and not master or master and master:isMonster() then
+		if not table.contains(bosses, target:getName():lower()) then
+			return true
+		end
+	end
+
+	doTargetCombatHealth(creature, target, COMBAT_HEALING, min, max, CONST_ME_NONE, ORIGIN_SPELL, "Mass Healing")
+end
+```
+
+**Propósito:** Calcula e aplica healing em massa com boss filtering.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (druid) |
+| `target` | Creature | Alvo da área |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Healing/skip executado |
+| `false` | Falha execução |
+
+**Lógica:**
+- Calcula min/max healing baseado em player level + magic level
+- Boss filter: ignora bosses específicos
+- Validação: target:isMonster() - cura APENAS monsters
+- Ignora players totalmente
+- doTargetCombatHealth executa healing
+
+---
+
+### Função Global: onTargetCreature / onTargetCreatureWOD
+
+```lua
+function onTargetCreature(creature, target)
+	targetFunction(creature, target)
+	return true
+end
+
+function onTargetCreatureWOD(creature, target)
+	targetFunction(creature, target)
+	return true
+end
+```
+
+**Propósito:** Callbacks para ambas áreas (normal e wheel).
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster |
+| `target` | Creature | Alvo |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Callback executado |
+
+---
+
+### Função Local: createCombat
+
+```lua
+local function createCombat(area, combatFunc)
+	local initCombat = Combat()
+	initCombat:setCallback(CALLBACK_PARAM_TARGETCREATURE, combatFunc)
+	initCombat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+	initCombat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+	initCombat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+	initCombat:setArea(createCombatArea(area))
+	return initCombat
+end
+```
+
+**Propósito:** Factory para criar combat instances com área customizada.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `area` | Integer | Area constant (AREA_CIRCLE3X3, AREA_CIRCLE3X4) |
+| `combatFunc` | String | Callback function name |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| initCombat | Combat instance configurado |
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	local player = creature:getPlayer()
+	if creature and player then
+		if player:getWheelSpellAdditionalArea("Mass Healing") then
+			return combatWOD:execute(creature, var)
+		end
+	end
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Executa combat correto detectando wheel spell support.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (druid) |
+| `var` | Variant | Variant |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Combat executado |
+| `false` | Falha execução |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância Combat 3x3 |
+| `combatWOD` | Combat | Arquivo | Instância Combat 3x4 wheel |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Callback com Boss Filter Específico
+
+```lua
+local bosses = { "leiden", "ravennous hunger", ... }
+if not table.contains(bosses, target:getName():lower()) then
+	return true -- Skip boss, cura outros
+end
+```
+
+**Benefício:** Filter smart para ignorar bosses específicos!
+
+### Padrão 2: Druid Exclusive Premium Area
+
+```lua
+spell:vocation("druid;true", "elder druid;true")
+spell:level(36)
+spell:isPremium(true)
+spell:mana(150)
+```
+
+**Benefício:** Premium mid druid exclusive mass healing!
+
+### Padrão 3: Dynamo Dual Area com Wheel Support
+
+```lua
+local combat = createCombat(AREA_CIRCLE3X3, "onTargetCreature")
+local combatWOD = createCombat(AREA_CIRCLE3X4, "onTargetCreatureWOD")
+
+if player:getWheelSpellAdditionalArea("Mass Healing") then
+	return combatWOD:execute(creature, var)
+end
+```
+
+**Benefício:** Área dinâmica detectando wheel spell support!
+
+### Padrão 4: Factory Pattern para Combat
+
+```lua
+local function createCombat(area, combatFunc)
+	...
+	return initCombat
+end
+```
+
+**Benefício:** Reutilização de código combat!
+
+---
+
+## 🤖 Documentação das Funções
+
+### targetFunction(creature, target)
+
+**Descrição:** Filtra e cura apenas monsters (sem players), ignora bosses específicos.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (druid) |
+| `target` | Creature | Alvo da área |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Healing/skip aplicado |
+
+### onTargetCreature(creature, target)
+
+**Descrição:** Callback para normal area (CIRCLE3X3).
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (druid) |
+| `target` | Creature | Alvo |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Callback executado |
+
+### onTargetCreatureWOD(creature, target)
+
+**Descrição:** Callback para wheel area (CIRCLE3X4).
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (druid) |
+| `target` | Creature | Alvo |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Callback executado |
+
+### createCombat(area, combatFunc)
+
+**Descrição:** Factory para criar combat instances configuradas.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `area` | Integer | Area constant (CIRCLE3X3, CIRCLE3X4) |
+| `combatFunc` | String | Callback function |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| initCombat | Combat instance configurado |
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Executa mass healing com wheel support detection.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (druid) |
+| `var` | Variant | Variant |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Combat executado |
+| `false` | Falha execução |
+
+**Requisitos:**
+- Level 36+
+- 150 mana
+- Premium account
+- Vocação: Druid ou Elder Druid
+- Alvo: Monsters APENAS (não players)
+- Wheel support opcional
+
+**Exemplo de Uso:**
+```lua
+// Ao lançar "exura gran mas res" (Premium lvl 36+)
+-- Detecta wheel spell additional area
+-- Se wheel: area CIRCLE3X4 (expandida!)
+-- Senão: area CIRCLE3X3 (normal)
+-- onTargetCreature() filtra alvos
+-- CURA APENAS monsters
+-- IGNORA players totalmente
+-- IGNORA bosses: leiden, ravennous hunger, etc
+-- Displays CONST_ME_MAGIC_BLUE effect
+-- Cooldown 2s aplicado
+```
+
+---
+
+## 📌 Resumo
+
+**Mass Healing** é um spell de cura em massa premium level 36 druid exclusive que oferece área healing apenas para monsters com boss filtering smart. Com fórmula dinâmica ((level / 5) + (magicLevel * 5.7) + 26) até ((level / 5) + (magicLevel * 10.43) + 62), 150 mana (alto!), cooldown 2s, spell ID 82, grupo healing, efeito visual CONST_ME_MAGIC_BLUE, sons especiais SOUND_EFFECT_TYPE_SPELL_MASS_HEALING. Dual area support: AREA_CIRCLE3X3 (normal) e AREA_CIRCLE3X4 (wheel expandida!), boss filter (leiden, ravennous hunger, dorokoll, eshtaba, eliz, mezlon, malkhar, containment), factory pattern para combat reutilizável. Spell premium area healing druid exclusive com wheel support avançado!

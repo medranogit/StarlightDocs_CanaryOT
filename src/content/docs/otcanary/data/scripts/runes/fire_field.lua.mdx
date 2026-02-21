@@ -1,0 +1,309 @@
+---
+title: "Spell/Rune - fire_field.lua"
+description: "Runa que cria campo de fogo PvP com early game access no level 15"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `fire_field.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 25 |
+| **ID do Item (runeId)** | 3188 |
+| **Level Requerido** | 15 |
+| **Magic Level Requerido** | 1 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Área** | Single tile (padrão) |
+| **Cooldown** | 2s |
+| **Cargas** | 3 |
+| **PZ Locked** | Sim |
+| **Agressividade** | Sim |
+| **Linhas de Código** | 29 |
+| **Complexidade** | Baixa |
+
+**Descrição:**
+Runa de fogo que cria field PvP no alvo com dano direto. Muito early game (level 15, MLvl 1), permitindo acesso inicial a campos de fogo. Sem fórmula escalável (dano fixo), apenas aplica item field FIREFIELD_PVP_FULL.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/fire_field.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(25)
+rune:runeId(3188)
+rune:level(15)
+rune:magicLevel(1)
+rune:group("attack")
+rune:setPzLocked(true)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Campo de Fogo para Iniciantes**
+
+Esta runa implementa um **sistema early-access de campos**:
+
+1. **Muito Cedo:** Level 15, MLvl 1!
+   - Acesso inicial a campos
+   - Técnica de controle territorial
+
+2. **Sem Fórmula:** Dano fixo do engine
+   - Simplificado para novatos
+   - Previsível
+
+3. **Field Completo:** FIREFIELD_PVP_FULL
+   - Potente apesar do level baixo
+   - Bloqueia movimento
+
+4. **PZ Locked:** Força combate em dungeons
+
+**Comparação:**
+```
+fire_field (25):   lvl 15, mlvl 1, sem área
+fire_bomb (bomb):  lvl 27, mlvl 5, sem área
+```
+
+**Fluxo:**
+```
+Jovem mago aponta runa
+├─ PZ lock valida
+├─ Dano fogo aplicado
+├─ Field criado
+└─ Inimigo cercado por fogo
+```
+
+**Diferencial:** Primeira field runa disponível = MUITO EARLY!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `fire_field` oferece primeira experiência com campos:
+
+- **Dano:** COMBAT_FIREDAMAGE (fixo)
+- **Field:** ITEM_FIREFIELD_PVP_FULL
+- **Área:** Single tile
+- **Early Access:** Level 15 (muito cedo!)
+
+### Arquitetura
+
+Combat simples com field de fogo:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_FIREDAMAGE
+├─ Effect: HITBYFIRE
+├─ Distance: FIRE
+├─ CreateItem: FIREFIELD_PVP_FULL
+└─ Sem area() call
+
+rune.onCastSpell()
+└─ combat:execute(creature, var)
+```
+
+### Fluxo Lógico Resumido
+
+| Etapa | Descrição |
+|---|---|
+| **Conjura** | onCastSpell() |
+| **PZ Lock** | Valida fora PZ |
+| **Combat Execute** | Dano + field criado |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITBYFIRE)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_FIRE)
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_FIREFIELD_PVP_FULL)
+```
+
+**Propósito:** Instância de Combat para field de fogo.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITBYFIRE | Efeito queimadura |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_FIRE | Projétil fogo |
+| `COMBAT_PARAM_CREATEITEM` | ITEM_FIREFIELD_PVP_FULL | Field completo |
+
+**Características:**
+- Sem `combat:setArea()` = padrão single
+- Sem callback = dano fixo
+- Field FULL = durável
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler principal da runa ao conjuração.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Alvo (position) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Field criado |
+| `false` | PZ lock bloqueado |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Early Game Access
+
+```lua
+rune:level(15)
+rune:magicLevel(1)
+```
+
+**Benefício:** Primeira field disponível para novatos.
+
+### Padrão 2: Field Deployment
+
+```lua
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_FIREFIELD_PVP_FULL)
+```
+
+**Benefício:** Field automático no impacto.
+
+### Padrão 3: PZ Protection
+
+```lua
+rune:setPzLocked(true)
+```
+
+**Benefício:** Força combate em dungeons.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Cria campo de fogo com dano.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Alvo (position) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Field criado |
+| `false` | PZ bloqueado |
+
+**Efeito:**
+- Projétil fogo viaja
+- Impacto HITBYFIRE
+- Field FIREFIELD_PVP_FULL criado
+- Dano fixo aplicado
+
+**Exemplo:**
+
+```lua
+-- Mago novato nível 15, MLvl 1
+rune.onCastSpell(novice, targetVariant, false)
+// Fora PZ: ok
+// Projétil fogo viaja
+// Field criado na tile
+// Resultado: Primeira experiência com campos!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Early Game
+
+```lua
+-- Mago novato quer primeiro field
+-- Level 15, MLvl 1
+// Fire field disponível
+// Aprende mecânica de campos
+```
+
+### Caso 2: Múltiplos Fields
+
+```lua
+-- 3 cargas = 3 campos
+// Cria "defesa" inicial
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Field:** ITEM_FIREFIELD_PVP_FULL
+- **Effects:** CONST_ME_HITBYFIRE
+- **Distance:** CONST_ANI_FIRE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Cria field fogo early game |
+| **Dano Type** | COMBAT_FIREDAMAGE |
+| **Field** | FIREFIELD_PVP_FULL |
+| **Area** | Single tile |
+| **Cargas** | 3 |
+| **Level** | 15 (VERY EARLY) |
+| **MLvl** | 1 (mínimo) |
+| **PZ Locked** | Sim |
+| **Padrão** | Combat minimalista + early access |

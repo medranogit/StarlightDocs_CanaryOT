@@ -1,0 +1,326 @@
+---
+title: Lib - Main Bootstrap Loader
+description: Documentação técnica do arquivo lib.lua, que funciona como bootstrap principal carregando todos os subsistemas da biblioteca data-otservbr-global/lib.
+sidebar:
+  order: 1
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **lib.lua** é o **arquivo loader/bootstrap principal** que centraliza o carregamento de todos os 5 subsistemas da pasta `lib/`.
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/lib.lua`
+</Card>
+
+<Aside type="tip">
+**Tipo**: Master Bootstrap/Loader  
+**Padrão**: Central dofile() hub  
+**Total de Subsistemas**: 5  
+**Propósito**: Entry point para todo sistema de biblioteca  
+**Carregamento**: Sequencial (order importa)
+</Aside>
+
+## 📄 Visão Geral
+
+Arquivo **mínimo no código** (~15 linhas) mas **máximo em importância** - carrega todos os 5 subsistemas principais:
+
+```lua
+-- Core API functions implemented in Lua
+dofile(DATA_DIRECTORY .. "/lib/core/load.lua")
+
+-- Others library
+dofile(DATA_DIRECTORY .. "/lib/others/load.lua")
+
+-- Quests library
+dofile(DATA_DIRECTORY .. "/lib/quests/quest.lua")
+
+-- Tables library
+dofile(DATA_DIRECTORY .. "/lib/tables/load.lua")
+
+-- Functions library
+dofile(DATA_DIRECTORY .. "/lib/functions/load.lua")
+```
+
+## 🗂️ 5 Subsistemas Carregados
+
+| # | Subsistema | Loader | Descrição |
+|---|-----------|--------|-----------|
+| 1 | **Core** | core/load.lua | Quest catalog (51 quests) + init.lua |
+| 2 | **Others** | others/load.lua | Dawnport + Soul Pit |
+| 3 | **Quests** | quests/quest.lua | Warzone, event systems, task system |
+| 4 | **Tables** | tables/load.lua | Teleports + cities |
+| 5 | **Functions** | functions/load.lua | Player utilities, inventory, etc |
+
+## 🔄 Fluxo de Carregamento Completo
+
+```
+[Server Bootstrap] - INICIA
+  ↓
+[lib.lua carregado] - MASTER ENTRY POINT
+  ↓
+1️⃣ dofile(lib/core/load.lua)
+  ├─ Carrega: quest catalog (51 quests)
+  ├─ Carrega: quest init.lua (builder pattern)
+  └─ Globals: todas 51 quests + init
+  ↓
+2️⃣ dofile(lib/others/load.lua)
+  ├─ Carrega: dawnport.lua (starter area)
+  ├─ Carrega: soulpit.lua (quest system)
+  └─ Globals: Dawnport, SoulPit, Player.changeVocation()
+  ↓
+3️⃣ dofile(lib/quests/quest.lua)
+  ├─ Carrega: bigfoot_burden.lua (warzones)
+  ├─ Carrega: grimvale.lua (full moon event)
+  ├─ Carrega: killing_in_the_name_of.lua (tasks)
+  ├─ Carrega: soul_war.lua (epic quest)
+  ├─ Carrega: their_masters_voice.lua (waves)
+  └─ Globals: warzoneConfig, SoulWarQuest, etc
+  ↓
+4️⃣ dofile(lib/tables/load.lua)
+  ├─ Carrega: teleport_item_destinations.lua
+  ├─ Carrega: town.lua (27 cidades)
+  └─ Globals: ItemTeleports, TOWNS_LIST
+  ↓
+5️⃣ dofile(lib/functions/load.lua)
+  ├─ Carrega: players.lua (6 funções player)
+  ├─ Carrega: potencial mais função modules
+  └─ Globals: Player extensions, utilities
+  ↓
+[Todos subsistemas carregados] - COMPLETO
+  ↓
+[Game ready com todas features disponíveis]
+```
+
+## 📊 Estrutura Hierárquica
+
+```
+lib/ (Master)
+├── lib.lua ⭐ (YOU ARE HERE)
+│
+├── core/
+│   ├── load.lua (51 quests + init)
+│   └── quests/catalog/ (001-051)
+│
+├── others/
+│   ├── load.lua (2 modules)
+│   ├── dawnport.lua (starter area)
+│   └── soulpit.lua (quest system)
+│
+├── quests/
+│   ├── quest.lua (10 files)
+│   ├── bigfoot_burden.lua
+│   ├── soul_war.lua
+│   └── ...
+│
+├── tables/
+│   ├── load.lua (2 tables)
+│   ├── teleport_item_destinations.lua
+│   └── town.lua
+│
+└── functions/
+    ├── load.lua (function modules)
+    └── players.lua (6 player extensions)
+```
+
+## 🎯 Order of Loading (Importante!)
+
+Ordem **é crítica** pois alguns subsistemas dependem de outros:
+
+### ✅ Ordem Correta
+
+```
+1. core/load.lua primeiro
+   └─ Define quest catalog base
+   
+2. others/load.lua (depends on players, quests)
+   └─ Define Dawnport na área starter
+   
+3. quests/quest.lua (depends on core)
+   └─ Carrega todos os quests específicos
+   
+4. tables/load.lua (independent)
+   └─ Define constantes de cidades/items
+   
+5. functions/load.lua (depends on all)
+   └─ Extend Player API
+```
+
+**Mudança de ordem pode causar**:
+- Globals não definidos (nil error)
+- Functions não encontradas
+- Quest incompleteness
+
+## 💡 Padrão de Três Camadas
+
+```
+┌─────────────────────────────────────┐
+│  lib.lua (Master Loader)            │ ← VOCÊ ESTÁ AQUI
+├─────────────────────────────────────┤
+│  5 Loaders Secundários              │
+│ core/load, others/load, etc         │
+├─────────────────────────────────────┤
+│  50+ Módulos Específicos            │
+│ quests/051, soulpit, town, etc      │
+└─────────────────────────────────────┘
+```
+
+## 🌳 Árvore Completa de Carregamento
+
+```
+lib.lua
+├── core/load.lua
+│   ├── core/quests/catalog/001_the_first_quest.lua
+│   ├── core/quests/catalog/002_...
+│   ├── core/quests/catalog/051_the_way_of_the_monk.lua
+│   └── core/quests/init.lua
+│
+├── others/load.lua
+│   ├── others/dawnport.lua
+│   │   └── core/libs/functions/vocation.lua
+│   └── others/soulpit.lua
+│
+├── quests/quest.lua
+│   ├── quests/bigfoot_burden.lua
+│   ├── quests/demon_oak.lua
+│   ├── quests/grimvale.lua
+│   ├── quests/killing_in_the_name_of.lua
+│   ├── quests/svargrond_arena.lua
+│   ├── quests/the_cursed_crystal.lua
+│   ├── quests/the_primal_ordeal.lua
+│   ├── quests/the_queen_of_the_banshees.lua
+│   ├── quests/soul_war.lua
+│   └── quests/their_masters_voice.lua
+│
+├── tables/load.lua
+│   ├── tables/teleport_item_destinations.lua
+│   └── tables/town.lua
+│
+└── functions/load.lua
+    └── functions/players.lua
+```
+
+## 📈 Globals Criados após Carregamento
+
+Após lib.lua executar completamente, existem **100+** globals:
+
+### Core Quests (51)
+
+```lua
+-- Via core/load.lua + quest catalog
+-- Cada quest 001-051 tem seus próprios globals
+core.quests.catalog[1]  -- The First Quest
+core.quests.catalog[2]  -- ...
+...
+core.quests.catalog[51] -- The Way of the Monk
+```
+
+### Others Subsystem
+
+```lua
+Dawnport { skillsLimit, ... }
+Player.changeVocation()
+isSkillGrowthLimited()
+removeMainlandSmugglingItems()
+
+SoulPit { SoulCoresConfiguration, waves, ... }
+SoulPit.getMonsterVariationNameBySoulCore()
+SoulPit.onFuseSoulCores()
+```
+
+### Quests Subsystem
+
+```lua
+warzoneConfig { [45700], [45701], [45702] }
+DEMON_OAK_POSITION
+grimvaleSpectators()
+tasks { Extra, DanielSteelsoul, ... }
+SvargrondArena { ... }
+PITS { [1..10] }
+ARENA { [1], [2], [3] }
+TCC_VORTEX_POSITION
+firstSealTable, secondSealTable, ...
+SoulWarQuest { bagYouDesireItemId, ... }
+startServantWave()
+Gobbler_onUse()
+```
+
+### Tables Subsystem
+
+```lua
+ItemTeleports {
+  [5629] = { destination, effect },
+  ...
+}
+
+TOWNS_LIST {
+  DAWNPORT_TUTORIAL = 1,
+  DAWNPORT = 2,
+  ...
+  BLUE_VALLEY = 33,
+}
+```
+
+### Functions Subsystem
+
+```lua
+Player.getCookiesDelivered()
+Player.checkGnomeRank()
+Player.addFamePoint()
+Player.getFamePoints()
+Player.removeFamePoints()
+```
+
+## 🔧 Padrão de Manutenção
+
+### Adicionar Novo Subsistema
+
+```lua
+-- Adicionar ao lib.lua:
+dofile(DATA_DIRECTORY .. "/lib/mynewearea/load.lua")
+```
+
+### Remover Subsistema
+
+```lua
+-- Comentar linha em lib.lua:
+-- dofile(DATA_DIRECTORY .. "/lib/others/load.lua")
+```
+
+### Reordenar Prioridade
+
+```lua
+-- lib.lua é o lugar para mudar order de carregamento
+-- Mover linhas dofile() conforme necessário
+```
+
+## ⚠️ Ordem de Execução (Crítica)
+
+**NÃO MUDE** a ordem sem entender dependências:
+
+```
+✅ SEGURO:
+1. core → others → quests → tables → functions
+
+❌ PERIGOSO:
+1. quests → core  (quests precisa de core)
+1. functions → others  (functions precisa de tudo)
+```
+
+## 📌 Notas de Implementação
+
+1. **Sem lógica**: Arquivo é **apenas loader**, sem processamento
+2. **Sem erros**: Usa `dofile()` simples (sem try-catch)
+3. **Global scope**: Todos os subsistemas carregados no global scope
+4. **Sequential**: Ordem é determinística (não paralelo)
+5. **Complete**: Após esse arquivo, **todo** o sistema está pronto
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Completo  
+**Tipo**: Master Bootstrap Loader  
+**Importância**: 🌟🌟🌟🌟🌟 (Critical)

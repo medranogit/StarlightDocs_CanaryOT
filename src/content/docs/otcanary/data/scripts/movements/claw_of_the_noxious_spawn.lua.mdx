@@ -1,0 +1,339 @@
+---
+title: "Movement - claw_of_the_noxious_spawn.lua"
+description: "Anel mágico que causa dano ao ser equipado fora de zona de proteção"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `claw_of_the_noxious_spawn.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (equip) |
+| **Event Name** | `clawOfTheNoxiousSpawn.onEquip` |
+| **Função Registrada** | `onEquip(player, item, slot, isCheck)` |
+| **Linhas de Código** | 17 |
+| **Complexidade** | Trivial |
+| **Status** | Base implementation |
+
+**Descrição:**
+Implementação de um anel lendário ("Claw of the Noxious Spawn") que inflige dano físico ao jogador ao ser equipado fora de uma zona de proteção. O dano varia entre -150 e -200 HP, acompanhado de mensagem de roleplaying.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/claw_of_the_noxious_spawn.lua
+```
+
+**Requisitos:**
+- ID do item: `9393`
+- Nível mínimo: `100`
+- Slot de equipamento: `ring` (anel)
+- Sistema de damage (doTargetCombatHealth)
+- Sistema de Tile flags (TILESTATE_PROTECTIONZONE)
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Iteração de Item Maldito**
+
+O "Claw of the Noxious Spawn" é um anel **maldito com sabor de roleplaying**:
+
+- **Dano ao equipar:** -150 a -200 HP (combate físico)
+- **Proteção:** Se em zona segura (PZ), sem efeito
+- **Mensagens Random:** Duas possibilidades:
+  - "It tightens around your wrist as you take it on."
+  - "Ouch! The serpent claw stabbed you."
+- **Efeito Visual:** Gota de sangue (CONST_ME_DRAWBLOOD)
+
+**Estratégia de Uso:**
+1. Jogador encontra ou compra o anel
+2. Tenta equipar fora de town (sem PZ)
+3. Sofre dano direto (~25% HP em nível 100)
+4. Decide: "Vale a pena o custo de HP?"
+
+**Diferencial:** Validação de PZ previne dano em cidade segura + descuraja equipar casualmente.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `claw_of_the_noxious_spawn.lua` implementa um anel mágico com efeito de penalidade ao equipar:
+
+- **Validação de Zona:** Não causa dano em zonas de proteção (PZ)
+- **Dano Randômico:** Inflige 150-200 de damage físico
+- **Mensagem de Roleplaying:** Escolhe aleatoriamente entre duas mensagens
+- **Efeito Visual:** Emite o efeito de sangue na posição do jogador
+
+### Arquitetura
+
+Simples callback de equip com validação:
+
+```
+Jogador equipa anel
+  └─ onEquip(player, item, ring, isCheck)
+     ├─ if not isCheck (validação real, não preview)
+     │  ├─ if not PZ (não está em zone segura)
+     │  │  ├─ doTargetCombatHealth() → -150 a -200
+     │  │  ├─ sendTextMessage() → msg random
+     │  │  ├─ sendMagicEffect() → DRAWBLOOD
+     │  │  └─ return true
+     │  └─ se em PZ → sem dano
+     └─ return true (sempre permite equipagar)
+```
+
+### Fluxo Lógico Resumido
+
+| Evento | Entrada | Saída |
+|---|---|---|
+| **onEquip (fora PZ)** | isCheck = false | Dano (-150 a -200) + Efeito + Mensagem |
+| **onEquip (em PZ)** | isCheck = false | Sem dano |
+| **onEquip (preview)** | isCheck = true | Sem ação |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Instanciação do MoveEvent
+
+```lua
+local clawOfTheNoxiousSpawn = MoveEvent()
+```
+
+**Propósito:** Cria nova instância de MoveEvent para este anel.
+
+---
+
+### Callback onEquip
+
+```lua
+function clawOfTheNoxiousSpawn.onEquip(player, item, slot, isCheck)
+	if not isCheck then
+		if not Tile(player:getPosition()):hasFlag(TILESTATE_PROTECTIONZONE) then
+			doTargetCombatHealth(0, player, COMBAT_PHYSICALDAMAGE, -150, -200, CONST_ME_DRAWBLOOD)
+			player:sendTextMessage(MESSAGE_EVENT_ADVANCE, (math.random(2) == 1 and "It tightens around your wrist as you take it on." or "Ouch! The serpent claw stabbed you."))
+			return true
+		end
+	end
+	return true
+end
+```
+
+**Propósito:** Executado quando jogador equipa o anel. Aplica dano se fora de PZ.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Jogador que equipou |
+| `item` | Item | O anel sendo equipado |
+| `slot` | number | Slot do anel (ring = 8) |
+| `isCheck` | boolean | true = preview, false = ação real |
+
+**Fluxo Lógico:**
+
+1. **Verifica isCheck:** Se true (preview), retorna true sem ação
+2. **Verifica PZ:** Se jogador está em zona proteção
+   - Sim: Retorna true (sem dano)
+   - Não: Continua
+3. **Aplica Dano:** `doTargetCombatHealth(0, player, COMBAT_PHYSICALDAMAGE, -150, -200, CONST_ME_DRAWBLOOD)`
+   - `0` = ID de atacante (sem ataque específico)
+   - `COMBAT_PHYSICALDAMAGE` = Tipo de dano
+   - `-150` a `-200` = Range de dano
+   - `CONST_ME_DRAWBLOOD` = Efeito visual
+4. **Envia Mensagem:** Texto aleatório
+   - 50% de chance: "It tightens around your wrist as you take it on."
+   - 50% de chance: "Ouch! The serpent claw stabbed you."
+5. **Retorna true:** Sempre permite equipar (mesmo com dano)
+
+---
+
+### Registração do Evento
+
+```lua
+clawOfTheNoxiousSpawn:type("equip")
+clawOfTheNoxiousSpawn:slot("ring")
+clawOfTheNoxiousSpawn:id(9393)
+clawOfTheNoxiousSpawn:level(100)
+clawOfTheNoxiousSpawn:register()
+```
+
+**Propósito:** Configurar e registrar o evento de movimento.
+
+| Método | Valor | Significado |
+|---|---|---|
+| `:type("equip")` | equip | Dispara ao equipar |
+| `:slot("ring")` | ring | Apenas para slot de anel |
+| `:id(9393)` | 9393 | Item ID do anel |
+| `:level(100)` | 100 | Nível mínimo requerido |
+| `:register()` | - | Registra o evento no servidor |
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `clawOfTheNoxiousSpawn` | MoveEvent | Arquivo | Instância do evento |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Validação de isCheck
+
+```lua
+if not isCheck then
+	-- Ação real (equipar)
+end
+```
+
+**Benefício:** Evita executar dano durante preview (mouse over no item).
+
+### Padrão 2: Verificação de Zona de Proteção
+
+```lua
+if not Tile(player:getPosition()):hasFlag(TILESTATE_PROTECTIONZONE) then
+	-- Aplica dano (não está em PZ)
+end
+```
+
+**Benefício:** Previne dano em town segura, permitindo "teste" do anel lá.
+
+### Padrão 3: Escolha Aleatória de Mensagem
+
+```lua
+math.random(2) == 1 and "Mensagem A" or "Mensagem B"
+```
+
+**Benefício:** Imersão de roleplaying com variação.
+
+### Padrão 4: Sempre Permite Equipar
+
+```lua
+function onEquip(...)
+	-- ... dano ...
+	return true  -- Sempre retorna true
+end
+```
+
+**Benefício:** O anel não é rejeitado, apenas causa dano (punição de dano, não indisponibilidade).
+
+---
+
+## 🤖 Documentação das Funções
+
+### clawOfTheNoxiousSpawn.onEquip(player, item, slot, isCheck)
+
+Callback executado quando jogador equipa o anel. Inflige dano se fora de zona de proteção.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Jogador que está equipando |
+| `item` | Item | O anel (Claw of the Noxious Spawn) |
+| `slot` | number | Slot do anel (ring) |
+| `isCheck` | boolean | true = verificação (preview), false = equipada real |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Permite equipar (sempre) |
+
+**Execução:**
+
+1. **Se isCheck = true (preview):** Retorna true sem fazer nada
+2. **Se em PZ:** Retorna true sem dano
+3. **Se fora de PZ:**
+   - Aplica -150 a -200 de damage físico
+   - Envia mensagem aleatória (50/50)
+   - Efeito visual de sangue
+   - Retorna true
+
+**Exemplo:**
+
+```lua
+-- Jogador level 100 equipa o anel em town (PZ)
+clawOfTheNoxiousSpawn.onEquip(player, anel, 8, false)
+-- isCheck = false → ação real
+-- Tile possui PZ flag → sem dano
+-- Retorna true → anel equipado
+
+-- Jogador level 100 equipa o anel em dungeon (sem PZ)
+clawOfTheNoxiousSpawn.onEquip(player, anel, 8, false)
+-- isCheck = false → ação real
+-- Tile não possui PZ flag → continua
+-- Dano: -175 (random entre -150 e -200)
+-- Mensagem: "It tightens around your wrist as you take it on."
+-- Efeito: CONST_ME_DRAWBLOOD
+-- Retorna true → anel equipado (com dano)
+
+-- Preview (mouse over)
+clawOfTheNoxiousSpawn.onEquip(player, anel, 8, true)
+-- isCheck = true (preview)
+-- Retorna true imediatamente (sem verificações)
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Equipar em Zona Segura
+
+```lua
+-- Jogador em temple/town
+-- Tile possui TILESTATE_PROTECTIONZONE
+-- Resultado: Anel equipado, sem dano
+```
+
+### Caso 2: Equipar em Dungeon
+
+```lua
+-- Jogador em dungeon
+-- Tile NÃO possui PROTECTIONZONE
+-- Resultado: Dano -150 a -200 + efeito + mensagem
+-- Jogador ainda consegue equipar (decisão de custo-benefício)
+```
+
+### Caso 3: Preview do Item
+
+```lua
+-- Jogador passa mouse sobre anel (inventory)
+-- isCheck = true
+-- Resultado: Sem ação, apenas display de stats
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Sistema de Combat:** `doTargetCombatHealth()` (src/creatures/combat.cpp)
+- **Efeitos Visuais:** CONST_ME_DRAWBLOOD
+- **Zonas de Proteção:** TILESTATE_PROTECTIONZONE
+- **Item ID:** 9393
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | MoveEvent (equip) |
+| **Validação** | Zone (PZ check) |
+| **Dano** | -150 a -200 HP (físico) |
+| **Efeito** | CONST_ME_DRAWBLOOD |
+| **Mensagens** | 2 variações aleatórias |
+| **Permissão** | Sempre permite (dano é penalidade) |
+| **Nível Mínimo** | 100 |
+| **Slot** | Ring (anel) |

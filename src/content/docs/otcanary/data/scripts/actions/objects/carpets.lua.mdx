@@ -1,0 +1,323 @@
+---
+title: carpets.lua
+description: Sistema de 70+ carpets bidirecionais com toggle transform, house validation e autocarpet check.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="carpets.lua" icon="pencil">
+Handler gigante de decoração com validação de house e auto-placement logic.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/objects/carpets.lua`
+
+**Linhas:** 210 | **IDs dos Objects:** 70+ carpets (bidirecionais) | **Tipo:** Action Handler com Tile Validation
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema de trocadores de carpets com 70+ tipos diferentes. Cada carpet cria um par bidirecional (A ↔ B) permitindo toggle entre versões. Valida que uso ocorre dentro de house, verifica tiles para evitar múltiplos carpets, valida item no topo com canReceiveAutoCarpet(). Usa item:transform() para trocar versão sem remover.
+
+### Estrutura de Funcionalidades
+
+```
+CARPETITEMS TABLE (70+ entradas bidirecionais):
+  ├─ [22737] = 22736 (Rift carpet A ↔ B)
+  ├─ [22736] = 22737 (Rift carpet B ↔ A)
+  ├─ [23537] = 23536 (Void carpet A ↔ B)
+  ├─ ... (68 mais em pares)
+  └─ [42340] = 42341 (Opulent carpet A ↔ B)
+
+HANDLER:
+  └─ carpets.onUse(player, item, fp, target, toPosition, isHotkey)
+      ├─ carpet = carpetItems[item.itemid]
+      ├─ getPosition():getTile() check
+      ├─ tile:getHouse() check (house obrigatório)
+      ├─ itemCount = tile:getItemCountById(item.itemid)
+      ├─ if itemCount == 1:
+      │   ├─ topItem = getTopTopItem()
+      │   ├─ topItem:canReceiveAutoCarpet()? validação
+      │   ├─ Loop carpetItems: verificar outro carpet na tile
+      │   └─ Bloquear se outro carpet existe
+      ├─ item:transform(carpet)
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| carpetItems | table | 70+ carpets com mapping bidirecional |
+| carpets | Action | Objeto handler |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Carpet Types (Sample)
+
+| Pair ID 1 | Pair ID 2 | Nome | Tipo |
+|-----------|-----------|------|------|
+| 22737 | 22736 | Rift Carpet | Basic |
+| 23537 | 23536 | Void Carpet | Basic |
+| 23431 | 23453 | Yalahahari Carpet | Basic |
+| 23715 | 23707 | Crimson Carpet | Colored |
+| 24416 | 24424 | Flowery Carpet | Themed |
+| 31466 | 31468 | Tournament Carpet | Special |
+| 35887 | 35888 | Lilac Carpet | Special |
+| 37019 | 37020 | Grass | Nature |
+| 37353 | 37354 | Dragon Lord Carpet | Boss |
+| 42340 | 42341 | Opulent Carpet | Premium |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local carpets = Action()
+
+function carpets.onUse(player, item, fp, target, toPosition, isHotkey)
+	-- Obter carpet alternado
+	local carpet = carpetItems[item.itemid]
+	if not carpet then
+		return false
+	end
+
+	-- Obter posição e tile
+	local fromPosition = item:getPosition()
+	local tile = fromPosition:getTile()
+	if not tile then
+		player:sendTextMessage(MESSAGE_FAILURE, "You may use this only inside a house.")
+		return true
+	end
+
+	-- Validar se está em house
+	local house = tile:getHouse()
+	if not house then
+		player:sendTextMessage(MESSAGE_FAILURE, "You may use this only inside a house.")
+		return true
+	end
+
+	-- Validação de autocarpet
+	local itemCount = tile:getItemCountById(item.itemid)
+	if itemCount == 1 then
+		-- Item no topo
+		local topItem = tile:getTopTopItem()
+		if topItem and topItem:canReceiveAutoCarpet() then
+			item:remove()
+			return true
+		end
+
+		-- Verificar se tem outro carpet na tile
+		for k, v in pairs(carpetItems) do
+			if k ~= item.itemid and tile:getItemCountById(k) > 0 then
+				player:sendCancelMessage(Game.getReturnMessage(RETURNVALUE_NOTPOSSIBLE))
+				return true
+			end
+		end
+	end
+
+	-- Transform para versão alternada
+	item:transform(carpet)
+	return true
+end
+
+-- Registrar todos os carpet IDs
+for index, value in pairs(carpetItems) do
+	carpets:id(index)
+end
+
+carpets:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador usa carpet
+  │
+  ├─ carpet = carpetItems[item.id]?
+  │   └─ NÃO → return false (carpet desconhecido)
+  │
+  ├─ SIM → Continua
+  │
+  ├─ tile = fromPosition:getTile()?
+  │   ├─ NÃO → Message: "only inside house"
+  │   │   └─ return true
+  │   │
+  │   └─ SIM → Continua
+  │
+  ├─ house = tile:getHouse()?
+  │   ├─ NÃO → Message: "only inside house"
+  │   │   └─ return true
+  │   │
+  │   └─ SIM → Continua
+  │
+  ├─ itemCount = tile:getItemCountById(item.id)
+  │
+  ├─ if itemCount == 1:
+  │   │
+  │   ├─ topItem = getTopTopItem()
+  │   │
+  │   ├─ if topItem && topItem:canReceiveAutoCarpet():
+  │   │   ├─ item:remove()
+  │   │   └─ return true (autocarpet handled)
+  │   │
+  │   ├─ Loop carpetItems:
+  │   │   ├─ if k != item.id && tile:getItemCountById(k) > 0:
+  │   │   │   ├─ Message: "not possible"
+  │   │   │   └─ return true (outro carpet bloqueio)
+  │   │   └─ Próximo
+  │   │
+  │   └─ (nenhum bloqueio)
+  │
+  ├─ item:transform(carpet)
+  │   └─ Muda versão (A ↔ B)
+  │
+  └─ return true
+```
+
+### Bidirectional Toggle
+
+```
+Carpet A (22737) → carpetItems[22737] = 22736 (Carpet B)
+
+Usar Carpet A:
+  └─ item:transform(22736)
+  └─ Torna-se Carpet B
+
+Usar Carpet B:
+  └─ item:transform(22737)
+  └─ Torna-se Carpet A novamente
+
+Toggle alternado continuamente
+```
+
+### House & Autocarpet Validation
+
+```
+Validação tricamadas:
+
+1. Tile Check:
+   ├─ getTile() retorna nil se fora de casa
+   └─ Message: "only inside house"
+
+2. House Check:
+   ├─ getHouse() retorna nil se tile não tem house
+   └─ Message: "only inside house"
+
+3. Autocarpet Check:
+   ├─ Se apenas 1 carpet na tile
+   ├─ getTopTopItem() → item no topo
+   ├─ canReceiveAutoCarpet()? → check custom
+   ├─ SIM → item:remove() (autocarpet takeover)
+   ├─ NÃO → continua
+   └─ Verifica se tem outro carpet (loop)
+
+Multiple Carpet Prevention:
+  ├─ Loop carpetItems
+  ├─ if k != item.id && tile:getItemCountById(k) > 0?
+  ├─ SIM → Bloqueia (não pode ter 2 carpets)
+  └─ Mensagem: RETURNVALUE_NOTPOSSIBLE
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Bidirectional Mapping**: Cada carpet tem versão alternada
+- **item:transform()**: Transforma sem remover completamente
+- **Tile Validation**: getHouse() obrigatório
+- **canReceiveAutoCarpet()**: Método custom de validação
+- **getTopTopItem()**: Item no topo da tile
+- **Multiple Carpet Prevention**: Loop verifica conflitos
+- **getItemCountById()**: Conta items específico por ID
+- **House Requirement**: Decoração só em casas
+- **Toggle Pattern**: A ↔ B contínua
+
+### Responsabilidades do Handler
+
+1. **Lookup carpet pair**: carpetItems[item.id]
+2. **Validar tile**: getTile()
+3. **Validar house**: getHouse()
+4. **Contar items**: getItemCountById()
+5. **Se itemCount == 1**: Validar autocarpet + conflitos
+6. **Transform**: item:transform(carpet)
+7. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Bidirectional Mapping
+
+Pares inversos:
+
+```lua
+[22737] = 22736,  -- A → B
+[22736] = 22737,  -- B → A (inverso)
+
+-- Toggle contínuo
+item:transform(carpetItems[item.itemid])
+```
+
+### Padrão House Validation
+
+Triple check:
+
+```lua
+local tile = fromPosition:getTile()
+if not tile then
+	return true  -- Fora de house
+end
+
+local house = tile:getHouse()
+if not house then
+	return true  -- Tile não tem house
+end
+```
+
+### Padrão Multiple Item Prevention
+
+Loop de conflito:
+
+```lua
+for k, v in pairs(carpetItems) do
+	if k ~= item.itemid and tile:getItemCountById(k) > 0 then
+		player:sendCancelMessage(...)
+		return true
+	end
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: carpets.lua" icon="star">
+Análise de sistema de decoração com 70+ carpets bidirecionais, house validation e autocarpet logic. Demonstra tile checks, item conflict prevention e transform pattern.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Bidirectional toggle com house validation | Complexidade: Média-Alta
+</Aside>

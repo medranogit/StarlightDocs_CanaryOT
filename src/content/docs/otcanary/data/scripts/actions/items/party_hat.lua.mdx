@@ -1,0 +1,182 @@
+---
+title: party_hat.lua
+description: Sistema de validação de equipamento na head slot com efeito visual e progresso de achievement.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="party_hat.lua" icon="pencil">
+Sistema de validação de equipamento na head slot com efeito visual e progresso de achievement.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/party_hat.lua`
+
+**Linhas:** 15 | **ID do Item:** 6578 | **Tipo:** Action Handler
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa um handler de ação para um item do tipo "party hat" que valida se o item está equipado na head slot do jogador e aplica um efeito visual junto com progresso de achievement. O sistema funciona apenas quando o item está equipado corretamente.
+
+### Estrutura de Funcionalidades
+
+```
+partyHat (Action)
+  ├─ onUse(player, item, fromPosition, target, toPosition, isHotkey)
+  │   ├─ getSlotItem(CONST_SLOT_HEAD) → validação
+  │   ├─ Verificação UID
+  │   ├─ sendMagicEffect(CONST_ME_GIFT_WRAPS)
+  │   └─ addAchievementProgress("Party Animal", 200)
+  └─ register() → ID 6578
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| partyHat | Action | Objeto handler para o item party hat |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | ID | Descrição |
+|------|----|------------|
+| Slot Head | CONST_SLOT_HEAD | Slot de equipamento para cabeça |
+| Effect Gift Wraps | CONST_ME_GIFT_WRAPS | Efeito visual de presente/embrulho |
+| Achievement | Party Animal | Progresso de 200 pontos por uso |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function partyHat.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Obtém item equipado na cabeça
+	local headSlotItem = player:getSlotItem(CONST_SLOT_HEAD)
+	
+	-- Valida se item existe E se UID match (item deve estar equipado)
+	if not headSlotItem or item.uid ~= headSlotItem:getUniqueId() then
+		return false
+	end
+
+	-- Se validação passa: aplica efeito + achievement
+	player:getPosition():sendMagicEffect(CONST_ME_GIFT_WRAPS)
+	player:addAchievementProgress("Party Animal", 200)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa party_hat
+  │
+  ├─ headSlotItem existe? NÃO → return false (item não está equipado)
+  │
+  ├─ headSlotItem UID = item UID? NÃO → return false (item diferente)
+  │
+  └─ SIM (item validado como equipado)
+      ├─ Efeito visual: GIFT_WRAPS (posição do jogador)
+      ├─ Achievement "Party Animal" +200
+      └─ return true (sucesso)
+```
+
+### Validação de Equipamento
+
+O script implementa um mecanismo de validação de equip verificando:
+
+1. **Existência do Item**: `not headSlotItem` → item não está equipado
+2. **Correspondência de ID**: `item.uid ~= headSlotItem:getUniqueId()` → UID deve match exatamente
+
+Esta validação dupla garante que apenas o party_hat equipado na cabeça possa ativar o efeito, prevenindo uso de cópias em inventário.
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Validação de Slot**: Verificar se item está equipado via `getSlotItem(CONST_SLOT_HEAD)`
+- **UUID Matching**: Comparar `item.uid` com `getUniqueId()` para confirmar identidade
+- **Magic Effects**: Efeitos visuais enviados ao `getPosition()` do jogador
+- **Achievement Progress**: Sistema de progresso acumulativo com `addAchievementProgress(name, progress)`
+- **Action Handlers**: Padrão onUse assimétrico (pode retornar false para validação falha)
+- **Return Values**: false indica operação inválida (item não equipado), true indica sucesso
+
+### Responsabilidades do Handler
+
+1. **Validar equipamento**: Verificar se party hat está na cabeça do jogador
+2. **Segurança de UID**: Garantir que item específico (não cópia) está sendo usado
+3. **Aplicar efeito**: Enviar GIFT_WRAPS para posição do jogador
+4. **Registrar progresso**: Adicionar 200 pontos ao achievement "Party Animal"
+5. **Comunciar status**: Retornar boolean indicando sucesso/falha da operação
+
+---
+
+## Patterns e Implementação
+
+### Validação de Equipamento Padrão
+
+Este script demonstra o padrão de verificação de equipamento equipado:
+
+```lua
+-- Verificar se item está equipado em slot específico
+local equippedItem = player:getSlotItem(CONST_SLOT_HEAD)
+if not equippedItem or item.uid ~= equippedItem:getUniqueId() then
+	-- Item não está equipado ou é um item diferente
+	return false
+end
+```
+
+### Comparação: Party Hat vs Party Trumpet
+
+| Aspecto | Party Hat | Party Trumpet |
+|---------|-----------|---------------|
+| Validação | Requer equipado na cabeça | Nenhuma validação |
+| Consumível | Não (permanece equipado) | Sim (transform + decay) |
+| Efeito | Só visual (GIFT_WRAPS) | Som (SOUND_BLUE) + transform |
+| Achievement | Sim (Party Animal +200) | Não |
+| Uso | Infinito | Limitado (consome 1) |
+
+### Achievement Integration
+
+O script integra com o sistema de achievements usando `addAchievementProgress`:
+
+```lua
+-- Padrão de progresso acumulativo
+player:addAchievementProgress("Party Animal", 200)
+-- Cada uso adiciona 200 pontos
+-- Quando totalizar 100% → achievement completo
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: party_hat.lua" icon="star">
+Análise completa do handler de validação de equip para o party hat. Cobre validação de slot, UUID matching e integração com sistema de achievements.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Action Handler com validação de slot dupla | Complexidade: Baixa
+</Aside>

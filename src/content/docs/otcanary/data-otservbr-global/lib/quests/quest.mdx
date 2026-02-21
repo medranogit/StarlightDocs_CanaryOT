@@ -1,0 +1,229 @@
+---
+title: Quest - Loader/Bootstrap
+description: Documentação técnica do arquivo quest.lua, que funciona como loader/bootstrap carregando todos os 10 outros arquivos de quest da pasta lib/quests.
+sidebar:
+  order: 5
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **quest.lua** é um **arquivo loader (bootstrap)** que centraliza o carregamento de todos os 10 arquivos de quest da pasta `lib/quests/`.
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/quests/quest.lua`
+</Card>
+
+<Aside type="tip">
+**Tipo**: Bootstrap/Loader  
+**Padrão**: Central dofile() hub  
+**Total de Arquivos Carregados**: 10  
+**Propósito**: Inicializar todo o subsystem de quests
+</Aside>
+
+## 📄 Visão Geral
+
+Este é um arquivo **mínimo** contendo apenas 10 linhas de `dofile()`:
+
+```lua
+dofile(DATA_DIRECTORY .. "/lib/quests/bigfoot_burden.lua")
+dofile(DATA_DIRECTORY .. "/lib/quests/demon_oak.lua")
+dofile(DATA_DIRECTORY .. "/lib/quests/grimvale.lua")
+dofile(DATA_DIRECTORY .. "/lib/quests/killing_in_the_name_of.lua")
+dofile(DATA_DIRECTORY .. "/lib/quests/svargrond_arena.lua")
+dofile(DATA_DIRECTORY .. "/lib/quests/the_cursed_crystal.lua")
+dofile(DATA_DIRECTORY .. "/lib/quests/the_queen_of_the_banshees.lua")
+dofile(DATA_DIRECTORY .. "/lib/quests/soul_war.lua")
+dofile(DATA_DIRECTORY .. "/lib/quests/their_masters_voice.lua")
+dofile(DATA_DIRECTORY .. "/lib/quests/the_primal_ordeal.lua")
+```
+
+## 🗂️ Arquivos Carregados
+
+| # | Arquivo | Descrição |
+|---|---------|-----------|
+| 1 | bigfoot_burden.lua | Warzone Config (3 boss rooms) |
+| 2 | demon_oak.lua | Quest Positions (4 constantes) |
+| 3 | grimvale.lua | Full Moon Event (Feroxa system) |
+| 4 | killing_in_the_name_of.lua | Task System (50+ NPCs) |
+| 5 | svargrond_arena.lua | Arena Config (10 pits, 3 dificuldades) |
+| 6 | the_cursed_crystal.lua | Quest Positions (TCC) |
+| 7 | the_queen_of_the_banshees.lua | Quest Config (6 seals) |
+| 8 | soul_war.lua | Epic Quest System (6 mini-bosses) |
+| 9 | their_masters_voice.lua | Wave Spawner System |
+| 10 | the_primal_ordeal.lua | Primal Monster Template |
+
+## 🔄 Fluxo de Carregamento
+
+```
+[Server Bootstrap]
+  ↓
+[quest.lua carregado]
+  ↓
+dofile(bigfoot_burden.lua) → warzoneConfig global criado
+  ↓
+dofile(demon_oak.lua) → DEMON_OAK_* constantes criadas
+  ↓
+dofile(grimvale.lua) → grimvaleSpectators() função criada
+  ↓
+dofile(killing_in_the_name_of.lua) → tasks config criado
+  ↓
+dofile(svargrond_arena.lua) → SvargrondArena/PITS/ARENA criados
+  ↓
+dofile(the_cursed_crystal.lua) → TCC_* constantes criadas
+  ↓
+dofile(the_queen_of_the_banshees.lua) → Seal tables criadas
+  ↓
+dofile(soul_war.lua) → SoulWarQuest config criado
+  ↓
+dofile(their_masters_voice.lua) → Wave system funcs criadas
+  ↓
+dofile(the_primal_ordeal.lua) → RegisterPrimalPackBeast func criada
+  ↓
+[Todos globals/funcs disponíveis para scripts]
+```
+
+## 💡 Padrão: Centralized Bootstrap
+
+**Vantagem**: 
+- Single entry point para quest system
+- Fácil adicionar/remover quests (edit uma linha)
+- Order of loading é explícito
+- Evita circular dependencies
+
+**Alternativa não-usada**:
+```lua
+-- Menos ideal:
+local questDir = DATA_DIRECTORY .. "/lib/quests/"
+for file in io.files(questDir) do
+  dofile(questDir .. file)
+end
+```
+A alternativa seria dinâmica mas perderia controle de ordem.
+
+## 🔍 Ordem de Carregamento (Importante!)
+
+A **ordem importa** pois alguns arquivos podem depender de outros:
+
+1. **bigfoot_burden.lua** → Define warzoneConfig (usado por events)
+2. **demon_oak.lua** → Posições isoladas (sem dependências)
+3. **grimvale.lua** → Event system independente
+4. **killing_in_the_name_of.lua** → Task system independente
+5. **svargrond_arena.lua** → Arena config independente
+6. **the_cursed_crystal.lua** → Posições isoladas
+7. **the_queen_of_the_banshees.lua** → Config da quest
+8. **soul_war.lua** → **DEPENDE** de KV system (talvez carregado antes?)
+9. **their_masters_voice.lua** → Wave spawner independente
+10. **the_primal_ordeal.lua** → Registro de custom monster
+
+## ⚠️ Notas Técnicas
+
+### DATA_DIRECTORY
+
+```lua
+DATA_DIRECTORY .. "/lib/quests/..."
+```
+
+- Constante global que aponta para `data-otservbr-global/`
+- Path absoluto reconstruído dinamicamente
+- Independente do diretório raiz do servidor
+
+### Sem Verificação de Erro
+
+Arquivo usa `dofile()` simples (sem try/catch):
+```lua
+dofile(...)  -- Se falhar, server falha todo
+```
+
+Melhor prática seria:
+```lua
+if not dofile(...) then
+  print("[ERROR] Failed to load quest: " .. filename)
+end
+```
+
+## 🎯 Padrão de Extensão
+
+Para **adicionar nova quest**:
+
+```lua
+-- Adicionar antes do último dofile:
+dofile(DATA_DIRECTORY .. "/lib/quests/my_new_quest.lua")
+
+-- Último item fica com a_primal_ordeal.lua
+```
+
+Para **remover quest**:
+
+```lua
+-- Comentar/deletar linha:
+-- dofile(DATA_DIRECTORY .. "/lib/quests/their_masters_voice.lua")
+```
+
+## 📊 Análise de Globals Criados
+
+Após este arquivo carregar, os seguintes globals existem:
+
+```lua
+-- bigfoot_burden.lua
+warzoneConfig { [45700], [45701], [45702] }
+
+-- demon_oak.lua
+DEMON_OAK_POSITION
+DEMON_OAK_KICK_POSITION
+DEMON_OAK_ENTER_POSITION
+DEMON_OAK_REWARDROOM_POSITION
+
+-- grimvale.lua
+grimvaleSpectators()
+removeItems()
+loadMap()
+final()
+removeFeroxa()
+teleportPlayer()
+
+-- killing_in_the_name_of.lua
+tasks { Extra, DanielSteelsoul, Gabel, Malor, ... }
+RANK_* constants
+REWARD_* constants
+Storage keys
+
+-- svargrond_arena.lua
+SvargrondArena { ... }
+PITS { [1] ... [10] }
+ARENA { [1], [2], [3] }
+ARENA_TROPHY { ... }
+
+-- the_cursed_crystal.lua
+TCC_VORTEX_POSITION
+TCC_MEDUSACRYSTAL_*
+TCC_PILLARPETRIFIED
+TCC_SKELETON_*
+
+-- the_queen_of_the_banshees.lua
+firstSealTable { ... }
+secondSealTable { ... }
+thirdSealTable { ... }
+fourthSealTable { ... }
+sixthSealTable { ... }
+
+-- soul_war.lua
+SoulWarQuest { bagYouDesireItemId, miniBosses, ... }
+
+-- their_masters_voice.lua
+startServantWave()
+Gobbler_onUse()
+Servant_onDeath()
+Mage_onDeath()
+
+-- the_primal_ordeal.lua
+RegisterPrimalPackBeast()
+```
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Completo  
+**Tipo**: Bootstrap/Loader

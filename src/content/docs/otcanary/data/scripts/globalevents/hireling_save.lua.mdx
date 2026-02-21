@@ -1,0 +1,297 @@
+---
+title: "Global Event - hireling_save.lua"
+description: "Global event para salvar hirelings no shutdown"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `hireling_save.lua` |
+| **Localização** | `data/scripts/globalevents/` |
+| **Tipo de Script** | GlobalEvent |
+| **Event Name** | `HirelingSave` |
+| **Função Registrada** | `onShutdown()` |
+| **Linhas de Código** | 7 |
+| **Complexidade** | Trivial |
+| **Status** | Simple wrapper implementation |
+
+**Descrição:**
+Global event simples que executa na shutdown do servidor. Chama a função `SaveHirelings()` global para persistir dados de hirelings para serem carregados quando server reiniciar.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/globalevents/hireling_save.lua
+```
+
+**Pré-requisitos:**
+- GlobalEvent API (`GlobalEvent` função global)
+- SaveHirelings() global function
+- Hireling system infrastructure
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Hireling Save (Hireling Persistence)**
+
+Quando servidor é desligado (graceful shutdown):
+
+1. **Trigger:** Server shutdown sequence é iniciado
+2. **Evento:** SHUTDOWN event é disparado para todos GlobalEvents registrados
+3. **Execução:** hirelingSave.onShutdown() é chamado
+4. **Ação:** SaveHirelings() persiste dados de hirelings
+5. **Resultado:** Na próxima inicialização, hirelings são restaurados
+
+**Dados Persistidos:**
+```
+Hirelings data:
+  ├─ Inventory items/equipment
+  ├─ Status (hired, idle, busy)
+  ├─ Location/house assignments
+  ├─ Timers/cooldowns
+  └─ Custom attributes
+```
+
+**Sem este callback:** Hirelings data seria perdido no shutdown, causando perda de progresso do player
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `hireling_save.lua` implementa persistência de hirelings no shutdown. Quando servidor desliga:
+
+- **Captura evento de shutdown** automaticamente
+- **Chama SaveHirelings()** para persistir dados
+- **Garante dados não perdidos** entre restarts
+
+### Arquitetura
+
+O script usa um padrão simples de **persistence hook**:
+
+```
+GlobalEvent (shutdown trigger)
+  └─ onShutdown()
+     └─ SaveHirelings()  [global function]
+```
+
+### Fluxo Lógico Resumido
+
+| Trigger | Processamento | Resultado |
+|---------|---------------|-----------|
+| Server shutdown | Chama SaveHirelings() | Hirelings data persistido |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (GlobalEvent)
+
+#### **onShutdown()**
+
+```lua
+function hirelingSave.onShutdown()
+	SaveHirelings()
+	return true
+end
+```
+
+**Propósito:** Entry point do evento de shutdown. Persiste dados de hirelings.
+
+**Fluxo de Execução:**
+
+1. **Trigger:** Server shutdown sequence dispara este callback
+2. **Execução:** Chama `SaveHirelings()` global function
+3. **Persistência:** SaveHirelings() serializa e salva dados de hirelings
+4. **Return:** Retorna `true` para indicar sucesso
+
+**Parâmetros:**
+- Nenhum
+
+**Retorno:**
+- `true` - Shutdown pode proceder normalmente
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Locais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `hirelingSave` | GlobalEvent | GlobalEvent object |
+
+### Funções Globais Utilizadas
+
+| Função | Descrição |
+|--------|-----------|
+| `SaveHirelings()` | Persiste dados de hirelings para storage |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Shutdown Hook Pattern
+
+**Técnica:** Registrar callback de shutdown para limpeza/persistência.
+
+```lua
+function hirelingSave.onShutdown()
+	SaveHirelings()
+	return true
+end
+```
+
+**Vantagem:** Garante execução antes de shutdown. Simples, confiável.
+
+**Aplicação:** Qualquer sistema que necessita persistência no shutdown (players, guilds, entities).
+
+---
+
+### Padrão 2: Delegation to Global Function
+
+**Técnica:** Hook apenas chama função global, deixa lógica centralizada.
+
+```lua
+-- GlobalEvent (este arquivo)
+function hirelingSave.onShutdown()
+	SaveHirelings()  -- Delega para função global
+end
+
+-- SaveHirelings() é implementada em outro lugar (hireling system)
+```
+
+**Vantagem:** Separação de concerns. Hireling logic é independente.
+
+**Aplicação:** Quando hook é simples e lógica é complexa.
+
+---
+
+### Padrão 3: Boolean Return for Shutdown Control
+
+**Técnica:** Retornar true para permitir shutdown proceder (false bloquearia).
+
+```lua
+return true  -- Permite shutdown continuar
+```
+
+**Vantagem:** Permite hook bloquear shutdown se necessário (false). Express control.
+
+**Aplicação:** Qualquer shutdown hook que pode ter pré-requisitos.
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Graceful Server Shutdown
+
+```
+Admin executa: /shutdown ou server recebe SIGTERM
+
+Server shutdown sequence:
+  ├─ Notifica todos jogadores (boot sequence)
+  ├─ Fecha conexões novas
+  ├─ Dispatcher GlobalEvent
+  │  └─ HirelingSave registered?
+  │     ├─ YES → hirelingSave.onShutdown()
+  │     │  ├─ SaveHirelings() [executa]
+  │     │  └─ return true [permite proceder]
+  │     └─ Próximo GlobalEvent
+  ├─ Close all databases
+  └─ Server process exits
+```
+
+**Resultado:** Hirelings data é salvo antes de shutdown
+
+---
+
+### Cenário 2: Server Restart
+
+```
+Server inicia (após shutdown anterior):
+
+Startup sequence:
+  ├─ Initialize systems
+  ├─ Load hireling system
+  │  └─ LoadHirelings() [opposite of SaveHirelings()]
+  │     └─ Restaura dados salvos no shutdown anterior
+  ├─ Restore hirelings to their owners
+  └─ Server online
+
+Players conectam:
+  └─ Veem seus hirelings com status/items intactos
+```
+
+**Resultado:** Nenhuma perda de hireling data entre restarts
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial |
+| **Estimativa de Aprendizado** | 5 minutos |
+| **Tópicos Principais** | Shutdown hooks, Persistence, Delegation pattern |
+| **Padrões Documentados** | 3 padrões |
+| **Cenários Documentados** | 2 cenários (graceful shutdown, restart) |
+| **Funções** | 1 (onShutdown - globalEvent entry) |
+| **GlobalEvents Registrados** | HirelingSave |
+| **Dependencies** | SaveHirelings() global function |
+
+### Curva de Aprendizado
+
+**Trivial:** Uma função wrapper. Entender em ~5 minutos.
+
+### Hireling System Integration
+
+Este callback é parte do hireling persistence:
+
+```
+Player registers hireling
+    ↓
+Hireling is in-game (inventory, exploration, etc)
+    ↓
+Server shuts down
+    ↓
+hirelingSave.onShutdown() dispara  [THIS FILE]
+    ↓
+SaveHirelings() persists (database, file, or kv)
+    ↓
+Server restarts
+    ↓
+LoadHirelings() restoration
+    ↓
+Hireling data fully restored
+```
+
+### Padrão Complementar: LoadHirelings
+
+Enquanto este arquivo salva, há correspondente LoadHirelings que:
+```
+Server startup → LoadHirelings() → Rebuild hireling registry
+```
+
+Ambas funções trabalham juntas para persistência full-cycle.
+
+### Melhorias Potenciais
+
+- [ ] Adicionar try-catch para robustez (error handling)
+- [ ] Implementar backup (save to multiple locations)
+- [ ] Adicionar logging de save (audit trail)
+- [ ] Suportar incremental saves (não sempre full save)
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Simple shutdown hook for persistence

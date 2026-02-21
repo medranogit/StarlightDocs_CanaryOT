@@ -1,0 +1,347 @@
+---
+title: '#example.lua'
+description: Arquivo de exemplo contendo dois tipos de spells integrados - Rune healing e Instant conjure
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `#example.lua` |
+| **Tipo de Arquivo** | Exemplo de implementação (template reference) |
+| **Spell Count** | 2 spells (1 Rune + 1 Instant conjure) |
+| **Focusos** | Combat healing com callback + Rune conjure |
+| **Caber de Implementação** | Demonstra pattern duplo de spell integration |
+
+### Spell 1: Test Rune (Healing Rune)
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Spell** | test rune |
+| **Tipo de Spell** | Rune (SPELL_RUNE) |
+| **Spell ID** | 220 |
+| **Rune ID** | 3162 |
+| **Magic Level** | 5 |
+| **Level Requerido** | 20 |
+| **Charges** | 25 |
+| **Tipo de Combat** | COMBAT_HEALING |
+| **Efeito Visual** | CONST_ME_MAGIC_BLUE |
+| **Dispel Effect** | CONDITION_PARALYZE |
+| **Necessita Target** | Sim (needTarget true) |
+| **Permite Uso Distante** | Sim (allowFarUse true) |
+| **Agressividade** | Não (suporte) |
+| **Vocação** | Sorcerer / Master Sorcerer |
+| **Callback** | onGetFormulaValues (CALLBACK_PARAM_LEVELMAGICVALUE) |
+
+### Spell 2: Test (Instant Conjure)
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Spell** | Test |
+| **Tipo de Spell** | Instant (SPELL_INSTANT) |
+| **Spell ID** | 221 |
+| **Mana Requerida** | 530 |
+| **Level Requerido** | 30 |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Soul Points** | 3 |
+| **Palavras de Ativação** | `adori mas test` |
+| **Função** | Conjura runes (3147 → 3162 × 25) |
+| **Agressividade** | Não (suporte) |
+| **Vocação** | Sorcerer / Master Sorcerer |
+| **Grupo** | support |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/#example.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este arquivo é template de exemplo mostrando dois patterns diferentes: (1) Rune Spell com callback de fórmula dinâmica de cura baseada em level+magic, (2) Instant Spell que conjura runes. A rune de exemplo cura c/ fórmula min = (level/5) + (magicLevel * 3.2) + 20, max = (level/5) + (magicLevel * 5.4) + 40. A conjure pega item source 3147 e transmuta em rune 3162 em quantidade 25. Ambos são Sorcerer-only. Útil como referência para criar novos runes ou conjures.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `#example.lua` implementa dois spells integrados demonstrando patterns distintos: (1) Rune healing com callback de fórmula dinâmica baseada em level e magic level, (2) Instant spell conjurando runes via creature:conjureItem(). É arquivo template/exemplo mostrando como integrar múltiplos tipos de spells num arquivo único com compartilhamento lógico. O primeiro spell demonstra Combat com Callback para cálculo dinâmico, Dispel de CONDITION_PARALYZE, e needTarget. O segundo spell demonstra conjurationlógica simples delegando ao engine. A implementação serve como referência educacional para desenvolvedores.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- ====== SPELL 1: RUNE HEALING ======
+
+-- 1. Instância Combat com Parâmetros
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_HEALING)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+combat:setParameter(COMBAT_PARAM_TARGETCASTERORTOPMOST, true)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+
+-- 2. Função de Callback de Fórmula
+function onGetFormulaValues(player, level, magicLevel)
+    -- 2.1 Cálculo de Min
+    -- 2.2 Cálculo de Max
+    -- 2.3 Retorno de Tuple
+end
+
+-- 3. Setagem de Callback no Combat
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+
+-- 4. Instância de Rune Spell
+local spell = Spell(SPELL_RUNE)
+
+-- 5. Função de Cast da Rune
+function spell.onCastSpell(creature, variant, isHotkey)
+    -- 5.1 Execução de Combat
+end
+
+-- 6. Configuração da Rune
+spell:name("test rune")
+spell:runeId(3162)
+spell:id(220)
+spell:level(20)
+spell:magicLevel(5)
+spell:needTarget(true)
+spell:isAggressive(false)
+spell:allowFarUse(true)
+spell:charges(25)
+spell:vocation(...)
+spell:register()
+
+-- ====== SPELL 2: INSTANT CONJURE ======
+
+-- 7. Instância de Instant Spell
+local conjureRune = Spell(SPELL_INSTANT)
+
+-- 8. Função de Cast da Conjure
+function conjureRune.onCastSpell(creature, variant)
+    -- 8.1 Conjuração de Item
+    -- 8.2 Retorno de Status
+end
+
+-- 9. Configuração da Conjure
+conjureRune:name("Test")
+conjureRune:id(221)
+conjureRune:words("adori mas test")
+conjureRune:level(30)
+conjureRune:mana(530)
+conjureRune:group("support")
+conjureRune:soul(3)
+conjureRune:isAggressive(false)
+conjureRune:cooldown(2000)
+conjureRune:groupCooldown(2000)
+conjureRune:vocation(...)
+conjureRune:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local (global no arquivo) | Instância de combat para rune healing |
+| `spell` | `Spell` | Local (global no arquivo) | Instância de rune spell |
+| `conjureRune` | `Spell` | Local (global no arquivo) | Instância de instant conjure spell |
+| `player` | `Player` | Parâmetro (onGetFormulaValues) | Player que executa (para obter level/magic) |
+| `level` | `number` | Parâmetro (onGetFormulaValues) | Level do player |
+| `magicLevel` | `number` | Parâmetro (onGetFormulaValues) | Magic level do player |
+| `min` | `number` | Local (onGetFormulaValues) | Valor mínimo de cura calculado |
+| `max` | `number` | Local (onGetFormulaValues) | Valor máximo de cura calculado |
+| `creature` | `Creature/Player` | Parâmetro (onCastSpell) | Creature que executa o spell |
+| `variant` | `Variant` | Parâmetro (onCastSpell) | Dados de target/efeito |
+| `isHotkey` | `boolean` | Parâmetro (spell.onCastSpell rune) | Se foi castado via hotkey |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Rune Spell com Combat**
+```lua
+local spell = Spell(SPELL_RUNE)
+function spell.onCastSpell(creature, variant, isHotkey)
+    return combat:execute(creature, variant)
+end
+```
+Rune spell executa combat que foi definido globalmente.
+
+### 2. **Padrão de Callback de Fórmula Dinâmica**
+```lua
+function onGetFormulaValues(player, level, magicLevel)
+    local min = (level / 5) + (magicLevel * 3.2) + 20
+    local max = (level / 5) + (magicLevel * 5.4) + 40
+    return min, max
+end
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+Callback injeta fórmula dinâmica no combat.
+
+### 3. **Padrão de Dispel em Combat**
+```lua
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+```
+Combat de cura também remove CONDITION_PARALYZE.
+
+### 4. **Padrão de Instant Conjure Rune**
+```lua
+local conjureRune = Spell(SPELL_INSTANT)
+function conjureRune.onCastSpell(creature, variant)
+    return creature:conjureItem(3147, 3162, 25)
+end
+```
+Instant spell que cria runes via conjureItem(source, runeId, quantity).
+
+### 5. **Padrão de Soul Points em Conjure**
+```lua
+conjureRune:soul(3)
+```
+Conjure requer soul points (3) em adição a mana.
+
+### 6. **Padrão de Dois Spells em Um Arquivo**
+```lua
+-- Rune spell definitions
+local spell = Spell(SPELL_RUNE)
+spell:register()
+
+-- Instant spell definitions
+local conjureRune = Spell(SPELL_INSTANT)
+conjureRune:register()
+```
+Arquivo contém múltiplos spells relacionados mas distintos.
+
+## 🤖 Documentação das Funções
+
+### `onGetFormulaValues(player, level, magicLevel)` (Função Callback Global)
+
+**Descrição:** Função de callback que calcula valores dinâmicos de cura baseado em level e magic level do player.
+
+**Parâmetros:**
+- `player` (Player): Player que executa o rune spell.
+- `level` (number): Level atual do player.
+- `magicLevel` (number): Magic level atual do player.
+
+**Fluxo:**
+
+1. **Cálculo de Min**:
+   - `min = (level / 5) + (magicLevel * 3.2) + 20`
+   - Escalagem linear com level (1/5) e quadrática com magic (3.2x)
+
+2. **Cálculo de Max**:
+   - `max = (level / 5) + (magicLevel * 5.4) + 40`
+   - Escalagem linear com level (1/5) e quadrática maior com magic (5.4x)
+
+3. **Retorno**:
+   - Retorna `(min, max)` tuple para combat usar
+
+**Valores de Retorno:**
+- `(number, number)`: (min_heal, max_heal)
+
+**Exemplo:**
+Se player tem level 50 + magic level 10:
+- min = (50/5) + (10 * 3.2) + 20 = 10 + 32 + 20 = 62
+- max = (50/5) + (10 * 5.4) + 40 = 10 + 54 + 40 = 104
+
+---
+
+### **Spell 1: Test Rune - spell.onCastSpell(creature, variant, isHotkey)**
+
+**Descrição:** Função de execução da rune healing. Executa combat com fórmula dinâmica e dispel.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Creature que usa a rune.
+- `variant` (Variant): Dados de target.
+- `isHotkey` (boolean): Se foi ativado via hotkey.
+
+**Fluxo de Execução:**
+
+1. **Execução de Combat**:
+   - `combat:execute(creature, variant)`
+   
+2. **Efeitos do Combat**:
+   - Combat type: HEALING
+   - Efeito visual: CONST_ME_MAGIC_BLUE
+   - Fórmula: Dinâmica via onGetFormulaValues
+   - Dispel: Remove CONDITION_PARALYZE do target
+   - Target: Caster ou topmost creature se AoE
+
+3. **Retorno**:
+   - Retorna `true` se executado com sucesso
+
+**Valores de Retorno:**
+- `true`: Rune executada, charges consumido
+
+**Características Técnicas:**
+
+- **needTarget**: true - requer alvo válido
+- **allowFarUse**: true - pode ser usada a distância
+- **Charges**: 25 - rune tem 25 usos antes de desaparecer
+- **Magic Level**: 5 - requer magic level 5
+- **Level**: 20 - requer level 20 mínimo
+
+---
+
+### **Spell 2: Test Conjure - conjureRune.onCastSpell(creature, variant)**
+
+**Descrição:** Função de execução da conjure. Cria runes consumindo mana e soul points.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Creature que conjura (deve ser Player).
+- `variant` (Variant): Dados variáveis (não utilizados).
+
+**Fluxo de Execução:**
+
+1. **Conjuração de Item**:
+   - `creature:conjureItem(3147, 3162, 25)`
+   - Item source: 3147 (ingrediente consumido para criar rune)
+   - Rune ID: 3162 (rune que será criada)
+   - Quantidade: 25 (número de runes criadas por cast)
+
+2. **Validações Implícitas** (pelo engine):
+   - Player tem mana suficiente (530)
+   - Player tem soul points (3)
+   - Player tem item source (3147)
+   - Mana e soul são debitados automaticamente
+
+3. **Retorno**:
+   - Retorna `true` se conjuração bem-sucedida
+   - Retorna `false` se falhou (sem item, sem mana, sem soul)
+
+**Valores de Retorno:**
+- `true`: Runes criadas, mana+soul consumidos
+- `false`: Falha em validações
+
+**Características Técnicas:**
+
+- **Mana**: 530 - custo em mana
+- **Soul**: 3 - custo em soul points
+- **Cooldown Individual**: 2 segundos
+- **Cooldown de Grupo**: 2 segundos
+- **Level**: 30 - requerido
+- **Vocação**: Sorcerer / Master Sorcerer only
+
+---
+
+### **Combat Handle (Implícito via Combat:execute)**
+
+**Descrição:** Combat é executado quando rune é usada, aplicando healing com fórmula, dispel, e efeito visual.
+
+**Comportamento:**
+
+1. **Healing Calculation**:
+   - Callback onGetFormulaValues é acionado
+   - Cura é aplicada entre (min, max)
+   - Cura é aleatória entre os limites
+
+2. **Dispel Effect**:
+   - CONDITION_PARALYZE é removido do target (se tem)
+
+3. **Visual Effect**:
+   - CONST_ME_MAGIC_BLUE em ambas posições
+
+4. **Target Selection**:
+   - TARGETCASTERORTOPMOST: cura caster ou topmost criatura
+
+## 📌 Resumo
+
+**#example.lua** é arquivo template de exemplo demonstrando dois patterns de spell integration: (1) Rune healing (SPELL_RUNE) com callback de fórmula dinâmica (min/max baseado em level+magic, max heal = 40 + level/5 + magic * 5.4), dispel de paralyze, 20 charges, level 20/magic 5, (2) Instant conjure (SPELL_INSTANT) que cria runes (3147 → 3162 × 25) com custo 530 mana + 3 soul, level 30. Ambos são Sorcerer-only. Cura tem fórmula escalonada: min = 20 + level/5 + magic * 3.2, max = 40 + level/5 + magic * 5.4. Conjure permite que Sorcerers criem runes de healing customizadas.
+
+A implementação segue padrões educacionais, diferenciando-se por: (1) dois spells distintos num arquivo, (2) callback de fórmula dinâmica, (3) dispel integrado em healing, (4) conjure com item transmutation, (5) soul points requirement em conjure.

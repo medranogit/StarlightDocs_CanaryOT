@@ -1,0 +1,475 @@
+---
+title: "Spell - great_fire_wave.lua"
+description: "Spell de grande onda de fogo para sorcerers level 38 com wave direcionada"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `great_fire_wave.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 240 |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 38 |
+| **Mana Requerida** | 120 |
+| **Words** | exevo gran flam hur |
+| **Alcance** | -1 (direction) |
+| **Área** | WAVE7+AREADIAGONAL_WAVE7 (onda grande direcionada) |
+| **Cooldown** | 4s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level escalável (2.8-4.4 coef + bônus) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_GREAT_FIRE_WAVE |
+| **Requer Direction** | Sim (needDirection) |
+| **Bloqueia Walls** | Sim |
+| **TODO** | Formulas (TibiaWiki accuracy) |
+| **Linhas de Código** | 27 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de grande onda fogo premium para sorcerers nível 38 (early-mid). AOE wave direcionada WAVE7+AREADIAGONAL_WAVE7 para cobertura grande. Dano fogo magic-level escalável (2.8-4.4 coef + bônus 16/28). 120 mana. Direction required (não target). Premium only. Cooldown 4s. TODO comment indica fórmula em revisão. Early AOE fogo ampliada!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/great_fire_wave.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(240)
+spell:name("Great Fire Wave")
+spell:words("exevo gran flam hur")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_GREAT_FIRE_WAVE)
+spell:level(38)
+spell:mana(120)
+spell:isPremium(true)
+spell:needDirection(true)
+spell:cooldown(4 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Grande Onda de Fogo - Wave Direcionada Magic-Level Early**
+
+Este spell implementa um sistema de AOE wave fogo direcionado com escalabilidade magic-level:
+
+1. **Wave Direcionada Grande:**
+   - AREA_WAVE7 (linha grande)
+   - AREADIAGONAL_WAVE7 (diagonais)
+   - Cobertura grande direcionada
+
+2. **Magic-Level Escalável Alto:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 2.8) + 16
+   - max = (level/5) + (maglevel × 4.4) + 28
+   - Coef alto (2.8-4.4)
+   - Bônus significativo (16/28)
+
+3. **Early-Mid Premium:**
+   - Level 38 (cedo!)
+   - 120 mana (moderado)
+   - Premium only
+   - Cooldown 4s (rápido)
+
+4. **Tipo Fire:**
+   - COMBAT_FIREDAMAGE
+   - Efeito HITBYFIRE (implícito)
+   - Direcionado (não target)
+   - Wave áreas
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 38, mlvl 10:
+  min = 7.6 + 28 + 16 = 51.6
+  max = 7.6 + 44 + 28 = 79.6
+
+Sorcerer lvl 50, mlvl 15:
+  min = 10 + 42 + 16 = 68
+  max = 10 + 66 + 28 = 104
+
+Sorcerer lvl 70, mlvl 25:
+  min = 14 + 70 + 16 = 100
+  max = 14 + 110 + 28 = 152
+```
+
+**Diferencial:** Wave fogo early grande direcionada com bônus!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `great_fire_wave` oferece dano fogo AOE em wave grande direcionada:
+
+- **Dano:** COMBAT_FIREDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel × 2.8/4.4) + bônus (ALTA!)
+- **Mana:** 120 (moderado)
+- **Level:** 38 (early)
+- **Área:** WAVE7 + diagonal (grande!)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: FIREDAMAGE
+├─ Effect: HITBYFIRE
+├─ Area: WAVE7 + AREADIAGONAL_WAVE7
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max magic-level escalável com bônus
+
+spell.onCastSpell(creature, var)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITBYFIRE)
+
+local area = createCombatArea(AREA_WAVE7, AREADIAGONAL_WAVE7)
+combat:setArea(area)
+```
+
+**Propósito:** Combat de AOE fogo direcionado grande.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITBYFIRE | Efeito fogo impacto |
+| `Area` | WAVE7 + AREADIAGONAL_WAVE7 | Wave grande |
+
+---
+
+### Variável Global: area
+
+```lua
+local area = createCombatArea(AREA_WAVE7, AREADIAGONAL_WAVE7)
+```
+
+**Propósito:** Área combinada linha + diagonal.
+
+| Componente | Tipo | Descrição |
+|---|---|---|
+| WAVE7 | Linha | Onda linha grande |
+| AREADIAGONAL_WAVE7 | Diagonal | Onda diagonal grandes |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 2.8) + 16
+	local max = (level / 5) + (maglevel * 4.4) + 28
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano fogo AOE magic-level escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 2.8) + 16
+max = (level / 5) + (maglevel * 4.4) + 28
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 2.8 (alto!)
+- Maglevel max: 4.4 (muito alto!)
+- Bônus: +16/+28 (significativo!)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 38 | 10 | 51 | 79 |
+| 50 | 15 | 68 | 104 |
+| 70 | 25 | 100 | 152 |
+| 100 | 40 | 180 | 252 |
+
+**TODO Comment:**
+```lua
+-- TODO: Formulas (TibiaWiki says ~Strong Flame Strike but we need more accuracy)
+```
+(Indicação que fórmula será refinada!)
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples executa combat.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Direction |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Ondas ativadas |
+| `false` | Direction falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callbacks magic |
+| `area` | Area | Arquivo | WAVE7 + diagonal |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Wave Direcionada Dupla Grande
+
+```lua
+local area = createCombatArea(AREA_WAVE7, AREADIAGONAL_WAVE7)
+combat:setArea(area)
+```
+
+**Benefício:** Linha + diagonal = cobertura ampla!
+
+### Padrão 2: Magic-Level com Bônus Base
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 2.8) + 16
+	local max = (level / 5) + (maglevel * 4.4) + 28
+	return -min, -max
+end
+```
+
+**Benefício:** Escalável magic com bônus fixo!
+
+### Padrão 3: Direction Required AOE
+
+```lua
+spell:needDirection(true)
+```
+
+**Benefício:** Clique direção, não target.
+
+### Padrão 4: TODO Comment
+
+```lua
+-- TODO: Formulas (TibiaWiki says ~Strong Flame Strike but we need more accuracy)
+```
+
+**Indicação:** Fórmula em validação!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano fogo AOE direcionado magic-level escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(sorcerer, 50, 15)
+// min = 10 + 42 + 16 = 68
+// max = 10 + 66 + 28 = 104
+// Retorna: -68, -104
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura ondas fogo grandes em direção.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Ondas ativadas |
+| `false` | Direction falhou |
+
+**Requisitos:**
+- Level 38+
+- 120 mana
+- Direction required
+- Premium account
+- Cooldown 4s
+
+**Efeito:**
+- Efeito fogo impacto
+- WAVE7 + diagonal
+- Dano magic-level escalável
+- Direção livre
+- Bônus significativo
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 50, MLvl 15
+spell.onCastSpell(sorcerer, directionVariant)
+// Validações OK (38+ level, 120 mana)
+// Combat executa em direção
+// WAVE7 + diagonal ondas
+// Dano: -68 a -104
+// Efeito fogo impacto visual
+// Cobertura ampla direcionada
+// Resultado: Grande onda fogo!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: AOE Direcionado Early
+
+```lua
+-- Novo Sorcerer level 38
+// Great Fire Wave = primeiras ondas grandes
+// WAVE7 direção (não target)
+// Magic-level escalação forte
+```
+
+### Caso 2: Premium Fire Training
+
+```lua
+-- Sorcerer espellando com premium
+// Great Fire Wave = AOE direcionado
+// WAVE7 ampla cobertura
+// 4s cooldown = spam possível
+// 120 mana = custo moderado
+```
+
+### Caso 3: Upgrade Fire Wave Progression
+
+```lua
+-- Sorcerer progredindo fogo
+// fire_wave (lvl 18, WAVE4)
+// great_fire_wave (lvl 38, WAVE7)
+// Upgrade visual claro
+// Magic damage escalação
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_FIREDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Areas:** AREA_WAVE7, AREADIAGONAL_WAVE7
+- **Effects:** CONST_ME_HITBYFIRE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | AOE onda fogo grande direcionada |
+| **Dano Type** | COMBAT_FIREDAMAGE |
+| **Fórmula** | (lvl/5) + (mlvl × 2.8/4.4) + 16/28 |
+| **Mana** | 120 |
+| **Area** | WAVE7 + AREADIAGONAL_WAVE7 |
+| **Level** | 38 (early) |
+| **Cooldown** | 4s (rápido) |
+| **Premium** | Sim |
+| **Direction** | Sim (needDirection) |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **TODO** | TibiaWiki formula accuracy |
+| **Padrão** | Direction AOE + wave areas + magic-level alta + bônus base |

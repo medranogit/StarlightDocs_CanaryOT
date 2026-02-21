@@ -1,0 +1,331 @@
+---
+title: name_lock.lua
+description: CreatureEvent "NamelockLogin" que valida e enforça namelock ao player fazer login.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="name_lock.lua" icon="pencil">
+Listener de login que gerencia namelock com eventos schedulados.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/player/name_lock.lua`
+
+**Linhas:** 27 | **Event:** CreatureEvent "NamelockLogin" | **Tipo:** onLogin Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener de login que valida namelock via KV storage. Função `CheckNamelock(player)` obtém "namelock" do KV, se não tem retorna true (sem ação). Se tem: bloqueia movimento, teleporta para temple, envia mensagem com razão, abre loja de extras, requesteia namechange (GameStore), reschedula CheckNamelock a cada 30s. CreatureEvent "NamelockLogin" schedula primeira checagem em 1s. Padrão de enforcement com global events.
+
+### Estrutura de Funcionalidades
+
+```
+FUNÇÃO: CheckNamelock(player)
+  ├─ Validação: player:kv():get("namelock")?
+  │   ├─ NÃO → return true (sem ação)
+  │   └─ SIM → Continua (tem namelock)
+  │
+  ├─ player:setMoveLocked(true)
+  │   └─ Bloqueia movimento
+  │
+  ├─ player:teleportTo(temple)
+  │   └─ Teleporta para temple
+  │
+  ├─ player:sendTextMessage(MESSAGE_ADMINISTRATOR, "Your name has been locked...")
+  │   └─ Avisa razão
+  │
+  ├─ player:openStore("extras")
+  │   └─ Abre loja de namechange
+  │
+  ├─ addPlayerEvent(sendRequestPurchaseData, 50ms, player, ...)
+  │   └─ Request namechange offer
+  │
+  ├─ addPlayerEvent(CheckNamelock, 30000ms, player)
+  │   └─ Reschedula verificação
+  │
+  └─ return (implícito true)
+
+EVENT: "NamelockLogin"
+  └─ onLogin(player)
+      ├─ addPlayerEvent(CheckNamelock, 1000ms, player)
+      │   └─ Schedula primeira checagem
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| playerLogin | CreatureEvent | Listener de login |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| sendRequestPurchaseData | função | Solicita oferta de loja |
+| MESSAGE_ADMINISTRATOR | constant | Tipo de mensagem |
+| GameStore.ClientOfferTypes.CLIENT_STORE_OFFER_NAMECHANGE | constant | ID da oferta namechange |
+
+---
+
+## Funções Locais
+
+### CheckNamelock(player)
+
+Valida e enforça namelock:
+
+```lua
+function CheckNamelock(player)
+	-- Obter namelock reason
+	local namelockReason = player:kv():get("namelock")
+	if not namelockReason then
+		return true  -- Sem namelock
+	end
+
+	-- Bloquear movimento
+	player:setMoveLocked(true)
+	
+	-- Teleportar para temple
+	player:teleportTo(player:getTown():getTemplePosition())
+	
+	-- Aviso
+	player:sendTextMessage(MESSAGE_ADMINISTRATOR, 
+		"Your name has been locked for the following reason: " .. namelockReason .. ".")
+	
+	-- Abrir loja
+	player:openStore("extras")
+	
+	-- Request namechange
+	addPlayerEvent(sendRequestPurchaseData, 50, player, 65002, 
+		GameStore.ClientOfferTypes.CLIENT_STORE_OFFER_NAMECHANGE)
+	
+	-- Reschedula (30s)
+	addPlayerEvent(CheckNamelock, 30000, player)
+end
+```
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Player a verificar |
+
+---
+
+## Constantes e Parâmetros
+
+### KV Storage Keys
+
+| Chave | Tipo | Descrição |
+|-------|------|-----------|
+| "namelock" | string | Razão do namelock (ou nil) |
+
+### Event Schedule Timing
+
+| Evento | Delay | Descrição |
+|--------|-------|-----------|
+| CheckNamelock (login) | 1000ms | Primeira checagem |
+| sendRequestPurchaseData | 50ms | Request loja (rápido) |
+| CheckNamelock (reschedule) | 30000ms | Verificação periódica |
+
+### Store Constants
+
+| Constante | Valor | Descrição |
+|-----------|-------|-----------|
+| GameStore.ClientOfferTypes.CLIENT_STORE_OFFER_NAMECHANGE | 65002 | ID da oferta |
+
+---
+
+## Fluxo de Operação
+
+### CheckNamelock - Função Principal
+
+```lua
+function CheckNamelock(player)
+	local namelockReason = player:kv():get("namelock")
+	if not namelockReason then
+		return true
+	end
+
+	player:setMoveLocked(true)
+	player:teleportTo(player:getTown():getTemplePosition())
+	player:sendTextMessage(MESSAGE_ADMINISTRATOR, 
+		"Your name has been locked for the following reason: " .. namelockReason .. ".")
+	player:openStore("extras")
+	addPlayerEvent(sendRequestPurchaseData, 50, player, 
+		65002, GameStore.ClientOfferTypes.CLIENT_STORE_OFFER_NAMECHANGE)
+	addPlayerEvent(CheckNamelock, 30000, player)
+end
+```
+
+### onLogin - Event Trigger
+
+```lua
+local playerLogin = CreatureEvent("NamelockLogin")
+
+function playerLogin.onLogin(player)
+	addPlayerEvent(CheckNamelock, 1000, player)
+	return true
+end
+
+playerLogin:register()
+```
+
+### Árvore de Decisão
+
+```
+Player faz login
+  │
+  ├─ addPlayerEvent(CheckNamelock, 1000ms)
+  │   └─ Schedula primeira verificação
+  │
+  ├─ CheckNamelock inicia (após 1s)
+  │   │
+  │   ├─ namelockReason = kv():get("namelock")
+  │   │   └─ Obtem razão
+  │   │
+  │   ├─ namelockReason exists?
+  │   │   │
+  │   │   ├─ NÃO → return true (fim)
+  │   │   │         (player sem namelock)
+  │   │   │
+  │   │   └─ SIM → EXECUTAR ENFORCEMENT:
+  │   │       │
+  │   │       ├─ setMoveLocked(true)
+  │   │       │   └─ Bloqueia movimento
+  │   │       │
+  │   │       ├─ teleportTo(temple)
+  │   │       │   └─ Teleporta para temple
+  │   │       │
+  │   │       ├─ sendTextMessage("Your name locked: " .. reason)
+  │   │       │   └─ Avisa razão
+  │   │       │
+  │   │       ├─ openStore("extras")
+  │   │       │   └─ Abre loja namechange
+  │   │       │
+  │   │       ├─ addPlayerEvent(sendRequestPurchaseData, 50ms)
+  │   │       │   └─ Request oferta (rápido)
+  │   │       │
+  │   │       └─ addPlayerEvent(CheckNamelock, 30000ms)
+  │   │           └─ Reschedula em 30s
+  │
+  └─ Loop contínuo: verifica a cada 30s enquanto tiver namelock
+```
+
+### Timing Diagram
+
+```
+Login (t=0)
+  │
+  ├─ +1000ms: CheckNamelock (1ª vez)
+  │   ├─ if namelock:
+  │   │   ├─ +50ms: sendRequestPurchaseData (trigger loja)
+  │   │   └─ +30000ms: CheckNamelock (2ª vez)
+  │   │
+  │   └─ else: return (sem namelock, fim)
+  │
+  ├─ +31050ms: CheckNamelock (2ª vez)
+  │   ├─ if still namelock:
+  │   │   └─ +30000ms: CheckNamelock (3ª vez)
+  │   └─ else: return (desbloqueado)
+  │
+  └─ Loop continua...
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onLogin**: Callback disparado ao fazer login
+- **addPlayerEvent()**: Scheduler de eventos per-player
+- **kv():get()**: Obter valor persistente
+- **setMoveLocked()**: Bloquear movimento
+- **teleportTo()**: Teleportar para posição
+- **getTown():getTemplePosition()**: Obter posição de temple
+- **sendTextMessage()**: Enviar mensagem (admin)
+- **openStore()**: Abrir loja (namechange)
+- **Reschedule Pattern**: Chamar função recursivamente
+- **Global Events**: Executar per-player, não global
+
+### Responsabilidades do Handler
+
+**CheckNamelock:**
+1. **Validar**: Existe namelock?
+2. **Bloquear**: setMoveLocked(true)
+3. **Teleportar**: Para temple
+4. **Avisar**: Mensagem com razão
+5. **Oferta**: openStore + request
+6. **Reschedular**: Próxima verificação
+7. **Confirmar**: return true
+
+**onLogin:**
+1. **Schedular**: Primeira CheckNamelock
+2. **Timing**: 1s de delay
+3. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão KV Validation
+
+Validar KV com default handling:
+
+```lua
+local namelockReason = player:kv():get("namelock")
+if not namelockReason then
+	return true
+end
+```
+
+### Padrão Movement Restriction
+
+Bloquear movimento e informar:
+
+```lua
+player:setMoveLocked(true)
+player:teleportTo(player:getTown():getTemplePosition())
+```
+
+### Padrão Store Request
+
+Abrir loja e request oferta:
+
+```lua
+player:openStore("extras")
+addPlayerEvent(sendRequestPurchaseData, 50, player, 65002, 
+	GameStore.ClientOfferTypes.CLIENT_STORE_OFFER_NAMECHANGE)
+```
+
+### Padrão Reschedule
+
+Verificação periódica:
+
+```lua
+addPlayerEvent(CheckNamelock, 30000, player)
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: name_lock.lua" icon="star">
+Análise de listener de login para enforcement de namelock. Demonstra KV validation, movement restriction e event rescheduling.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Namelock enforcement with periodic validation | Complexidade: Média
+</Aside>

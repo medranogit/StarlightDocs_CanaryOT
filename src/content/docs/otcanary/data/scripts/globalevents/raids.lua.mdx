@@ -1,0 +1,294 @@
+---
+title: "Global Event - raids.lua"
+description: "Global event para verificar e iniciar raids conforme agendadas"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `raids.lua` |
+| **Localização** | `data/scripts/globalevents/` |
+| **Tipo de Script** | GlobalEvent |
+| **Event Name** | `raids.check.onThink` |
+| **Função Registrada** | `onThink(interval, lastExecution)` |
+| **Linhas de Código** | 17 |
+| **Intervalo** | Configurável via ParseDuration(Raid.checkInterval) |
+| **Complexidade** | Trivial-Médium |
+| **Status** | Base implementation |
+
+**Descrição:**
+Global event que realiza verificação periódica de raids agendadas no servidor. A cada intervalo, itera pela registry de raids e tenta iniciar aquelas que estão prontas. Possui lógica de stop-execution que interrompe checks de raid 1 hora antes do server save para evitar conflitos com backup.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/globalevents/raids.lua
+```
+
+**Pré-requisitos:**
+- GlobalEvent API (`GlobalEvent` função global)
+- Raid.registry (table global com raids cadastradas)
+- Raid.checkInterval (intervalo de verificação)
+- Raid object com método: `tryStart()`
+- configManager com key: `GLOBAL_SERVER_SAVE_TIME`
+- ParseDuration() function (converte strings de duração)
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Check de Raids (Raid Scheduling)**
+
+A cada intervalo configurado, o sistema verifica se raids podem começar:
+
+1. **Validação:** Verifica se já passou 1 hora antes do server save
+2. **Iteração:** Loop por todas as raids em Raid.registry
+3. **Tentativa:** Para cada raid, chama raid:tryStart()
+4. **Resposta:** Raid inicia se condições forem atendidas
+5. **Ciclo:** Repete indefinidamente até atingir stopExecutionAt
+
+**Exemplo: Timeline de Raid**
+```
+10:00 - raid.lua:onThink() começa a verificar
+  ├─ for _, raid in Raid.registry
+  ├─ raid:tryStart() → verifica se deve começar
+  └─ Se sim → inicia raid
+11:00 - próximo check
+12:34 - 1h antes do server save
+  └─ stopExecutionAt atingido → retorna true (para checks)
+13:34 - server save executado
+```
+
+**Por que parar 1 hora antes do save?**
+- Raid em progresso + save = desconexões/lag
+- Melhor garantir completion antes de backup
+- Reduz carga do servidor durante save window
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `raids.lua` implementa o agendador de raids com verificação periódica:
+
+- **Calcula próxima hora de save** usando `GetNextOccurrence()`
+- **Computa janela de parada** (1 hora antes do save)
+- **Realiza verifications cíclicas** de raids prontas para iniciar
+- **Para execução** automaticamente após atingir limite de segurança
+
+### Arquitetura
+
+O script usa padrão de **scheduled tick dispatcher com safety window**:
+
+```
+GlobalEvent (ParseDuration(Raid.checkInterval) interval)
+  └─ onThink()
+     ├─ Valida: os.time() > stopExecutionAt?
+     ├─ Se sim → retorna true (para event)
+     └─ Se não → itera Raid.registry e chama tryStart()
+```
+
+### Fluxo Lógico Resumido
+
+| Fase | Ação | Condição |
+|------|------|----------|
+| **Inicialização** | Calcula serverSaveTime | Na carga do script |
+| **Computação** | Calcula stopExecutionAt | serverSaveTime - 1h |
+| **Verificação** | Itera raids e tryStart() | Mientras os.time() < stopExecutionAt |
+| **Parada** | Retorna true (stop event) | Quando os.time() > stopExecutionAt |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variáveis & Constantes Locais
+
+#### **serverSaveTime** (number)
+
+```lua
+local serverSaveTime = GetNextOccurrence(configManager.getString(configKeys.GLOBAL_SERVER_SAVE_TIME))
+```
+
+**Descrição:** Armazena timestamp da próxima ocorrência de server save baseado na config.
+
+**Tipo:** `number` (timestamp UNIX)
+
+**Origem:** `configManager.getString(configKeys.GLOBAL_SERVER_SAVE_TIME)`
+
+#### **stopExecutionAt** (number)
+
+```lua
+local stopExecutionAt = serverSaveTime - ParseDuration("1h") / ParseDuration("1s")
+```
+
+**Descrição:** Armazena timestamp quando raids checks devem parar (1 hora antes do save).
+
+**Tipo:** `number` (timestamp UNIX em segundos)
+
+**Cálculo:** `serverSaveTime - (3600 segundos)`
+
+#### **raidCheck** (GlobalEvent)
+
+```lua
+local raidCheck = GlobalEvent("raids.check.onThink")
+```
+
+**Descrição:** Objeto GlobalEvent que encapsula o verificador de raids.
+
+**Tipo:** `GlobalEvent` object
+
+**Nome do Evento:** `raids.check.onThink`
+
+---
+
+### Função Principal (GlobalEvent)
+
+#### **onThink(interval, lastExecution)**
+
+```lua
+function raidCheck.onThink(interval, lastExecution)
+	if os.time() > stopExecutionAt then
+		return true
+	end
+
+	for _, raid in pairs(Raid.registry) do
+		raid:tryStart()
+	end
+	return true
+end
+```
+
+**Propósito:** Entry point do global event. Verifica condições e itera raids para tentativa de início.
+
+**Fluxo de Execução:**
+
+1. **Validação de Tempo:** Compara `os.time()` (timestamp atual) com `stopExecutionAt`
+   - Se já passou da hora de parada → Retorna `true` (desativa event)
+   - Se ainda em janela segura → Continua
+2. **Iteração de Registry:** Loop sobre `Raid.registry` (table global com todas as raids)
+3. **Tentativa de Início:** Para cada raid, chama `raid:tryStart()`
+   - Internamente verifica se raid pode começar (horário, condições, etc)
+   - Se sim → Inicia raid
+4. **Retorno:** Sempre retorna `true` (evento continua ativo enquanto houver tempo)
+
+**Parâmetros:**
+- `interval` - Intervalo entre chamadas (valor do step configurado via `raidCheck:interval()`)
+- `lastExecution` - Timestamp da última execução
+
+**Retorno:**
+- `true` - GlobalEvent continua registrado e ativo
+
+---
+
+### Registro e Intervalo
+
+#### **raidCheck:interval(ParseDuration(Raid.checkInterval))**
+
+```lua
+raidCheck:interval(ParseDuration(Raid.checkInterval))
+raidCheck:register()
+```
+
+**Descrição:** Configura intervalo do check baseado na configuração global de Raid.checkInterval.
+
+**Intervalo:** Típicamente a cada poucos minutos (configurável em Raid system)
+
+**Registro:** Ativa o GlobalEvent no sistema
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Locais (Script-Level)
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `serverSaveTime` | number | Local | Timestamp da próxima hora de save |
+| `stopExecutionAt` | number | Local | Timestamp quando parar verifications |
+| `raidCheck` | GlobalEvent | Local | GlobalEvent object do verificador |
+
+### Constantes/Valores Utilizados
+
+| Valor | Tipo | Descrição |
+|-------|------|-----------|
+| `"1h"` | string | Duração em formato ParseDuration (1 hora) |
+| `"1s"` | string | Duração para conversão (1 segundo) |
+
+### Objetos Externos Referenciados
+
+| Objeto | Propriedade/Método | Descrição |
+|--------|-------------------|-----------|
+| `configManager` | `getString(configKeys.GLOBAL_SERVER_SAVE_TIME)` | Obtém hora configurada do server save |
+| `GetNextOccurrence()` | (função global) | Calcula próximo timestamp de uma hora configurada |
+| `ParseDuration()` | (função global) | Converte strings de duração (ex: "1h") para timestamp |
+| `os` | `time()` | Retorna timestamp UNIX atual |
+| `Raid` | `registry` | Table global com todas as raids ativas/cadastradas |
+| `raid` | `tryStart()` | Tenta iniciar a raid se condições forem atendidas |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Safety Window (Janela de Segurança)
+
+**Técnica:** Parar execução de operações críticas antes de uma janela principal (server save).
+
+```lua
+local stopExecutionAt = serverSaveTime - ParseDuration("1h") / ParseDuration("1s")
+if os.time() > stopExecutionAt then
+	return true  -- Para execution
+end
+```
+
+**Vantagem:**
+- Evita race conditions entre raid state e server save
+- Reduz carga do servidor durante período crítico
+- Garante que raids completem antes de backup
+
+**Aplicação:** Qualquer operação que deve evitar período de manutenção (resets, cleanups, heavy computations).
+
+---
+
+### Padrão 2: Registry-Based Iteration com SafeGuard
+
+**Técnica:** Iterar coleção dinâmica com validação antes de operação.
+
+```lua
+for _, raid in pairs(Raid.registry) do
+	raid:tryStart()  -- Internamente valida condições
+end
+```
+
+**Vantagem:**
+- Raids que não estão prontas são ignoradas por tryStart()
+- Loop não precisa saber detalhes de cada raid
+- Adicionar/remover raids não afeta lógica
+
+**Aplicação:** Sistemas com múltiplas entidades que podem estar em estados diferentes.
+
+---
+
+### Padrão 3: Time-Based Event Gating
+
+**Técnica:** Usar timestamps para controlar janelas de execução.
+
+```lua
+local serverSaveTime = GetNextOccurrence(configString)
+local stopExecutionAt = serverSaveTime - duration
+if os.time() > stopExecutionAt then stop() end
+```
+
+**Vantagem:**
+- Independente de system clock
+- Configurável dinamicamente
+- Respeita timezones via GetNextOccurrence()
+
+**Aplicação:** Agendadores, sistemas de evento temporal, manutenção programada.

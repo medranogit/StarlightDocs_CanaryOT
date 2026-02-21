@@ -1,0 +1,304 @@
+---
+title: toolgear.lua
+description: Multi-tool universal com RNG 95% cascata OR de 8 funções vs 5% jam logic com transform+1 e achievement.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="toolgear.lua" icon="pencil">
+Handler ultra-complexo com RNG cascata OR e jam state management.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/tools/toolgear.lua`
+
+**Linhas:** 22 | **IDs do Tool:** 3 variantes (9594, 9596, 9598) | **Tipo:** Action Handler com RNG e State
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa multi-tool universal (toolgear) com RNG dual-branch. 95% chance: cascata OR de 8 funções (rope -> shovel -> pick -> machete -> crowbar -> spoon -> scythe -> kitchen_knife), retorna se qualquer uma suceder. 5% chance: jams tool (item state = ItemID+1, decay schedule, achievement "Bad Timing" +10, message). 3 IDs (9594, 9596, 9598) representando 3 estados (normal, jammed level 1 e 2). Padrão complexo com cascata lógica e state machine.
+
+### Estrutura de Funcionalidades
+
+```
+HANDLER:
+  └─ toolGear.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+      ├─ random(100) > 5?
+      │   │
+      │   ├─ SIM (95%):
+      │   │   └─ Cascata OR:
+      │   │       ├─ onUseRope() → true? return
+      │   │       ├─ onUseShovel() → true? return
+      │   │       ├─ onUsePick() → true? return
+      │   │       ├─ onUseMachete() → true? return
+      │   │       ├─ onUseCrowbar() → true? return
+      │   │       ├─ onUseSpoon() → true? return
+      │   │       ├─ onUseScythe() → true? return
+      │   │       └─ onUseKitchenKnife() → true? return
+      │   │
+      │   └─ NÃO (5%):
+      │       ├─ Message: "Tool is jammed for a minute"
+      │       ├─ Achievement: "Bad Timing" +10
+      │       ├─ transform(itemid + 1) → Next jam state
+      │       └─ decay() → Remove após tempo
+      │
+      └─ return true
+
+REGISTRY:
+  └─ 3 toolgear IDs
+      ├─ 9594 (Normal)
+      ├─ 9596 (Jammed 1)
+      └─ 9598 (Jammed 2 ou final) [nota: pode ser 9597]
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| toolGear | Action | Objeto handler multi-tool |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Toolgear States
+
+| ID | Estado | Descrição |
+|----|--------|-----------|
+| 9594 | Normal | Funcionando normalmente |
+| 9596 | Jammed 1 | Primeiro estado travado |
+| 9598 | Jammed 2 | Segundo estado travado (final) |
+
+### RNG Distribution
+
+| Chance | Result | Description |
+|--------|--------|-------------|
+| 1-95% | Success | Cascata OR de 8 funções |
+| 96-100% | Jam (5%) | Jam state transformation |
+
+### Tool Cascade Order
+
+| Ordem | Função | Tipo |
+|-------|--------|------|
+| 1 | onUseRope() | Climbing |
+| 2 | onUseShovel() | Digging |
+| 3 | onUsePick() | Mining |
+| 4 | onUseMachete() | Harvest |
+| 5 | onUseCrowbar() | Prying |
+| 6 | onUseSpoon() | Digging |
+| 7 | onUseScythe() | Harvest |
+| 8 | onUseKitchenKnife() | Kitchen |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local toolGear = Action()
+
+function toolGear.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- RNG: 95% vs 5%
+	if math.random(100) > 5 then
+		-- ========== SUCCESS BRANCH (95%) ==========
+		-- Cascata OR: tenta cada função até suceder
+		return onUseRope(player, item, fromPosition, target, toPosition, isHotkey)
+			or onUseShovel(player, item, fromPosition, target, toPosition, isHotkey)
+			or onUsePick(player, item, fromPosition, target, toPosition, isHotkey)
+			or onUseMachete(player, item, fromPosition, target, toPosition, isHotkey)
+			or onUseCrowbar(player, item, fromPosition, target, toPosition, isHotkey)
+			or onUseSpoon(player, item, fromPosition, target, toPosition, isHotkey)
+			or onUseScythe(player, item, fromPosition, target, toPosition, isHotkey)
+			or onUseKitchenKnife(player, item, fromPosition, target, toPosition, isHotkey)
+	else
+		-- ========== JAM BRANCH (5%) ==========
+		player:say("Oh no! Your tool is jammed and can't be used for a minute.", TALKTYPE_MONSTER_SAY)
+		player:addAchievementProgress("Bad Timing", 10)
+		item:transform(item.itemid + 1)
+		item:decay()
+	end
+	return true
+end
+
+toolGear:id(9594, 9596, 9598)
+toolGear:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador usa toolgear (9594/9596/9598) + target
+  │
+  ├─ random(100) > 5?
+  │   │
+  │   ├─ SIM (95%, valores 6-100):
+  │   │   │
+  │   │   └─ CASCATA OR:
+  │   │       ├─ onUseRope() executa
+  │   │       │   ├─ Sucesso? → return true
+  │   │       │   └─ Falha? → próxima
+  │   │       │
+  │   │       ├─ onUseShovel() executa
+  │   │       │   ├─ Sucesso? → return true
+  │   │       │   └─ Falha? → próxima
+  │   │       │
+  │   │       ├─ onUsePick() executa
+  │   │       │   ├─ Sucesso? → return true
+  │   │       │   └─ Falha? → próxima
+  │   │       │
+  │   │       ├─ ... (mais 5 funções)
+  │   │       │
+  │   │       └─ onUseKitchenKnife() (última)
+  │   │           └─ Retorna resultado
+  │   │
+  │   └─ NÃO (5%, valores 1-5):
+  │       │
+  │       ├─ JAM BRANCH:
+  │       ├─ Message: "Oh no! Jammed for a minute"
+  │       ├─ Achievement: "Bad Timing" +10
+  │       │
+  │       ├─ State transform:
+  │       │   ├─ 9594 → 9595 (ou 9596 conforme logik)
+  │       │   └─ item:decay() → Schedule remoção
+  │       │
+  │       └─ Bloqueia outras ações
+  │
+  └─ return true (sempre)
+```
+
+### Cascata OR Logic
+
+```lua
+-- OR cascata: retorna primeiro resultado truthy
+return A or B or C or D or E or F or G or H
+
+-- Expansão conceitual:
+if A then
+	return A
+elseif B then
+	return B
+elseif C then
+	return C
+-- ... até H
+else
+	return nil
+end
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **RNG Dual-Branch**: random(100) > 5 → 95% vs 5%
+- **Cascata OR**: 8 funções em cascata, primeira true vence
+- **State Machine**: ItemID+1 para estados travados (9594 -> 9596 -> 9598)
+- **Transform Increment**: item.itemid + 1 para trocar estado
+- **Achievement Progress**: addAchievementProgress() com valor
+- **Silent Decay**: item:decay() schedula remoção
+- **Message Feedback**: say() com TALKTYPE_MONSTER_SAY
+- **Multi-ID Variants**: 3 IDs para 3 estados diferentes
+- **Always Return True**: Mesmo em jam, return true (consumido)
+- **External Delegation**: Chama 8 funções externas
+
+### Responsabilidades do Handler
+
+1. **RNG**: random(100) para 95/5 split
+2. **Success Branch (95%)**:
+   - Cascata OR: tenta 8 funções
+   - Return primeiro resultado truthy
+3. **Jam Branch (5%)**:
+   - Message ao jogador
+   - Achievement +10
+   - Transform state (itemid+1)
+   - Decay item
+4. **Always Return True**: Consumido sempre
+
+---
+
+## Patterns e Implementação
+
+### Padrão Cascata OR
+
+Múltiplas funções em cascata:
+
+```lua
+return onUseRope(...)
+	or onUseShovel(...)
+	or onUsePick(...)
+	or onUseMachete(...)
+	or onUseCrowbar(...)
+	or onUseSpoon(...)
+	or onUseScythe(...)
+	or onUseKitchenKnife(...)
+```
+
+### Padrão State Machine Jam
+
+Transform para próximo estado:
+
+```lua
+-- Estados: 9594 (normal) -> 9596 (jammed) -> 9598 (jammed final)
+item:transform(item.itemid + 1)
+item:decay()  -- Remove após tempo
+```
+
+### Padrão RNG Dual-Branch
+
+95% sucesso vs 5% jam:
+
+```lua
+if math.random(100) > 5 then
+	-- SUCCESS (95%)
+	return ... cascata
+else
+	-- JAM (5%)
+	player:say(...)
+	player:addAchievementProgress(...)
+	item:transform(item.itemid + 1)
+	item:decay()
+end
+return true
+```
+
+### Comparação: Toolgear vs Simple Tools
+
+| Aspecto | Toolgear | Sickle | Simple Wrapper |
+|---------|----------|--------|---|
+| Linhas | 22 | 15 | 8 |
+| Lógica | Cascata OR + RNG | Inline harvest | Delegada |
+| State | Sim (3 IDs) | Não | Não |
+| RNG | Sim (95/5) | Não | Não |
+| Cascata | Sim (8 funcs) | Não | Não |
+| Complexity | Alta | Baixa | Trivial |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: toolgear.lua" icon="star">
+Análise de handler multi-tool complexo com RNG cascata OR. Demonstra state machine, achievement progress e cascata lógica com fallback.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: RNG cascata OR with state machine | Complexidade: Alta
+</Aside>

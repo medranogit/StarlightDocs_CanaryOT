@@ -1,0 +1,697 @@
+---
+title: "blessing.lua"
+description: "Sistema de bênçãos e proteções com cálculo dinâmico de perda de itens, custos variáveis por nível e múltiplos tipos de bênção"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo de **sistema de bênçãos** que implementa proteção contra perda de itens e skills ao morrer. Define 8 tipos diferentes de bênçãos (com 3 tipos: Regular, Enhanced, PvP), calcula custos dinâmicos baseados em nível do jogador, gerencia queda de loot ao morrer com percentuais decrescentes conforme número de bênçãos, lida com crânios vermelhos/pretos, Amulet of Loss e bênçãos de aventureiro automáticas. Sistema sofisticado de economia de sobrevivência típico de MMO Tibia-like.
+
+**Caminho Original**: `data/libs/systems/blessing.lua`
+
+**Dependências**:
+- GameStore (bênçãos compráveis)
+- Player object (extensão via metatable)
+- Config manager (settings de servidor)
+- Database (blessings_history - comentado)
+
+<Aside>
+Este módulo estende o **Player object natively** com funções de bênção (hasBlessing, addBlessing, etc já esperadas no core). O módulo define lógica econômica completa de proteção contra morte no PvP.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `blessing.lua` implementa **sistema econômico de proteção de morte** baseado em 8 bênçãos diferentes, cada uma reduzindo perda de itens/skills em percentuais específicos. Quando jogador morre sem crânio, percentual de itens perdidos depende do número de bênçãos possuído (0 bênçãos = 100% perda, 5+ bênçãos = 0% perda). Custa variável por nível (2k até 30, 200/260 multiplier até 120, 75/100 multiplier acima). Suporta múltiplas compras em batch, bênçãos de aventureiro automáticas para baixo level, sistema Inquisition NPC com preço multiplicado, e integração com Amulet of Loss para proteção adicional.
+
+### Arquitetura de Componentes
+
+```
+Blessings (sistema global)
+│
+├─ CONFIGURAÇÃO (4 tabelas)
+│  ├── Blessings.Config (settings do servidor)
+│  ├── Blessings.Types (enum: REGULAR=1, ENHANCED=2, PvP=3)
+│  ├── Blessings.All (8 bênçãos com metadados)
+│  └── Blessings.LossPercent (tabela de perda por count)
+│
+├─ DEATH HANDLING (2 funções)
+│  ├── PlayerDeath (evento death principal)
+│  └── DropLoot (lógica de queda de loot)
+│
+├─ CÁLCULO DE CUSTOS (2 funções)
+│  ├── getCommandFee (taxa de comando)
+│  └── getBlessingCost (custo por level)
+│  └── getPvpBlessingCost (custo PvP específico)
+│
+├─ SISTEMAS DE COMPRA (1 função)
+│  └── BuyAllBlesses (compra batch com validação)
+│
+├─ RITUALS & MAGIC (2 funções)
+│  ├── useCharm (usar item charm de bênção)
+│  └── doAdventurerBlessing (auto-bless low level)
+│
+├─ CONSULTORIA (2 funções)
+│  ├── checkBless (listar bênçãos atuais)
+│  └── getInquisitionPrice (preço NPC)
+│
+└─ METATABLE EXTENSIONS (2 funções)
+   ├── Player.getBlessings (query com filtros)
+   └── Player.addMissingBless (auto-fill de bênçãos)
+```
+
+### Tabelas de Dados Críticas
+
+**Blessings.All** - 8 Bênçãos Distintas:
+
+| ID | Nome | Tipo | Charm | Inquisition | Descrição |
+|---|---|---|---|---|---|
+| 1 | Twist of Fate | PvP | - | - | Única bênção PvP, sem charm |
+| 2 | The Wisdom of Solitude | Regular | 10345 | ✓ | Base de perda: 70% items |
+| 3 | The Spark of the Phoenix | Regular | 10341 | ✓ | Base de perda: 45% items |
+| 4 | The Fire of the Suns | Regular | 10344 | ✓ | Perda: 25% items |
+| 5 | The Spiritual Shielding | Regular | 10343 | ✓ | Perda: 10% items |
+| 6 | The Embrace of Tibia | Regular | 10342 | ✓ | Perda: 0% items |
+| 7 | Heart of the Mountain | Enhanced | 25360 | ✗ | Enhanced tipo (newer) |
+| 8 | Blood of the Mountain | Enhanced | 25361 | ✗ | Enhanced tipo (newer) |
+
+**Blessings.LossPercent** - Tabela de Proteção (por count de bênçãos):
+
+| Count | Item Loss % | Skill Loss % | Proteção |
+|---|---|---|---|
+| 0 | 100% | 0% | Nenhuma |
+| 1 | 70% | 8% | Minimal |
+| 2 | 45% | 16% | Médio |
+| 3 | 25% | 24% | Bom |
+| 4 | 10% | 32% | Muito bom |
+| 5+ | 0% | 40-56% | Máxima (items) |
+
+---
+
+## Detalhes das Funções Globais
+
+### 1. PlayerDeath(player, corpse, killer) - FUNÇÃO CRÍTICA
+
+Evento disparado quando jogador morre. Determina loot drop baseado em crânio, Amulet of Loss e contagem de bênçãos.
+
+**Parâmetros**:
+- player (userdata): Jogador que morreu
+- corpse (userdata): Container corpse created
+- killer (userdata): Quem matou (pode ser nil)
+
+**Retorna**: 
+- (boolean): true (sempre processa)
+
+**Lógica de Decisão**:
+
+```lua
+local hasAol = (player:getSlotItem(CONST_SLOT_NECKLACE) and 
+                player:getSlotItem(CONST_SLOT_NECKLACE):getId() == ITEM_AMULETOFLOSS)
+local hasSkull = table.contains({ SKULL_RED, SKULL_BLACK }, player:getSkull())
+local currBlessCount = player:getBlessings()
+
+if hasSkull then
+    -- Crânio é absoluto: perda 100%
+    Blessings.DropLoot(player, corpse, 100, true)
+elseif #currBlessCount < 5 and not hasAol then
+    -- Sem amulet e < 5 bênçãos: usa perda baseada em count
+    local equipLossChance = Blessings.LossPercent[#currBlessCount].item
+    Blessings.DropLoot(player, corpse, equipLossChance)
+end
+
+-- Garante backpack
+if not player:getSlotItem(CONST_SLOT_BACKPACK) then
+    player:addItem(ITEM_BAG, 1, false, CONST_SLOT_BACKPACK)
+end
+```
+
+**Prioridade**:
+
+1. **Red/Black Skull**: 100% perda obrigatória
+2. **Amulet of Loss**: 0% perda (proteção total)
+3. **5+ Bênçãos**: 0% perda de items
+4. **< 5 Bênçãos**: Perda conforme Blessings.LossPercent[count].item
+
+---
+
+### 2. DropLoot(player, corpse, chance, skulled) - FUNÇÃO COMPLEXA
+
+Implementa lógica de queda de loot com chance probabilística e remoção de store items se crânio.
+
+**Parâmetros**:
+- player (userdata): Jogador
+- corpse (userdata): Corpse destination
+- chance (number): Percentual de chance (0-100)
+- skulled (boolean, opcional): Se true, força 100%
+
+**Algoritmo de Drop**:
+
+```lua
+-- Multiplier para evitar floating point
+local multiplier = 100
+chance = chance * multiplier
+
+-- Loop slots HEAD até AMMO
+for i = CONST_SLOT_HEAD, CONST_SLOT_AMMO do
+    local item = player:getSlotItem(i)
+    if item then
+        -- Container tem 1x chance, equipment tem 0.1x chance
+        local thisChance = item:isContainer() and chance or (chance / 10)
+        local thisRandom = math.random(100 * multiplier)
+        
+        if skulled or thisRandom <= thisChance then
+            item:moveTo(corpse)  -- Drop para corpse
+        end
+    end
+end
+```
+
+**Peculiaridade**: Containers são **sempre** dropped, items normais têm 10x menos chance
+
+**Store Inbox Removal** (se skulled + config enable):
+
+```lua
+if skulled and Blessings.Config.SkulledDeathLoseStoreItem then
+    local inbox = player:getStoreInbox()
+    -- Loop inbox, coleta UIDs, remove todos
+    for i = 0, inbox:getSize() do
+        local item = inbox:getItem(i)
+        if item then
+            toBeDeleted[#toBeDeleted + 1] = item.uid
+        end
+    end
+    -- Delete todos coletados
+end
+```
+
+---
+
+### 3. getCommandFee(cost)
+
+Calcula custo com taxa de comando adicionada.
+
+**Parâmetros**:
+- cost (number): Custo base
+
+**Retorna**: 
+- (number): Custo com fee adicionada
+
+**Fórmula**:
+
+```lua
+local fee = configManager.getNumber(configKeys.BUY_BLESS_COMMAND_FEE) or 0
+return cost + cost * (((fee > 100 and 100) or fee) / 100)
+-- Fee capped em 100%
+```
+
+---
+
+### 4. getBlessingCost(level, byCommand, enhanced) - FUNÇÃO DINÂMICA
+
+Calcula custo de bênção regular ou enhanced conforme nível do jogador.
+
+**Parâmetros**:
+- level (number): Nível do jogador
+- byCommand (boolean, opcional): Se true, aplica taxa comando
+- enhanced (boolean, opcional): Se true, usa preços Enhanced
+
+**Retorna**: 
+- (number): Custo calculado
+
+**Brackets de Nível**:
+
+```lua
+if level <= 30 then
+    cost = 2000  -- Flat rate para low level
+elseif level >= 120 then
+    -- High level: base + multiplier * (level - 120)
+    local base_cost = enhanced and 26000 or 20000
+    local multiplier = enhanced and 100 or 75
+    cost = base_cost + multiplier * (level - 120)
+else
+    -- Mid level: multiplier * (level - 20)
+    local multiplier = enhanced and 260 or 200
+    cost = multiplier * (level - 20)
+end
+
+return byCommand and Blessings.getCommandFee(cost) or cost
+```
+
+**Exemplos**:
+- Level 10: 2,000 gold
+- Level 50: 200 * (50 - 20) = 6,000 gold
+- Level 120: 20,000 + 75 * 0 = 20,000 gold
+- Level 150: 20,000 + 75 * 30 = 22,250 gold
+
+---
+
+### 5. getPvpBlessingCost(level, byCommand)
+
+Calcula custo de **Twist of Fate** (PvP blessing) conforme nível.
+
+**Parâmetros**:
+- level (number): Nível do jogador
+- byCommand (boolean, opcional): Se true, aplica taxa comando
+
+**Retorna**: 
+- (number): Custo calculado
+
+**Brackets**:
+
+```lua
+if level <= 30 then
+    cost = 2000
+elseif level >= 270 then
+    cost = 50000  -- Cap em level 270
+else
+    cost = (level - 20) * 200
+end
+```
+
+---
+
+### 6. useCharm(player, item) - FUNÇÃO CHARM RITUAL
+
+Processa uso de charm item para ganhar bênção.
+
+**Parâmetros**:
+- player (userdata): Jogador usando item
+- item (userdata): Item charm usado
+
+**Retorna**: 
+- (boolean): true (consume item)
+
+**Lógica**:
+
+```lua
+-- Procura blessing que corresponde ao charm itemid
+for index, value in pairs(Blessings.All) do
+    if item.itemid == value.charm then
+        if player:hasBlessing(value.id) then
+            player:say("You already possess this blessing.", TALKTYPE_MONSTER_SAY)
+            return true
+        end
+        
+        player:addBlessing(value.id, 1)
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, value.name .. " protects you.")
+        player:getPosition():sendMagicEffect(CONST_ME_LOSEENERGY)
+        item:remove(1)  -- Consume item
+        return true
+    end
+end
+```
+
+---
+
+### 7. checkBless(player) - FUNÇÃO CONSULTORIA
+
+Lista todas as bênçãos que jogador possui.
+
+**Parâmetros**:
+- player (userdata): Jogador a consultar
+
+**Retorna**: 
+- (boolean): true
+
+**Lógica**:
+
+```lua
+local result = "Received blessings:"
+for k, v in pairs(Blessings.All) do
+    result = player:hasBlessing(k) and result .. "\n" .. v.name or result
+end
+
+player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+                      20 > result:len() and "No blessings received." or result)
+```
+
+---
+
+### 8. doAdventurerBlessing(player) - FUNÇÃO AUTO-BLESS
+
+Auto-abençoa jogadores baixo nível.
+
+**Parâmetros**:
+- player (userdata): Jogador que logou
+
+**Retorna**: 
+- (boolean): true
+
+**Lógica**:
+
+```lua
+if player:getLevel() > Blessings.Config.AdventurerBlessingLevel then
+    return true
+end
+
+player:addMissingBless(true, true)  -- Adiciona todas bênçãos
+
+player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+    "You have adventurer's blessings for being level lower than " 
+    .. Blessings.Config.AdventurerBlessingLevel .. "!")
+player:getPosition():sendMagicEffect(CONST_ME_HOLYDAMAGE)
+```
+
+---
+
+### 9. getInquisitionPrice(player)
+
+Calcula preço NPC Inquisition para bênçãos faltando.
+
+**Parâmetros**:
+- player (userdata): Jogador a avaliar
+
+**Retorna**: 
+- (number, number): (número de bênçãos faltando, preço total)
+
+**Lógica**:
+
+```lua
+local missing = #player:getBlessings(inquifilter, donthavefilter)
+-- Filtra apenas bênçãos que têm inquisition = true
+-- E que jogador não tem
+
+local totalBlessPrice = Blessings.getBlessingCost(player:getLevel(), false) 
+                        * missing 
+                        * Blessings.Config.InquisitonBlessPriceMultiplier
+
+return missing, totalBlessPrice
+```
+
+---
+
+### 10. BuyAllBlesses(player) - FUNÇÃO TRANSAÇÃO COMPLEXA
+
+Compra todas as bênçãos faltando com validações sofisticadas.
+
+**Parâmetros**:
+- player (userdata): Jogador comprando
+
+**Retorna**: 
+- (boolean): true
+
+**Validações**:
+
+1. **PZ/Battle Check**:
+   ```lua
+   if not Tile(player:getPosition()):hasFlag(TILESTATE_PROTECTIONZONE) 
+      and (player:isPzLocked() or player:getCondition(CONDITION_INFIGHT)) then
+       player:sendCancelMessage("You can't buy bless while in battle.")
+       return true
+   end
+   ```
+
+2. **Already Blessed Check**:
+   ```lua
+   if missingBlessAmt == 0 then
+       player:sendCancelMessage("You are already blessed.")
+       return true
+   end
+   ```
+
+3. **Funds Check**:
+   ```lua
+   if not player:removeMoneyBank(totalCost) then
+       player:sendCancelMessage("You don't have enough money...")
+       return true
+   end
+   ```
+
+**Cálculo de Custo**:
+
+```lua
+local totalCost = 0
+for _, bless in ipairs(missingBless) do
+    -- Enhanced blessings (id >= 7) têm enhanced = true
+    totalCost = totalCost + Blessings.getBlessingCost(player:getLevel(), true, bless.id >= 7)
+end
+
+if not hasToF then
+    totalCost = totalCost + Blessings.getPvpBlessingCost(player:getLevel(), true)
+end
+```
+
+**Efeito**:
+
+```lua
+metrics.addCounter("balance_decrease", totalCost, {
+    player = player:getName(),
+    context = "blessings",
+})
+
+for _, bless in ipairs(missingBless) do
+    player:addBlessing(bless.id, 1)
+end
+
+player:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+```
+
+---
+
+### 11. Player.getBlessings(self, filter, hasblessingFilter) - METATABLE FUNÇÃO
+
+Query de bênçãos com filtros customizáveis.
+
+**Parâmetros**:
+- self (Player): Jogador (implicit)
+- filter (function, opcional): Filtro sobre de bênção (default: só losscount)
+- hasblessingFilter (function, opcional): Filtro se jogador tem bênção
+
+**Retorna**: 
+- (table): Array de bênçãos que match filtros
+
+**Default Filters**:
+
+```lua
+if filter == nil then
+    filter = function(b)
+        return b.losscount  -- Só bênçãos que contam perda
+    end
+end
+
+if hasblessingFilter == nil then
+    hasblessingFilter = function(p, b)
+        return p:hasBlessing(b)  -- Que o jogador tem
+    end
+end
+```
+
+---
+
+### 12. Player.addMissingBless(self, all, tof) - METATABLE FUNÇÃO
+
+Auto-adiciona bênçãos faltando (para leveling ou admin).
+
+**Parâmetros**:
+- self (Player): Jogador (implicit)
+- all (boolean, opcional): true = todas, false = regular only
+- tof (boolean, opcional): true = também adiciona Twist of Fate
+
+**Retorna**: 
+- (void)
+
+**Lógica**:
+
+```lua
+for k, v in pairs(Blessings.All) do
+    if all or (v.type == Blessings.Types.REGULAR) 
+       or (tof and v.type == Blessings.Types.PvP) then
+        if not self:hasBlessing(k) then
+            self:addBlessing(k, 1)
+        end
+    end
+end
+
+self:sendBlessStatus()  -- Atualiza UI
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Auto-Bless ao Login
+
+```lua
+function onPlayerLogin(player)
+    Blessings.doAdventurerBlessing(player)
+end
+```
+
+### Padrão 2: Processar Morte
+
+```lua
+function onCreatureDeath(creature, corpse, killer, mostDamageKiller, unjustified, mostDamageUnjustified)
+    if creature:isPlayer() then
+        return Blessings.PlayerDeath(creature, corpse, killer)
+    end
+end
+```
+
+### Padrão 3: Fazer Charm de Bênção
+
+```lua
+function onUseItem(player, item, fromPosition, target, toPosition, isHotkey)
+    if Blessings.useCharm(player, item) then
+        return true
+    end
+end
+```
+
+### Padrão 4: Compra Batch de Bênçãos
+
+```lua
+function onSay(player, words, param)
+    if words == "!blessall" then
+        return Blessings.BuyAllBlesses(player)
+    elseif words == "!blesscheck" then
+        return Blessings.checkBless(player)
+    end
+end
+```
+
+### Padrão 5: Query com Filtro Customizado
+
+```lua
+-- Obter bênçãos enhanced que jogador tem
+local onlyEnhanced = function(b)
+    return b.type == Blessings.Types.ENHANCED
+end
+
+local enhancedCount = #player:getBlessings(onlyEnhanced)
+```
+
+### Padrão 6: Calculador de Proteção
+
+```lua
+function getPlayerProtection(player)
+    local blessCount = #player:getBlessings()
+    local lossPercent = Blessings.LossPercent[blessCount]
+    return {
+        itemLoss = lossPercent.item,
+        skillLoss = lossPercent.skill,
+        blessingCount = blessCount
+    }
+end
+```
+
+### Padrão 7: Preço Inquisição Dinâmico
+
+```lua
+function getNpcInquisitionCost(player)
+    local missing, totalCost = Blessings.getInquisitionPrice(player)
+    return {
+        missing = missing,
+        cost = totalCost,
+        gold = player:getMoney()
+    }
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Relação |
+|---|---|---|
+| **Probabilidade Escalonada** | Item loss depende de bênçãos possuído | LossPercent tabela |
+| **Preço Dinâmico por Nível** | Custo escala com level em brackets | getBlessingCost 3 fases |
+| **Economia de Morte** | Perda calculada por skull + amulet + bênção | PlayerDeath cascade |
+| **Charm Ritual** | Item usado para auto-ganhar bênção | useCharm pattern Tibia |
+| **Metatable Extension** | Adiciona funções a Player object nativo | getBlessings, addMissingBless |
+| **Filtro Customizável** | Query funções com predicados | getBlessings + hasblessingFilter |
+| **Batch Transação** | Compra múltiplas bênçãos atomicamente | BuyAllBlesses com metrics |
+| **Auto-Protection Low Level** | Jogadores novatos recebem bênções automáticas | doAdventurerBlessing |
+
+### Padrões Arquiteturais
+
+1. **Tabela de Proteção**: LossPercent mapeia contagem → percentuais
+2. **Enum-like Types**: REGULAR, ENHANCED, PvP para categorização
+3. **Blessing Metadata**: Each blessing tem id, name, charm, type, inquisition, losscount
+4. **Price Bracket**: 3 tiers de custo conforme nível
+5. **Container vs Equipment**: Containers sempre dropped, equipment tem 1/10 chance
+6. **PZ Validation**: Compras requerem PZ ou validação specific battle
+7. **Charm Lookup**: Procura blessing que corresponde a itemid de charm
+8. **Filtering Pattern**: Filter + hasblessingFilter predicates em getBlessings
+
+### Responsabilidades do Módulo
+
+- ✅ Definir 8 tipos de bênçãos com metadados
+- ✅ Calcular proteção de morte conforme bênçãos
+- ✅ Processar drop de loot com probabilidade
+- ✅ Remover store items se morte com skull
+- ✅ Calcular custos dinâmicos por nível
+- ✅ Aplicar taxa de comando no custo
+- ✅ Validar elegiblidade em zona PvP
+- ✅ Gerenciar charm items para auto-bless
+- ✅ Auto-bless jogadores baixo level
+- ✅ Calcular preço NPC Inquisition
+
+### Casos de Uso Principais
+
+1. **Morte Normal**: Perda conforme bênçãos possuído
+2. **Morte Skulled**: 100% perda obrigatória
+3. **Amulet of Loss**: Proteção contra qualquer morte
+4. **Compra Batch**: Jogador compra todas bênçãos faltando
+5. **Charm Ritual**: Usar item para ganhar bênção
+6. **Auto-Bless**: Novo jogador recebe bênçãos automáticas
+7. **Inquisition**: NPC vende bênçãos faltando com multiplicador
+8. **Query Customizada**: Admin query bênçãos com filtros
+
+---
+
+## 📚 Conclusão
+
+O módulo `blessing.lua` é exemplo sofisticado de **sistema econômico de sobrevivência** típico de MMO Tibia-like, onde morte tem consequências financeiras mitigáveis através de investimento em bênçãos. O design é notável por sua **elegância em cascata**: morte sem proteção custa 100%, cada bênção reduz 10-45%, até 5 bênçãos garantem 0% perda de items.
+
+A complexidade reside não em funções individuais, mas em **coordenação de múltiplos sistemas**: preço dinâmico que respeita brackets de nível, charge de fee de comando, proteção especial para Adventurers, multiplicador Inquisition, validação de zona, remoção de store items se crânio. O padrão de **metatable extensions** (Player.getBlessings, Player.addMissingBless) mostra como estender objetos nativos sem modificar código core.
+
+Particularmente sofisticado é algoritmo de DropLoot que diferencia containers (sempre dropped) vs equipment (1/10 chance), prevenindo exploração de containers como "safe storage". O sistema de **charm items** implementa ritual type Tibia de usar "items de bênção" para auto-bless, enquanto **auto-blessing de low level** garante jogadores novatos não morrem sem proteção.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadados do Documento">
+- **Versão do Módulo**: 2.0
+- **Data da Documentação**: 19 de Fevereiro, 2026
+- **Última Atualização Código**: 08/04/2020
+- **Cobertura**: 100% (12 funções globais, 2 metatable, 4 tabelas data)
+- **Complexidade**: Média-Alta (economia dinâmica, probabilidades, filtros)
+- **Autor**: Charles (Cjaker), DudZ
+- **Padrão**: 7 seções MDX/Astro
+- **Exemplos Inclusos**: 7 padrões de uso completos
+</Card>
+
+<Aside type="tip">
+**Dica de Integração**: Este módulo é **chamado automaticamente** em eventos: login (doAdventurerBlessing), death (PlayerDeath), item use (useCharm), command (!blessall). Integração é feita através de event hooks do core, não chamadas diretas. getInquisitionPrice é para NPC dialogue system.
+</Aside>
+
+<Aside type="caution">
+**Atenção Crítica**:
+- DropLoot chance é probabilístico - containers SEMPRE dropped (não aleatório)
+- Custo de bênção varia dramaticamente: level 30=2k, level 150=22.25k - testar balance
+- BuyAllBlesses valida PZ/battle status - jogador em fight não consegue comprar
+- Twist of Fate (id=1) é especial: sem charm, apenas via PvP blessing purchase
+- Store inbox deletion se crânio é DESTRUIÇÃO COMPLETA - aviso ao jogador crítico
+- Multiplicador Enhanced vs Regular em getBlessingCost é 130% (260/200)
+- metrics.addCounter registra economia - monitorar se bênçãos faltando em servidor
+</Aside>
+
+<Aside type="note">
+**Notas de Manutenção**:
+- Blessings.Config.AdventurerBlessingLevel é configurable - mudar em configManager
+- Blessings.Config.HasToF desabilita Twist of Fate se servidor é retro
+- LossPercent tabela é crítica para balance - mudanças impactam economia
+- math.randomseed(os.time()) em DropLoot pode ter colisões rápidas - considerar seed melhor
+- useCharm procura por charm.id não offer.id - não confundir
+- Player.getBlessings default filter é só b.losscount - Twist of Fate ignorada
+- blessings_history SQL é comentada (TODO em código) - feature não implementada
+- DebugPrint função existe para debugging in-game
+</Aside>

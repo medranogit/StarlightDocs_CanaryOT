@@ -1,0 +1,410 @@
+---
+title: windows.lua
+description: Sistema complexo de janelas com Tile/House validation, permission check, dynamic ID registry e toggle transform (aberta/fechada).
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="windows.lua" icon="pencil">
+Handler avançado com house system integration, tile lookup, account type checking e transform logic.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/objects/windows.lua`
+
+**Linhas:** 48 | **IDs dos Objects:** Dinâmico (windowTable) | **Tipo:** Action Handler com House System
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema de janelas para casas com validação House, permission check e toggle logic. Constrói dinamicamente array windowId a partir de windowTable externa (estrutura não mostrada). Ao ativar: verifica Tile + House em 3 posições (original, Y-1, X-1). Se house encontrada: valida permissão (GameMaster ou dono). Transform logic: se fechada -> abre (closed ID -> open ID), se aberta -> fecha (open ID -> closed ID). Padrão complexo com house system, position lookup duplo e state toggle.
+
+### Estrutura de Funcionalidades
+
+```
+VARIÁVEL EXTERNA:
+  └─ windowTable (estrutura externa não definida)
+      └─ Cada item tem: openWindow ID, closedWindow ID
+
+ARRAY CONSTRUÍDO:
+  └─ windowId (dinâmico)
+      ├─ Iterator sobre windowTable
+      ├─ Coleta unique openWindow IDs
+      └─ Coleta unique closedWindow IDs
+
+HANDLER:
+  └─ windows.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+      ├─ Tile lookup (3 posições):
+      │   ├─ position 1: fromPosition original
+      │   ├─ position 2: Y-1 (acima)
+      │   └─ position 3: X-1 (à esquerda)
+      │
+      ├─ House validation
+      │   └─ Se não achou casa: return false
+      │
+      ├─ Permission check
+      │   └─ Se GameMaster: permite
+      │   └─ Se dono: permite
+      │   └─ Outro: return false
+      │
+      ├─ Transform logic (2 loops):
+      │   ├─ LOOP 1: if closedWindow ID
+      │   │   └─ transform(openWindow ID)
+      │   │
+      │   └─ LOOP 2: if openWindow ID
+      │       └─ transform(closedWindow ID)
+      │
+      └─ return true
+
+REGISTRO:
+  └─ Dinâmico via for-in windowId
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| windowId | table | Array dinâmica construída |
+
+### Construção de windowId
+
+```lua
+local windowId = {}
+
+for index, value in ipairs(windowTable) do
+	-- Adicionar unique openWindow IDs
+	if not table.contains(windowId, value.openWindow) then
+		table.insert(windowId, value.openWindow)
+	end
+
+	-- Adicionar unique closedWindow IDs
+	if not table.contains(windowId, value.closedWindow) then
+		table.insert(windowId, value.closedWindow)
+	end
+end
+
+-- Resultado: windowId contém todos IDs únicos
+```
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### External Dependencies
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| windowTable | external | Tabela com estrutura de janelas (não definida neste arquivo) |
+| table.contains() | função | Utilidade para validar existência em array |
+| table.insert() | função | Função nativa Lua para adicionar items |
+
+### Dynamic Registry
+
+```
+Format: windowTable entry
+├─ .openWindow: ID da janela aberta
+└─ .closedWindow: ID da janela fechada
+```
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local windowId = {}
+
+for index, value in ipairs(windowTable) do
+	if not table.contains(windowId, value.openWindow) then
+		table.insert(windowId, value.openWindow)
+	end
+
+	if not table.contains(windowId, value.closedWindow) then
+		table.insert(windowId, value.closedWindow)
+	end
+end
+
+local windows = Action()
+
+function windows.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- ========== HOUSE LOOKUP (3 posições) ==========
+	local tile = Tile(fromPosition)
+	local house = tile and tile:getHouse()
+	
+	-- Se não achou na posição original, tenta Y-1
+	if not house then
+		fromPosition.y = fromPosition.y - 1
+		tile = Tile(fromPosition)
+		house = tile and tile:getHouse()
+		
+		-- Se não achou em Y-1, tenta X-1
+		if not house then
+			fromPosition.y = fromPosition.y + 1
+			fromPosition.x = fromPosition.x - 1
+			tile = Tile(fromPosition)
+			house = tile and tile:getHouse()
+		end
+	end
+
+	-- ========== PERMISSION CHECK ==========
+	if house then
+		if Tile(fromPosition):getHouse() ~= house and player:getAccountType() < ACCOUNT_TYPE_GAMEMASTER then
+			return false  -- Não é GameMaster e não é na mesma casa
+		end
+	end
+
+	-- ========== TRANSFORM LOGIC - LOOP 1 ==========
+	for index, value in ipairs(windowTable) do
+		if value.closedWindow == item.itemid then
+			item:transform(value.openWindow)
+			return true
+		end
+	end
+
+	-- ========== TRANSFORM LOGIC - LOOP 2 ==========
+	for index, value in ipairs(windowTable) do
+		if value.openWindow == item.itemid then
+			item:transform(value.closedWindow)
+		end
+	end
+	
+	return true
+end
+
+-- ========== REGISTRO DINÂMICO ==========
+for index, value in ipairs(windowId) do
+	windows:id(value)
+end
+
+windows:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa janela
+  │
+  ├─ ========== TILE LOOKUP ==========
+  │  ├─ tile = Tile(originalPosition)
+  │  ├─ house = tile:getHouse()
+  │  │
+  │  ├─ if not house:
+  │  │   ├─ posição.y = posição.y - 1
+  │  │   ├─ Tenta novamente
+  │  │   │
+  │  │   └─ if still not house:
+  │  │       ├─ posição.y = posição.y + 1 (volta)
+  │  │       ├─ posição.x = posição.x - 1
+  │  │       └─ Tenta Y-1,X-1
+  │  │
+  │  └─ Se ainda não house: return false
+  │
+  ├─ ========== PERMISSION CHECK ==========
+  │  ├─ if house exists:
+  │  │   ├─ Tile(position):getHouse() == house?
+  │  │   │   └─ SIM: Permite
+  │  │   │
+  │  │   ├─ AccountType >= GAMEMASTER?
+  │  │   │   └─ SIM: Permite (override)
+  │  │   │
+  │  │   └─ NÃO: return false (permissão negada)
+  │
+  ├─ ========== TRANSFORM LOGIC ==========
+  │  ├─ LOOP 1: Procura closedWindow ID
+  │  │   └─ if item.itemid == closedWindow:
+  │  │       ├─ transform(openWindow ID)
+  │  │       └─ return true (abrir)
+  │  │
+  │  └─ LOOP 2: Procura openWindow ID
+  │      └─ elseif item.itemid == openWindow:
+  │          └─ transform(closedWindow ID)
+  │              (fechar)
+  │
+  └─ return true
+```
+
+### Padrão Tile + House Lookup
+
+```lua
+-- Investigar 3 posições verticalmente
+local tile = Tile(fromPosition)
+local house = tile and tile:getHouse()
+
+if not house then
+	fromPosition.y = fromPosition.y - 1
+	tile = Tile(fromPosition)
+	house = tile and tile:getHouse()
+	
+	if not house then
+		fromPosition.y = fromPosition.y + 1
+		fromPosition.x = fromPosition.x - 1
+		tile = Tile(fromPosition)
+		house = tile and tile:getHouse()
+	end
+end
+```
+
+### Padrão Permission Validation
+
+```lua
+if house then
+	-- Validar: mesma casa E não é GM
+	if Tile(fromPosition):getHouse() ~= house and 
+	   player:getAccountType() < ACCOUNT_TYPE_GAMEMASTER then
+		return false
+	end
+end
+```
+
+### Padrão Toggle Transform
+
+```lua
+-- LOOP 1: Se fechada, abre
+for index, value in ipairs(windowTable) do
+	if value.closedWindow == item.itemid then
+		item:transform(value.openWindow)
+		return true
+	end
+end
+
+-- LOOP 2: Se aberta, fecha
+for index, value in ipairs(windowTable) do
+	if value.openWindow == item.itemid then
+		item:transform(value.closedWindow)
+	end
+end
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Tile System**: Obtem tile a partir de position
+- **House Association**: Cada tile pode estar em uma house
+- **Multi-position Lookup**: 3 tentativas (original, Y-1, X-1)
+- **Permission Hierarchy**: GameMaster > Owner > Others
+- **AccountType Comparison**: Numérico < operator
+- **Toggle Logic**: Closed->Open (loop 1), Open->Closed (loop 2)
+- **Dynamic Array Construction**: Coleta unique IDs de tabela externa
+- **table.contains()**: Verifica existência antes de inserir
+- **ipairs() Iteration**: Loop sobre array indexada
+- **Function Chaining**: tile:getHouse() (tile tem método getHouse)
+
+### Responsabilidades do Handler
+
+1. **Construir array**: windowId (dinâmico de windowTable)
+2. **Obter tile**: Tile(position)
+3. **Obter house**: tile:getHouse()
+4. **Multi-position lookup**: 3 tentativas (original, Y-1, X-1)
+5. **Validar house**: Existe?
+6. **Validar permissão**: GameMaster ou dono?
+7. **Transform closed**: closedWindow -> openWindow
+8. **Transform opened**: openWindow -> closedWindow
+9. **Registrar**: Todos os windowIds
+
+---
+
+## Patterns e Implementação
+
+### Padrão House System Integration
+
+Validar casa e permissões:
+
+```lua
+local tile = Tile(fromPosition)
+local house = tile and tile:getHouse()
+
+if house then
+	if Tile(fromPosition):getHouse() ~= house and 
+	   player:getAccountType() < ACCOUNT_TYPE_GAMEMASTER then
+		return false
+	end
+end
+```
+
+### Padrão Multi-position Fallback
+
+Tentar 3 posições:
+
+```lua
+local tile = Tile(fromPosition)
+local house = tile and tile:getHouse()
+
+if not house then
+	fromPosition.y = fromPosition.y - 1
+	tile = Tile(fromPosition)
+	house = tile and tile:getHouse()
+	
+	if not house then
+		fromPosition.y = fromPosition.y + 1
+		fromPosition.x = fromPosition.x - 1
+		tile = Tile(fromPosition)
+		house = tile and tile:getHouse()
+	end
+end
+```
+
+### Padrão Dynamic Registry Construction
+
+Coletar unique IDs de tabela:
+
+```lua
+local windowId = {}
+
+for index, value in ipairs(windowTable) do
+	if not table.contains(windowId, value.openWindow) then
+		table.insert(windowId, value.openWindow)
+	end
+	if not table.contains(windowId, value.closedWindow) then
+		table.insert(windowId, value.closedWindow)
+	end
+end
+
+-- Depois registrar todos
+for index, value in ipairs(windowId) do
+	windows:id(value)
+end
+```
+
+### Comparação: Windows vs Hive Gates
+
+| Aspecto | Windows | Hive Gates |
+|---------|---------|-----------|
+| Linhas | 48 | 25 |
+| Lógica | House + Permission | Position teleport |
+| Tile Lookup | Sim (3 pos) | Não |
+| Transform | Sim (toggle) | Sim (teleport) |
+| House System | Sim | Não |
+| Position Check | Dupla (tile + house) | Simples (axis) |
+| Complexidade | Alta | Média |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: windows.lua" icon="star">
+Análise de handler avançado com house system integration, multi-position tile lookup, permission checking e toggle transform logic. Demonstra Tile API, house validation e dynamic registry construction.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: House system with tile lookup | Complexidade: Alta
+</Aside>

@@ -1,0 +1,356 @@
+---
+title: usable_outfit_items.lua
+description: Sistema de ~23 outfit items para 9 tipos de outfits com unlock + 2 addons por tipo e validação de gênero.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="usable_outfit_items.lua" icon="pencil">
+Handler complexo de múltiplos outfits com padrão consistente de 3-4 items por outfit.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/usable_outfit_items.lua`
+
+**Linhas:** 79 | **IDs dos Items:** 23 (1 unlock + 2 addons × 9 outfits) | **Tipo:** Action Handler com Large Config
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema de desbloqueamento de 9 tipos de outfits (Soil Guardian, Crystal Warlord, Makeshift Warrior, etc.) com padrão consistente: cada outfit tem 1 item para unlock + 2 items para addons. Valida premium, gênero do jogador, posse de outfit antes de adicionar addons. Suporta múltiplos tipos de feedback (orangeText, whiteText, effect).
+
+### Estrutura de Funcionalidades
+
+```
+CONFIG TABLE (9 outfit types × ~2.5 items = 23 items):
+  ├─ [Item 1] → Unlock: female/male + effect
+  ├─ [Item 2] → Addon 1: female/male + addon + effect
+  ├─ [Item 3] → Addon 2: female/male + addon + effect
+  ├─ ... (9 tipos total)
+  └─ Each outfit: female looktype + male looktype
+
+HANDLER:
+  └─ usableOutfitItems.onUse()
+      ├─ isPremium()?
+      ├─ outfitInfo = config[itemId]
+      ├─ looktype = getSex() ? female : male
+      ├─ hasOutfit(looktype)?
+      │   ├─ NÃO → Unlock path
+      │   │   ├─ if addon: erro (precisa outfit primeiro)
+      │   │   ├─ addOutfit(female) + addOutfit(male)
+      │   │   └─ efeito + feedback + remove
+      │   │
+      │   └─ SIM → Addon path
+      │       ├─ hasOutfit(looktype, addon)?
+      │       │   ├─ SIM → já tem addon (erro)
+      │       │   ├─ NÃO → Continua
+      │       ├─ addOutfitAddon(female, addon)
+      │       ├─ addOutfitAddon(male, addon)
+      │       ├─ hasOutfit(looktype, 3)? → achievement
+      │       └─ efeito + feedback + remove
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| outfitConfig | table | 9 outfit types com múltiplos items |
+| usableOutfitItems | Action | Objeto handler principal |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Outfit Types (9 Total)
+
+| Outfit | Female ID | Male ID | Items | Description |
+|--------|-----------|---------|-------|-------------|
+| Soil Guardian | 514 | 516 | 3 | Fungos (16252, 16253, 16254) |
+| Crystal Warlord | 513 | 512 | 3 | Gelo (16255, 16256, 16257) |
+| Makeshift Warrior | 1043 | 1042 | 3 | Madeira (27655, 27657, 27656) |
+| Hand of Inquisition | 1244 | 1243 | 2 | Inquisição (31738, 31737) |
+| Poltergeist | 1271 | 1270 | 2 | Espectro (32630, 32631) |
+| Revenant | 1323 | 1322 | 2 | Fera (34075, 34076) |
+| Rascoohan | 1372 | 1371 | 2 | Guaxinim (35595, 35695) |
+| Fire-Fighter | 1569 | 1568 | 2 | Bombeiro (39544, 39545) |
+| Fiend Slayer | 1808 | 1809 | 3 | Caçador (50067, 50060, 50061) |
+
+### Effect Types
+
+- CONST_ME_GREEN_RINGS (Soil Guardian)
+- CONST_ME_GIANTICE (Crystal Warlord)
+- CONST_ME_HOLYAREA (Inquisition, Revenant)
+- CONST_ME_BLUE_GHOST (Poltergeist)
+- CONST_ME_BITE (Fiend Slayer)
+- CONST_ME_GIFT_WRAPS (default)
+
+### Feedback Types
+
+- **orangeText**: player:say() (audível)
+- **whiteText**: sendTextMessage() (escrito)
+- **effect**: sendMagicEffect()
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function usableOutfitItems.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: Premium obrigatório
+	if not player:isPremium() then
+		player:sendCancelMessage(RETURNVALUE_YOUNEEDPREMIUMACCOUNT)
+		return true
+	end
+
+	-- Obter informação do outfit
+	local outfitInfo = outfitConfig[item.itemid]
+	
+	-- Detectar looktype (female vs male)
+	local looktype = player:getSex() == PLAYERSEX_FEMALE and outfitInfo.female or outfitInfo.male
+
+	-- ============= PATH 1: UNLOCK OUTFIT =============
+	if not player:hasOutfit(looktype) then
+		-- Validação: Não pode adicionar addon sem outfit
+		if outfitInfo.addon then
+			player:sendCancelMessage("You need the outfit for this part.")
+			return true
+		end
+
+		-- Unlock both genders
+		player:addOutfit(outfitInfo.female)
+		player:addOutfit(outfitInfo.male)
+		
+		-- Efeito
+		player:getPosition():sendMagicEffect(outfitInfo.effect or CONST_ME_GIFT_WRAPS)
+		
+		-- Feedback (orangeText ou whiteText)
+		if outfitInfo.orangeText then
+			player:say(outfitInfo.orangeText, TALKTYPE_MONSTER_SAY)
+		elseif outfitInfo.whiteText then
+			player:sendTextMessage(MESSAGE_EVENT_ADVANCE, outfitInfo.whiteText)
+		end
+
+		item:remove(1)
+		return true
+	end
+
+	-- ============= PATH 2: ADDON =============
+	-- Validação: Já tem o addon?
+	if player:hasOutfit(looktype, outfitInfo.addon) then
+		player:sendCancelMessage("You already own this outfit part.")
+		return true
+	end
+
+	-- Adicionar addon a ambos os gêneros
+	player:addOutfitAddon(outfitInfo.female, outfitInfo.addon)
+	player:addOutfitAddon(outfitInfo.male, outfitInfo.addon)
+	
+	-- Efeito
+	player:getPosition():sendMagicEffect(outfitInfo.effect or CONST_ME_GIFT_WRAPS)
+	
+	-- Feedback
+	if outfitInfo.orangeText then
+		player:say(outfitInfo.orangeText, TALKTYPE_MONSTER_SAY)
+	elseif outfitInfo.whiteText then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, outfitInfo.whiteText)
+	end
+
+	-- Achievement quando tem ambos os addons (addon 3 = completo)
+	if player:hasOutfit(looktype, 3) then
+		player:addAchievement(outfitInfo.achievement)
+	end
+
+	item:remove(1)
+	return true
+end
+
+-- Registrar todos os IDs
+for itemId, _ in pairs(outfitConfig) do
+	usableOutfitItems:id(itemId)
+end
+
+usableOutfitItems:register()
+```
+
+### Árvore de Decisão (2 Paths)
+
+```
+Jogador usa outfit item
+  │
+  ├─ isPremium()?
+  │   └─ NÃO → sendCancelMessage + return true
+  │
+  ├─ SIM → Continua...
+  │
+  ├─ outfitInfo = config[itemId]
+  │
+  ├─ looktype = getSex() == FEMALE ? female : male
+  │
+  ├─ hasOutfit(looktype)?
+  │   │
+  │   ├─ NÃO → PATH 1: Unlock outfit
+  │   │   ├─ if addon é definido:
+  │   │   │   ├─ Message: "need outfit first"
+  │   │   │   └─ return true (bloqueado)
+  │   │   │
+  │   │   ├─ addOutfit(female)
+  │   │   ├─ addOutfit(male)
+  │   │   ├─ effect
+  │   │   ├─ feedback (orangeText ou whiteText)
+  │   │   ├─ item:remove(1)
+  │   │   └─ return true
+  │   │
+  │   └─ SIM → PATH 2: Addon
+  │       ├─ hasOutfit(looktype, addon)?
+  │       │   ├─ SIM → Message: "already own"
+  │       │   │   └─ return true (bloqueado)
+  │       │   │
+  │       │   └─ NÃO → Continua
+  │       │
+  │       ├─ addOutfitAddon(female, addon)
+  │       ├─ addOutfitAddon(male, addon)
+  │       ├─ effect
+  │       ├─ feedback
+  │       ├─ hasOutfit(looktype, 3)?
+  │       │   └─ SIM → addAchievement()
+  │       │
+  │       ├─ item:remove(1)
+  │       └─ return true
+```
+
+### Gender Outfit Handling
+
+```
+Female player:
+  └─ looktype = 514 (Soil Guardian female)
+  └─ addOutfit(514) aplicado
+  └─ addOutfit(516) aplicado (ambas sempre)
+  └─ hasOutfit(514) check para unlock
+  └─ addOutfitAddon(514, addon) primeiro
+
+Male player:
+  └─ looktype = 516 (Soil Guardian male)
+  └─ addOutfit(514) aplicado (ambas sempre)
+  └─ addOutfit(516) aplicado
+  └─ hasOutfit(516) check para unlock
+  └─ addOutfitAddon(516, addon) primeiro
+
+Addon Validation:
+  └─ Compara pelo gender do jogador
+  └─ Mas aplica a AMBOS os IDs
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Premium Mandatory**: isPremium() no início
+- **Gender Detection**: getSex() para looktype selection
+- **Outfit vs Addon**: hasOutfit sem addon = unlock, com addon = addon check
+- **Double Unlock**: addOutfit(female) + addOutfit(male) sempre
+- **Double Addon**: addOutfitAddon(female, addon) + addOutfitAddon(male, addon)
+- **Feedback Types**: orangeText (audível) ou whiteText (mensagem)
+- **Achievement Complete**: hasOutfit(looktype, 3) = ambos addons
+- **Block Addon First**: Se não tem outfit, não pode ter addon
+- **Cancel Message**: sendCancelMessage() para validações
+
+### Responsabilidades do Handler
+
+1. **Validar premium**: isPremium()
+2. **Obter config**: outfitConfig[itemId]
+3. **Detectar gênero**: getSex() → looktype
+4. **Verificar outfit**: hasOutfit(looktype)
+5. **Se não tem outfit**:
+   - Validar não é addon
+   - Adicionar ambas (female + male)
+   - Efeito + feedback
+   - Consumir
+6. **Se tem outfit (addon path)**:
+   - Verificar não tem addon
+   - Adicionar addon (female + male)
+   - Efeito + feedback
+   - Achievement se completo (addon 3)
+   - Consumir
+
+---
+
+## Patterns e Implementação
+
+### Padrão Config Entry
+
+Estrutura por outfit:
+
+```lua
+[16252] = { 
+	female = 514, 
+	male = 516, 
+	effect = CONST_ME_GREEN_RINGS 
+}
+
+[16253] = { 
+	female = 514, 
+	male = 516, 
+	addon = 1, 
+	effect = CONST_ME_GREEN_RINGS, 
+	achievement = "Funghitastic" 
+}
+```
+
+### Padrão Path Selection
+
+Unlock vs Addon:
+
+```lua
+if not player:hasOutfit(looktype) then
+	-- Unlock path
+	player:addOutfit(outfitInfo.female)
+	player:addOutfit(outfitInfo.male)
+else
+	-- Addon path
+	player:addOutfitAddon(outfitInfo.female, outfitInfo.addon)
+end
+```
+
+### Padrão Feedback Múltiplo
+
+Prioridade orangeText > whiteText:
+
+```lua
+if outfitInfo.orangeText then
+	player:say(outfitInfo.orangeText, TALKTYPE_MONSTER_SAY)
+elseif outfitInfo.whiteText then
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, outfitInfo.whiteText)
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: usable_outfit_items.lua" icon="star">
+Análise de sistema complexo de 9 outfits com padrão 2-path (unlock + addons), validação de gênero, múltiplos tipos de feedback e achievements condicionais.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Multi-outfit system com gender handling | Complexidade: Média-Alta
+</Aside>

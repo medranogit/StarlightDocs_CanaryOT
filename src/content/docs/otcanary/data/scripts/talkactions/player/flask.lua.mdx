@@ -1,0 +1,182 @@
+---
+title: Flask Control
+description: Comando PLAYER para controlar recebimento de frascos vazios
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# 🛠️ Documentação: flask.lua
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Arquivo** | `flask.lua` |
+| **Tipo** | TalkAction (Comando de Jogador) |
+| **Acesso** | normal (PLAYER) |
+| **Comando** | `!flask` |
+| **Descrição** | Controlar recebimento de frascos ao usar poções |
+| **Parâmetro** | `on` (não receber frascos) ou `off` (receber frascos) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/flask.lua
+```
+
+## 💡 Utilidade
+
+Este comando permite que jogadores controlem se desejam receber frascos vazios ao consumir poções. A preferência é armazenada no sistema Key-Value (KV) do jogador e pode ser alternada a qualquer momento.
+
+## 📄 Visão Geral do Código Resumo Executivo
+
+O script `flask.lua` implementa um sistema de controle de frascos de poção:
+
+- **Validação de Parâmetro**: Verifica se parâmetro "on" ou "off" foi fornecido
+- **Armazenamento em KV**: Utiliza sistema Key-Value para persistir preferência
+- **Ativação de Modo**: `on` ativa bloqueio de frascos, `off` desativa bloqueio
+- **Feedback Visual**: Envia mensagem e efeito mágico de confirmação (REDSMOKE)
+
+### Fluxo Lógico Resumido
+
+1. Valida se parâmetro foi fornecido
+2. Se "on": ativa bloqueio (KV = true), jogador não recebe frascos
+3. Se "off": desativa bloqueio (KV removido), jogador recebe frascos normalmente
+4. Envia mensagem e efeito visual de confirmação
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal: `flask.onSay()`
+
+```lua
+function flask.onSay(player, words, param)
+    if param == "" then
+        player:sendCancelMessage("You need to specify on/off param.")
+        return true
+    end
+    
+    if param == "on" then
+        player:kv():set("talkaction.potions.flask", true)
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You will not receive flasks!")
+        player:getPosition():sendMagicEffect(CONST_ME_REDSMOKE)
+    elseif param == "off" then
+        player:kv():remove("talkaction.potions.flask")
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You will receive flasks.")
+        player:getPosition():sendMagicEffect(CONST_ME_REDSMOKE)
+    end
+    return true
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavra-chave do comando
+- `param` (string): Parâmetro "on" ou "off"
+
+**Retorno:**
+- `true`: Comando processado com sucesso
+
+#### Lógica Detalhada
+
+1. **Validação de Parâmetro**:
+   - Verifica se `param == ""` (vazio)
+   - Se vazio: envia mensagem de cancelamento pedindo "on" ou "off"
+
+2. **Processamento de "on"** (Bloquear Frascos):
+   - `player:kv():set("talkaction.potions.flask", true)`: Armazena chave KV como `true`
+   - Envia mensagem em `MESSAGE_EVENT_ADVANCE`: "You will not receive flasks!"
+   - Cria efeito visual `CONST_ME_REDSMOKE` na posição do jogador
+
+3. **Processamento de "off"** (Permitir Frascos):
+   - `player:kv():remove("talkaction.potions.flask")`: Remove chave KV (limpa preferência)
+   - Envia mensagem em `MESSAGE_EVENT_ADVANCE`: "You will receive flasks."
+   - Cria efeito visual `CONST_ME_REDSMOKE` na posição do jogador
+
+### Variáveis Globais Utilizadas
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `MESSAGE_EVENT_ADVANCE` | number | Tipo de mensagem (evento importante/status) |
+| `CONST_ME_REDSMOKE` | number | Efeito mágico de fumaça vermelha |
+
+### Funções Globais Utilizadas
+
+| Função | Origem | Descrição |
+|--------|--------|-----------|
+| `player:kv()` | Object Player | Retorna objeto KV (Key-Value) do jogador |
+| `:set(key, value)` | Object KV | Armazena chave-valor persistente |
+| `:remove(key)` | Object KV | Remove chave-valor armazenado |
+| `player:sendTextMessage(type, text)` | Object Player | Envia mensagem de texto ao jogador |
+| `player:sendCancelMessage(text)` | Object Player | Envia mensagem de cancelamento |
+| `player:getPosition()` | Object Player | Retorna posição atual do jogador |
+| `:sendMagicEffect(effect)` | Object Position | Envia efeito mágico na posição |
+
+## 🤖 Informações da Documentação
+
+| Info | Detalhe |
+|------|---------|
+| **Versão Documentada** | Build Canary - Estrutura Completa |
+| **Tipo de Documento** | Documentação Técnica de TalkAction |
+| **Completude** | Análise Completa do Código-Fonte |
+| **Últimas Verificações** | Validação de Sintaxe Lua, Fluxo Lógico |
+
+---
+
+## 📋 Resumo de Implementação
+
+**Padrão de Registro:**
+
+```lua
+flask:separator(" ")
+flask:groupType("normal")
+flask:register()
+```
+
+**Uso Prático:**
+
+Quando um jogador digita `!flask on` ou `!flask off`:
+
+1. Valida parâmetro fornecido
+2. Ativa/desativa bloqueio de frascos no sistema KV
+3. Envia feedback visual (mensagem + efeito mágico)
+
+**Exemplos de Execução:**
+
+```
+Jogador: !flask on
+Sistema: "You will not receive flasks!"
+Efeito: Fumaça vermelha
+KV: talkaction.potions.flask = true
+Resultado: Não recebe frascos ao beber poções
+
+---
+
+Jogador: !flask off
+Sistema: "You will receive flasks."
+Efeito: Fumaça vermelha
+KV: talkaction.potions.flask removido
+Resultado: Recebe frascos normalmente ao beber poções
+
+---
+
+Jogador: !flask
+Sistema: "You need to specify on/off param."
+Resultado: Comando cancelado
+```
+
+**Contexto de Uso:**
+
+Este comando é útil para:
+- Jogadores que preferem não acumular frascos no inventário
+- Limpeza automática de inventário durante farming
+- Economia de espaço no banco para itens valiosos
+
+---
+
+## 🔗 Relacionados
+
+- **Arquivo de Padrão**: `data/npclib/npc_system/custom_modules.lua.mdx`
+- **Sistema**: TalkActions (Comandos de Conversa)
+- **Acesso**: PLAYER (normal)
+- **Tipo de Armazenamento**: Key-Value (KV)
+- **Detalhe Arquitetura**: Ver `ARQUITETURA_PROJETO.mdx` para contexto completo

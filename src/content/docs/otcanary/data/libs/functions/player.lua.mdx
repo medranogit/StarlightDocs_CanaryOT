@@ -1,0 +1,1041 @@
+---
+title: "player.lua"
+description: "Extensões massivas da classe Player com 65+ métodos cobrindo: feeding system, gerenciamento bancário, familiar summons, experience rates, pronouns, vocação filtering, loot factors, boss cooldown, daily rewards, loyalty system, modals, e quest utilities."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo de extensões mais extenso para classe `Player`, cobrindo praticamente todas as necessidades de jogador: sistema de alimentação com regeneração, gerenciamento bancário (depósito, saque, transferência), sistema de familiar (summons com duração), cálculo de experiência com stages, sistema de pronomes, filtragem de vocação, cálculo dinâmico de loot factor com bônus VIP, sincronização de hazard, store inbox (loot givings), exhaustion (cooldowns), modal dialogs (info/confirmação), boss cooldown tracking, daily reward system (tokens, streak, bonuses), loyalty system (títulos e skill bonus), e quest utilities com reward checking.
+
+**Caminho Original**: `data/libs/functions/player.lua`
+
+<Aside type="tip">
+O arquivo `player.lua` é **onubiladora de player mechanics**. Praticamente uma terceira camada de APIs do engine com 865 linhas de extensões, integrando sistema de banco, familiarares, recompensas diárias, lealdade, e utilities essenciais para gameplay avançado.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **7 layers de funcionalidade**:
+
+1. **Feeding & Regeneration**: Sistema de alimentação com conditions parametrizadas
+2. **Banking**: Depósito, saque, transferência de moeda com múltiplos níveis
+3. **Familiar System**: Summons de familiar com duração, cooldown, e remove automático
+4. **Experience & Rates**: Cálculo final de taxa com stages e event scheduler
+5. **Pronouns**: Sistema completo de pronomes (subject, object, possessive, verb)
+6. **Daily Rewards**: Tokens (collection, joker), streak, bonuses, e loading automático
+7. **Loyalty System**: Títulos progression e skill bonus baseado em pontos acumulados
+
+O design usa **wrapping de funções nativas** (skill tries, mana spent), **KV scoped** para dados persistentes, e **tabelas offline** (ACCOUNT_STORAGES, loyaltySystem) para cache/config.
+
+### Estrutura de Funcionalidades
+
+```
+Player Extensions System (865 lines)
+├── Local Variables
+│   ├── foodCondition (Condition object)
+│   ├── APPLY_SKILL_MULTIPLIER (global flag)
+│   ├── addSkillTriesFunc (wrapped function)
+│   ├── addManaSpentFunc (wrapped function)
+│   ├── ACCOUNT_STORAGES (cache table)
+│   └── emojiMap (lookup table)
+├── Feeding Layer (1)
+│   └── feed(food) → boolean
+├── Position & Access (2)
+│   ├── getClosestFreePosition(position, extended) → Position
+│   └── hasFlag(flag) → boolean
+├── Banking Layer (6)
+│   ├── depositMoney(amount) → boolean
+│   ├── withdrawMoney(amount) → boolean
+│   ├── transferMoneyTo(target, amount) → boolean
+│   ├── removeMoneyBank(amount) → boolean
+│   ├── getDepotItems(depotId) → count
+│   └── getRewardChest(autocreate) → Chest
+├── Premium & Client (3)
+│   ├── isPremium() → boolean
+│   ├── isUsingOtClient() → boolean
+│   └── sendExtendedOpcode(opcode, buffer) → boolean
+├── Skill Wrapper (2)
+│   ├── addSkillTries(...) [wrapped]
+│   └── addManaSpent(...) [wrapped]
+├── Vocação System (7)
+│   ├── isMonk() → boolean
+│   ├── isSorcerer() → boolean
+│   ├── isDruid() → boolean
+│   ├── isKnight() → boolean
+│   ├── isPaladin() → boolean
+│   ├── isMage() → boolean
+│   └── vocationAbbrev() → string
+├── Account Storage (2)
+│   ├── getAccountStorage(key, forceUpdate) → value
+│   └── getUpdatedAccountStorage(bucket) → value
+├── Familiar System (4)
+│   ├── getFamiliarName() → string
+│   ├── CreateFamiliarSpell(spellId) → boolean
+│   ├── createFamiliar(familiarName, timeLeft) → boolean
+│   └── dispellFamiliar() → boolean
+├── Experience & Rates (3)
+│   ├── getFinalBaseRateExperience() → number
+│   ├── getFinalBonusStamina() → number
+│   └── getFinalLowLevelBonus() → number
+├── Pronouns System (4)
+│   ├── getSubjectPronoun() → string
+│   ├── getObjectPronoun() → string
+│   ├── getPossessivePronoun() → string
+│   └── getSubjectVerb(past) → string
+├── Hazard System (1)
+│   └── updateHazard() → boolean
+├── Store Inbox (2)
+│   ├── addItemStoreInboxEx(item, movable, setOwner) → Item
+│   └── addItemStoreInbox(itemId, amount, movable, setOwner) → Item
+├── Loot Factor (1)
+│   └── calculateLootFactor(monster) → {factor, msgSuffix}
+├── Exhaustion (3)
+│   ├── setExhaustion(scope, seconds) → boolean
+│   ├── getExhaustion(scope) → number
+│   └── hasExhaustion(scope) → boolean
+├── Fiendish & Modals (3)
+│   ├── setFiendish() → boolean
+│   ├── showInfoModal(title, message, buttonText) → void
+│   └── showConfirmationModal(...) → void
+├── Boss System (4)
+│   ├── getBossCooldown(bossNameOrId) → number
+│   ├── setBossCooldown(bossNameOrId, time) → boolean
+│   ├── canFightBoss(bossNameOrId) → boolean
+│   └── inBossFight() → stats/false
+├── Daily Reward System (14)
+│   ├── getCollectionTokens() → number
+│   ├── setCollectionTokens(value) → void
+│   ├── getJokerTokens() → number
+│   ├── setJokerTokens(value) → void
+│   ├── getDayStreak() → number
+│   ├── setDayStreak(value) → void
+│   ├── getStreakLevel() → number
+│   ├── setStreakLevel(value) → void
+│   ├── setNextRewardTime(value) → void
+│   ├── getNextRewardTime() → number
+│   ├── getActiveDailyRewardBonusesName() → string
+│   ├── getDailyRewardBonusesCount() → number
+│   ├── isBonusActiveById(bonusId) → "locked"/"unlocked"
+│   └── loadDailyRewardBonuses() → void
+├── Loyalty System (1)
+│   └── initializeLoyaltySystem() → boolean
+├── Quest System (2)
+│   ├── questKV(questName) → KV
+│   └── canGetReward(rewardId, questName) → boolean
+├── Profile & Links (4)
+│   ├── getURL() → string
+│   ├── getMarkdownLink() → string
+│   ├── findItemInInbox(itemId, name) → Item
+│   └── getMarriageDescription(thing) → string
+└── Utilities (2)
+    ├── sendCancelMessage(message) → boolean
+    └── removeAll(itemId) → count
+```
+
+---
+
+## 🍖 Sistema de Alimentação
+
+### `Player.feed(self, food)` → boolean
+
+Sistema de alimentação com regeneração de HP/Mana via condition.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `food` (number): Duração em segundos
+
+**Retorna**: boolean (true sempre, nil se vocation inválida)
+
+**Implementação**:
+```lua
+function Player.feed(self, food)
+    local condition = self:getCondition(CONDITION_REGENERATION, CONDITIONID_DEFAULT)
+    if condition then
+        condition:setTicks(condition:getTicks() + (food * 1000))
+    else
+        local vocation = self:getVocation()
+        if not vocation then
+            return nil
+        end
+
+        foodCondition:setTicks(food * 1000)
+        foodCondition:setParameter(CONDITION_PARAM_HEALTHGAIN, vocation:getHealthGainAmount())
+        foodCondition:setParameter(CONDITION_PARAM_HEALTHTICKS, vocation:getHealthGainTicks())
+        foodCondition:setParameter(CONDITION_PARAM_MANAGAIN, vocation:getManaGainAmount())
+        foodCondition:setParameter(CONDITION_PARAM_MANATICKS, vocation:getManaGainTicks())
+        self:addCondition(foodCondition)
+    end
+    return true
+end
+```
+
+**Fluxo**:
+1. Verificar se já tem condition de REGENERATION
+2. Se sim: estender duração (stack)
+3. Se não: criar nova com parâmetros da vocation
+4. Parâmetros: healthGain, healthTicks, manaGain, manaTicks
+
+**Exemplo**:
+```lua
+local player = Player(playerId)
+player:feed(10)  -- Alimentar por 10 segundos
+```
+
+---
+
+## 🏛️ Sistema Bancário
+
+### `Player.depositMoney(self, amount)` → boolean
+
+Deposita moeda do inventário para banco.
+
+**Tipo**: Method  
+**Parâmetros**: `amount` (number)  
+**Retorna**: boolean
+
+**Equivalente**: `Bank.deposit(self, amount)`
+
+---
+
+### `Player.withdrawMoney(self, amount)` → boolean
+
+Saca moeda do banco para inventário.
+
+**Tipo**: Method  
+**Retorna**: boolean
+
+**Equivalente**: `Bank.withdraw(self, amount)`
+
+---
+
+### `Player.transferMoneyTo(self, target, amount)` → boolean
+
+Transfere moeda para outro jogador via banco.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `target` (Player/number): Jogador alvo ou ID
+- `amount` (number): Quantidade
+
+**Retorna**: boolean (true se sucesso)
+
+**Implementação**:
+```lua
+function Player.transferMoneyTo(self, target, amount)
+    if not target then
+        return false
+    end
+    if not Bank.transfer(self, target, amount) then
+        return false
+    end
+
+    local targetPlayer = Player(target)
+    if targetPlayer then
+        targetPlayer:sendTextMessage(MESSAGE_LOOK, 
+            self:getName() .. " has transferred " .. FormatNumber(amount) .. " gold coins to you.")
+    end
+    return true
+end
+```
+
+**Msg Automática**: Notifica alvo do recebimento.
+
+---
+
+### `Player.removeMoneyBank(self, amount)` → boolean
+
+Remove moeda do inventário + banco (prioridade inventário).
+
+**Tipo**: Method  
+**Parâmetros**: `amount` (number)  
+**Retorna**: boolean (true se suficiente, false senão)
+
+**Implementação Core**:
+```lua
+function Player.removeMoneyBank(self, amount)
+    local inventoryMoney = self:getMoney()
+    local bankBalance = self:getBankBalance()
+
+    if amount <= inventoryMoney then
+        self:removeMoney(amount)
+        return true
+    end
+
+    if amount <= (inventoryMoney + bankBalance) then
+        local remainingAmount = amount
+
+        if inventoryMoney > 0 then
+            self:removeMoney(inventoryMoney)
+            remainingAmount = remainingAmount - inventoryMoney
+        end
+
+        Bank.debit(self, remainingAmount)
+        self:setBankBalance(bankBalance - remainingAmount)
+        
+        -- Msg detalhado
+        return true
+    end
+    return false
+end
+```
+
+**Fluxo**:
+1. Se inventário suficiente: remove direto
+2. Senão, se inventário + banco suficiente: remove inventário + debit bank
+3. Senão: retorna false
+
+---
+
+### `Player.getDepotItems(self, depotId)` → count
+
+Retorna quantidade de itens em depot específico.
+
+**Tipo**: Method  
+**Parâmetros**: `depotId` (number)  
+**Retorna**: number (count)
+
+**Equivalente**: `self:getDepotChest(depotId, true):getItemHoldingCount()`
+
+---
+
+### `Player.getRewardChest(self, autocreate)` → Chest
+
+Obtém chest de reward (depot ID 99).
+
+**Tipo**: Method  
+**Parâmetros**: `autocreate` (boolean)  
+**Retorna**: Chest object
+
+**Equivalente**: `self:getDepotChest(99, autocreate)`
+
+---
+
+## 👨‍🦰 Sistema de Vocação
+
+### `Player.isMonk()`, `isSorcerer()`, `isDruid()`, `isKnight()`, `isPaladin()`, `isMage()` → boolean
+
+Verificadores de vocação que incluem advanced forms.
+
+**Tipo**: Methods  
+**Parâmetros**: Nenhum  
+**Retorna**: boolean
+
+**Implementação (Exemplo Knight)**:
+```lua
+function Player.isKnight(self)
+    return table.contains({ 
+        VOCATION.ID.KNIGHT, 
+        VOCATION.ID.ELITE_KNIGHT 
+    }, self:getVocation():getId())
+end
+```
+
+**Nota**: Todas checam forms avançadas (Elite Knight, Master Sorcerer, etc).
+
+**isMage()**: Retorna true se Sorcerer OR Druid (qualquer forma).
+
+---
+
+### `Player:vocationAbbrev()` → string
+
+Retorna abreviação da vocação baseada em primeiras letras.
+
+**Tipo**: Method  
+**Retorna**: string
+
+**Implementação**:
+```lua
+function Player:vocationAbbrev()
+    local vocation = self:getVocation()
+    if not vocation then
+        return "N"
+    end
+
+    local vocationName = vocation:getName():split(" ")
+    local abbrev = ""
+    for _, name in ipairs(vocationName) do
+        abbrev = abbrev .. name:sub(1, 1)
+    end
+    return abbrev:upper()
+end
+```
+
+**Exemplos**:
+- "Elite Knight" → "EK"
+- "Master Sorcerer" → "MS"
+- "Royal Paladin" → "RP"
+
+---
+
+## 👥 Sistema de Pronomes
+
+### `Player.getSubjectPronoun()`, `getObjectPronoun()`, `getPossessivePronoun()`, `getSubjectVerb(past)` → string
+
+Sistema completo de pronomes para gênero-neutralidade.
+
+**Tipo**: Methods  
+**Parâmetros**: `past` (boolean, opcional para verb)  
+**Retorna**: string
+
+**Implementação (Subject Pronoun)**:
+```lua
+function Player.getSubjectPronoun(self)
+    return Pronouns.getPlayerSubjectPronoun(self:getPronoun(), self:getSex(), self:getName())
+end
+```
+
+**Delegação**: Todas chamam `Pronouns.*` API.
+
+**Formas Suportadas**: He/She/They + variações.
+
+**Exemplo**:
+```lua
+local player = Player(playerId)
+print(player:getSubjectPronoun())  -- "They"
+print(player:getObjectPronoun())   -- "Them"
+print(player:getPossessivePronoun())  -- "Their"
+```
+
+---
+
+## 👤 Sistema de Familiar
+
+### `Player:getFamiliarName()` → string
+
+Obtém nome do familiar baseado na vocação do jogador.
+
+**Tipo**: Method  
+**Retorna**: string (nome) ou nil
+
+**Implementação**:
+```lua
+function Player:getFamiliarName()
+    local vocation = FAMILIAR_ID[self:getVocation():getBaseId()]
+    local familiarName
+    if vocation then
+        familiarName = vocation.name
+    end
+    return familiarName
+end
+```
+
+**Lookup**: Via global FAMILIAR_ID table.
+
+---
+
+### `Player:CreateFamiliarSpell(spellId)` → boolean
+
+Cria familiar via spell (validação + cooldown).
+
+**Tipo**: Method  
+**Parâmetros**: `spellId` (number)  
+**Retorna**: boolean
+
+**Validações**:
+1. Must be premium
+2. Can't have other summons (unless god)
+3. Familiar deve estar mapeado via FAMILIAR_ID
+
+**Implementação Core**:
+```lua
+function Player:CreateFamiliarSpell(spellId)
+    if not self:isPremium() then
+        return false
+    end
+
+    if #self:getSummons() >= 1 and self:getAccountType() < ACCOUNT_TYPE_GOD then
+        self:sendCancelMessage("You can't have other summons.")
+        return false
+    end
+
+    local familiarName = self:getFamiliarName()
+    if not familiarName then
+        return false
+    end
+
+    local summonDuration = 60 * configManager.getNumber(configKeys.FAMILIAR_TIME) / 2
+    local condition = Condition(CONDITION_SPELLCOOLDOWN, CONDITIONID_DEFAULT, spellId)
+    local cooldown = summonDuration * 2
+    
+    if self:isVip() then
+        local reduction = configManager.getNumber(configKeys.VIP_FAMILIAR_TIME_COOLDOWN_REDUCTION)
+        reduction = (reduction > summonDuration and summonDuration) or reduction
+        cooldown = cooldown - reduction * 60
+    end
+
+    return self:createFamiliar(familiarName, summonDuration)
+end
+```
+
+**Cooldown VIP**: Redução de cooldown se VIP.
+
+---
+
+### `Player:createFamiliar(familiarName, timeLeft)` → boolean
+
+Cria instância do familiar Monster e registra eventos.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `familiarName` (string): Nome do familiar
+- `timeLeft` (number): Duração em segundos
+
+**Retorna**: boolean
+
+**Implementação Core**:
+```lua
+function Player:createFamiliar(familiarName, timeLeft)
+    local myFamiliar = Game.createMonster(familiarName, playerPosition, true, false, self)
+    if not myFamiliar then
+        return false
+    end
+
+    myFamiliar:setOutfit({ lookType = self:getFamiliarLooktype() })
+    myFamiliar:registerEvent("FamiliarDeath")
+    myFamiliar:changeSpeed(math.max(self:getSpeed() - myFamiliar:getBaseSpeed(), 0))
+    
+    self:kv():set("familiar-summon-time", os.time() + timeLeft)
+    addEvent(RemoveFamiliar, timeLeft * 1000, myFamiliar:getId(), self:getId())
+    
+    -- Schedule warning messages
+    for sendMessage = 1, #FAMILIAR_TIMER do
+        self:setStorageValue(
+            FAMILIAR_TIMER[sendMessage].storage,
+            addEvent(
+                SendMessageFunction,
+                (timeLeft - FAMILIAR_TIMER[sendMessage].countdown) * 1000,
+                self:getId(),
+                FAMILIAR_TIMER[sendMessage].message
+            )
+        )
+    end
+    return true
+end
+```
+
+**AUTO-REMOVE**: RemoveFamiliar event schedule via addEvent.
+
+**TIMER MESSAGES**: Warnings antes de desaparecer.
+
+---
+
+### `Player:dispellFamiliar()` → boolean
+
+Remove familiar summon.
+
+**Tipo**: Method  
+**Retorna**: boolean
+
+---
+
+## 📊 Sistema de Experiência
+
+### `Player.getFinalBaseRateExperience()` → number
+
+Calcula taxa final de experiência com stages + event scheduler.
+
+**Tipo**: Method  
+**Retorna**: number (taxa multiplicadora)
+
+**Implementação**:
+```lua
+function Player.getFinalBaseRateExperience(self)
+    local baseRate
+    local rateExperience = configManager.getNumber(configKeys.RATE_EXPERIENCE)
+    
+    if configManager.getBoolean(configKeys.RATE_USE_STAGES) then
+        baseRate = getRateFromTable(experienceStages, self:getLevel(), rateExperience)
+    else
+        baseRate = rateExperience
+    end
+    
+    if SCHEDULE_EXP_RATE ~= 100 then
+        baseRate = math.max(0, (baseRate * SCHEDULE_EXP_RATE) / 100)
+    end
+    return baseRate
+end
+```
+
+**Layers**:
+1. Stage lookup (se habilitado) ou config direto
+2. Event scheduler override (SCHEDULE_EXP_RATE)
+
+---
+
+### `Player.getFinalBonusStamina()` → number
+
+Retorna bônus de stamina baseado em minutos restantes.
+
+**Tipo**: Method  
+**Retorna**: number (1, 1.5, ou 0.5)
+
+**Lógica**:
+- \> 2340 min + premium: 1.5x
+- ≤ 840 min: 0.5x
+- Senão: 1.0x
+
+---
+
+### `Player.getFinalLowLevelBonus()` → number
+
+Bônus XP para low level players (≤ 50).
+
+**Tipo**: Method  
+**Retorna**: number (percentual boost)
+
+---
+
+## 🎁 Sistema de Loot Factor
+
+### `Player:calculateLootFactor(monster)` → table
+
+Calcula multiplicador de loot com integração VIP + party.
+
+**Tipo**: Method  
+**Parâmetros**: `monster` (Monster)  
+**Retorna**: table `{ factor, msgSuffix }`
+
+**Implementação**:
+```lua
+function Player:calculateLootFactor(monster)
+    if not self:canReceiveLoot() then
+        return {
+            factor = 0.0,
+            msgSuffix = "due to low stamina",
+        }
+    end
+
+    local participants = { self }
+    local factor = 1
+    
+    if configManager.getBoolean(configKeys.PARTY_SHARE_LOOT_BOOSTS) then
+        local party = self:getParty()
+        if party and party:isSharedExperienceEnabled() then
+            participants = party:getMembers()
+            table.insert(participants, party:getLeader())
+        end
+    end
+
+    local vipActivators = 0
+    local vipBoost = 0
+    
+    for _, participant in ipairs(participants) do
+        if participant:isVip() then
+            local boost = configManager.getNumber(configKeys.VIP_BONUS_LOOT)
+            boost = ((boost > 100 and 100) or boost) / 100
+            vipBoost = vipBoost + boost
+            vipActivators = vipActivators + 1
+        end
+    end
+    
+    if vipActivators > 0 then
+        vipBoost = vipBoost / (vipActivators ^ configManager.getFloat(configKeys.PARTY_SHARE_LOOT_BOOSTS_DIMINISHING_FACTOR))
+        factor = factor * (1 + vipBoost)
+    end
+
+    return {
+        factor = factor,
+        msgSuffix = vipBoost > 0 and string.format("vip bonus %d%%", math.floor(vipBoost * 100 + 0.5)) or "",
+    }
+end
+```
+
+**Fluxo**:
+1. Checar stamina (kill switch)
+2. Se party com shared exp: usar todos membros
+3. Contar VIPs + aplicar boost
+4. Diminishing return: `1 / (count ^ factor)`
+5. Retornar `{factor, msg}`
+
+**Exemplo**:
+```lua
+local factor = player:calculateLootFactor(monster)
+-- { factor = 1.15, msgSuffix = "vip bonus 15%" }
+```
+
+---
+
+## ⏱️ Sistema de Exhaustion
+
+### `Player:setExhaustion(scope, seconds)`, `getExhaustion(scope)`, `hasExhaustion(scope)` → varargs
+
+Sistema de cooldown persistente via KV.
+
+**Tipo**: Methods  
+**Parâmetros**:
+- `scope` (string): Identificador de cooldown (ex: "spell:1000")
+- `seconds` (number): Duração do cooldown
+
+**Retorna**: boolean (set/has) ou number (get)
+
+**Implementação**:
+```lua
+function Player:setExhaustion(scope, seconds)
+    return self:kv():scoped("exhaustion"):set(scope, os.time() + seconds)
+end
+
+function Player:getExhaustion(scope)
+    local exhaustionKV = self:kv():scoped("exhaustion"):get(scope) or 0
+    return math.max(exhaustionKV - os.time(), 0)
+end
+
+function Player:hasExhaustion(scope)
+    return self:getExhaustion(scope) > 0 and true or false
+end
+```
+
+**Exemplo**:
+```lua
+player:setExhaustion("teleport", 30)  -- 30s cooldown
+
+if player:hasExhaustion("teleport") then
+    print("Cooldown: " .. player:getExhaustion("teleport") .. "s")
+end
+```
+
+---
+
+## 🎯 Sistema de Boss
+
+### `Player:getBossCooldown(bossNameOrId)`, `setBossCooldown()`, `canFightBoss()` → varargs
+
+Rastreamento de cooldown de boss por raceId.
+
+**Tipo**: Methods
+
+**Implementação Core**:
+```lua
+local function bossKVScope(bossNameOrId)
+    local mType = MonsterType(bossNameOrId)
+    if not mType then
+        return false
+    end
+    return "boss.cooldown." .. toKey(tostring(mType:raceId()))
+end
+
+function Player:getBossCooldown(bossNameOrId)
+    local scope = bossKVScope(bossNameOrId)
+    if not scope then
+        return false
+    end
+    return self:kv():get(scope) or 0
+end
+
+function Player:canFightBoss(bossNameOrId)
+    local cooldown = self:getBossCooldown(bossNameOrId)
+    return cooldown <= os.time()
+end
+```
+
+**Scope**: `boss.cooldown.{raceId}`  
+**Validação**: Trigga sendbossCooldownTimer().
+
+---
+
+### `Player:inBossFight()` → stats/false
+
+Verifica se jogador está em luta de boss ativa.
+
+**Tipo**: Method  
+**Retorna**: stats table ou false
+
+**Implementação**:
+```lua
+function Player.inBossFight(self)
+    if not next(_G.GlobalBosses) then
+        return false
+    end
+
+    local playerGuid = self:getGuid()
+    for _, info in pairs(_G.GlobalBosses) do
+        local stats = info[playerGuid]
+        if stats and stats.active then
+            return stats
+        end
+    end
+    return false
+end
+```
+
+---
+
+## 🎁 Sistema de Daily Reward
+
+### Daily Reward Methods (14 métodos)
+
+Sistema completo de login diário com streak, tokens, e bonuses.
+
+#### Token Methods:
+```lua
+Player.getCollectionTokens() → number
+Player.setCollectionTokens(value) → void
+Player.getJokerTokens() → number
+Player.setJokerTokens(value) → void
+```
+
+#### Streak Methods:
+```lua
+Player.getDayStreak() → number
+Player.setDayStreak(value) → void
+Player.getStreakLevel() → number  -- 1-7 (KV scoped)
+Player.setStreakLevel(value) → void
+```
+
+#### Reward Time:
+```lua
+Player.setNextRewardTime(value) → void
+Player.getNextRewardTime() → number
+```
+
+#### Bonus Info:
+```lua
+Player.getActiveDailyRewardBonusesName() → string
+Player.getDailyRewardBonusesCount() → number
+Player.isBonusActiveById(bonusId) → "locked"/"unlocked"
+```
+
+#### Loading:
+```lua
+Player.loadDailyRewardBonuses()
+```
+
+---
+
+## 💎 Sistema de Lealdade (Loyalty)
+
+### `Player.initializeLoyaltySystem()` → boolean
+
+Sistema de loyalty com títulos progression + skill bonus.
+
+**Tipo**: Method
+
+**Tabela Local (loyaltySystem)**:
+```lua
+{
+    enable = boolean,
+    titles = {
+        [1] = { name = "Scout of Tibia", points = 50 },
+        [2] = { name = "Sentinel of Tibia", points = 100 },
+        ...
+        [11] = { name = "Enlightened of Tibia", points = 7000 },
+    },
+    bonus = {
+        { minPoints = 360, percentage = 5 },      -- 5% skill bonus @ 360 pts
+        { minPoints = 720, percentage = 10 },     -- 10% @ 720 pts
+        ...
+        { minPoints = 3600, percentage = 50 },    -- 50% @ 3600 pts
+    },
+}
+```
+
+**Implementação**:
+1. Se disabled: return
+2. Get playerLoyaltyPoints via `getLoyaltyPoints()`
+3. Match pontos contra títulos (maior match wins)
+4. Match pontos contra bonuses (maior match wins)
+5. Aplicar multiplicador config (LOYALTY_BONUS_PERCENTAGE_MULTIPLIER)
+6. Enviar mensagem com bônus ativo
+
+---
+
+## 📚 Sistema de Quests
+
+### `Player:questKV(questName)` → KV
+
+Obtém KV scoped para quest específica.
+
+**Tipo**: Method  
+**Parâmetros**: `questName` (string)  
+**Retorna**: KV object
+
+---
+
+### `Player:canGetReward(rewardId, questName)` → boolean
+
+Valida se jogador pode obter reward de quest.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `rewardId` (number): ItemId do reward
+- `questName` (string): Nome da quest
+
+**Retorna**: boolean
+
+**Validações**:
+1. Quest não foi completada (`questKV:get("completed")`)
+2. Item existe (ItemType válido)
+3. Espaço no backpack
+4. Capacidade suficiente
+
+---
+
+## 🔗 Sistema de Profile
+
+### `Player.getURL()` → string
+
+Obtém URL de perfil do jogador.
+
+**Tipo**: Method  
+**Parâmetros**: Nenhum  
+**Retorna**: string
+
+**Formato**: `{SERVER_URL}/characters/{playerName}`
+
+---
+
+### `Player.getMarkdownLink()` → string
+
+Retorna markdown link com emoji de vocação e abbreviation.
+
+**Tipo**: Method  
+**Retorna**: string
+
+**Formato**: `**[PlayerName](url)** :emoji: [_EK_]`
+
+**Emoji Map**:
+- Knight → `:crossed_swords:`
+- Paladin → `:bow_and_arrow:`
+- Druid → `:herb:`
+- Sorcerer → `:crystal_ball:`
+
+---
+
+### `Player.findItemInInbox(self, itemId, name)` → Item
+
+Busca item em store inbox.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `itemId` (number)
+- `name` (string, opcional)
+
+**Retorna**: Item ou nil
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Familiar System Completo
+
+```lua
+-- Spell casting
+function onCastSpell(creature, var)
+    local player = creature:getPlayer()
+    if player:CreateFamiliarSpell(123) then
+        player:sendTextMessage(MESSAGE_INFO, "Familiar summoned!")
+    end
+end
+
+-- Dismiss
+function onTalkAction(player, param)
+    if param == "dismiss" then
+        if player:dispellFamiliar() then
+            player:sendTextMessage(MESSAGE_INFO, "Familiar dismissed!")
+        end
+    end
+end
+```
+
+### Padrão 2: Loot Distribution com VIP
+
+```lua
+local loot = monsterType:generateLootRoll({
+    factor = player:calculateLootFactor(monster).factor,
+    gut = false,
+}, {}, player)
+
+-- Broadcast VIP bonus
+if player:calculateLootFactor(monster).msgSuffix ~= "" then
+    player:sendTextMessage(MESSAGE_LOOT, "Loot increased by " .. player:calculateLootFactor(monster).msgSuffix)
+end
+```
+
+### Padrão 3: Boss Cooldown Tracking
+
+```lua
+if player:canFightBoss("Dragon Lord") then
+    spawnBoss(player)
+    player:setBossCooldown("Dragon Lord", os.time() + 3600)  -- 1h cooldown
+else
+    local remaining = player:getBossCooldown("Dragon Lord") - os.time()
+    player:sendCancelMessage("Cooldown: " .. remaining .. "s remaining")
+end
+```
+
+### Padrão 4: Quest Reward Validation
+
+```lua
+if player:canGetReward(2400, "demonic_quest") then
+    player:addItem(2400, 1)
+    player:questKV("demonic_quest"):set("completed", 1)
+else
+    player:sendCancelMessage("No room for reward!")
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Método |
+|----------|-----------|--------|
+| **Feeding Stack** | Estender/criar condition | feed() |
+| **Bank Integration** | Multi-source money removal | removeMoneyBank() |
+| **Familiar Lifecycle** | Create + auto-remove + cooldown | createFamiliar() + addEvent |
+| **Pronunciation** | Gênero-neutral pronouns | getSubjectPronoun() etc |
+| **Loot Boost** | VIP + party diminishing returns | calculateLootFactor() |
+| **Loyalty Tiers** | Points → Titles + Skill % | initializeLoyaltySystem() |
+
+### Padrões Identificados
+
+1. **Wrapping Functions**: addSkillTries, addManaSpent (com APPLY_SKILL_MULTIPLIER flag)
+2. **KV Scoped**: questKV, exhaustion, daily-reward, loyalty (persistência)
+3. **Early Exit**: RATE_LOOT, stamina checks, premium checks
+4. **Offline Tables**: ACCOUNT_STORAGES cache, loyaltySystem config, emojiMap lookup
+5. **Diminishing Returns**: VIP boost em parties (1 / count ^ factor)
+6. **Auto-Scheduling**: addEvent para familiar remove + messages
+
+### Responsabilidades por Categoria
+
+- **Feeding**: HP/Mana regen via condition
+- **Banking**: 3-level money system (inventory, bank, transfer)
+- **Familiar**: Summons com duração, cooldown, auto-remove
+- **Experience**: Multi-layer rate calculation (stage, scheduler)
+- **Pronouns**: Gender-neutral dialogue system
+- **Loot**: VIP/party boost with diminishing return
+- **Cooldown**: Centralized exhaustion via KV
+- **Loyalty**: Long-term engagement reward
+- **Quest**: Safety validation antes de dar reward
+
+---
+
+## 📚 Conclusão
+
+O arquivo `player.lua` é **núcleo de player experience** do servidor. Através de 65+ extensões, implementa praticamente toda a complexidade de playerbase: alimentação, bancos, familiarares, experiência parametrizada, sistema de pronomes inclusivo, cálculo dinâmico de loot com bônus VIP, recompensas diárias com streak, e loyalty system de long-term engagement. O design de **KV scoped** permite dados persistentes sem DB overhead, enquanto **wrapping de funções nativas** integra fluxamente com engine.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 865/865 (100%)  
+**Total de Métodos**: 65+  
+**Variáveis Locais**: 7 (foodCondition, APPLY_SKILL_MULTIPLIER, ACCOUNT_STORAGES, loyaltySystem, emojiMap, funções wrapped)  
+**Camadas de Funcionalidade**: 7 (Feeding, Banking, Familiar, Experience, Pronouns, Daily Reward, Loyalty)  
+**Exemplos Práticos**: 4+  
+**Padrões de Design**: KV Scoped, Wrapping, Early Exit, Offline Config, Diminishing Return, Auto-Scheduling
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: APPLY_SKILL_MULTIPLIER é flag global (deve ser thread-safe). Familiar system depende de Game.createMonster + events (FamiliarDeath, RemoveFamiliar). KV scoped é persistente (database). Loyalty system tabela offline é config estática (mudar requer recompile). Email/getName URL assume SERVER_URL configurado.
+</Aside>

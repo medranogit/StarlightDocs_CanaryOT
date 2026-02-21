@@ -1,0 +1,286 @@
+---
+title: usable_mount_items.lua
+description: Sistema de 5 mounts obtíveis via items consumíveis com validação de premium e achievements.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="usable_mount_items.lua" icon="pencil">
+Handler de mounts consumíveis com tabela de configuração e validação de premium.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/usable_mount_items.lua`
+
+**Linhas:** 37 | **IDs dos Items:** 5 (23538, 23684, 23685, 32629, 50064) | **Tipo:** Action Handler com Config Table
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema de obtenção de mounts via items consumíveis. Cada mount possui configuração de ID, nome, mensagem de obtenção e achievement opcional. Exige premium obrigatoriamente. Valida se jogador já possui o mount (return false) e aplica achievements genéricos + específicos conforme o mount.
+
+### Estrutura de Funcionalidades
+
+```
+CONFIG TABLE (5 mounts):
+  ├─ 23538 → vortexion (mount 94) + "Vortex Tamer" achievement
+  ├─ 23684 → neon sparkid (mount 98) + "Vortex Tamer" achievement
+  ├─ 23685 → vortexion (mount 99) + "Vortex Tamer" achievement
+  ├─ 32629 → haze (mount 162) + "Nothing but Hot Air" achievement
+  └─ 50064 → primal demonosaur (mount 232) + sem achievement extra
+
+HANDLER:
+  └─ usableItemMounts.onUse()
+      ├─ isPremium()? → bloqueia sem premium
+      ├─ hasMount(mountId)? → return false (já tem)
+      ├─ Se achievement na config → addAchievement()
+      ├─ Table.contains vortex? → addAchievementProgress(+3)
+      ├─ addMount(mountId)
+      ├─ addAchievement("Natural Born Cowboy")
+      ├─ say(tameMessage)
+      ├─ item:remove(1)
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| config | table | 5 mounts com ID, nome, mountId, achievement |
+| usableItemMounts | Action | Objeto handler principal |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Config Table
+
+| Item ID | Mount Nome | Mount ID | Achievement |
+|---------|-----------|----------|-------------|
+| 23538 | vortexion | 94 | Nenhuma (Progress) |
+| 23684 | neon sparkid | 98 | Nenhuma (Progress) |
+| 23685 | vortexion | 99 | Nenhuma (Progress) |
+| 32629 | haze | 162 | Nothing but Hot Air |
+| 50064 | primal demonosaur | 232 | Nenhuma |
+
+**TameMessages:**
+- vortexion: "You receive the permission to ride a sparkion."
+- neon sparkid: "You receive the permission to ride a neon sparkid."
+- haze: "You are now versed to ride the haze!"
+- primal demonosaur: "Bound by ancient magic, the primal demonic beast bows to the will of the boxes owner ... for now."
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local config = {
+	[23538] = { name = "vortexion", mountId = 94, tameMessage = "..." },
+	[23684] = { name = "neon sparkid", mountId = 98, tameMessage = "..." },
+	[23685] = { name = "vortexion", mountId = 99, tameMessage = "..." },
+	[32629] = { name = "haze", mountId = 162, achievement = "Nothing but Hot Air", tameMessage = "..." },
+	[50064] = { name = "primal demonosaur", mountId = 232, tameMessage = "..." },
+}
+
+function usableItemMounts.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: Premium obrigatório
+	if not player:isPremium() then
+		player:sendCancelMessage(RETURNVALUE_YOUNEEDPREMIUMACCOUNT)
+		return true
+	end
+
+	-- Obter config
+	local useItem = config[item.itemid]
+	
+	-- Validação: Já tem mount?
+	if player:hasMount(useItem.mountId) then
+		return false
+	end
+
+	-- Achievement específico se configurado
+	if useItem.achievement then
+		player:addAchievement(useItem.achievement)
+	end
+
+	-- Achievement "Vortex Tamer" (+3) para os 3 vortexions
+	if table.contains({ 23538, 23684, 23685 }, item.itemid) then
+		player:addAchievementProgress("Vortex Tamer", 3)
+	end
+
+	-- Adicionar mount
+	player:addMount(useItem.mountId)
+	
+	-- Achievement genérico
+	player:addAchievement("Natural Born Cowboy")
+	
+	-- Mensagem
+	player:say(useItem.tameMessage, TALKTYPE_MONSTER_SAY)
+	
+	-- Consumir item
+	item:remove(1)
+	return true
+end
+
+-- Registrar todos os IDs
+for k, v in pairs(config) do
+	usableItemMounts:id(k)
+end
+
+usableItemMounts:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador usa mount item
+  │
+  ├─ isPremium()?
+  │   └─ NÃO → sendCancelMessage + return true
+  │
+  ├─ SIM → Continua...
+  │
+  ├─ useItem = config[itemId]
+  │
+  ├─ hasMount(mountId)?
+  │   └─ SIM → return false (já tem)
+  │
+  ├─ NÃO → Continua...
+  │
+  ├─ if achievement em config:
+  │   └─ addAchievement(especifica)
+  │
+  ├─ if item em vortex list:
+  │   └─ addAchievementProgress("Vortex Tamer", +3)
+  │
+  ├─ addMount(mountId)
+  │
+  ├─ addAchievement("Natural Born Cowboy")
+  │
+  ├─ say(tameMessage)
+  │
+  ├─ item:remove(1)
+  │
+  └─ return true
+```
+
+### Achievement Stacking
+
+```
+Usar vortexion (23538):
+  ├─ Achievement: Nenhuma específica
+  ├─ Progress: "Vortex Tamer" +3
+  ├─ Mount: 94 (vortexion)
+  └─ Generic: "Natural Born Cowboy"
+  
+Usar haze (32629):
+  ├─ Achievement: "Nothing but Hot Air" (completa)
+  ├─ Progress: Não recebe (não está em vortex list)
+  ├─ Mount: 162 (haze)
+  └─ Generic: "Natural Born Cowboy"
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Premium Mandatory**: isPremium() bloqueia toda operação
+- **Config-Driven**: Toda informação em tabela (minimiza hardcoding)
+- **Mount Lookup**: hasMount() verifica por mountId (não itemId)
+- **Return False**: Indica jogador já possui (permite retry)
+- **Optional Achievement**: useItem.achievement se existir
+- **Progress Achievement**: addAchievementProgress() para multi-item
+- **Table.Contains**: Validação de itens específicos (vortex trio)
+- **Generic Achievement**: "Natural Born Cowboy" para todos
+- **Tame Messages**: Customizado por mount
+
+### Responsabilidades do Handler
+
+1. **Validar premium**: isPremium()
+2. **Obter config**: config[item.itemid]
+3. **Verificar posse**: hasMount(mountId)
+4. **Aplicar achievement**: if useItem.achievement
+5. **Progress vortex**: table.contains + addAchievementProgress
+6. **Adicionar mount**: addMount(mountId)
+7. **Generic achievement**: "Natural Born Cowboy"
+8. **Mensagem**: say(tameMessage)
+9. **Consumir**: item:remove(1)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Config Table
+
+Tabela centralizada:
+
+```lua
+local config = {
+	[itemId] = { 
+		name = "...", 
+		mountId = N, 
+		tameMessage = "...",
+		achievement = "..." -- opcional
+	}
+}
+```
+
+### Padrão Conditional Achievement
+
+Adicionar apenas se existir:
+
+```lua
+if useItem.achievement then
+	player:addAchievement(useItem.achievement)
+end
+```
+
+### Padrão Multi-Item Progress
+
+Detectar grupo de items:
+
+```lua
+if table.contains({ 23538, 23684, 23685 }, item.itemid) then
+	player:addAchievementProgress("Vortex Tamer", 3)
+end
+```
+
+### Comparação: Mount Items vs Outfit Items
+
+| Aspecto | Mount | Outfit |
+|---------|-------|--------|
+| Config | 5 mounts | 9+ outfits |
+| Addon | Não (mount completo) | Sim (1-2 addons) |
+| Multiple Achievements | Sim (Progress + Generic) | Sim (Specific) |
+| Female/Male | Não (universal) | Sim (looktype específico) |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: usable_mount_items.lua" icon="star">
+Análise de sistema de mounts com config table, validação premium, achievements opcionais e progress para grupo de items.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Mount acquisition com config table | Complexidade: Baixa-Média
+</Aside>

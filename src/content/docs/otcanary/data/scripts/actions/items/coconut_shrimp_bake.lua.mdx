@@ -1,0 +1,236 @@
+---
+title: coconut_shrimp_bake.lua
+description: Comida especializada underwater com validação de capacete
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="coconut_shrimp_bake.lua" icon="star">
+Script de ação Lua que implementa comida temática underwater com validações de equipamento.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/coconut_shrimp_bake.lua`
+
+Prato especial que aumenta velocidade underwater por 24 horas, mas requer uso de um dos 3 capacetes específicos (Helmet of the Deep, Depth Gaela ou similares). Item ID 11584 com cooldown duplo (special-foods e próprio).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `coconut_shrimp_bake.lua` implementa comida temática underwater com dupla validação: cooldown global special-foods e validação de capacete equipado. Se player não tem capacete ou tem tipo inválido, recusa com mensagem temática. Se válido, incrementa velocidade underwater por 24h, emite efeito verde e consome item.
+
+**Estrutura de Funcionalidades**
+
+```
+[Create coconutShrimpBake Action]
+    ↓
+[onUse function]
+    ├─ Check exhaustion: special-foods-cooldown
+    │   ├─ SIM → "You need to wait..." + return true
+    │   └─ NÃO → continuar
+    ├─ Get headItem = player:getSlotItem(CONST_SLOT_HEAD)
+    ├─ If not headItem
+    │   ├─ Mensagem "should only eat..."
+    │   └─ return true
+    ├─ acceptableHelmets = {5460, 11585, 13995}
+    ├─ If not contains(headItem:getId())
+    │   ├─ Mensagem "should only eat..."
+    │   └─ return true
+    ├─ sendTextMessage: "Your underwater speed increased..."
+    ├─ player:say("Yum.", TALKTYPE_MONSTER_SAY)
+    ├─ sendMagicEffect(CONST_ME_MAGIC_GREEN)
+    ├─ setExhaustion("special-foods-cooldown", 10min)
+    ├─ setExhaustion("coconut-shrimp-bake", 24h)
+    ├─ item:remove(1)
+    └─ return true
+```
+
+## Variáveis Globais
+
+### acceptableHelmets (local array)
+
+```lua
+local acceptableHelmets = { 5460, 11585, 13995 }
+```
+
+IDs dos 3 capacetes que permitem usar prato.
+
+| ID | Descrição |
+|----|-----------| 
+| 5460 | Helmet of the Deep |
+| 11585 | Depth Galea |
+| 13995 | Capacete underwater tipo 3 |
+
+## Funções
+
+### coconutShrimpBake.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que consome prato underwater.
+
+**Parâmetros:**
+- player: Creature player
+- item: Comida sendo consumida
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo de Execução:**
+
+```lua
+1. hasExhaustion("special-foods-cooldown")?
+   ├─ SIM → return true (rejeita)
+   └─ NÃO → continuar
+
+2. headItem = getSlotItem(CONST_SLOT_HEAD)
+   ├─ NÃO → mensagem + return true
+   └─ SIM → continuar
+
+3. Not in acceptableHelmets?
+   ├─ SIM → mensagem + return true
+   └─ NÃO → continuar
+
+4. sendTextMessage: "speed increased..."
+
+5. player:say("Yum.", TALKTYPE_MONSTER_SAY)
+
+6. sendMagicEffect(CONST_ME_MAGIC_GREEN)
+
+7. setExhaustion("special-foods-cooldown", 600s)
+
+8. setExhaustion("coconut-shrimp-bake", 86400s)
+
+9. item:remove(1) + return true
+```
+
+**Implementação:**
+
+```lua
+function coconutShrimpBake.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true
+	end
+
+	local headItem = player:getSlotItem(CONST_SLOT_HEAD)
+	if not headItem then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You should only eat this dish when wearing a helmet of the deep or a depth galea and walking underwater.")
+		return true
+	end
+
+	local acceptableHelmets = { 5460, 11585, 13995 }
+	if not table.contains(acceptableHelmets, headItem:getId()) then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "...")
+		return true
+	end
+
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your underwater walking speed while wearing a " .. headItem:getName() .. " has increased for twenty-four hours.")
+	player:say("Yum.", TALKTYPE_MONSTER_SAY)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+	player:setExhaustion("coconut-shrimp-bake", 24 * 60 * 60)
+	item:remove(1)
+	return true
+end
+```
+
+## Constantes e Validações
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| CONST_SLOT_HEAD | constant | Slot de capacete |
+| CONST_ME_MAGIC_GREEN | constant | Efeito verde |
+| special-foods-cooldown | string | Cooldown global |
+| coconut-shrimp-bake | string | Cooldown próprio |
+| 600 segundos | integer | 10 minutos |
+| 86400 segundos | integer | 24 horas |
+
+## Fluxo de Operação
+
+```
+[Player usa comida]
+    ↓
+[special-foods-cooldown ativo?]
+    ├─ SIM → "You need to wait..." (return)
+    └─ NÃO → continuar
+    ↓
+[Capacete equipado no head slot?]
+    ├─ NÃO → "should only eat..." (return)
+    └─ SIM → continuar
+    ↓
+[Capacete em acceptableHelmets?]
+    ├─ NÃO → "should only eat..." (return)
+    └─ SIM → continuar
+    ↓
+[Mensagem personalizada com nome do capacete]
+    ↓
+[player:say("Yum.")]
+    ↓
+[Magic effect verde]
+    ↓
+[setExhaustion: 10 min (global)]
+    ↓
+[setExhaustion: 24h (próprio exclusivo)]
+    ↓
+[item:remove(1) + return true]
+```
+
+## Validações Encadeadas
+
+**Ordem importante:**
+1. Global cooldown (rejeita se bloqueado)
+2. Slot check (rejeita se sem capacete)
+3. Helmet ID check (rejeita se tipo inválido)
+4. Se passa todas: aplica effeitos
+
+## Dual Cooldown Pattern
+
+**special-foods-cooldown**: 10 minutos
+- Compartilhado com outras special foods
+- Bloqueia uso de qualquer special food
+
+**coconut-shrimp-bake**: 24 horas
+- Exclusivo deste prato
+- Bloqueia reuso mesmo sem global cooldown expirado
+
+**Efeito**: Player pode comer outra special food após 10min, mas este prato só a cada 24h.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Validação encadeada (cooldown → slot → item ID)
+2. Mensagens condicionales por validação
+3. Dual exhaustion para controle granular
+4. getSlotItem para validação de equipamento
+5. String concatenation em mensagens
+6. table.contains para múltiplos IDs válidos
+
+**Responsabilidades:**
+1. Verificar cooldown global special-foods
+2. Validar slot head tem item
+3. Validar item ID em whitelist
+4. Enviar mensagem temática
+5. Emitir efeito visual
+6. Setar dois cooldowns distintos
+7. Consumir item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 38 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 11584  
+**Capacetes Válidos**: 3  
+**Cooldown Global**: 10 minutos  
+**Cooldown Próprio**: 24 horas  
+**Efeito**: MAGIC_GREEN
+</Card>
+
+<Aside type="note">
+Comida underwater especializada com dupla validação: cooldown global + capacete específico. Dual exhaustion mantém embargo de 24h mesmo após global expirar. Mensagens dinâmicas com nome do capacete.
+</Aside>

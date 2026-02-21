@@ -1,0 +1,203 @@
+---
+title: bladespark_figurine.lua
+description: Sistema de invocação de familiar com restrição de vocação
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="bladespark_figurine.lua" icon="star">
+Script de ação Lua que implementa invocação de familiar Bladespark com restrição de vocação e nível.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/bladespark_figurine.lua`
+
+Script que invoca familiar Bladespark (looktype 1367) apenas para bruxos de nível 200+ (ou premium sem nível). Consumível após uso.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `bladespark_figurine.lua` implementa sistema de invocação de familiar temático para bruxos. Valida vocação (sorcerer), nível mínimo (200) com bypass premium, verifica familiar existente e adiciona se ausente. Inclui efeito de mensagem e consumo do item.
+
+**Estrutura Fundamental**
+
+```
+[Create bladesparkFigurine Action]
+    ↓
+[onUse function]
+    ├─ Validate vocation (sorcerer only)
+    ├─ Validate level 200 or premium
+    ├─ Check existing familiar
+    ├─ Set familiar looktype if not set
+    ├─ Add familiar if not exists
+    ├─ Send appropriate message
+    ├─ Remove item
+    └─ return true
+    ↓
+[Register Action on item ID 35592]
+```
+
+## Variáveis Globais
+
+### VOCATION.BASE_ID.SORCERER (global constant)
+
+Constante que especifica ID base da vocação bruxo. Usado para validação de vocação.
+
+## Funções
+
+### bladesparkFigurine.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback acionado ao usar figurina.
+
+**Parâmetros:**
+- player: Creature player
+- item: Figurina sendo usada
+- fromPosition: Posição do uso
+- target: Target (pode ser nil)
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```
+1. Validate vocation
+   ├─ Not sorcerer? → "Only sorcerers..." + return true
+   └─ Is sorcerer → next
+
+2. Validate level or premium
+   ├─ Level < 200 AND not premium? → return true (silent)
+   └─ Level >= 200 OR premium → next
+
+3. Set familiar looktype if not set
+   ├─ getFamiliarLooktype() == 0?
+   │   └─ setFamiliarLooktype(1367)
+   └─ Already set → next
+
+4. Check and add familiar
+   ├─ Not has familiar 1367?
+   │   ├─ addFamiliar(1367)
+   │   └─ "You have summoned a Bladespark."
+   └─ Already has familiar?
+       └─ "You already have a Bladespark."
+
+5. Remove item + return true
+```
+
+**Bloco 1: Vocação**
+
+```lua
+if player:getVocation():getBaseId() ~= VOCATION.BASE_ID.SORCERER then
+  player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Only sorcerers can use this item.")
+  return true
+end
+```
+
+Valida se player é bruxo (sorcerer).
+
+**Bloco 2: Nível/Premium**
+
+```lua
+if player:getLevel() < 200 and not player:isPremium() then
+  return true
+end
+```
+
+Permite uso se nível >= 200 ou se é premium (bypass nível).
+
+**Bloco 3: Set Familar Looktype**
+
+```lua
+if player:getFamiliarLooktype() == 0 then
+  player:setFamiliarLooktype(1367)
+end
+```
+
+Define looktype Bladespark se ainda não definido.
+
+**Bloco 4: Add Familiar**
+
+```lua
+if not player:hasFamiliar(1367) then
+  player:addFamiliar(1367)
+  player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have summoned a Bladespark.")
+else
+  player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You already have a Bladespark.")
+end
+```
+
+Adiciona familiar se não existe, caso contrário informa já tem.
+
+**Bloco 5: Cleanup**
+
+```lua
+item:remove(1)
+return true
+```
+
+Remove figurina após uso.
+
+## Constantes Utilizadas
+
+| Constante | Tipo | Descrição |
+|-----------|------|-----------|
+| VOCATION.BASE_ID.SORCERER | integer | ID base da vocação bruxo |
+| MESSAGE_EVENT_ADVANCE | type | Tipo de mensagem destacada |
+| 1367 | integer | Looktype do familiar Bladespark |
+
+## Fluxo de Operação
+
+```
+[Player usa figurina]
+    ↓
+[É sorcerer?]
+    ├─ NÃO → "Only sorcerers..." + return
+    └─ SIM → next
+    ↓
+[Nível >= 200 ou premium?]
+    ├─ NÃO → return (silently)
+    └─ SIM → next
+    ↓
+[Set/Check familiar looktype]
+    ↓
+[Adiciona familiar 1367]
+    ├─ Não tinha → "You have summoned..."
+    └─ Já tinha → "You already have..."
+    ↓
+[item:remove(1)]
+```
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Familiar summoning com validação de vocação
+2. Nível mínimo 200, premium bypassa nível
+3. Familiar looktype e sua associação
+4. Verificação de familiar existente
+5. Mensagens contextuais (summoned vs already have)
+
+**Responsabilidades:**
+1. Validar vocação (sorcerer only)
+2. Checar nível e status premium
+3. Set/maintain familiar looktype
+4. Adicionar familiar se não existe
+5. Notificar player do resultado
+6. Remover item após uso
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 26 linhas  
+**Funções**: 1 (onUse)  
+**Item ID**: 35592  
+**Vocação Requerida**: Sorcerer  
+**Nível Mínimo**: 200 (premium bypass)
+</Card>
+
+<Aside type="note">
+Script de invocação de familiar com validações de vocação e nível. Requer VOCATION e familiar system. Sorcerer-exclusive com nível mínimo 200, mas premium players podem usar em qualquer nível.
+</Aside>

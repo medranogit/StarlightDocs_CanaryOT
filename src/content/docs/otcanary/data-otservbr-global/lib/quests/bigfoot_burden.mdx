@@ -1,0 +1,270 @@
+---
+title: Bigfoot's Burden - Warzone Configuration
+description: Documentação técnica do arquivo bigfoot_burden.lua, que gerencia 3 salas de boss (warzones) com configuração de spawn, reset e controle de acesso para arenas de combate.
+sidebar:
+  order: 1
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **bigfoot_burden.lua** configura o sistema de Warzones - salas de combate exclusivas com controle de spawn de boss, cooldown de respawn e reset automático de arena.
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/quests/bigfoot_burden.lua`
+</Card>
+
+<Aside type="tip">
+**Tipo**: Configuração de Arenas/Warzones
+**Total de Rooms**: 3 salas  
+**Bosses**: Deathstrike, Gnomevil, Abyssador  
+**Padrão**: Global Config Table + Methods
+**Recurso Principal**: Spawn/Reset/Lock de Bosses
+</Aside>
+
+## 📄 Visão Geral do Código
+
+Warzone é um **sistema de salas de boss exclusivas** onde:
+1. Apenas 1 boss por sala pode estar vivo por vez
+2. Sala fica **locked** enquanto boss está vivo
+3. Após morte, sala entra em **cooldown** (tempo de espera para respawn)
+4. Jogadores são **teleportados para fora** quando tempo acaba
+
+## 🔧 Estrutura Técnica
+
+### Padrão: Global Configuration + Methods
+
+```lua
+warzoneConfig = {
+  -- Configuração de room por ID
+  [45700] = { ... },
+  [45701] = { ... },
+  [45702] = { ... },
+  
+  -- Métodos globais
+  spawnBoss = function(name, pos) ... end,
+  findByName = function(name, last) ... end,
+  resetRoom = function(roomwarzone, msg, releaseRoom) ... end,
+}
+```
+
+### Propriedades de Room
+
+Cada warzone é identificada por **ItemId único** (45700, 45701, 45702):
+
+| Propriedade | Tipo | Descrição |
+|-------------|------|-----------|
+| `center` | Position | Centro da sala para cálculos de spectators |
+| `maxRangeX` / `minRangeX` | number | Range horizontal para spectators |
+| `maxRangeY` / `minRangeY` | number | Range vertical para spectators |
+| `bossResp` | Position | Respawn position do boss |
+| `boss` | string | Nome do boss (creature name) |
+| `teleportTo` | Position | Teleport entry position |
+| `locked` | boolean | True se boss está vivo |
+| `interval` | number | Cooldown em milliseconds (config) |
+| `exit` | Position | Saída da warzone |
+| `wall` | number | (Opcional) Item ID de cristal para abrir |
+
+## 🗺️ Salas de Warzone
+
+### Warzone 1: Deathstrike (ID: 45700)
+
+```lua
+[45700] = {
+  center = Position(33110, 31965, 10),
+  boss = "Deathstrike",
+  bossResp = Position(33102, 31956, 10),
+  teleportTo = Position(33096, 31955, 10),
+  exit = Position(33001, 31900, 9),
+  -- Range: ~12-26 X, ~15-17 Y
+}
+```
+
+- **Nível**: Intermediário
+- **Boss**: Deathstrike
+- **Respawn Range**: ~12-26 tiles X, ~15-17 tiles Y
+- **Exit**: Saída conjunta em (33001, 31900, 9) - usar para todas 3 rooms
+
+### Warzone 2: Gnomevil (ID: 45701)
+
+```lua
+[45701] = {
+  center = Position(33117, 31956, 11),
+  boss = "Gnomevil",
+  bossResp = Position(33116, 31956, 11),
+  teleportTo = Position(33106, 31955, 11),
+  wall = 16169,  -- Item ID de cristal
+  -- Range: 14x14 quadrado
+}
+```
+
+- **Nível**: Avançado
+- **Boss**: Gnomevil
+- **Respawn Range**: 14x14 quadrado
+- **Mechanic**: Cristal (`wall = 16169`) precisa ser quebrado para acesso
+- **Detalhe**: Boss pode estar em jaula/cristal
+
+### Warzone 3: Abyssador (ID: 45702)
+
+```lua
+[45702] = {
+  center = Position(33090, 31910, 12),
+  boss = "Abyssador",
+  bossResp = Position(33088, 31910, 12),
+  teleportTo = Position(33083, 31904, 12),
+  -- Range: 12x12 quadrado
+}
+```
+
+- **Nível**: Boss Final
+- **Boss**: Abyssador
+- **Respawn Range**: 12x12 quadrado
+- **Nota**: Z-level diferente (12) das outras rooms
+
+## 🤖 Métodos Principais
+
+### spawnBoss(name, pos)
+
+**Função**: Spawn um boss e o registra no evento de morte.
+
+```lua
+warzoneConfig.spawnBoss = function(name, pos)
+  local boss = Game.createMonster(name, pos, false, true)
+  if boss then
+    local c = warzoneConfig.findByName(name)
+    c.locked = true  -- Marca sala como locked
+    boss:registerEvent("BossWarzoneDeath")
+  end
+end
+```
+
+**Comportamento**:
+1. Cria monster no `name` e posição
+2. Encontra configuração por nome de boss (recursivo)
+3. Marca room como `locked = true`
+4. Registra evento de morte
+
+### findByName(name, last)
+
+**Função**: Busca recursivamente warzone por nome de boss.
+
+```lua
+warzoneConfig.findByName = function(name, last)
+  local i, v = next(warzoneConfig, last)
+  if type(v) == "table" and v.boss == name then
+    return v
+  elseif not i then
+    return nil
+  end
+  return warzoneConfig.findByName(name, i)
+end
+```
+
+**Uso**: `local room = warzoneConfig.findByName("Deathstrike")`
+
+**Nota**: Implementação recursiva (evita loop com `last` param)
+
+### resetRoom(roomwarzone, msg, releaseRoom)
+
+**Função**: Teleporta/remove spectators e limpa sala.
+
+```lua
+warzoneConfig.resetRoom = function(roomwarzone, msg, releaseRoom)
+  if releaseRoom then
+    roomwarzone.locked = false  -- Release lock
+  end
+
+  -- Busca spectators na room (não-invisible)
+  local spectators = Game.getSpectators(
+    roomwarzone.center, false, false,
+    roomwarzone.minRangeX, roomwarzone.maxRangeX,
+    roomwarzone.minRangeY, roomwarzone.maxRangeY
+  )
+  
+  for i = 1, #spectators do
+    if spectators[i]:isPlayer() then
+      spectators[i]:teleportTo(roomwarzone.exit)
+      spectators[i]:sendTextMessage(MESSAGE_EVENT_ADVANCE, msg)
+    else
+      spectators[i]:remove()  -- Remove creatures
+    end
+  end
+end
+```
+
+**Parâmetros**:
+- `releaseRoom`: Se true, marca `locked = false` para próximo spawn
+- `msg`: Mensagem enviada aos jogadores
+
+**Comportamento**:
+1. Busca todos spectators (jogadores + creatures) na sala
+2. Jogadores: Teleportados para exit + mensagem
+3. Creatures: Removidas (loot remaining)
+
+## 💾 Fluxo de Operação
+
+```
+Player chega em warzone
+  ↓
+Sala está vazia? (locked = false)
+  ├─ SIM: Spawn boss, set locked = true
+  └─ NÃO: Boss ainda vivo, nega entrada
+  ↓
+Boss vive por X minutos (interval config)
+  ↓
+Boss morre OU timeout
+  ├─ Trigger: BossWarzoneDeath event
+  ├─ resetRoom(room, msg, releaseRoom=true)
+  ├─ Jogadores teleportados
+  ├─ set locked = false
+  └─ Cooldown iniciado (interval)
+  ↓
+Timeout = interval milliseconds
+  ↓
+Próxima tentativa: Boss pode respawnar
+```
+
+## ⚠️ Configurações Dinâmicas
+
+```lua
+interval = configManager.getNumber(configKeys.BOSS_DEFAULT_TIME_TO_FIGHT_AGAIN)
+```
+
+- **Origem**: `configManager`
+- **Chave**: `BOSS_DEFAULT_TIME_TO_FIGHT_AGAIN`
+- **Padrão**: Usualmente 15-20 minutos
+- **Propósito**: Evita spam de boss kills
+
+## 🎯 Padrões de Uso
+
+### Verifica se boss está disponível
+
+```lua
+local room = warzoneConfig.findByName("Deathstrike")
+if not room.locked then
+  -- Boss disponível para spawn
+else
+  -- Boss já está ativo
+end
+```
+
+### Reset manual de warzone
+
+```lua
+local room = warzoneConfig[45700]
+warzoneConfig.resetRoom(room, "Arena foi resetada!", true)
+```
+
+### Spawn boss programado
+
+```lua
+warzoneConfig.spawnBoss("Gnomevil", PITS[1].center)
+```
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Completo  
+**Tipo de Arquivo**: Configuração de Arenas

@@ -1,0 +1,262 @@
+---
+title: voodoo_doll.lua
+description: Boneca voodoo com RNG de 5% chance de sucesso, achievement condicional e mensagens dinâmicas.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="voodoo_doll.lua" icon="pencil">
+Handler com RNG puro e branches de sucesso/falha com achievement condicional.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/voodoo_doll.lua`
+
+**Linhas:** 19 | **ID do Item:** 3002 | **Tipo:** Action Handler com RNG
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa boneca voodoo com RNG de 5% chance de sucesso. Valida que alvo é player, gera número aleatório (1-100), e branqueia em sucesso (5% chance) ou falha (95%). No sucesso, concede achievement e efeito visual. Mensagens customizadas indicam sucesso ou falha. Return false se alvo não é player (obrigatório).
+
+### Estrutura de Funcionalidades
+
+```
+HANDLER:
+  └─ voodooDoll.onUse()
+      ├─ target.itemid ~= 1? ou não isPlayer()?
+      │   └─ NÃO → return false (target inválido)
+      │
+      ├─ SIM → Continua
+      │
+      ├─ math.random(100) <= 5? (5% chance)
+      │   │
+      │   ├─ SIM → Sucesso (5%)
+      │   │   ├─ text = "hit the needle... success"
+      │   │   ├─ addAchievement("Dark Voodoo Priest")
+      │   │   ├─ Effect: DRAWBLOOD
+      │   │   └─ say(text)
+      │   │
+      │   └─ NÃO → Falha (95%)
+      │       └─ text = "hit the needle... nothing happens"
+      │       └─ say(text)
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| voodooDoll | Action | Objeto handler |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### RNG Parameters
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| Chance | 5 | 5% de sucesso |
+| RNG Range | 1-100 | math.random(100) |
+| Success Roll | `<= 5` | Número 1-5 sucede |
+| Fail Roll | 6-100 | Números 6-100 falham |
+
+### Effect & Messages
+
+| Aspecto | Valor | Descrição |
+|---------|-------|-----------|
+| Success Effect | CONST_ME_DRAWBLOOD | Efeito de sangue |
+| Success Message | "You concentrate on your victim and hit the needle in the doll." | Feedback positivo |
+| Fail Message | "You concentrate on your victim, hit the needle in the doll.......but nothing happens." | Feedback negativo |
+| Achievement | Dark Voodoo Priest | Conditional (sucesso) |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local voodooDoll = Action()
+
+function voodooDoll.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: Alvo deve ser player (target.itemid verifica se é item creature)
+	if target.itemid ~= 1 or not target:isPlayer() then
+		return false
+	end
+
+	-- RNG: 5% chance de sucesso
+	local text = ""
+	if math.random(100) <= 5 then
+		-- SUCESSO (5%)
+		text = "You concentrate on your victim and hit the needle in the doll."
+		player:addAchievement("Dark Voodoo Priest")
+		toPosition:sendMagicEffect(CONST_ME_DRAWBLOOD, player)
+	else
+		-- FALHA (95%)
+		text = "You concentrate on your victim, hit the needle in the doll.......but nothing happens."
+	end
+
+	-- Message (audível ao jogador que fez)
+	player:say(text, TALKTYPE_MONSTER_SAY, false, player)
+	return true
+end
+
+voodooDoll:id(3002)
+voodooDoll:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador usa voodoo_doll (3002) em alvo
+  │
+  ├─ target.itemid ~= 1? (verifica se é player)
+  │   └─ SIM ou não isPlayer() → return false (target inválido)
+  │
+  ├─ NÃO → target é player, continua
+  │
+  ├─ math.random(100) <= 5? (5% chance)
+  │   │
+  │   ├─ SIM (números 1-5) → SUCESSO
+  │   │   ├─ text = "...hit the needle in the doll."
+  │   │   ├─ addAchievement("Dark Voodoo Priest")
+  │   │   ├─ Effect: DRAWBLOOD
+  │   │   └─ say(text)
+  │   │
+  │   └─ NÃO (números 6-100) → FALHA (95%)
+  │       ├─ text = "...nothing happens."
+  │       └─ say(text)
+  │
+  └─ return true
+```
+
+### RNG Probability Distribution
+
+```
+math.random(100) retorna 1-100 equiprobável
+
+Sucesso: <= 5
+  ├─ Roll = 1 → sucesso
+  ├─ Roll = 2 → sucesso
+  ├─ Roll = 3 → sucesso
+  ├─ Roll = 4 → sucesso
+  ├─ Roll = 5 → sucesso
+  └─ Total: 5/100 = 5.0%
+
+Falha: 6-100
+  ├─ Roll = 6 → falha
+  ├─ Roll = 7 → falha
+  ├─ ...
+  ├─ Roll = 100 → falha
+  └─ Total: 95/100 = 95.0%
+```
+
+### Effect Call Analysis
+
+```
+toPosition:sendMagicEffect(CONST_ME_DRAWBLOOD, player)
+  ├─ toPosition: Posição do alvo (onde ocorre efeito)
+  ├─ CONST_ME_DRAWBLOOD: Efeito visual (sangue)
+  └─ player: Parâmetro de origem (opcional)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Return False**: Indica target inválido (obrigatório alvo ser player)
+- **RNG Condition**: `math.random(100) <= N` para percentual
+- **5% Success**: Apenas rolls 1-5 (5 em 100)
+- **95% Failure**: Rolls 6-100 (95 em 100)
+- **Conditional Achievement**: Só se sucesso
+- **Dynamic Message**: Texto muda conforme RNG
+- **target.itemid**: Verifica se estrutura é player
+- **DRAWBLOOD Effect**: Específico para efeito de sangue
+- **say() com false, player**: Mensagem local audível
+
+### Responsabilidades do Handler
+
+1. **Validar target**: target.itemid ~= 1 ou não isPlayer()
+2. **Rejeitar inválido**: return false
+3. **Gerar RNG**: math.random(100)
+4. **Comparar**: `<= 5` para sucesso
+5. **Achievement**: addAchievement() se sucesso
+6. **Effect**: DRAWBLOOD se sucesso
+7. **Message**: text diferente por RNG
+8. **Say**: Enviar mensagem audível
+9. **Return**: true sempre (após validar)
+
+---
+
+## Patterns e Implementação
+
+### Padrão RNG Conditional
+
+Percentual baseado em random:
+
+```lua
+if math.random(100) <= 5 then
+	-- 5% de chance
+	text = "Sucesso!"
+	player:addAchievement("Dark Voodoo Priest")
+	toPosition:sendMagicEffect(CONST_ME_DRAWBLOOD, player)
+else
+	-- 95% de chance
+	text = "Nada acontece."
+end
+
+player:say(text, TALKTYPE_MONSTER_SAY)
+```
+
+### Padrão Return False
+
+Validação de target obrigatório:
+
+```lua
+if target.itemid ~= 1 or not target:isPlayer() then
+	return false  -- Alvo inválido
+end
+```
+
+### Comparação: Voodoo Doll vs Wheel Scrolls
+
+| Aspecto | Voodoo | Scrolls |
+|---------|--------|---------|
+| RNG | 5% puro | Nenhuma (determinístico) |
+| Target | Player obrigatório | Nenhuma validação |
+| Achievement | Condicional (5%) | Determinístico |
+| Message | 2 branches | 1 ou 2 |
+| Return | Bool variável | Sempre true |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: voodoo_doll.lua" icon="star">
+Análise de handler com RNG 5% e branches dinâmicas. Demonstra validação de player target com return false.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: RNG conditional com achievement | Complexidade: Baixa
+</Aside>

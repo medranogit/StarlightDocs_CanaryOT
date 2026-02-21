@@ -1,0 +1,399 @@
+---
+title: "Spell/Rune - icicle.lua"
+description: "Runa de icípide com dano de gelo escalável e sem bloqueio"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `icicle.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 114 |
+| **ID do Item (runeId)** | 3158 |
+| **Level Requerido** | 28 |
+| **Magic Level Requerido** | 4 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_ICEDAMAGE |
+| **Área** | Single target (sem area) |
+| **Cooldown** | 2s |
+| **Cargas** | 5 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Agressividade** | Sim |
+| **Requer Target** | Sim |
+| **Bloqueio (isBlocking)** | Não |
+| **PZ Locked** | Não |
+| **Linhas de Código** | 32 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa que lança icípide de gelo com dano escalável. Permite uso a distancia (allowFarUse). Não bloqueia creatures (isBlocking: false) permitindo passagem. Fórmula idêntica a fireball mas com dano de gelo. Sons customizados para casting e impacto específicos.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/icicle.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(114)
+rune:runeId(3158)
+rune:level(28)
+rune:magicLevel(4)
+rune:group("attack")
+rune:allowFarUse(true)
+rune:needTarget(true)
+rune:charges(5)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Icípide de Gelo com Passagem Livre**
+
+Esta runa implementa um **sistema de dano de gelo escalável sem bloqueio**:
+
+1. **Fórmula Escalável (Padrão):**
+   - min = (level/5) + (maglevel*1.81) + 10
+   - max = (level/5) + (maglevel*3) + 18
+   - Mesmo padrão do fireball (mas gelo)
+
+2. **Sem Bloqueio:** isBlocking = false
+   - Creatures passam através
+   - Não bloqueia movimento
+
+3. **Distância:** allowFarUse = true (funciona longe!)
+4. **Efeito:** ICEAREA (visual gelo)
+
+**Fórmula Visual:**
+```
+level 28, mlvl 4:
+  min = 5.6 + 7.24 + 10 = 22.84
+  max = 5.6 + 12 + 18 = 35.6
+
+level 60, mlvl 15:
+  min = 12 + 27.15 + 10 = 49.15
+  max = 12 + 45 + 18 = 75
+```
+
+**Diferencial:** Sem bloqueio = passagem livre, gelo vs fogo!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `icicle` oferece dano de gelo escalável com passagem:
+
+- **Dano:** COMBAT_ICEDAMAGE escalável
+- **Fórmula:** (level/5) + (maglevel*1.81/3) + bônus
+- **Área:** Single target
+- **Distancia:** Permitida
+- **Bloqueio:** Não (creatures passam)
+
+### Arquitetura
+
+Combat com fórmula callback padrão:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_ICEDAMAGE
+├─ Effect: ICEAREA
+├─ Distance: ICE
+└─ Callback: onGetFormulaValues
+
+onGetFormulaValues()
+└─ min/max escalável
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ICEDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ICEAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ICE)
+```
+
+**Propósito:** Instância de Combat para icípide de gelo.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ICEDAMAGE | Dano gelo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ICEAREA | Efeito área gelo |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ICE | Projétil gelo |
+
+**Características:**
+- Sem `combat:setArea()` = single target
+- Callback para fórmula escalável (padrão)
+- Sem armor bypass
+- Sem bloqueio (creatures passam)
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.81) + 10
+	local max = (level / 5) + (maglevel * 3) + 18
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano de gelo escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level total |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 1.81) + 10
+max = (level / 5) + (maglevel * 3) + 18
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 1.81
+- Maglevel max: 3.0
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 28 | 4 | 23 | 35 |
+| 50 | 10 | 38 | 58 |
+| 80 | 20 | 62 | 101 |
+| 100 | 30 | 80 | 135 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler da runa com alvo requerido.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Icípide lançada |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Fórmula Fireball
+
+```lua
+local min = (level / 5) + (maglevel * 1.81) + 10
+local max = (level / 5) + (maglevel * 3) + 18
+```
+
+**Benefício:** Escalabilidade equilibrada, mesmo padrão fireball.
+
+### Padrão 2: Sem Bloqueio
+
+```lua
+rune:isBlocking(false) -- Creatures pass
+```
+
+**Benefício:** Passagem livre, não bloqueia movimento.
+
+### Padrão 3: Distancia Longa
+
+```lua
+rune:allowFarUse(true)
+```
+
+**Benefício:** Ataque a distancia, ranged safety.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano de icicle (padrão escalável).
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(player, 50, 10)
+// min = 10 + 18.1 + 10 = 38.1
+// max = 10 + 30 + 18 = 58
+// Retorna: -38.1, -58
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Lança icípide de gelo escalável a distancia.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Target (obrigatório) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Icípide lançada |
+| `false` | Target inválido |
+
+**Efeito:**
+- Projétil gelo viaja (distancia)
+- Som customizado de cast + impacto
+- Impacto ICEAREA
+- Dano escalável
+- Sem bloqueio real
+
+**Exemplo:**
+
+```lua
+-- Mago nível 50, MLvl 10
+rune.onCastSpell(mago, targetVariant, false)
+// allowFarUse = ataque longe
+// Projétil gelo viaja
+// Impacto visual gelo
+// isBlocking=false: creatures passam
+// Resultado: -38 a -58 dano gelo
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Ataque Distancia
+
+```lua
+-- Mago ranged quer gelo a distancia
+// allowFarUse = segurança
+// Creatures podem passar
+```
+
+### Caso 2: Escalabilidade Equilibrada
+
+```lua
+-- Fórmula fireball em gelo
+// Escalabilidade progressiva
+// Competitivo em dano
+```
+
+### Caso 3: Passagem Livre
+
+```lua
+-- Não bloqueia movimento
+// Creatures atravessam
+// Ideal para área aberta
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage Type:** COMBAT_ICEDAMAGE
+- **Effects:** CONST_ME_ICEAREA, CONST_ANI_ICE
+- **Sounds:** SOUND_EFFECT_TYPE_SPELL_OR_RUNE, SOUND_EFFECT_TYPE_SPELL_ICICLE_RUNE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Icípide de gelo escalável |
+| **Dano Type** | COMBAT_ICEDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*1.81)+10, max=(lvl/5)+(mlvl*3)+18 |
+| **Area** | Single target |
+| **Cargas** | 5 |
+| **Distancia** | Sim (allowFarUse) |
+| **Bloqueio** | Não (passagem livre) |
+| **Target** | Requerido |
+| **Level** | 28 (mid) |
+| **Padrão** | Callback padrão + passagem livre |

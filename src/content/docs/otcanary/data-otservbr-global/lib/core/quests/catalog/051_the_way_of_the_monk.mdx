@@ -1,0 +1,194 @@
+---
+title: 051 - The Way of the Monk
+description: >
+  Documentação técnica completa da quest The Way of the Monk do Canary, incluindo 1 missão com funções 
+  dinâmicas para peregrinação Merudri.
+sidebar:
+  order: 51
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+A quest **The Way of the Monk** é uma missão singular focada na progressão espiritual de um monge. Com apenas 1 missão, utiliza 3 states com 2 funções dinâmicas para rastrear visitas a 11 santuários Merudri.
+
+<Card title="Caminho Original">
+`data-otservbr-global\lib\core\quests\catalog\051_the_way_of_the_monk.lua`
+</Card>
+
+<Aside type="tip">
+**ID da Quest**: Storage.Quest.U14_15.TheWayOfTheMonk  
+**Tipo**: Peregrinação Espiritual  
+**Dificuldade**: Avançada  
+**Quantidade de Missões**: 1 (**ÚNICA**)  
+**Padrão**: 1 Missão com 3 States (2 funções + 1 narrativa)
+</Aside>
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+| Propriedade | Valor |
+|-------------|-------|
+| **Nome** | The Way of the Monk |
+| **Tema** | Peregrinação Merudri |
+| **Mentor** | Ambassador Manop |
+| **Santuários** | 11 total |
+| **Estrutura** | 1 Missão com 3 States |
+| **Storage Namespace** | U14_15.TheWayOfTheMonk |
+
+## 🔧 Estrutura do Código
+
+### Variáveis Locais
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| `quest` | table | Tabela principal |
+| `missions` | table | Array com 1 missão |
+| `startStorageId` | string | ID armazenamento |
+| `startStorageValue` | number | 1 (início) |
+
+### Padrão: 1 Missão, 3 States, 2 Funções
+
+```lua
+missions = {
+  [1] = {
+    name = "The Three-Fold Path",
+    states = {
+      [1] = function(player) ... end,    -- Função Dawnport 4 shrines
+      [2] = function(player) ... end,    -- Função Blue Valley 11 shrines
+      [3] = "You have visited all eleven shrines."  -- Narrativa final
+    }
+  }
+}
+```
+
+## 📋 Missão Única: The Three-Fold Path
+
+| Propriedade | Valor |
+|-------------|-------|
+| **Nome** | The Three-Fold Path |
+| **Objetivo** | Visitar 11 santuários Merudri |
+| **MissionId** | 10502 |
+| **StartValue** | 1 |
+| **EndValue** | 3 |
+| **Estrutura** | 3 States (2 funções + 1 texto) |
+
+## 🎮 State [1]: Dawnport Phase - Função Dinâmica
+
+```lua
+states = {
+  [1] = function(player)
+    return string.format(
+      "You have learned about the Three-Fold Path from ambassador Manop. 
+       Follow way of Merudri, train hard to become warrior monk. 
+       Start by visiting four Merudri shrines on Dawnport and report back.
+       
+       Visited first shrine: %s/1
+       Visited second shrine: %s/1
+       Visited third shrine: %s/1
+       Visited fourth shrine: %s/1",
+      player:getStorageValue(Storage.Quest.U14_15.TheWayOfTheMonk.DawnportFirstShrine) or 0,
+      player:getStorageValue(Storage.Quest.U14_15.TheWayOfTheMonk.DawnportSecondShrine) or 0,
+      player:getStorageValue(Storage.Quest.U14_15.TheWayOfTheMonk.DawnportThirdShrine) or 0,
+      player:getStorageValue(Storage.Quest.U14_15.TheWayOfTheMonk.DawnportFourthShrine) or 0
+    )
+  end,
+  -- ...
+}
+```
+
+**Rastreamento**: 4 santuários em Dawnport (locação starter).
+
+### State [2]: Blue Valley Phase - Função Dinâmica
+
+```lua
+states = {
+  [2] = function(player)
+    return string.format(
+      "You have chosen the path of the monk. Find the Blue Valley and visit Enpa 
+       to learn about warrior monks and way of Merudri. 
+       Visit all eleven shrines of Merudri to complete pilgrimage on Tree-Fold Path. 
+       Consult Enpa-Dela Pema in Blue Valley for more.
+       
+       Most recent visited Merudri shrine: %s/11",
+      player:getStorageValue(Storage.Quest.U14_15.TheWayOfTheMonk.ShrinesCount)
+    )
+  end,
+  -- ...
+}
+```
+
+**Rastreamento**: 11 santuários totais (4 Dawnport + 7 Blue Valley).
+
+### State [3]: Completion - Narrativa
+
+```lua
+states = {
+  [3] = "You have visited all eleven shrines."
+}
+```
+
+**Simples confirmação de completion**.
+
+## 🏔️ Estrutura de Santuários
+
+### Fase 1: Dawnport (4 Santuários)
+
+Introdução básica ao caminho do monge:
+- Shrine 1
+- Shrine 2
+- Shrine 3
+- Shrine 4
+
+### Fase 2: Blue Valley (7 Santuários)
+
+Progressão avançada com mentor Enpa-Dela Pema:
+- Shrine 5-11 em Blue Valley
+- Total: 11 santuários
+
+## 💾 Mapeamento de Storage
+
+```lua
+Storage.Quest.U14_15.TheWayOfTheMonk = {
+  QuestLine = progresso_geral,
+  Missions = {
+    TreeFoldPath = estado_unico
+  },
+  -- Dawnport shamters (Phase 1)
+  DawnportFirstShrine = visited_1,
+  DawnportSecondShrine = visited_2,
+  DawnportThirdShrine = visited_3,
+  DawnportFourthShrine = visited_4,
+  -- Blue Valley tracking (Phase 2)
+  ShrinesCount = total_count          -- Rastreia total até 11
+}
+```
+
+## 🧘 Narrativa da Peregrinação
+
+A quest segue o **Caminho do Monge** através de duas fases:
+
+**Fase 1 (Dawnport)**: Treinamento básico com 4 santuários de iniciação
+**Fase 2 (Blue Valley)**: Progressão espiritual com 7 santuários avançados
+
+Completar todos 11 = domínio completo do Caminho Merudri.
+
+## 🎯 Tema: The Three-Fold Path
+
+Referência aos "três aspectos" do Caminho Merudri:
+1. Treinamento físico (Dawnport) 
+2. Aprendizado espiritual (Blue Valley)
+3. Maestria total (11 santuários)
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Autor**: Documentação Canary  
+**Status**: Completo
+
+---
+
+**ELEGÂNCIA MINIMALISTA**: Uma única missão com progressão espiritual complexa através de dinâmicas, sem necessidade de múltiplas branches.

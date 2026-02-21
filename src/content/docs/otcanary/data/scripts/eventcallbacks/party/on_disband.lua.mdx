@@ -1,0 +1,432 @@
+---
+title: "on_disband.lua"
+description: "Party disband callback que atualiza hazard system para todos os membros com delay assíncrono"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Event callback que implementa **hazard system update** quando party é dissolvida. Coleta todos os membros (members + leader), filtra por playerId exclusão (note: variável `playerId` não é declarada - possível bug), usa `addEvent()` com delay de 100ms para executar assincronamente a atualização do hazard system para cada member. Padrão de **async cleanup** onde party dissolution desaciva boosts temporários e recomputa hazard state individual. Callback é simples mas highlighta async pattern no Canary.
+
+**Caminho Original**: `data/scripts/eventcallbacks/party/on_disband.lua`
+
+**Tipo**: EventCallback (partyOnDisband trigger)
+
+**Dependências**:
+- EventCallback API (engine C++)
+- Party object (members, leader)
+- Player object (updateHazard API)
+- Global addEvent() function (async scheduling)
+- Variable `playerId` (undefined - possível bug ou global context)
+
+<Aside>
+Este callback tem **potencial bug**: usa `playerId` que não está definido no escopo local ou como parâmetro. Pode ser variável global acidental ou typo. Neste documento, documentamos como está, mas recomenda-se verificar intent original. Padrão de async cleanup com addEvent é sound.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `on_disband.lua` implementa **hazard cleanup trigger** que intercepta `partyOnDisband` disparado quando party é dissolvida. Coleta membros (members + leader), prepara array de IDs filtrando por `playerId` (variável não definida - bug?), agenda async callback com 100ms delay que itera IDs e chama `member:updateHazard()` para cada player. Padrão de **deferred async update** deixando room para outras operações antes recalcular hazard (evita short circuit).
+
+### Arquitetura de Componentes
+
+```
+Party Disband Handler
+│
+├─ MEMBER COLLECTION (4 operações)
+│  ├── members = party:getMembers()
+│  ├── Adiciona leader: table.insert(members, party:getLeader())
+│  │
+│  ├─ MEMBER FILTERING (1 loop)
+│  │  ├── for each member:
+│  │  │  └── if member:getId() ~= playerId  ← UNDEFINED VARIABLE
+│  │  │     └── memberIds[] += member:getId()
+│  │
+│  └─ Result: memberIds array (filtered)
+│
+├─ ASYNC SCHEDULING (2 operações)
+│  ├── addEvent(function, 100)  ← 100ms delay
+│  │
+│  └─ Event Callback:
+│     ├── for each memberId in memberIds:
+│     │  ├── member = Player(memberId)
+│     │  └── if member:
+│     │     └── member:updateHazard()
+│
+└─ COMPLETION (1)
+   └── return true
+```
+
+### Timing Diagram
+
+```
+Time   Event
+─────────────────────────────────────────
+0ms    partyOnDisband() called
+       ├─ Collect members & IDs
+       ├─ Schedule addEvent(function, 100)
+       └─ return true (immediately)
+
+100ms  [Async callback fires]
+       ├─ for each memberId:
+       │  └─ Player(memberId):updateHazard()
+       └─ Complete
+```
+
+---
+
+## Detalhes da Função Global
+
+### `callback.partyOnDisband(party)`
+
+**Tipo**: EventCallback hook
+
+**Descrição**: Função disparada quando party é dissolvida. Prepara hazard update para todos membros, agenda async callback com delay.
+
+**Parâmetros**:
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `party` | userdata | Party que está sendo dissolvida |
+
+**Retorna**: 
+- `true` (sempre, callback completa com sucesso)
+
+**Algoritmo**:
+
+```lua
+function callback.partyOnDisband(party)
+    -- 1. COLLECT MEMBERS
+    local members = party:getMembers()
+    table.insert(members, party:getLeader())
+
+    -- 2. PREPARE MEMBER IDs (filtered)
+    local memberIds = {}
+    for _, member in ipairs(members) do
+        -- Filter out playerId (???)
+        if member:getId() ~= playerId then
+            table.insert(memberIds, member:getId())
+        end
+    end
+
+    -- 3. SCHEDULE ASYNC HAZARD UPDATE
+    addEvent(function()
+        -- Callback body executes 100ms later
+        for _, memberId in ipairs(memberIds) do
+            local member = Player(memberId)
+            if member then
+                -- Update hazard state (now that party disbanded)
+                member:updateHazard()
+            end
+        end
+    end, 100)  -- 100ms delay
+
+    -- 4. RETURN
+    return true
+end
+```
+
+**Características Principais**:
+
+| Característica | Valor | Notas |
+|---|---|---|
+| Timing | Async deferred | 100ms delay |
+| Members | Todos exceto filtered | Filtra por playerId (undefined) |
+| Action | updateHazard call | Cada member |
+| Return | true | Sempre sucesso |
+| Closure | Captura memberIds | Persistido no closure |
+
+---
+
+## Detalhes das Variáveis Locais
+
+### `members` (table)
+
+**Tipo**: `table<number, userdata>`
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local members = party:getMembers()`
+
+**Descrição**: Array de membros da party retornado pela API. Não inclue leader inicialmente.
+
+**Modificação**:
+```lua
+table.insert(members, party:getLeader())
+-- Agora contém members + leader
+```
+
+### `memberIds` (table)
+
+**Tipo**: `table<number, number>`
+
+**Escopo**: Local (função) + Captured in Closure
+
+**Inicialização**: `local memberIds = {}`
+
+**Descrição**: Array de IDs de membros para deletar eventualmente. Coletado por filtragem. **Capturado no closure** do addEvent, mantido em memória os 100ms.
+
+**Estrutura**:
+```lua
+memberIds = {
+    12345,  -- Player ID 1
+    12346,  -- Player ID 2
+    12347   -- Player ID 3
+}
+```
+
+### `playerId` (number | undefined)
+
+**Tipo**: number (presumed)
+
+**Escopo**: GLOBAL (não definido localmente)
+
+**Problema**: 🔴 **VARIÁVEL NÃO DEFINIDA**
+
+**Descrição**: Usada para filtrar member da lista (presumivelmente o player que chamou disband?). **Não está declarado em escopo local ou como parâmetro**. Pode ser:
+- Bug: typo, deveria ser local variable
+- Global context: acidentalmente global
+- Intent: filtrar algum player específico
+
+**Impacto**:
+```lua
+if member:getId() ~= playerId then
+    -- Se playerId undefined → ~= comparação com nil?
+    -- Comportamento: member:getId() ~= nil sempre true
+    -- Resultado: todos membros adicionados (sem filtro efetivo)
+end
+```
+
+**Recomendação**: Investigar intent - possível que deveria ser:
+```lua
+-- Option A: Remover filter
+for _, member in ipairs(members) do
+    table.insert(memberIds, member:getId())
+end
+
+-- Option B: Usar local playerId
+local playerId = getPlayerWho...Disbanded()
+-- ... então usar
+
+-- Option C: Usar function closure playerId
+function callback.partyOnDisband(party)
+    -- Capture player na closure se known
+```
+
+### `member` (loop variable)
+
+**Tipo**: userdata (Player object)
+
+**Escopo**: Loop variable (não persisted)
+
+**Inicialização**: `for _, member in ipairs(members)`
+
+**Descrição**: Cada member da party durante iteração.
+
+---
+
+## Padrões & Implementação
+
+### 1. Padrão de Async Deferred Execution
+
+Usar `addEvent()` para agendar callback com delay:
+
+```lua
+-- ❌ BLOCKING: Executa imediatamente
+for _, memberId in ipairs(memberIds) do
+    Player(memberId):updateHazard()  -- Pode ser lento
+end
+
+-- ✅ NON-BLOCKING: Defer com delay
+addEvent(function()
+    for _, memberId in ipairs(memberIds) do
+        Player(memberId):updateHazard()
+    end
+end, 100)  -- 100ms delay
+```
+
+**Benefício**:
+- Party disband callback retorna imediatamente
+- Hazard update ocorre depois (não bloqueia)
+- Outro event loop processament continue
+- 100ms delay deixa buffer para cleanup
+
+### 2. Padrão de Closure Capture
+
+Capturar variáveis local no closure de addEvent:
+
+```lua
+local memberIds = {}  -- Coletado aqui
+for _, member in ipairs(members) do
+    table.insert(memberIds, member:getId())
+end
+
+-- Closure captura memberIds
+addEvent(function()
+    -- memberIds ainda acessível 100ms depois
+    for _, memberId in ipairs(memberIds) do
+        -- ...
+    end
+end, 100)
+```
+
+**Vantagem**:
+- memberIds persistido no closure
+- Não precisa global ou passar parâmetro
+- Automatic garbage collection
+
+### 3. Padrão de Nil Guard with Player Constructor
+
+Defender contra player offline/deleted:
+
+```lua
+for _, memberId in ipairs(memberIds) do
+    local member = Player(memberId)
+    if member then
+        member:updateHazard()
+    end
+end
+```
+
+**Razão**:
+- Player pode ter logout entre disband e callback
+- `Player(id)` pode retornar nil se offline
+- Guard previne `nil:updateHazard()` crash
+
+---
+
+## Fluxo de Operação
+
+### Timeline de Party Disband
+
+```
+[Player disbands party]
+    │
+    ├─ Engine dispara partyOnDisband(party)
+    │
+    ├─ ▶️ on_disband.lua callback
+    │    │
+    │    ├─ Step 1: members = party:getMembers() + party:getLeader()
+    │    │  └─ members = {member1, member2, member3, leader}
+    │    │
+    │    ├─ Step 2: Filter memberIds
+    │    │  └─ for each member:
+    │    │     └─ if member:getId() ~= playerId (undefined):
+    │    │        └─ memberIds += member:getId()
+    │    │  └─ memberIds = {12345, 12346, 12347} (ou vazio se undefined)
+    │    │
+    │    ├─ Step 3: Schedule async call
+    │    │  └─ addEvent(updateHazard_callback, 100)
+    │    │
+    │    └─ return true (immediate)
+    │
+    ├─ [0-100ms passa - evento processado]
+    │
+    ├─ 100ms: Async callback dispara
+    │    │
+    │    ├─ for each memberId:
+    │    │  ├─ member = Player(memberId)
+    │    │  ├─ if member not offline:
+    │    │  │  └─ member:updateHazard() ← Recalcula hazard state
+    │    │  └─ (silencioso se offline)
+    │    │
+    │    └─ callback termina
+    │
+    └─ [Party successfully disbanded, members hazard updated]
+```
+
+### Caso: 4-Player Party Disband
+
+```
+[Party with 4 members + leader disbands]
+    │
+    ├─ members = {M1, M2, M3, M4, Leader}
+    │
+    ├─ Loop filter (assuming playerId undefined):
+    │  ├─ M1:getId() ~= nil → true → add
+    │  ├─ M2:getId() ~= nil → true → add
+    │  ├─ M3:getId() ~= nil → true → add
+    │  ├─ M4:getId() ~= nil → true → add
+    │  └─ Leader:getId() ~= nil → true → add
+    │
+    ├─ memberIds = {M1_id, M2_id, M3_id, M4_id, Leader_id}
+    │
+    ├─ [100ms delay]
+    │
+    ├─ Update hazard:
+    │  ├─ Player(M1_id):updateHazard()
+    │  ├─ Player(M2_id):updateHazard()
+    │  ├─ Player(M3_id):updateHazard()
+    │  ├─ Player(M4_id):updateHazard()
+    │  └─ Player(Leader_id):updateHazard()
+    │
+    └─ All members have individual hazard updated
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+**Versão da Documentação**: 1.0
+
+**Última Atualização**: 2026-02-20
+
+**Tipo de Complexidade**: ⚪ **Trivial** (com 🔴 **BUG ALERT**)
+- Arquivo com 24 linhas de código
+- 1 função callback
+- 3 variáveis locais
+- Lógica: collect + filter (broken) + async schedule
+- Padrões: async deferred, closure capture, nil guard
+- Tempo estimado de aprendizado: 10-15 minutos
+
+**Cobertura de Tópicos**:
+- ✅ Variáveis locais (3 + 1 undefined)
+- ✅ Função global
+- ✅ Padrões de implementação
+- ✅ Fluxo de operação
+- 🔴 **BUG ALERT**: Undefined `playerId` variable
+
+**Referências Relacionadas**:
+- [ARQUITETURA_PROJETO.mdx](../../../ARQUITETURA_PROJETO.mdx)
+- Party API documentation
+- addEvent() async scheduling
+- Hazard system API
+
+**Status de Implementação**: ⚠️ **Funcionalmente Completo, Possível Bug**
+- Async scheduling operacional
+- Hazard update call válido
+- 🔴 **Filter logic broken**: playerId undefined
+- Nil guard presente
+
+**Padrões Principais Implementados**:
+1. ✅ Async deferred execution (addEvent)
+2. ✅ Closure capture (memberIds)
+3. ✅ Nil guard in loop (Player constructor)
+4. ❌ Filter logic (playerId undefined)
+5. ✅ Return true (callback success)
+
+**Bugs Identificados**:
+
+🔴 **CRITICAL**: Linha 8 - `if member:getId() ~= playerId`
+- `playerId` não está definido em escopo
+- Não é parâmetro da função
+- Não é declarado localmente
+- Comportamento: comparação com `nil` (sempre true)
+- **Impacto**: Filter não funciona - todos membros adiconados
+
+**Recomendação**: 
+1. Verificar intent original do filter
+2. Se filter não necessário, remover
+3. Se filter necessário, corrigir definição de playerId
+
+**Notas para Futuros Desenvolvedores**:
+1. 🔴 FIX REQUIRED: Investigar playerId undefined
+2. addEvent delay de 100ms é intencional - 3 ticks (~100ms no tibia)
+3. Closure captura memberIds - nada a fazer
+4. updateHazard() é lógica customizada - ver player.lua
+5. Async pattern é boa prática - não muda
+

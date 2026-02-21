@@ -1,0 +1,237 @@
+---
+title: Refill Amulets
+description: Comando PLAYER para recarregar amuletos e anéis com Silver Tokens
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# 🛠️ Documentação: refill.lua
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Arquivo** | `refill.lua` |
+| **Tipo** | TalkAction (Comando de Jogador) |
+| **Acesso** | normal (PLAYER) |
+| **Comando** | `!refill` |
+| **Descrição** | Recarregar amuletos e anéis usando Silver Tokens |
+| **Parâmetro** | Nenhum |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/refill.lua
+```
+
+## 💡 Utilidade
+
+Este comando permite que jogadores recarreguem amuletos e anéis descarregados usando Silver Tokens. O sistema verifica automaticamente o inventário do jogador, localiza itens elegíveis e realiza a troca mantendo logs de debug.
+
+## 📄 Visão Geral do Código Resumo Executivo
+
+O script `refill.lua` implementa um sistema de recarga de equipamentos:
+
+- **Tabela de Configuração**: Define pares de itens (descarregado/carregado) e custos
+- **Iteração Automática**: Processa todos os itens elegíveis de uma vez
+- **Validação de Custo**: Verifica disponibilidade de Silver Tokens antes de processar
+- **Feedback Detalhado**: Lista itens recarregados e custo total
+- **Logging de Debug**: Registra execução do comando
+
+### Fluxo Lógico Resumido
+
+1. Define tabela com todos os itens recarregáveis
+2. Itera sobre cada tipo de item
+3. Verifica se jogador possui item descarregado e Silver Tokens suficientes
+4. Remove item descarregado e Silver Tokens
+5. Adiciona item carregado
+6. Envia feedback com lista de itens recarregados
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variáveis Locais Globais
+
+```lua
+local maxPlayersPerMessage = 10
+local chargeItem = {
+    ["pendulet"] = { noChargeID = 29429, ChargeID = 30344, cost = 2 },
+    ["sleep shawl"] = { noChargeID = 29428, ChargeID = 30342, cost = 2 },
+    ["blister ring"] = { noChargeID = 31621, ChargeID = 31557, cost = 2 },
+    ["theurgic amulet"] = { noChargeID = 30401, ChargeID = 30403, cost = 2 },
+    ["ring of souls"] = { noChargeID = 32636, ChargeID = 32621, cost = 2 },
+    ["turtle amulet"] = { noChargeID = 39235, ChargeID = 39233, cost = 2 },
+    ["spiritthorn ring"] = { noChargeID = 39179, ChargeID = 39177, cost = 5 },
+    ["alicorn ring"] = { noChargeID = 39182, ChargeID = 39180, cost = 5 },
+    ["arcanomancer sigil"] = { noChargeID = 39185, ChargeID = 39183, cost = 5 },
+    ["arboreal ring"] = { noChargeID = 39188, ChargeID = 39187, cost = 5 },
+}
+local silverTokenID = 22516
+```
+
+**Descrição:**
+
+- `chargeItem`: Tabela de mapeamento com estrutura:
+  - `noChargeID`: ID do item descarregado
+  - `ChargeID`: ID do item carregado
+  - `cost`: Custo em Silver Tokens
+- `silverTokenID`: ID do item Silver Token (22516)
+
+**Itens Configurados:**
+
+| Item | Sem Carga | Com Carga | Custo |
+|------|-----------|-----------|-------|
+| pendulet | 29429 | 30344 | 2 |
+| sleep shawl | 29428 | 30342 | 2 |
+| blister ring | 31621 | 31557 | 2 |
+| theurgic amulet | 30401 | 30403 | 2 |
+| ring of souls | 32636 | 32621 | 2 |
+| turtle amulet | 39235 | 39233 | 2 |
+| spiritthorn ring | 39179 | 39177 | 5 |
+| alicorn ring | 39182 | 39180 | 5 |
+| arcanomancer sigil | 39185 | 39183 | 5 |
+| arboreal ring | 39188 | 39187 | 5 |
+
+### Função Principal: `refill.onSay()`
+
+```lua
+function refill.onSay(player, words, param)
+    logger.debug("!refill executed")
+    local refilledItems = {}
+    local totalCost = 0
+    
+    for itemName, itemData in pairs(chargeItem) do
+        local chargeableCount = player:getItemCount(itemData.noChargeID)
+        local silverTokensCount = player:getItemCount(silverTokenID)
+        
+        if chargeableCount >= 1 and silverTokensCount >= itemData.cost then
+            totalCost = totalCost + itemData.cost
+            table.insert(refilledItems, itemName)
+            player:removeItem(silverTokenID, itemData.cost)
+            player:removeItem(itemData.noChargeID, 1)
+            player:addItem(itemData.ChargeID, 1)
+        end
+    end
+    
+    if #refilledItems == 0 then
+        player:sendTextMessage(MESSAGE_LOOK, "You do not have any items to refill or lack silver tokens.")
+    else
+        local itemList = table.concat(refilledItems, ", ")
+        player:sendTextMessage(MESSAGE_LOOK, "Refilled " .. itemList .. " for a total of " .. totalCost .. " silver tokens.")
+    end
+    return true
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavra-chave do comando
+- `param` (string): Parâmetro vazio (sem uso)
+
+**Retorno:**
+- `true`: Comando processado com sucesso
+
+#### Lógica Detalhada
+
+1. **Logging de Debug**:
+   - `logger.debug("!refill executed")`: Registra execução
+
+2. **Inicialização**:
+   - `refilledItems = {}`: Tabela para rastrear itens processados
+   - `totalCost = 0`: Acumula custo total
+
+3. **Loop de Processamento**:
+   - Itera cada tipo de item na tabela `chargeItem`
+   - Obtém contagem de itens descarregados: `getItemCount(noChargeID)`
+   - Obtém contagem de Silver Tokens: `getItemCount(silverTokenID)`
+   
+4. **Validação e Processamento**:
+   - Valida: pelo menos 1 item descarregado E Silver Tokens suficientes
+   - Se válido:
+     - Adiciona nome à lista de recarregados
+     - Incrementa custo total
+     - Remove Silver Tokens
+     - Remove item descarregado
+     - Adiciona item carregado
+
+5. **Feedback**:
+   - Se `refilledItems` vazio: envia mensagem de erro
+   - Se itens recarregados: lista itens e custo total
+
+### Variáveis Globais Utilizadas
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `MESSAGE_LOOK` | number | Tipo de mensagem (comunicação visual) |
+
+### Funções Globais Utilizadas
+
+| Função | Origem | Descrição |
+|--------|--------|-----------|
+| `logger.debug(msg)` | Logger | Registra mensagem de debug |
+| `player:getItemCount(itemId)` | Object Player | Conta quantidade de item no inventário |
+| `player:removeItem(itemId, count)` | Object Player | Remove item do inventário |
+| `player:addItem(itemId, count)` | Object Player | Adiciona item ao inventário |
+| `player:sendTextMessage(type, text)` | Object Player | Envia mensagem de texto |
+
+## 🤖 Informações da Documentação
+
+| Info | Detalhe |
+|------|---------|
+| **Versão Documentada** | Build Canary - Estrutura Completa |
+| **Tipo de Documento** | Documentação Técnica de TalkAction |
+| **Completude** | Análise Completa do Código-Fonte |
+| **Últimas Verificações** | Validação de Sintaxe Lua, Fluxo Lógico |
+
+---
+
+## 📋 Resumo de Implementação
+
+**Padrão de Registro:**
+
+```lua
+refill:separator(" ")
+refill:groupType("normal")
+refill:register()
+```
+
+**Uso Prático:**
+
+Quando um jogador digita `!refill`:
+
+1. Sistema itera todos os 10 tipos de itens recarregáveis
+2. Para cada item, verifica se jogador possui versão descarregada
+3. Verifica se tem Silver Tokens suficientes
+4. Realiza troca automática (remove descarregado, adiciona carregado, remove tokens)
+5. Acumula custo total
+6. Envia mensagem com lista e custo
+
+**Exemplos de Execução:**
+
+```
+--- Com itens para recarregar ---
+Jogador: !refill
+Inventário: pendulet (descarregado), alicorn ring (descarregado), 20x Silver Token
+Sistema: "Refilled pendulet, alicorn ring for a total of 7 silver tokens."
+Resultado:
+  - Inventário -7 Silver Tokens
+  - -1 pendulet descarregado, +1 pendulet carregado
+  - -1 alicorn ring descarregado, +1 alicorn ring carregado
+
+--- Sem itens ou tokens insuficientes ---
+Jogador: !refill
+Sistema: "You do not have any items to refill or lack silver tokens."
+```
+
+**Itens Suportados (10 Total):**
+- Custo 2: pendulet, sleep shawl, blister ring, theurgic amulet, ring of souls, turtle amulet
+- Custo 5: spiritthorn ring, alicorn ring, arcanomancer sigil, arboreal ring
+
+---
+
+## 🔗 Relacionados
+
+- **Arquivo de Padrão**: `data/npclib/npc_system/custom_modules.lua.mdx`
+- **Sistema**: TalkActions (Comandos de Conversa)
+- **Acesso**: PLAYER (normal)
+- **Moeda**: Silver Token (ID 22516)
+- **Detalhe Arquitetura**: Ver `ARQUITETURA_PROJETO.mdx` para contexto completo

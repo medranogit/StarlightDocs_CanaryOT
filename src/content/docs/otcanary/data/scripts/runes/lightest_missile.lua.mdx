@@ -1,0 +1,418 @@
+---
+title: "Spell/Rune - lightest_missile.lua"
+description: "Runa de prática para casters/paladins com dano fixo escalável levemente"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `lightest_missile.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 7 |
+| **ID do Item (runeId)** | 21352 |
+| **Level Requerido** | 1 |
+| **Magic Level Requerido** | 0 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Área** | Single target (sem area) |
+| **Cooldown** | 2s |
+| **Cargas** | 10 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Agressividade** | Sim |
+| **Requer Target** | Sim |
+| **Bloqueio** | Sim (isBlocking: true) |
+| **Vocalizations** | Sorcerer, Druid, Paladin (6 tipos) |
+| **Dano Escalável** | Muito baixo (0.4/0.8 MLvl) |
+| **PZ Locked** | Não |
+| **Linhas de Código** | 38 |
+| **Complexidade** | Baixa |
+
+**Descrição:**
+Runa de prática escalável para casters e paladins (vocações restritas). Level 1, MLvl 0 acessível. Fórmula escalável muito baixa (0.4/0.8 MLvl): apenas um passo acima de prática pura para introduzir conceito de escalabilidade. Múltiplas cargas (10) facilitam aprendizado progressivo.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/lightest_missile.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(7)
+rune:runeId(21352)
+rune:level(1)
+rune:magicLevel(0)
+rune:group("attack")
+rune:allowFarUse(true)
+rune:needTarget(true)
+rune:charges(10)
+rune:vocation("sorcerer;true", "master sorcerer;true", "druid;true", "elder druid;true", "paladin;true", "royal paladin;true")
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Prática Escalável para Casters**
+
+Esta runa implementa um **sistema educacional com escalabilidade mínima**:
+
+1. **Vocação Restrita:**
+   - Sorcerer/Master Sorcerer
+   - Druid/Elder Druid
+   - Paladin/Royal Paladin
+   - Sem Knights (melee)
+
+2. **Fórmula Escalável (Mínimamente):**
+   - min = (level/5) + (maglevel*0.4) + 3
+   - max = (level/5) + (maglevel*0.8) + 5
+   - Um passo acima de prática pura
+
+3. **Acesso Level 1:**
+   - MLvl 0 (nenhum!)
+   - Vocação-específica
+
+4. **Aprendizado Progressivo:**
+   - Começa como prática: 3-5 dano
+   - Escalona levemente com MLvl
+   - Introduz conceito de stats
+
+**Comparação:**
+```
+lightest_magic_missile: 3-5 fixo (pura prática, todas vocações)
+lightest_missile:       3-5 base + escalável (aprendizado, casters)
+light_magic_missile:    2-4 base + maior escalável (próximo passo)
+```
+
+**Diferencial:** Prática com escalabilidade para casters!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `lightest_missile` oferece prática com escalabilidade suave:
+
+- **Dano:** COMBAT_ENERGYDAMAGE escalável baixo
+- **Fórmula:** (level/5) + (maglevel*0.4/0.8) + bônus
+- **Área:** Single target
+- **Vocação:** Casters + Paladins apenas
+- **Cargas:** 10 (educacional)
+
+### Arquitetura
+
+Combat com fórmula callback mínima:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_ENERGYDAMAGE
+├─ Effect: ENERGYAREA
+├─ Distance: ENERGY
+└─ Callback: onGetFormulaValues
+
+onGetFormulaValues()
+└─ min/max muito baixo escalável
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
+```
+
+**Propósito:** Instância de Combat para míssil educacional.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ENERGYDAMAGE | Dano energia |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ENERGYAREA | Efeito explosão |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ENERGY | Projétil energia |
+
+**Características:**
+- Sem `combat:setArea()` = single target
+- Callback para fórmula escalável baixa
+- Sem armor bypass
+- Sem needTarget (não requerido!)
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 0.4) + 3
+	local max = (level / 5) + (maglevel * 0.8) + 5
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano escalável educacional.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level total |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 0.4) + 3
+max = (level / 5) + (maglevel * 0.8) + 5
+```
+
+**Pesos:**
+- Level: 0.2 por ponto (padrão)
+- Maglevel min: 0.4 (muito baixo)
+- Maglevel max: 0.8 (baixo)
+- Bônus: 3/5 (educacional)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 1 | 0 | 3 | 5 |
+| 20 | 5 | 7 | 9 |
+| 50 | 15 | 21 | 27 |
+| 100 | 30 | 41 | 53 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler da runa educacional.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Míssil lançado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Fórmula Escalável Educacional
+
+```lua
+local min = (level / 5) + (maglevel * 0.4) + 3
+local max = (level / 5) + (maglevel * 0.8) + 5
+```
+
+**Benefício:** Mínima escalabilidade = aprendizado sem distração.
+
+### Padrão 2: Vocação Restrita Casters
+
+```lua
+rune:vocation("sorcerer;true", "master sorcerer;true", "druid;true", "elder druid;true", "paladin;true", "royal paladin;true")
+```
+
+**Benefício:** Foca em casters + paladins, sem knights.
+
+### Padrão 3: 10 Cargas Educacionais
+
+```lua
+rune:charges(10)
+```
+
+**Benefício:** Sessão longa para aprendizado repetitivo.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano escalável educacional muito baixo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(druid, 50, 15)
+// min = 10 + 6 + 3 = 19
+// max = 10 + 12 + 5 = 27
+// Retorna: -19, -27
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Lança míssil educacional com escalabilidade suave.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador (Caster/Paladin) |
+| `var` | Variant | Target (obrigatório) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Míssil lançado |
+| `false` | Vocação/target falhou |
+
+**Efeito:**
+- Validação vocacional (casters only)
+- Projétil energia viaja
+- Impacto ENERGYAREA
+- Dano escalável educacional
+- Single target
+
+**Exemplo:**
+
+```lua
+-- Druid nível 50, MLvl 15
+rune.onCastSpell(druid, targetVariant, false)
+// Vocação: Druid (OK)
+// Projétil energia viaja
+// Dano: -19 a -27
+// Resultado: Aprendizado progressivo!
+
+-- Knight nível 50, MLvl 15
+rune.onCastSpell(knight, targetVariant, false)
+// Vocação: Knight (BLOQUEADO!)
+// Não é caster
+// Resultado: Uso educacional restrito!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Progressão Educacional
+
+```lua
+-- Druid nível 1:
+// lightest_magic_missile (fixo 3-5)
+-- Progression -> nível 20:
+// lightest_missile (escalável 7-9)
+-- Progression -> nível 50:
+// Próxima runa
+```
+
+### Caso 2: Reforço Vocacional
+
+```lua
+-- Only casters + paladins
+// Knights não têm versão escalável
+// Incentiva RPG diversity
+```
+
+### Caso 3: Aprendizado Interativo
+
+```lua
+-- MLvl inicial = baixo impacto
+// Stats importam pouco
+-- MLvl progride = impacto cresce
+// Aprende correlação stats-dano
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage Type:** COMBAT_ENERGYDAMAGE
+- **Effects:** CONST_ME_ENERGYAREA, CONST_ANI_ENERGY
+- **Vocations:** Sorcerer, Druid, Paladin (6 subclasses)
+- **Sounds:** SOUND_EFFECT_TYPE_SPELL_OR_RUNE, SOUND_EFFECT_TYPE_SPELL_LIGHTEST_MISSILE_RUNE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Prática escalável casters |
+| **Dano Type** | COMBAT_ENERGYDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*0.4)+3, max=(lvl/5)+(mlvl*0.8)+5 |
+| **Area** | Single target |
+| **Cargas** | 10 (educacional) |
+| **Distancia** | Sim (allowFarUse) |
+| **Target** | Requerido |
+| **Vocação** | Casters + Paladins |
+| **Level** | 1 (PRIMEIRA DE CLASSE) |
+| **MLvl** | 0 (nenhum!) |
+| **Padrão** | Callback educacional + vocação |

@@ -1,0 +1,446 @@
+---
+title: "Spell - whirlwind_throw.lua"
+description: "Spell de ataque giratório para knights level 28 com escalabilidade skill-based"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `whirlwind_throw.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 107 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Knight, Elite Knight |
+| **Level Requerido** | 28 |
+| **Mana Requerida** | 40 |
+| **Words** | exori hur |
+| **Alcance** | 5 |
+| **Área** | Single target |
+| **Cooldown** | 6s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Skill-based (skill + attack)/3 a skill + attack, × 1.28 - FÍSICA!) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_WHIRLWIND_THROW |
+| **Distance Effect** | CONST_ANI_WEAPONTYPE |
+| **Efeito** | CONST_ME_HITAREA |
+| **Requer Target** | Sim (needTarget) |
+| **Requer Weapon** | Sim (needWeapon) |
+| **Bloqueia Walls** | Sim |
+| **Permite Cargas** | Sim (useCharges) |
+| **Bloqueia Armadura** | Sim (blockArmor) |
+| **Grupo** | attack |
+| **Linhas de Código** | 38 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de ataque giratório para knights nível 28 (mid-level). Dano físico escalável skill-based (não magic!). 40 mana. Range 5 (longo!). Target required. Requer weapon. Cooldown 6s. Premium only. Grupo attack. Knight physical power skill spell!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/whirlwind_throw.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(107)
+spell:name("Whirlwind Throw")
+spell:words("exori hur")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_WHIRLWIND_THROW)
+spell:level(28)
+spell:mana(40)
+spell:isPremium(true)
+spell:range(5)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:needWeapon(true)
+spell:cooldown(6 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("knight;true", "elite knight;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Ataque Giratório - Mid-Level Skill-Based FÍSICA**
+
+Este spell implementa um sistema de weapon-based physical attack:
+
+1. **Skill-Based Formula:**
+   - min = (level/5) + (skill+attack)/3
+   - max = (level/5) + skill + attack
+   - Multiplier: 1.28 (física!)
+   - Escalabilidade SKILL (não magic!)
+
+2. **Mid-Level Knight:**
+   - Level 28 (MID!)
+   - 40 mana (BARATO!)
+   - Premium only
+   - Cooldown 6s
+
+3. **Weapon-Based Attack:**
+   - needWeapon: true
+   - needTarget: true
+   - useCharges: true
+   - blockArmor: true
+
+4. **Tipo Físico:**
+   - COMBAT_PHYSICALDAMAGE
+   - Distance effect WEAPONTYPE
+   - Range 5 (LONGO!)
+   - Physical hit area
+
+**Fórmula Visual:**
+```
+Knight lvl 28, skill 50, attack 20:
+  min = 5.6 + (50+20)/3 = 5.6 + 23.33 = 28.93 × 1.28 = 37.03
+  max = 5.6 + 50 + 20 = 75.6 × 1.28 = 96.77
+
+Knight lvl 28, skill 80, attack 40:
+  min = 5.6 + (80+40)/3 = 5.6 + 40 = 45.6 × 1.28 = 58.37
+  max = 5.6 + 80 + 40 = 125.6 × 1.28 = 160.77
+
+Knight lvl 28, skill 100, attack 60:
+  min = 5.6 + (100+60)/3 = 5.6 + 53.33 = 58.93 × 1.28 = 75.43
+  max = 5.6 + 100 + 60 = 165.6 × 1.28 = 211.97
+```
+
+**Diferencial:** Knight mid-level skill-based weapon physical power!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `whirlwind_throw` oferece dano físico mid-level skill-based:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE skill-based
+- **Fórmula:** ((level/5) + (skill+attack)/3 a level/5 + skill + attack) × 1.28 (FÍSICA!)
+- **Mana:** 40 (barato)
+- **Level:** 28 (mid-level)
+- **Range:** 5 (longo)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ Effect: HITAREA
+├─ Distance Effect: WEAPONTYPE
+├─ blockArmor: true
+├─ useCharges: true
+└─ Callback: onGetFormulaValues (SKILLVALUE)
+
+onGetFormulaValues(player, skill, attack, factor)
+└─ min/max skill-based × 1.28
+
+spell.onCastSpell(creature, var)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_WEAPONTYPE)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+```
+
+**Propósito:** Combat de dano físico weapon-based mid-level.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITAREA | Efeito área hit |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_WEAPONTYPE | Projétil weapon |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Bloqueia armadura |
+| `COMBAT_PARAM_USECHARGES` | 1 | Usa cargas weapon |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local level = player:getLevel()
+	local min = (level / 5) + (skill + attack) / 3
+	local max = (level / 5) + skill + attack
+	return -min * 1.28, -max * 1.28 -- TODO : Use New Real Formula instead of an %
+end
+```
+
+**Propósito:** Calcula dano físico skill-based com multiplicador.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Weapon attack |
+| `factor` | number | Não utilizado |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min * 1.28` | number | Dano mínimo × 1.28 |
+| `-max * 1.28` | number | Dano máximo × 1.28 |
+
+**Fórmula:**
+```
+level = player:getLevel()
+min = (level / 5) + (skill + attack) / 3
+max = (level / 5) + skill + attack
+return -min * 1.28, -max * 1.28
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Skill: 0.33 até 1.0 escala
+- Attack: 0.33 até 1.0 escala
+- Multiplicador: 1.28 (física!)
+
+**Exemplos:**
+
+| Level | Skill | Attack | Min | Max |
+|---|---|---|---|---|
+| 28 | 50 | 20 | 37 | 97 |
+| 28 | 80 | 40 | 58 | 161 |
+| 28 | 100 | 60 | 75 | 212 |
+| 28 | 120 | 80 | 92 | 262 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Whirlwind ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback skill |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `level` | number | Level do jogador |
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Skill-Based Callback
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local level = player:getLevel()
+	local min = (level / 5) + (skill + attack) / 3
+	local max = (level / 5) + skill + attack
+	return -min * 1.28, -max * 1.28
+end
+
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+**Benefício:** Skill-based escalabilidade física!
+
+### Padrão 2: Weapon Requirements
+
+```lua
+spell:needWeapon(true)
+spell:blockWalls(true)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+```
+
+**Benefício:** Weapon-dependent physical hit!
+
+### Padrão 3: Long Range Knight
+
+```lua
+spell:range(5)
+spell:needTarget(true)
+spell:level(28)
+```
+
+**Benefício:** Mid-level long-range weapon Knight!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, skill, attack, factor)
+
+**Descrição:** Calcula dano físico skill-based com multiplicador.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight conjurador |
+| `skill` | number | Weapon skill valor |
+| `attack` | number | Weapon attack valor |
+| `factor` | number | Não utilizado (TODO) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min * 1.28` | number | Dano mínimo após multiplicador |
+| `-max * 1.28` | number | Dano máximo após multiplicador |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(knight, 80, 40, 0)
+// level = 28
+// min = 5.6 + (80+40)/3 = 5.6 + 40 = 45.6 × 1.28 = 58.37
+// max = 5.6 + 80 + 40 = 125.6 × 1.28 = 160.77
+// Retorna: -58.37, -160.77
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura ataque giratório em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight |
+| `var` | Variant | Target (necessário) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Whirlwind ativado |
+| `false` | Target ou weapon falhou |
+
+**Requisitos:**
+- Level 28+
+- 40 mana
+- Target required
+- Weapon equipped
+- Premium account
+- Cooldown 6s
+
+**Efeito:**
+- Efeito hit área
+- Projétil weapon type
+- Dano skill-based × 1.28
+- Range 5 tiles
+- Bloqueia armadura
+- Usa cargas weapon
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Mid-Level Knight Fighting
+
+```lua
+-- Knight lvl 28+ premium
+// Whirlwind Throw = weapon attack
+// Skill-based escalável
+// 40 mana = cheap cost
+// Range 5 = long distance!
+// Weapon-dependent = estratégico
+```
+
+### Caso 2: Knight Weapon Combat
+
+```lua
+-- Premium knight weapon training
+// Whirlwind Throw = physical combat
+// Skill-level escalabilidade
+// Weapon attack synergy
+// Cooldown 6s = rápido repetir
+// Armor blocking física!
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callback:** CALLBACK_PARAM_SKILLVALUE
+- **Effects:** CONST_ME_HITAREA, CONST_ANI_WEAPONTYPE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Mid-level weapon physical spell |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | min=(lvl/5)+(skill+attack)/3, max=(lvl/5)+skill+attack, ×1.28 |
+| **Mana** | 40 (barato) |
+| **Range** | 5 (longo) |
+| **Level** | 28 (mid-level) |
+| **Cooldown** | 6s |
+| **Premium** | Sim |
+| **Group** | attack |
+| **Vocações** | Knight, Elite Knight |
+| **Requer Weapon** | Sim |
+| **Padrão** | Skill-based + weapon-dependent + physical × 1.28 |

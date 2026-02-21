@@ -1,0 +1,294 @@
+---
+title: sweet_mangonaise_elixir.lua
+description: Elixir que multiplica o anel equipado em 10 cópias com validação de anel suportado.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="sweet_mangonaise_elixir.lua" icon="pencil">
+Sistema de multiplicação de anéis com tabela de mapeamento e validação de tipos suportados.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/sweet_mangonaise_elixir.lua`
+
+**Linhas:** 57 | **ID do Item:** 11588 | **Tipo:** Action Handler com Ring Mapping Table
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa elixir que multiplica o anel atualmente equipado em 10 cópias. Inclui validação para anéis específicos suportados via tabela de mapeamento (ringMultiplicationTable). Se anel não está equipado ou não está na tabela suportada, a ação falha. Usa cooldown compartilhado "special-foods-cooldown" (10 min) e efeito MAGIC_RED.
+
+### Estrutura de Funcionalidades
+
+```
+LOCAL ringMultiplicationTable:
+  └─ 14 Anéis suportados (mapping original → multiplicado)
+
+HANDLER:
+  └─ sweetMangonaise.onUse()
+      ├─ Validar equipamento:
+      │   └─ ring = getSlotItem(CONST_SLOT_RING)
+      ├─ Validar tipo de anel:
+      │   └─ table.contains(ringMultiplicationTable, ring.itemid)
+      ├─ Se válido:
+      │   ├─ Loop 10x:
+      │   │   └─ addItem(ringId)
+      │   ├─ Cooldown: special-foods-cooldown
+      │   ├─ Effect: MAGIC_RED
+      │   ├─ Emote: "Slurp."
+      │   ├─ Message: feedback
+      │   ├─ item:remove(1)
+      │   └─ return true
+      └─ Se inválido:
+          ├─ Message: erro/bloqueio
+          └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| ringMultiplicationTable | table | Array com 14 anéis suportados |
+| sweetMangonaise | Action | Objeto handler principal |
+
+---
+
+## Constantes e Parâmetros
+
+### Ring Multiplication Table (14 Anéis)
+
+| Índice | ID do Anel | Nome | Tipo |
+|--------|-----------|------|------|
+| 1 | 3005 | Demonbone Ring | Proteção |
+| 2 | 3006 | Rune Scream Ring | Scream |
+| 3 | 3010 | Valorous Pauldron | Força |
+| 4 | 3015 | Silver Ring | Básico |
+| 5 | 3017 | Ring Of Healing | Cura |
+| 6 | 3018 | Magical Ring | Mágico |
+| 7 | 3021 | Ring Of Blue Plasma | Plasma |
+| 8 | 3022 | Ring Of Red Plasma | Plasma |
+| 9 | 3023 | Ring Of Green Plasma | Plasma |
+| 10 | 3024 | Ring Of Purple Plasma | Plasma |
+| 11 | 3025 | Power Ring | Poder |
+| 12 | 3026 | Club Ring | Clube |
+| 13 | 3027 | Axe Ring | Machado |
+| 14 | 3028 | Sword Ring | Espada |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local ringMultiplicationTable = {
+	3005, 3006, 3010, 3015, 3017, 3018, 3021, 3022, 3023, 3024, 3025, 3026, 3027, 3028
+}
+
+function sweetMangonaise.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validar slot de anel (direita)
+	local ring = player:getSlotItem(CONST_SLOT_RING)
+	
+	-- Se não tem anel equipado
+	if not ring then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to equip a ring to use this elixir.")
+		return true
+	end
+
+	-- Validar se anel está na lista suportada
+	if not table.contains(ringMultiplicationTable, ring:getID()) then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "This ring cannot be multiplied.")
+		return true
+	end
+
+	-- Anel válido - multiplicar 10x
+	for i = 1, 10 do
+		player:addItem(ring:getID())
+	end
+
+	-- Efeito e feedback
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	player:say("Slurp.", TALKTYPE_MONSTER_SAY)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+	  "You consumed the sweet mangonaise elixir, multiplying your ring 10 times")
+
+	-- Cooldown compartilhado
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+
+	-- Consumir elixir
+	item:remove(1)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa sweet_mangonaise_elixir (11588)
+  │
+  ├─ ring = getSlotItem(CONST_SLOT_RING)?
+  │   │
+  │   ├─ NÃO → Sem anel
+  │   │   ├─ Message: "You need to equip a ring"
+  │   │   ├─ item NÃO consumido
+  │   │   └─ return true
+  │   │
+  │   └─ SIM → Tem anel...
+  │
+  ├─ table.contains(ringMultiplicationTable, ringId)?
+  │   │
+  │   ├─ NÃO → Anel não suportado
+  │   │   ├─ Message: "This ring cannot be multiplied"
+  │   │   ├─ item NÃO consumido
+  │   │   └─ return true
+  │   │
+  │   └─ SIM → Anel válido...
+  │
+  ├─ Loop 10x:
+  │   └─ addItem(ringId)
+  │
+  ├─ Feedbacks:
+  │   ├─ Effect: MAGIC_RED
+  │   ├─ Emote: "Slurp."
+  │   └─ Message: "You consumed the sweet mangonaise elixir..."
+  │
+  ├─ Cooldown:
+  │   └─ setExhaustion("special-foods-cooldown", 10 min)
+  │
+  ├─ Consumir:
+  │   └─ item:remove(1)
+  │
+  └─ return true
+```
+
+### Ring Slot Concepts
+
+```
+CONST_SLOT_RING = posição do "finger" (5 no Tibia)
+
+Equipamento:
+  ├─ Head slot
+  ├─ Body slot
+  ├─ Legs slot
+  ├─ Feet slot
+  ├─ Waist slot
+  ├─ Ring slot ← Aqui (getSlotItem)
+  ├─ Right hand
+  ├─ Left hand
+  └─ Ammo slot
+
+Validações:
+  ├─ ring = getSlotItem(CONST_SLOT_RING)
+  ├─ if not ring then... (sem anel)
+  ├─ ring:getID() → Obtém ID do anel equipado
+  └─ ring:getCount() → Sempre 1 para anel
+```
+
+### Item Consumption Pattern
+
+```
+Anel não suportado:
+  ├─ Message enviada
+  ├─ return true
+  └─ item.count não muda (ainda tem 1)
+
+Anel suportado:
+  ├─ 10x addItem(ringId) → 10 novas cópias (no chão ou inventory)
+  ├─ item:remove(1) → Elixir consumido
+  ├─ Anel equipado NÃO foi removido (continua no finger)
+  └─ Jogador agora tem 10 cópias adicionais do anel
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Slot Validation**: getSlotItem(CONST_SLOT_RING) retorna anel ou nil
+- **Type Checking**: ring:getID() para obter itemed do anel
+- **Table Lookup**: table.contains() para validação de tipo suportado
+- **Item Multiplication**: Loop 10x addItem() para duplicação
+- **No Item Removal**: Anel original fica equipado após multiplicação
+- **Shared Cooldown**: "special-foods-cooldown" afeta todas as comidas
+- **Validation Order**: Primeiro slot, depois tipo, depois ação
+- **Return True Always**: Mesmo em falha, nunca retorna false
+
+### Responsabilidades do Handler
+
+1. **Obter anel**: getSlotItem(CONST_SLOT_RING)
+2. **Validar existência**: if not ring then...
+3. **Validar tipo**: table.contains(ringMultiplicationTable, ringId)
+4. **Guardar ID**: ring:getID()
+5. **Multiplicar**: Loop 10x addItem(ringId)
+6. **Enviar mensagem**: Feedback com nome do anel (implícito)
+7. **Efeito visual**: MAGIC_RED
+8. **Emote**: "Slurp." audível
+9. **Cooldown**: setExhaustion("special-foods-cooldown", 10 min)
+10. **Consumir**: item:remove(1)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Ring Multiplication
+
+Este script demonstra sistema de validação + loop:
+
+```lua
+-- Validação
+if not table.contains(ringMultiplicationTable, ring:getID()) then
+	return true
+end
+
+-- Multiplicação
+for i = 1, 10 do
+	player:addItem(ring:getID())
+end
+```
+
+### Padrão Table.Contains
+
+Verificação e pertencimento:
+
+```lua
+table.contains(ringMultiplicationTable, ring:getID())
+```
+
+Alterna entre:
+- Verdadeiro: ID está em ringMultiplicationTable
+- Falso: ID não suportado
+
+### Comparação: Ring vs Other Food Buffs
+
+| Aspecto | Sweet Mangonaise | Tropical Bird | Strawberry |
+|---------|---|---|---|
+| Sistema | Multiplicação | Condition Buff | Healing |
+| Validação | Ring slot + tipo | Nenhuma | Nenhuma |
+| Cooldown | special-foods | special-foods | strawberry próprio |
+| Efeito | MAGIC_RED | MAGIC_RED | Nenhum |
+| Duração | 0 (instant) | 60 min | 0 (instant) |
+| Item Resultado | 10 copias | Buff de magia | HP restora |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: sweet_mangonaise_elixir.lua" icon="star">
+Análise de sistema de multiplicação de anéis com validação de slot e tipo. Demonstra loop 10x com table lookup para verificação de itens suportados.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Ring multiplication com slot validation | Complexidade: Média
+</Aside>

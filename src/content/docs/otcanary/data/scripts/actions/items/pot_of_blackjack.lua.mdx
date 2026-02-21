@@ -1,0 +1,259 @@
+---
+title: pot_of_blackjack.lua
+description: Sistema multi-uso com KV storage para rastrear goles remanescentes e cooldown compartilhado com healings progressivos.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="pot_of_blackjack.lua" icon="pencil">
+Sistema multi-uso com KV storage para rastrear goles remanescentes e cooldown compartilhado com healings progressivos.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/pot_of_blackjack.lua`
+
+**Linhas:** 37 | **ID do Item:** 11586 | **Tipo:** Action Handler com KV Storage
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa um pote de blackjack que funciona como consumível multi-uso armazenando o número de goles remanescentes em KV storage. Cada ativação consola 5000 HP e decrementa o contador. Utiliza cooldown compartilhado "special-foods-cooldown" (10 min) com outras comidas especiais.
+
+### Estrutura de Funcionalidades
+
+```
+potOfBlackjack (Action)
+  ├─ onUse(player, item, fromPosition, target, toPosition, isHotkey)
+  │   ├─ hasExhaustion("special-foods-cooldown") → validação cooldown
+  │   ├─ kv(:get("pot-of-blackjack") → carrega goles
+  │   │   └─ Se novo: random(2, 4) goles
+  │   ├─ Decrementa remainingGulps
+  │   ├─ Mensagem condicional por goles
+  │   ├─ addHealth(5000)
+  │   ├─ Emote + Effect + Cooldown
+  │   └─ item:remove(1)
+  └─ register() → ID 11586
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| potOfBlackjack | Action | Objeto handler para o pote de blackjack |
+
+---
+
+## Variáveis Locais
+
+Não há variáveis locais declaradas no escopo global.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | Valor | Descrição |
+|------|-------|-----------|
+| Pote de Blackjack | 11586 | ID do item para trigger |
+| Cooldown Compartilhado | special-foods-cooldown | Cooldown de 10 min com outras foods |
+| KV Storage Key | pot-of-blackjack | Chave para armazenar goles remanescentes |
+| Goles Iniciais | random(2, 4) | 2, 3, ou 4 goles aleatoriamente |
+| Healing por Gole | 5000 | HP restaurados por ativação |
+| Duração Cooldown | 10 * 60 | 600 segundos = 10 minutos |
+| Efeito Visual | CONST_ME_MAGIC_RED | Efeito vermelho mágico |
+| Emote | Gulp. | Fala do jogador |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function potOfBlackjack.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Valida cooldown compartilhado
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true
+	end
+
+	-- Carrega goles remanescentes (ou inicializa com 2-4)
+	local remainingGulps = player:kv():get("pot-of-blackjack") or math.random(2, 4)
+
+	-- Decrementa goles
+	if remainingGulps > 0 then
+		remainingGulps = remainingGulps - 1
+		player:kv():set("pot-of-blackjack", remainingGulps)
+
+		-- Mensagem condicional
+		local message
+		if remainingGulps > 0 then
+			message = "You take a gulp from the large bowl, but there's still some blackjack in it."
+		else
+			message = "You take the last gulp from the large bowl. No leftovers!"
+		end
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, message)
+	end
+
+	-- Aplicar healing e feedback
+	player:addHealth(5000)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You take a gulp from the large bowl.")
+	player:say("Gulp.", TALKTYPE_MONSTER_SAY)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+	item:remove(1)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa pot_of_blackjack (11586)
+  │
+  ├─ hasExhaustion("special-foods-cooldown")?
+  │   ├─ SIM → Cancelled: "You need to wait..."
+  │   │       return true (não remove item)
+  │   │
+  │   └─ NÃO → Continua...
+  │
+  ├─ Carrega remainingGulps
+  │   ├─ Se não existe: random(2, 4)
+  │   └─ Se existe: valor previamente armazenado
+  │
+  ├─ remainingGulps > 0?
+  │   ├─ SIM → Decrement
+  │   │       Salva novo valor em KV
+  │   │       Envia mensagem condicional
+  │   │
+  │   └─ NÃO → Skip (nunca ocorre praticamente)
+  │
+  ├─ Healing: addHealth(5000)
+  ├─ Emote: "Gulp."
+  ├─ Effect: MAGIC_RED
+  ├─ Cooldown: setExhaustion(10 min)
+  ├─ Remover: item:remove(1)
+  └─ return true
+```
+
+### Sistema de Goles
+
+```
+Primeira ativação:
+  └─ Random(2, 4) → N goles totais
+
+Segunda ativação (cooldown expirado):
+  ├─ Carregar N de KV
+  ├─ Decrement → N-1
+  ├─ Salvar N-1
+  └─ Se N-1 > 0: mensagem "still some left"
+     Se N-1 == 0: mensagem "last gulp"
+
+Terceira/Nésima ativação:
+  └─ Repetir processo até item remover-se
+```
+
+### Mensagens Condicionais
+
+```
+Goles Remanescentes | Mensagem
+--- | ---
+> 1 | "...but there's still some blackjack in it."
+== 0 (último) | "You take the last gulp from the large bowl. No leftovers!"
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **KV Storage**: `player:kv():get(key)` e `player:kv():set(key, value)` para persistência local
+- **Cooldown Compartilhado**: Múltiplos items usam "special-foods-cooldown" (10 min)
+- **RNG Inicial**: `math.random(2, 4)` determina goles no primeiro uso
+- **Decremento**: Cada uso reduz goles em 1
+- **Mensagem Condicional**: Diferentes textos baseado em remainingGulps
+- **Healing Fixo**: 5000 HP por gole sempre
+- **Esgotamento Duplo**: Valida cooldown antes de consumir item
+- **Return True Sem Consumir**: Se cooldown ativo, retorna true SEM remover item
+
+### Responsabilidades do Handler
+
+1. **Validar cooldown**: Verificar "special-foods-cooldown" antes de permitir
+2. **Gerenciar estado**: Carregar goles de KV ou inicializar com random
+3. **Decrementar uso**: Subtrair 1 de remainingGulps a cada ato
+4. **Persistir estado**: Salvar novo valor de goles em KV
+5. **Mensagens dinâmicas**: Adaptar texto conforme goles remanescentes
+6. **Aplicar healing**: 5000 HP fixos por uso
+7. **Ativar cooldown**: setExhaustion de 10 min
+8. **Consumir item**: Remover 1 unidade do pote
+
+---
+
+## Patterns e Implementação
+
+### Padrão KV Storage para Multi-Uso
+
+Este script demonstra persistência de estado per-player:
+
+```lua
+-- Carregar com default
+local remainingGulps = player:kv():get("pot-of-blackjack") or math.random(2, 4)
+
+-- Decrementar
+remainingGulps = remainingGulps - 1
+
+-- Persistir
+player:kv():set("pot-of-blackjack", remainingGulps)
+```
+
+### Comparação: Pot of Blackjack vs Roasted Dragon Wings
+
+| Aspecto | Pot of Blackjack | Roasted Dragon Wings |
+|---------|---|---|
+| Consumível | Multi-uso (2-4 goles) | One-use |
+| Cooldown | Compartilhado (10 min) | Compartilhado (10 min) |
+| KV Storage | Sim (remainingGulps) | Não |
+| Healing | 5000 HP por gole | Não (condition só) |
+| Condition | Não | Sim (Shield +10) |
+| Mensagens | 2 variantes (goles) | 1 fixa |
+| RNG | Sim (2-4 inicial) | Não |
+
+### Ciclo de Vida do Item
+
+```
+Primeira Ativação:
+  ├─ ID: 11586
+  ├─ Goles: Random(2, 4)
+  ├─ Healing: +5000 HP
+  ├─ KV: Armazena goles-1
+  └─ Cooldown: 10 min
+
+Ativações Subsequentes (se < 10 min, bloqueado):
+  ├─ Carrega goles de KV
+  ├─ Healing: +5000 HP
+  ├─ Decrement goles
+  ├─ KV: atualiza novo valor
+  └─ Se goles == 0: Item removido
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: pot_of_blackjack.lua" icon="star">
+Análise completa do pote multi-uso com KV storage para rastreamento de estado, cooldown compartilhado e mensagens dinâmicas. Padrão avançado de persistência player-local.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Estado persistido com KV | Complexidade: Média
+</Aside>

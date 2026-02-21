@@ -1,0 +1,103 @@
+---
+title: Ghost
+description: Comando GM para alternar modo invisibilidade (ghost mode) com efeitos mágicos e feedback visual
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `ghost.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Alternar modo invisibilidade (ghost mode) |
+| **Comando** | `/ghost` |
+| **Requisito** | Acesso de Gamemaster |
+| **Separador** | Espaço |
+| **Efeitos Visuais** | Magic Effect ao ativar/desativar |
+| **Feedback** | Mensagens de texto ao jogador |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/ghost.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este é um simples comando GM que alterna o modo ghost (invisibilidade). Quando ativado, o jogador fica invisível e recebe efeito mágico `CONST_ME_YALAHARIGHOST`. Quando desativado, recebe efeito `CONST_ME_SMOKE`. Usa `isInGhostMode()` para verificar estado atual e `setGhostMode()` para alternar. Logging automático via `logCommand()` para auditoria de comandos GM.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `ghost.lua` implementa um comando TalkAction (`/ghost`) que permite a gamemasters alternar modo invisibilidade em tempo real. O sistema verifica o estado atual do ghost mode, alterna entre ativo/inativo, e fornece feedback visual através de efeitos mágicos (`CONST_ME_YALAHARIGHOST` quando invisível, `CONST_ME_SMOKE` quando visível) e mensagens de texto. Registra automaticamente o uso do comando através de `logCommand()` para auditoria. Requer acesso de gamemaster e usa separador de espaço.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local ghost = TalkAction("/ghost")
+
+-- 2. Função Principal (onSay)
+function ghost.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Obter posição atual do jogador
+    local position = player:getPosition()
+    
+    -- Alternar estado (inverte modo ghost atual)
+    local isGhost = not player:isInGhostMode()
+    player:setGhostMode(isGhost)
+    
+    -- Estados e feedback:
+    -- ATIVO (invisibilidade):
+    --   - Mensagem: "You are now invisible."
+    --   - Efeito: CONST_ME_YALAHARIGHOST
+    -- INATIVO (visible):
+    --   - Mensagem: "You are visible again."
+    --   - Efeito: CONST_ME_SMOKE
+    --   - Posição ajustada (x+1)
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+ghost:separator(" ")
+ghost:groupType("gamemaster")
+ghost:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **ghost.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/ghost` é utilizado.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavras do comando (`/ghost`)
+- `param` (string): Parâmetros adicionais (não utilizado neste comando)
+
+**Fluxo de Execução:**
+1. Registra comando em log via `logCommand(player, words, param)`
+2. Obtém posição atual do jogador
+3. Inverte estado do ghost mode: `isGhost = not player:isInGhostMode()`
+4. Aplica novo estado: `player:setGhostMode(isGhost)`
+5. **Se ativado (invisível):**
+   - Envia mensagem: "You are now invisible."
+   - Tipo de mensagem: `MESSAGE_HOTKEY_PRESSED`
+   - Efeito mágico: `CONST_ME_YALAHARIGHOST` na posição
+6. **Se desativado (visível):**
+   - Envia mensagem: "You are visible again."
+   - Tipo de mensagem: `MESSAGE_HOTKEY_PRESSED`
+   - Ajusta posição x + 1 (visual de reentrada)
+   - Efeito mágico: `CONST_ME_SMOKE` na posição ajustada
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `ghost.lua` é um comando TalkAction simples e direto para gerenciadores alternar invisibilidade. A implementação usa lógica booleana para inverter estado (`not isInGhostMode()`), fornece feedback visual imediato com efeitos mágicos apropriados, e registra todos os usos para auditoria. Funcionalidade essencial para gerenciadores em multiplayer TibiaDrome-like, permitindo inspeção de eventos sem interferência.

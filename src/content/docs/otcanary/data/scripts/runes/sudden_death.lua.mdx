@@ -1,0 +1,401 @@
+---
+title: "Spell/Rune - sudden_death.lua"
+description: "Runa de dano morte com fórmula agressiva para end-game"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `sudden_death.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 21 |
+| **ID do Item (runeId)** | 3155 |
+| **Level Requerido** | 45 |
+| **Magic Level Requerido** | 15 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_DEATHDAMAGE |
+| **Área** | Single target |
+| **Cooldown** | 2s |
+| **Cargas** | 3 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Bloqueio** | Sim |
+| **Agressividade** | Sim |
+| **Requer Target** | Sim |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_SUDDENDEATH_RUNE |
+| **Linhas de Código** | 36 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa de morte com fórmula AGRESSIVA para end-game. Dano morte puro (tipo raro). Escalabilidade extrema em MLvl (4.605-7.395). Level 45, MLvl 15 = apenas para mages experientes. Cargas poucas (3) indicam poder devastador. Requer target. Sons customizados.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/sudden_death.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(21)
+rune:group("attack")
+rune:name("sudden death rune")
+rune:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+rune:impactSound(SOUND_EFFECT_TYPE_SPELL_SUDDENDEATH_RUNE)
+rune:runeId(3155)
+rune:allowFarUse(true)
+rune:charges(3)
+rune:level(45)
+rune:magicLevel(15)
+rune:cooldown(2 * 1000)
+rune:groupCooldown(2 * 1000)
+rune:needTarget(true)
+rune:isBlocking(true)
+rune:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Morte Súbita - Dano End-Game**
+
+Esta runa implementa um **sistema de dano morte agressivo para mages experientes**:
+
+1. **Tipo Morte:**
+   - COMBAT_DEATHDAMAGE (tipo raro!)
+   - Dano puro morte
+   - Efeito MORTAREA (visual)
+
+2. **Fórmula Agressiva:**
+   - min = (level/5) + (maglevel*4.605) + 28
+   - max = (level/5) + (maglevel*7.395) + 46
+   - MLvl coeficiente EXTREMO (7.395 max!)
+
+3. **End-Game:**
+   - Level 45 (máximo/alto)
+   - MLvl 15 (mages experientes)
+   - Cargas poucas (3)
+
+4. **Sons Customizados:**
+   - Conjura: SPELL_OR_RUNE
+   - Impacto: SPELL_SUDDENDEATH_RUNE (dedicado!)
+
+**Fórmula Visual:**
+```
+level 45, mlvl 15:
+  min = 9 + 69.075 + 28 = 106.075
+  max = 9 + 110.925 + 46 = 165.925
+
+level 80, mlvl 30:
+  min = 16 + 138.15 + 28 = 182.15
+  max = 16 + 221.85 + 46 = 283.85
+```
+
+**Diferencial:** Única runa DEATHDAMAGE + escalabilidade extrema!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `sudden_death` oferece dano morte devastador:
+
+- **Dano:** COMBAT_DEATHDAMAGE escalável agressivo
+- **Fórmula:** (level/5) + (maglevel*4.605/7.395) + bônus (EXTREMA!)
+- **Target:** Requerido
+- **Cargas:** 3
+
+### Arquitetura
+
+Combat com fórmula callback agressiva:
+
+```
+local combat = Combat()
+├─ Type: DEATHDAMAGE
+├─ Effect: MORTAREA
+├─ Distance: SUDDENDEATH
+└─ Callback: onGetFormulaValues
+
+onGetFormulaValues()
+└─ min/max agressivo
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_DEATHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MORTAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_SUDDENDEATH)
+```
+
+**Propósito:** Combat de dano morte.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_DEATHDAMAGE | Dano morte |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_MORTAREA | Efeito morte |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_SUDDENDEATH | Projétil morte |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 4.605) + 28
+	local max = (level / 5) + (maglevel * 7.395) + 46
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano morte agressivo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 4.605) + 28
+max = (level / 5) + (maglevel * 7.395) + 46
+```
+
+**Pesos:**
+- Level: 0.2 por ponto (baixo)
+- Maglevel min: 4.605 (EXTREMO!)
+- Maglevel max: 7.395 (EXTREMO!)
+- Bônus: 28/46 (significativo)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 45 | 15 | 106 | 166 |
+| 60 | 20 | 138 | 224 |
+| 80 | 30 | 182 | 284 |
+| 100 | 40 | 222 | 352 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Morte súbita ativada |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Fórmula Extrema
+
+```lua
+local min = (level / 5) + (maglevel * 4.605) + 28
+local max = (level / 5) + (maglevel * 7.395) + 46
+```
+
+**Benefício:** MLvl dominante = dano escala fortemente.
+
+### Padrão 2: Cargas Poucas
+
+```lua
+rune:charges(3)
+```
+
+**Benefício:** Poder devastador = escassez táctica.
+
+### Padrão 3: Sons Customizados
+
+```lua
+rune:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+rune:impactSound(SOUND_EFFECT_TYPE_SPELL_SUDDENDEATH_RUNE)
+```
+
+**Benefício:** Áudio dedicado = identidade runa.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano morte agressivo escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(player, 60, 20)
+// min = 12 + 92.1 + 28 = 132.1
+// max = 12 + 147.9 + 46 = 205.9
+// Retorna: -132.1, -205.9
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Lança morte súbita em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Target (obrigatório) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Morte ativada |
+| `false` | Target falhou |
+
+**Efeito:**
+- Projétil morte viaja
+- Impacto MORTAREA
+- Dano morte agressivo
+- Single target
+
+**Exemplo:**
+
+```lua
+-- Mage nível 60, MLvl 20
+rune.onCastSpell(mage, targetVariant, false)
+// Target obrigatório
+// Projétil morte
+// Impacto MORTAREA (visual)
+// Dano: -132 a -206
+// Som SUDDENDEATH
+// Resultado: Inimigo eliminado!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Dano Finalizer
+
+```lua
+-- Mage experiente (lvl 45+)
+// Danom morte extremo
+// Target único letal
+```
+
+### Caso 2: PvP High-Level
+
+```lua
+-- Duels entre mages
+// Cargas poucas = estratégico
+// Timing crítico
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_DEATHDAMAGE (tipo raro)
+- **Effects:** CONST_ME_MORTAREA, CONST_ANI_SUDDENDEATH
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Dano morte end-game |
+| **Dano Type** | COMBAT_DEATHDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*4.605)+28, max=(lvl/5)+(mlvl*7.395)+46 |
+| **Area** | Single target |
+| **Cargas** | 3 (poucas) |
+| **Distancia** | Sim (allowFarUse) |
+| **Bloqueio** | Sim |
+| **Target** | Requerido |
+| **Level** | 45 (end-game) |
+| **MLvl** | 15 |
+| **Padrão** | Fórmula extrema MLvl + sons customizados |

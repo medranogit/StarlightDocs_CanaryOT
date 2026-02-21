@@ -1,0 +1,445 @@
+---
+title: "Spell - energy_strike.lua"
+description: "Spell de golpe energia multi-vocação level 12 com dano escalável"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `energy_strike.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 88 |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Vocações** | Druid, Elder Druid, Sorcerer, Master Sorcerer |
+| **Level Requerido** | 12 |
+| **Mana Requerida** | 20 |
+| **Words** | exori vis |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Cooldown** | 2s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level based (1.403-2.203 MLvl) - ALTA! |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_ENERGY_STRIKE |
+| **Requer Caster/Target/Direction** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 31 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de golpe energia multi-vocação para level 12 MUITO CEDO. Dano energia com escalabilidade MUITO ALTA em MLvl (1.403-2.203). Fórmula potente com bônus fixos. 20 mana (baato). Range 3. Premium only. Cooldown rápido 2s. RARO: suporta Druid/Elder Druid + Sorcerer/Master Sorcerer (4 vocações!). Efeito ENERGYAREA.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/energy_strike.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(88)
+spell:name("Energy Strike")
+spell:words("exori vis")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_ENERGY_STRIKE)
+spell:level(12)
+spell:mana(20)
+spell:range(3)
+spell:isPremium(true)
+spell:needCasterTargetOrDirection(true)
+spell:blockWalls(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("druid;true", "elder druid;true", "sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Golpe Energia - Multi-Vocação Early!**
+
+Este spell implementa um **sistema raro de spell energia multi-vocação com escalabilidade MLvl extrema**:
+
+1. **Multi-Vocação (RARO!):**
+   - Druid + Elder Druid
+   - Sorcerer + Master Sorcerer
+   - 4 vocações = MUITO RARO!
+   - Level 12 = acesso CEDO para todas!
+
+2. **Escalabilidade Extrema:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 1.403) + 8
+   - max = (level/5) + (maglevel × 2.203) + 13
+   - Coef MLvl MUITO ALTOS (1.4-2.2!)
+
+3. **Very Early Premium:**
+   - Level 12 (MUITO CEDO!)
+   - 20 mana (baato)
+   - Premium only
+   - Cooldown 2s (rápido)
+
+4. **Tipo Energy:**
+   - COMBAT_ENERGYDAMAGE
+   - Efeito ENERGYAREA
+   - Range 3 (ranged)
+   - Targeting flexível
+
+**Fórmula Visual:**
+```
+Druid/Sorcerer lvl 12, mlvl 5:
+  min = 2.4 + 7.015 + 8 = 17.4
+  max = 2.4 + 11.015 + 13 = 26.4
+
+Druid/Sorcerer lvl 40, mlvl 15:
+  min = 8 + 21.045 + 8 = 37.045
+  max = 8 + 33.045 + 13 = 54.045
+```
+
+**Diferencial:** Multi-vocação acesso cedo nível 12!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `energy_strike` oferece dano energia escalável MULTI-VOCAÇÃO:
+
+- **Dano:** COMBAT_ENERGYDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*1.403/2.203) + bônus (EXTREMA!)
+- **Mana:** 20 (baato)
+- **Level:** 12 (MUITO CEDO!)
+- **Vocações:** 4 (Druid + Sorcerer!)
+
+### Arquitetura
+
+Combat com callback magic-level:
+
+```
+local combat = Combat()
+├─ Type: ENERGYDAMAGE
+├─ Effect: ENERGYAREA
+├─ Distance: ENERGY
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max escalável extremo
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
+```
+
+**Propósito:** Combat de dano energia.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ENERGYDAMAGE | Dano energia |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ENERGYAREA | Efeito área energia |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ENERGY | Projétil energia |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.403) + 8
+	local max = (level / 5) + (maglevel * 2.203) + 13
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano energia escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 1.403) + 8
+max = (level / 5) + (maglevel * 2.203) + 13
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 1.403 (MUITO ALTO!)
+- Maglevel max: 2.203 (MUITO ALTO!)
+- Bônus: 8/13 (significativo)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 12 | 5 | 17 | 26 |
+| 30 | 10 | 28 | 43 |
+| 50 | 15 | 40 | 60 |
+| 80 | 25 | 65 | 97 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Energy strike ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback magic |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Escalabilidade MLvl Extrema
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.403) + 8
+	local max = (level / 5) + (maglevel * 2.203) + 13
+	return -min, -max
+end
+```
+
+**Benefício:** Dano escala muito com magic level.
+
+### Padrão 2: Premium Early Access Multi-Vocação
+
+```lua
+spell:isPremium(true)
+spell:level(12)
+spell:vocation("druid;true", "elder druid;true", "sorcerer;true", "master sorcerer;true")
+```
+
+**Benefício:** Acesso CEDO level 12 para Druid + Sorcerer.
+
+### Padrão 3: Targeting Flexível
+
+```lua
+spell:needCasterTargetOrDirection(true)
+```
+
+**Benefício:** Target ou direction = flexível.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano energia escalável extremo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(druid, 30, 10)
+// min = 6 + 14.03 + 8 = 28.03
+// max = 6 + 22.03 + 13 = 41.03
+// Retorna: -28, -41
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura golpe energia em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druid ou Sorcerer conjurador |
+| `var` | Variant | Target ou direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Energy strike ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 12+
+- 20 mana
+- Target ou direction
+- Premium account
+- Cooldown 2s
+
+**Efeito:**
+- Efeito energia área
+- Projétil energia
+- Dano magic-level escalável
+- Range 3 tiles
+- Bloqueia walls
+
+**Exemplo:**
+
+```lua
+-- Druid lvl 30, MLvl 10
+spell.onCastSpell(druid, targetVariant)
+// Validações:
+//   ✓ Level 30 >= 12
+//   ✓ Mana 20 disponível
+//   ✓ Target ou direction
+//   ✓ Premium account
+// Combat executa
+// Projétil energia viaja
+// Impacto ENERGYAREA
+// Dano: -28 a -41
+// Range 3 tiles
+// Cooldown 2s
+// Resultado: Golpe energia cedo!
+
+-- Sorcerer lvl 30, MLvl 10
+spell.onCastSpell(sorcerer, directionVariant)
+// Mesma validação
+// Mesma fórmula
+// Mesma duração (2s CD)
+// Resultado: Golpe energia cedo para AMBAS vocações!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Very Early Access
+
+```lua
+-- Druid ou Sorcerer lvl 12+ premium
+// Energy Strike = primeiros golpes energia
+// Acesso CEDO nível 12
+// Escalabilidade forte MLvl
+```
+
+### Caso 2: Multi-Vocação Training
+
+```lua
+-- Hybrid druid/sorcerer farming
+// Energy Strike = opção AMBAS vocações
+// Level 12 = acesso sincronizado
+// Premium advantage
+```
+
+### Caso 3: Leveling Advantage
+
+```lua
+-- Premium player farm mobs
+// Energy Strike ml level 12
+// Escalabilidade crescente
+// Quick leveling spell
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_ENERGYDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Effects:** CONST_ME_ENERGYAREA, CONST_ANI_ENERGY
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Golpe energia escalável |
+| **Dano Type** | COMBAT_ENERGYDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*1.403)+8, max=(lvl/5)+(mlvl*2.203)+13 |
+| **Mana** | 20 |
+| **Range** | 3 |
+| **Level** | 12 (MUITO cedo!) |
+| **Cooldown** | 2s (rápido) |
+| **Premium** | Sim |
+| **Vocações** | Druid, Elder Druid, Sorcerer, Master Sorcerer (4 classes!) |
+| **Padrão** | Magic-level extrema escalável + multi-vocação + early access |

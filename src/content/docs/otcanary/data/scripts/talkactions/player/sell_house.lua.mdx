@@ -1,0 +1,226 @@
+---
+title: Sell House
+description: Comando PLAYER para iniciar negociação de venda de casa
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# 🛠️ Documentação: sell_house.lua
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Arquivo** | `sell_house.lua` |
+| **Tipo** | TalkAction (Comando de Jogador) |
+| **Acesso** | normal (PLAYER) |
+| **Comando** | `!sellhouse` |
+| **Descrição** | Iniciar negociação de venda de casa com outro jogador |
+| **Parâmetro** | Nome do jogador comprador |
+| **Ativação Condicional** | Apenas se `CYCLOPEDIA_HOUSE_AUCTION` = false |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/sell_house.lua
+```
+
+## 💡 Utilidade
+
+Este comando permite que proprietários de casas iniciem uma negociação de venda diretamente com outro jogador. O sistema valida se o vendedor está dentro da casa e se o comprador potencial é válido antes de inicializar o processo de trade.
+
+## 📄 Visão Geral do Código Resumo Executivo
+
+O script `sell_house.lua` implementa um sistema de negociação de casa:
+
+- **Obtenção de Comprador**: Busca jogador por nome fornecido
+- **Validação de Existência**: Verifica se comprador existe e não é o mesmo jogador
+- **Validação de Localização**: Confirma se vendedor está dentro da casa
+- **Inicialização de Trade**: Chama método de trade do object House
+- **Tratamento de Erros**: Retorna valor de erro apropriado
+- **Registro Condicional**: Só registra se House Auction está desabilitado
+
+### Fluxo Lógico Resumido
+
+1. Busca jogador comprador por nome
+2. Valida que comprador existe e não é o vendedor
+3. Valida que vendedor está dentro de uma casa
+4. Inicia trade entre vendedor e comprador
+5. Retorna mensagem de erro se houver problema
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal: `sellHouse.onSay()`
+
+```lua
+function sellHouse.onSay(player, words, param)
+    local tradePartner = Player(param)
+    if not tradePartner or tradePartner == player then
+        player:sendCancelMessage("Trade player not found.")
+        return true
+    end
+
+    local house = player:getTile():getHouse()
+    if not house then
+        player:sendCancelMessage("You must stand in your house to initiate the trade.")
+        return true
+    end
+
+    local returnValue = house:startTrade(player, tradePartner)
+    if returnValue ~= RETURNVALUE_NOERROR then
+        player:sendCancelMessage(returnValue)
+    end
+    return true
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando (vendedor)
+- `words` (string): Palavra-chave do comando
+- `param` (string): Nome do jogador comprador
+
+**Retorno:**
+- `true`: Comando processado com sucesso
+
+#### Lógica Detalhada
+
+1. **Obtenção de Comprador**:
+   - `Player(param)`: Busca jogador por nome fornecido em `param`
+   - Retorna object Player ou `nil` se não encontrado
+
+2. **Validação de Comprador**:
+   - Verifica: `not tradePartner` (não existe)
+   - Verifica: `tradePartner == player` (é o mesmo jogador)
+   - Se verdadeiro para qualquer: envia "Trade player not found."
+
+3. **Obtenção de Casa**:
+   - `player:getTile()`: Obtém tile na posição do jogador
+   - `:getHouse()`: Obtém house do tile (ou nil)
+
+4. **Validação de Localização**:
+   - Verifica: `not house` (não está em uma casa)
+   - Se verdadeiro: envia "You must stand in your house to initiate the trade."
+
+5. **Inicialização de Trade**:
+   - `house:startTrade(player, tradePartner)`: Inicia negociação
+   - Retorna valor de resultado
+
+6. **Tratamento de Erro**:
+   - Se `returnValue ~= RETURNVALUE_NOERROR`: envia mensagem de erro
+   - Mensagem é o próprio valor de erro (string descritiva)
+
+### Variáveis Globais Utilizadas
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `RETURNVALUE_NOERROR` | number | Constante para sucesso (0) |
+
+### Funções Globais Utilizadas
+
+| Função | Origem | Descrição |
+|--------|--------|-----------|
+| `Player(name)` | Core do Jogo | Busca jogador por nome, retorna object ou nil |
+| `player:getTile()` | Object Player | Retorna tile na posição do jogador |
+| `:getHouse()` | Object Tile | Retorna house do tile (ou nil) |
+| `house:startTrade(seller, buyer)` | Object House | Inicia negociação de venda |
+| `player:sendCancelMessage(text)` | Object Player | Envia mensagem de cancelamento |
+
+## 🤖 Informações da Documentação
+
+| Info | Detalhe |
+|------|---------|
+| **Versão Documentada** | Build Canary - Estrutura Completa |
+| **Tipo de Documento** | Documentação Técnica de TalkAction |
+| **Completude** | Análise Completa do Código-Fonte |
+| **Últimas Verificações** | Validação de Sintaxe Lua, Fluxo Lógico |
+
+---
+
+## 📋 Resumo de Implementação
+
+**Padrão de Registro (Condicional):**
+
+```lua
+if not configManager.getBoolean(configKeys.CYCLOPEDIA_HOUSE_AUCTION) then
+    sellHouse:separator(" ")
+    sellHouse:groupType("normal")
+    sellHouse:register()
+end
+```
+
+**Importante:** Este comando APENAS é registrado quando `CYCLOPEDIA_HOUSE_AUCTION` está DESABILITADO. Se o sistema de leilão de casas está habilitado, o comando não fica disponível.
+
+**Uso Prático:**
+
+Quando um jogador digita `!sellhouse <nome>`:
+
+1. Sistema busca jogador comprador por nome
+2. Valida que comprador existe e não é o vendedor
+3. Valida que vendedor está dentro de uma casa
+4. Inicia processo de trade/negociação entre os dois jogadores
+5. Ambos recebem interface de negociação
+
+**Exemplos de Execução:**
+
+```
+--- Sucesso ---
+Jogador A: !sellhouse PlayerB (dentro de sua casa)
+Sistema: Inicia negociação
+Ambos: Recebem interface de trade de casa
+Resultado: Janela de negociação aberta para ambos
+
+--- Erro: Comprador não existe ---
+Jogador A: !sellhouse PlayerC (que não existe)
+Sistema: "Trade player not found."
+
+--- Erro: Nome do próprio jogador ---
+Jogador A: !sellhouse PlayerA
+Sistema: "Trade player not found."
+
+--- Erro: Fora de casa ---
+Jogador A: !sellhouse PlayerB (fora de casa)
+Sistema: "You must stand in your house to initiate the trade."
+
+--- Erro: Problema na negociação ---
+Jogador A: !sellhouse PlayerB
+Sistema: (mensagem de erro específica do house:startTrade)
+```
+
+**Contexto de Uso:**
+
+Este comando é crítico para:
+- Permitir venda direta de casas entre jogadores
+- Gerenciar transações de propriedades
+- Integrar-se com sistema de negociação (trade) nativo
+- Validar propriedade e localização antes de proceder
+
+---
+
+## 📋 Sistemas Relacionados
+
+**Dependências:**
+- `house:startTrade()`: Sistema de negociação de casas
+- Player lookup: Sistema de busca de jogadores online
+- Tile system: Sistema de localização do jogador
+
+**Validações Cascata:**
+
+1. **Comprador Válido**: Existe e não é o vendedor
+2. **Localização**: Está dentro da casa
+3. **Negociação**: Inicia trade entre ambos
+
+**Return Values Possíveis:**
+
+- `RETURNVALUE_NOERROR`: Negociação iniciada com sucesso
+- Outros valores: Erros específicos do sistema de trade
+
+---
+
+## 🔗 Relacionados
+
+- **Arquivo de Padrão**: `data/npclib/npc_system/custom_modules.lua.mdx`
+- **Sistema**: TalkActions (Comandos de Conversa)
+- **Acesso**: PLAYER (normal)
+- **Relacionados**: House Management, Trade System
+- **Alternativa**: !leavehouse (abandonar casa sem venda)
+- **Detalhe Arquitetura**: Ver `ARQUITETURA_PROJETO.mdx` para contexto completo

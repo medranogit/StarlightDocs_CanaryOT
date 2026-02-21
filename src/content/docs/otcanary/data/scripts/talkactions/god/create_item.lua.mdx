@@ -1,0 +1,312 @@
+---
+title: Create Item
+description: Comando GOD para criar items por ID/nome com suporte a quantidade, tier e stackable
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `create_item.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Criar items customizados |
+| **Comando** | `/i <id\|name>, [quantity], [tier]` |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **ID Mínimo Válido** | 100 (evita itens especiais) |
+| **Suporte Tier** | 0-10 (forge tiers) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/create_item.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando complexo com validações múltiplas. Suporta busca por nome (ItemType) ou ID (fallback numérico). Rejeita ID < 100. Detecta tipo (stackable, fluidcontainer, charges). Para stackable: cria containers (2854) e distribui items entre eles. Para não-stackable: usa addItem com result table check. Tier (0-10) aplica si fornecido. Item decay automático.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `create_item.lua` implementa um comando TalkAction (`/i`) que cria items altamente customizáveis. O sistema suporta busca por nome/ID, validação de ID mínimo 100, detecção de tipo (stackable/fluidcontainer), distribuição automática entre containers, suporte a tier forge (0-10), decay automático, e feedback visual GREEN. Ferramenta avançada de item creation.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local createItem = TalkAction("/i")
+
+function createItem.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    local split = param:split(",")
+    
+    -- Buscar item por nome
+    local itemType = ItemType(split[1])
+    if itemType:getId() == 0 then
+        -- Fallback: buscar por ID numérico
+        itemType = ItemType(tonumber(split[1]))
+        if not tonumber(split[1]) or itemType:getId() == 0 then
+            player:sendCancelMessage("There is no item with that id or name.")
+            return true
+        end
+    end
+    
+    -- Rejeitar itens especiais (ID < 100)
+    if itemType:getId() < 100 then
+        return true
+    end
+    
+    -- Obter propriedades do item
+    local charges = itemType:getCharges()
+    local count = tonumber(split[2] or 1)
+    
+    if count then
+        -- Tipo 1: Stackable (moedas, flechas, etc)
+        if itemType:isStackable() then
+            local mainContainer = player:getSlotItem(CONST_SLOT_BACKPACK)
+            if not mainContainer then
+                player:addItemEx(Game.createItem(2854), CONST_SLOT_BACKPACK)
+                mainContainer = player:getSlotItem(CONST_SLOT_BACKPACK)
+            end
+            
+            local remainingCount = count
+            local stackSize = itemType:getStackSize()
+            
+            -- Distribuir entre containers automaticamente
+            while remainingCount > 0 do
+                local freeSlots = mainContainer and (mainContainer:getCapacity() - mainContainer:getSize()) or 0
+                if freeSlots <= 1 and mainContainer:getSize() ~= 0 then
+                    mainContainer = Game.createItem(2854)
+                    player:addItemEx(mainContainer)
+                end
+                
+                local countToAdd = math.min(remainingCount, stackSize)
+                local tmpItem = mainContainer:addItem(itemType:getId(), countToAdd)
+                if tmpItem then
+                    remainingCount = remainingCount - countToAdd
+                else
+                    logger.warn("Failed to add item: {}, to container", itemType:getName())
+                    break
+                end
+            end
+            
+            player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+            return true
+        
+        -- Tipo 2: Não-stackable (armas, escudos)
+        elseif not itemType:isFluidContainer() then
+            local min = 100
+            if charges > 0 then
+                min = charges
+            end
+            count = math.min(min, math.max(1, count))
+        
+        -- Tipo 3: Fluid container (poções, etc)
+        else
+            count = math.max(0, count)
+        end
+    else
+        if not itemType:isFluidContainer() then
+            if charges > 0 then
+                player:addItem(itemType:getId(), 0)
+                return true
+            else
+                count = 1
+            end
+        else
+            count = 0
+        end
+    end
+    
+    -- Aplicar com tier se fornecido
+    local result
+    local tier = tonumber(split[3])
+    if not tier then
+        result = player:addItem(itemType:getId(), count)
+    else
+        if tier <= 0 or tier > 10 then
+            player:sendCancelMessage("Invalid tier count.")
+            return true
+        else
+            result = player:addItem(itemType:getId(), count, true, 0, CONST_SLOT_WHEREEVER, tier)
+        end
+    end
+    
+    -- Decay automático para não-stackables
+    if result then
+        if not itemType:isStackable() then
+            if type(result) == "table" then
+                for _, item in ipairs(result) do
+                    item:decay()
+                end
+            else
+                result:decay()
+            end
+        end
+        player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+    end
+    return true
+end
+
+createItem:separator(" ")
+createItem:groupType("god")
+createItem:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **createItem.onSay(player, words, param)**
+
+**Descrição:** Função callback que cria items com suporte a nome/ID, quantidade e tier.
+
+**Parâmetros:**
+- `param` (string): `<id|name>, [quantity], [tier]`
+
+**Formato de Comando:**
+```
+/i 2160                         -- Cria 1 gold coin
+/i gold coin, 100              -- Cria 100 gold coins
+/i 2457, 5                      -- Cria 5 spears
+/i knight sword, 1, 5           -- Cria knight sword tier 5
+/i rope, 50                     -- Cria 50 ropes (distribuído em containers)
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Parse de Parâmetros:**
+   ```lua
+   local split = param:split(",")
+   -- Exemplo: "20, 5, 3" -> {"20", " 5", " 3"}
+   ```
+
+3. **Busca de Item:**
+   ```lua
+   local itemType = ItemType(split[1])
+   if itemType:getId() == 0 then
+       itemType = ItemType(tonumber(split[1]))
+   ```
+   - Tenta por nome primeiro
+   - Fallback para ID numérico
+   - Se falha: "There is no item with that id or name."
+
+4. **Validação de ID Mínimo:**
+   ```lua
+   if itemType:getId() < 100 then
+       return true  -- Silencioso
+   ```
+   - Rejeita itens especiais (ID 0-99)
+
+5. **Detectar Tipo:**
+   ```lua
+   if itemType:isStackable() then
+       -- Tipo 1: Stackable
+   elseif not itemType:isFluidContainer() then
+       -- Tipo 2: Não-stackable
+   else
+       -- Tipo 3: Fluid container
+   end
+   ```
+
+6. **Modo Stackable - Distribuir entre Containers:**
+   ```lua
+   while remainingCount > 0 do
+       local freeSlots = mainContainer and (mainContainer:getCapacity() - mainContainer:getSize()) or 0
+       if freeSlots <= 1 then
+           mainContainer = Game.createItem(2854)  -- Criar novo container
+           player:addItemEx(mainContainer)
+       end
+       local countToAdd = math.min(remainingCount, stackSize)
+       mainContainer:addItem(itemType:getId(), countToAdd)
+       remainingCount = remainingCount - countToAdd
+   end
+   ```
+
+7. **Validação de Tier:**
+   ```lua
+   local tier = tonumber(split[3])
+   if tier and (tier <= 0 or tier > 10) then
+       player:sendCancelMessage("Invalid tier count.")
+       return true
+   end
+   ```
+
+8. **Aplicar com `addItem()`:**
+   ```lua
+   if not tier then
+       result = player:addItem(itemType:getId(), count)
+   else
+       result = player:addItem(itemType:getId(), count, true, 0, CONST_SLOT_WHEREEVER, tier)
+   end
+   ```
+
+9. **Decay Automático:**
+   ```lua
+   if not itemType:isStackable() then
+       if type(result) == "table" then
+           for _, item in ipairs(result) do
+               item:decay()
+           end
+       else
+           result:decay()
+       end
+   end
+   ```
+
+10. **Feedback Visual:**
+    - GREEN magic effect em sucesso
+
+**Tabela de Tipos de Item:**
+
+| Tipo | Exemplos | Comportamento |
+|---|---|---|
+| Stackable | Moedas, flechas, ropes | Distribuído em containers |
+| Não-stackable | Espadas, escudos, rings | Sem duplicação automática |
+| Fluid Container | Poções, garrafas | Quantidade define tipo |
+
+**Exemplos de Uso Avançado:**
+
+```
+/i gold coin, 1000
+Resultado:
+- 1000 moedas criadas
+- Automático distribuído em múltiplos containers se necessário
+- Stacksize respeitado para cada stack
+
+/i small healing potion, 50
+Resultado:
+- 50 potions criadas e distribuídas
+
+/i 5461, 1, 8
+Resultado:
+- Elemental Bow criado com Tier 8
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `ItemType(name\|id)` | Busca item por nome ou ID |
+| `itemType:getId()` | Obtém ID do item |
+| `itemType:getCharges()` | Obtém charges |
+| `itemType:isStackable()` | Valida stackable |
+| `itemType:isFluidContainer()` | Valida fluid container |
+| `itemType:getStackSize()` | Tamanho máximo stack |
+| `player:getSlotItem(slot)` | Obtém item de slot |
+| `Game.createItem(id)` | Cria novo item |
+| `mainContainer:addItem(id, count)` | Adiciona ao container |
+| `player:addItem(id, count, ...)` | Adiciona ao jogador |
+| `item:decay()` | Inicia decay do item |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `create_item.lua` é ferramenta avançada de item creation. Implementação com busca dupla (nome/ID), detecção de tipo automática, distribuição em containers, tier support, decay automático, validações rigorosas. Essencial para GMs testar, recompensar, ou debugar items. Design robusto suporta todos tipos de itens.

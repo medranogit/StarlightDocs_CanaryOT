@@ -1,0 +1,304 @@
+---
+title: "Spell/Rune - antidote_rune.lua"
+description: "Runa de suporte que remove intoxicação (poison) do alvo com efeito curativo"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `antidote_rune.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID do Item (runeId)** | 3153 |
+| **Level Requerido** | 15 |
+| **Magic Level Requerido** | 0 |
+| **Grupo** | healing |
+| **Cooldown** | 1s |
+| **Cargas** | 1 |
+| **Requer Target** | Sim |
+| **Agressividade** | Não (não prejudicial) |
+| **Linhas de Código** | 22 |
+| **Complexidade** | Baixa |
+
+**Descrição:**
+Runa de suporte que cura intoxicação (poison) através de um sistema de divulgação (dispel) via Combat. Afeta apenas o alvo e remove a condition de poison aplicada.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/antidote_rune.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:runeId(3153)
+rune:level(15)
+rune:magicLevel(0)
+rune:needTarget(true)
+rune:group("healing")
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Cura de Intoxicação via Dispel**
+
+Esta runa implementa um **sistema minimalista de remoção de poison**:
+
+1. **Combat com DISPEL:** Remove apenas CONDITION_POISON
+2. **Efeito Mágico:** Blue + som curativo
+3. **Sem Fórmula:** Efeito fixo (não escalável)
+4. **Target Requerido:** Deve apontar alvo
+
+**Fluxo:**
+```
+Jogador aponta runa no alvo intoxicado
+├─ Valida se alvo é válido
+├─ Combat executa DISPEL de poison
+├─ Condition POISON é removida do alvo
+└─ Efeito MAGIC_BLUE + som curativo
+```
+
+**Diferencial:** Runa mais simples de cura - sem dano, apenas remover efeito.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `antidote_rune` oferece cura rápida de intoxicação:
+
+- **Efeito:** Remove condition POISON
+- **Alvo:** Requerido (needTarget=true)
+- **Escalabilidade:** Nenhuma (sem fórmula)
+- **Grupo:** healing (suporte)
+
+### Arquitetura
+
+Padrão Combat com DISPEL parameter:
+
+```
+local combat = Combat()
+├─ COMBAT_PARAM_EFFECT: MAGIC_BLUE
+├─ COMBAT_PARAM_AGGRESSIVE: 0 (não agressivo)
+├─ COMBAT_PARAM_DISPEL: CONDITION_POISON
+
+rune.onCastSpell()
+└─ combat:execute(creature, var)
+```
+
+### Fluxo Lógico Resumido
+
+| Etapa | Descrição |
+|---|---|
+| **onCastSpell** | Handler chamado ao conjuração |
+| **combat:execute** | Executa combat (dispel de poison) |
+| **Remove Condition** | CONDITION_POISON é removida |
+| **Efeito** | MAGIC_BLUE no alvo |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_POISON)
+```
+
+**Propósito:** Instância de Combat configurada para dispel.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_EFFECT` | CONST_ME_MAGIC_BLUE | Efeito visual ao alvo |
+| `COMBAT_PARAM_AGGRESSIVE` | 0 | Não é agressivo/prejudicial |
+| `COMBAT_PARAM_DISPEL` | CONDITION_POISON | Remove condition específica |
+
+**Características:**
+- Sem fórmula (sem dano)
+- Sem área (single target)
+- Sem distância (apenas direto melhorado)
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler principal da runa ao conjuração.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Alvo da runa |
+| `isHotkey` | boolean | Se conjurado via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Dispel executado com sucesso |
+| `false` | Alvo inválido ou sem poison |
+
+**Lógica:**
+- Retorna resultado direto de `combat:execute()`
+- Sem validação adicional (Combat faz isso)
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat com dispel |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onCastSpell):**
+- Nenhuma (usa parâmetros diretos)
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Combat com DISPEL
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_POISON)
+
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Benefício:** Remoção de condition sem cálculo de mana/dano.
+
+### Padrão 2: Runa Não-Agressiva
+
+```lua
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+```
+
+**Benefício:** Combat não dispara triggers de "ataque", apenas dispel.
+
+### Padrão 3: Efeito Fixo
+
+```lua
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+```
+
+**Benefício:** Mesmo efeito independente de level/maglevel.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Remove intoxicação (poison) do alvo via dispel.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Alvo (obtém via needTarget) |
+| `isHotkey` | boolean | Conjurado via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Dispel sucesso, poison removido |
+| `false` | Falha (alvo inválido, sem poison) |
+
+**Efeito:**
+- Magic Blue no alvo
+- Remove CONDITION_POISON
+- Som curativo (impactSound)
+
+**Exemplo:**
+
+```lua
+-- Aliado intoxicado
+rune.onCastSpell(player, allyVariant, false)
+-- Combat executa dispel
+-- CONDITION_POISON removido do aliado
+// Resultado: Aliado curado, sem mais poison dano
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Cura de Poison
+
+```lua
+-- Jogador ou monstro está envenenado (poison damage)
+-- Caster aponta runa no envenenado
+// Combat remove condition poison
+// Envenenado volta ao normal (sem damage over time)
+```
+
+### Caso 2: Alvo sem Poison
+
+```lua
+-- Alvo não tem condition poison
+// Combat executa, mas sem efeito visual
+// Retorna false (nada a remover)
+```
+
+### Caso 3: Autocast em Aliado
+
+```lua
+-- Runa configurada com needTarget
+-- Requer clique no alvo ou via spell interface
+// Apenas funciona com target válido selecionado
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat system
+- **Conditions:** CONDITION_POISON
+- **Effects:** CONST_ME_MAGIC_BLUE
+- **Sound:** SOUND_EFFECT_TYPE_SPELL_CURE_POISON_RUNE
+- **Return Values:** RETURNVALUE_* codes
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função Principal** | Remove condition poison |
+| **Combat Type** | DISPEL (não dano) |
+| **Efeito** | MAGIC_BLUE (fixo) |
+| **Target** | Requerido |
+| **Escalabilidade** | Nenhuma (sem fórmula) |
+| **Agressividade** | 0 (não agressivo) |
+| **Padrão** | Combat simples com dispel |

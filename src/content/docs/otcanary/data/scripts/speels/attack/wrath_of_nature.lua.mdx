@@ -1,0 +1,422 @@
+---
+title: "Spell - wrath_of_nature.lua"
+description: "Spell de fúria natural para druids level 55 com escalabilidade magic-level LINEAR SUPREMA"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `wrath_of_nature.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 56 |
+| **Tipo de Dano** | COMBAT_EARTHDAMAGE |
+| **Vocações** | Druid, Elder Druid |
+| **Level Requerido** | 55 |
+| **Mana Requerida** | 700 |
+| **Words** | exevo gran mas tera |
+| **Área** | AREA_CIRCLE6X6 (círculo grande!) |
+| **Cooldown** | 40s |
+| **GroupCooldown** | 4s / 40s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level LINEAR SUPREMA (5.0-10.0 coef - MÁXIMA LINEAR!) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_WRATH_OF_NATURE |
+| **SelfTarget** | Sim (isSelfTarget) |
+| **Bloqueia Walls** | Não |
+| **Grupo** | attack, focus |
+| **Linhas de Código** | 34 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de fúria natural (Wrath of Nature) para druids nível 55 (mid-high!). Dano terra escalável magic-level LINEAR SUPREMAMENTE ALTO (5.0-10.0 coef - MÁXIMO LINEAR!). 700 mana (MUITO CARO!). Area CIRCLE6X6 auto-cast self-target. Cooldown 40s (EXTREMO!). Premium only. Grupo focus. Mid-high druid power burst AOE spell!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/wrath_of_nature.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack", "focus")
+spell:id(56)
+spell:name("Wrath of Nature")
+spell:words("exevo gran mas tera")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_WRATH_OF_NATURE)
+spell:level(55)
+spell:mana(700)
+spell:isPremium(true)
+spell:isSelfTarget(true)
+spell:cooldown(40 * 1000)
+spell:groupCooldown(4 * 1000, 40 * 1000)
+spell:needLearn(false)
+spell:vocation("druid;true", "elder druid;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fúria Natural - Mid-High Linear Magic-Level SUPREMA**
+
+Este spell implementa um sistema de AOE burst com escalabilidade LINEAR SUPREMA:
+
+1. **Magic-Level LINEAR SUPREMAMENTE Alta:**
+   - min = (level/5) + (maglevel × 5.0)
+   - max = (level/5) + (maglevel × 10.0)
+   - Coef LINEAR (5.0-10.0!)
+   - MÁXIMA escalabilidade linear!
+
+2. **Mid-High Power Burst:**
+   - Level 55 (MID-HIGH!)
+   - 700 mana (MUITO CARO!)
+   - Premium only
+   - Cooldown 40s (EXTREMO!)
+
+3. **Self-Target AOE Circle:**
+   - AREA_CIRCLE6X6
+   - isSelfTarget: true
+   - Auto-cast no caster
+   - Blast radius grande
+
+4. **Tipo Terra:**
+   - COMBAT_EARTHDAMAGE
+   - Effect SMALLPLANTS
+   - Focus group attack
+   - Druid exclusive
+
+**Fórmula Visual:**
+```
+Druid lvl 55, mlvl 20:
+  min = 11 + 100 = 111
+  max = 11 + 200 = 211
+
+Druid lvl 55, mlvl 30:
+  min = 11 + 150 = 161
+  max = 11 + 300 = 311
+
+Druid lvl 55, mlvl 40:
+  min = 11 + 200 = 211
+  max = 11 + 400 = 411
+
+Druid lvl 55, mlvl 50:
+  min = 11 + 250 = 261
+  max = 11 + 500 = 511
+```
+
+**Diferencial:** Mid-high AOE burst magic-level LINEAR SUPREMA self-target!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `wrath_of_nature` oferece dano terra AOE LINEAR SUPREMO:
+
+- **Dano:** COMBAT_EARTHDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel × 5.0/10.0) (LINEAR SUPREMA!)
+- **Mana:** 700 (muito caro)
+- **Level:** 55 (mid-high)
+- **Area:** AREA_CIRCLE6X6 (círculo grande)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: EARTHDAMAGE
+├─ Effect: SMALLPLANTS
+├─ Area: CIRCLE6X6
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max magic-level LINEAR SUPREMA
+
+spell.onCastSpell(creature, var)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_SMALLPLANTS)
+combat:setArea(createCombatArea(AREA_CIRCLE6X6))
+```
+
+**Propósito:** Combat de AOE terra self-target mid-high.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_EARTHDAMAGE | Dano terra |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_SMALLPLANTS | Efeito plantas pequenas |
+| `Area` | AREA_CIRCLE6X6 | Círculo 6x6 |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 5)
+	local max = (level / 5) + (maglevel * 10)
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano terra AOE LINEAR SUPREMAMENTE escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 5.0)
+max = (level / 5) + (maglevel * 10.0)
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 5.0 (LINEAR SUPREMO!)
+- Maglevel max: 10.0 (LINEAR SUPREMO!)
+- Bônus: 0 (direto no coef!)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 55 | 20 | 111 | 211 |
+| 55 | 30 | 161 | 311 |
+| 55 | 40 | 211 | 411 |
+| 55 | 50 | 261 | 511 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Wrath ativado |
+| `false` | Self-target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | CIRCLE6X6 self-target |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Magic-Level LINEAR SUPREMA
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 5)
+	local max = (level / 5) + (maglevel * 10)
+	return -min, -max
+end
+```
+
+**Benefício:** Escalabilidade LINEAR SUPREMA sem bônus!
+
+### Padrão 2: Self-Target AOE Burst
+
+```lua
+spell:isSelfTarget(true)
+combat:setArea(createCombatArea(AREA_CIRCLE6X6))
+spell:group("attack", "focus")
+```
+
+**Benefício:** Auto-cast AOE burst ring self-target!
+
+### Padrão 3: Premium Expensive Focus
+
+```lua
+spell:isPremium(true)
+spell:mana(700)
+spell:cooldown(40 * 1000)
+```
+
+**Benefício:** Premium expensive focus spell!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano terra AOE LINEAR SUPREMAMENTE escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(druid, 55, 40)
+// min = 11 + 200 = 211
+// max = 11 + 400 = 411
+// Retorna: -211, -411
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura fúria natural em auto-cast self.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druid |
+| `var` | Variant | Não utilizado (self) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Wrath ativado |
+| `false` | Self-target falhou |
+
+**Requisitos:**
+- Level 55+
+- 700 mana (CARO!)
+- Self target
+- Premium account
+- Cooldown 40s
+
+**Efeito:**
+- Efeito plantas pequenas
+- Circle CIRCLE6X6
+- Dano magic-level LINEAR SUPREMA
+- Self target AOE
+- Multiple targets
+- Focus group
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Mid-High AOE Burst
+
+```lua
+-- Druid lvl 55+ premium
+// Wrath of Nature = AOE power burst
+// Magic-level LINEAR SUPREMA escalável
+// 700 mana = expensive! = powerful!
+// Self-target = controle perfeito
+// CIRCLE6X6 = cobertura grande
+```
+
+### Caso 2: Druid Focus Group
+
+```lua
+-- Premium druid mid-high burst
+// Wrath of Nature = dano terra AOE
+// Escalabilidade LINEAR SUPREMA magic-level
+// 55 magic-level = HUGE AOE damage
+// Focus group combos
+// Self-target timing!
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_EARTHDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Areas:** AREA_CIRCLE6X6
+- **Effects:** CONST_ME_SMALLPLANTS
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Mid-high AOE burst spell |
+| **Dano Type** | COMBAT_EARTHDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*5.0), max=(lvl/5)+(mlvl*10.0) |
+| **Mana** | 700 (muito caro) |
+| **Area** | AREA_CIRCLE6X6 |
+| **Level** | 55 (mid-high) |
+| **Cooldown** | 40s |
+| **Premium** | Sim |
+| **Group** | attack, focus |
+| **Vocações** | Druid, Elder Druid |
+| **Self-Target** | Sim |
+| **Padrão** | Magic-level LINEAR SUPREMA + AOE self-target + focus group |

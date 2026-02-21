@@ -1,0 +1,542 @@
+---
+title: "Spell - energy_wave.lua"
+description: "Spell de onda de energia AOE para sorcerers level 38 com WOD upgrade"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `energy_wave.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant - WOD) |
+| **ID do Spell** | 13 |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 38 |
+| **Mana Requerida** | 170 |
+| **Words** | exevo vis hur |
+| **Alcance** | -1 (direction) |
+| **Área** | SQUAREWAVE5+AREADIAGONAL_SQUAREWAVE5 (normal), WAVE7+AREADIAGONAL_WAVE7 (WOD) |
+| **Cooldown** | 8s |
+| **GroupCooldown** | 2s |
+| **Premium** | Não |
+| **Fórmula** | Magic-level based (4.5-9 MLvl) - EXTREMA! |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_ENERGY_WAVE |
+| **Sistema** | WOD (Wheel of Destiny) |
+| **WOD Skill** | Energy Wave (getWheelSpellAdditionalArea) |
+| **Requer Direction** | Sim |
+| **Bloqueia Walls** | Não especificado |
+| **Linhas de Código** | 53 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Spell de onda energia AOE para sorcerers nível 38 (mid-late). Dual combat system: normal SQUAREWAVE5+DIAGONAL vs WOD WAVE7+DIAGONAL. Sistema WOD com getWheelSpellAdditionalArea check. Fórmula magic-level EXTREMA escalável (4.5-9 coef). 170 mana (custoso). Direcionado. Cooldown 8s. Não premium. Efeito ENERGYAREA.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/energy_wave.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(13)
+spell:name("Energy Wave")
+spell:words("exevo vis hur")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_ENERGY_WAVE)
+spell:level(38)
+spell:mana(170)
+spell:needDirection(true)
+spell:cooldown(8 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Onda de Energia - WOD Dual Area System**
+
+Este spell implementa um **sistema de AOE onda com WOD area upgrade dinâmico**:
+
+1. **Dual Combat System:**
+   - Normal: SQUAREWAVE5 + AREADIAGONAL_SQUAREWAVE5 (wave quadrado)
+   - WOD: WAVE7 + AREADIAGONAL_WAVE7 (onda maior!)
+   - getWheelSpellAdditionalArea("Energy Wave") check
+
+2. **Escalabilidade EXTREMA:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 4.5)
+   - max = (level/5) + (maglevel × 9)
+   - Coef MLvl EXTREMOS (4.5-9!)
+   - Sem bônus fixo!
+
+3. **Mid-Late Free:**
+   - Level 38 (mid-late)
+   - 170 mana (custoso!)
+   - Non-premium (gratuito!)
+   - Cooldown 8s (moderado)
+
+4. **Tipo Energy:**
+   - COMBAT_ENERGYDAMAGE
+   - Efeito ENERGYAREA
+   - Direcionado (needDirection)
+   - Onda áreas
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 38, mlvl 15:
+  min = 7.6 + 67.5 = 75.1
+  max = 7.6 + 135 = 142.6
+
+Sorcerer lvl 80, mlvl 25:
+  min = 16 + 112.5 = 128.5
+  max = 16 + 225 = 241
+```
+
+**Diferencial:** WOD area upgrade com escalabilidade EXTREMA MLvl!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `energy_wave` oferece dano energia AOE com WOD:
+
+- **Dano:** COMBAT_ENERGYDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*4.5/9) (EXTREMA!)
+- **Mana:** 170 (custoso)
+- **Level:** 38 (mid-late)
+- **Áreas:** Wave quadrado normal vs Wave 7 WOD
+
+### Arquitetura (Complexa!)
+
+```
+Dual Combat System:
+
+1. combat (normal)
+├─ Type: ENERGYDAMAGE
+├─ Area: SQUAREWAVE5 + AREADIAGONAL_SQUAREWAVE5
+└─ Callback: onGetFormulaValues
+
+2. combatWOD (upgraded)
+├─ Type: ENERGYDAMAGE
+├─ Area: WAVE7 + AREADIAGONAL_WAVE7
+└─ Callback: onGetFormulaValuesWOD
+
+3. formulaFunction (shared)
+└─ Cálculo unificado
+
+spell.onCastSpell()
+├─ getWheelSpellAdditionalArea("Energy Wave") check
+└─ Execute combatWOD OU combat
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Local: formulaFunction (Helper)
+
+```lua
+local function formulaFunction(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 4.5)
+	local max = (level / 5) + (maglevel * 9)
+	return -min, -max
+end
+```
+
+**Propósito:** Fórmula compartilhada normal + WOD.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+---
+
+### Função Global: onGetFormulaValues (Normal)
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	return formulaFunction(player, level, maglevel)
+end
+```
+
+**Propósito:** Callback normal combat.
+
+---
+
+### Função Global: onGetFormulaValuesWOD (Upgrade)
+
+```lua
+function onGetFormulaValuesWOD(player, level, maglevel)
+	return formulaFunction(player, level, maglevel)
+end
+```
+
+**Propósito:** Callback WOD combat (mesma fórmula, área maior).
+
+---
+
+### Função Local: createCombat (Factory)
+
+```lua
+local function createCombat(area, areaDiagonal, combatFunc)
+	local initCombat = Combat()
+	initCombat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, combatFunc)
+	initCombat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+	initCombat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYAREA)
+	initCombat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
+	initCombat:setArea(createCombatArea(area, areaDiagonal))
+	return initCombat
+end
+```
+
+**Propósito:** Factory para criar combats (reutilização DRY).
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `area` | Constant | Área principal |
+| `areaDiagonal` | Constant | Área diagonal |
+| `combatFunc` | string | Função callback |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| Combat | Combat | Instância configurada |
+
+---
+
+### Variáveis Globais: combat, combatWOD
+
+```lua
+local combat = createCombat(AREA_SQUAREWAVE5, AREADIAGONAL_SQUAREWAVE5, "onGetFormulaValues")
+local combatWOD = createCombat(AREA_WAVE7, AREADIAGONAL_WAVE7, "onGetFormulaValuesWOD")
+```
+
+**Propósito:**
+- `combat`: SquareWave5 normal (sem WOD)
+- `combatWOD`: Wave7 upgrade (com WOD)
+
+**Diferenças:**
+
+| Combat | Area 1 | Area 2 | Coverage |
+|---|---|---|---|
+| `combat` | SQUAREWAVE5 | AREADIAGONAL_SQUAREWAVE5 | Normal |
+| `combatWOD` | WAVE7 | AREADIAGONAL_WAVE7 | Maior! |
+
+---
+
+### Função Global: spell.onCastSpell (SMART!)
+
+```lua
+function spell.onCastSpell(creature, var)
+	local player = creature:getPlayer()
+	if creature and player then
+		if player:getWheelSpellAdditionalArea("Energy Wave") then
+			return combatWOD:execute(creature, var)
+		end
+	end
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Smart dispatch WOD vs normal.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Direction |
+
+**Lógica:**
+1. Valida creature + player
+2. Check getWheelSpellAdditionalArea("Energy Wave")
+3. Se WOD area: execute combatWOD (WAVE7)
+4. Senão: execute combat (SQUAREWAVE5)
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Wave ativada |
+| `false` | Validação falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `formulaFunction` | function | Local | Fórmula unificada |
+| `onGetFormulaValues` | function | Global | Callback normal |
+| `onGetFormulaValuesWOD` | function | Global | Callback WOD |
+| `createCombat` | function | Local | Factory combats |
+| `combat` | Combat | Arquivo | SquareWave5 normal |
+| `combatWOD` | Combat | Arquivo | Wave7 WOD |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onCastSpell):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Extracted player |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Factory Function
+
+```lua
+local function createCombat(area, areaDiagonal, combatFunc)
+	local initCombat = Combat()
+	-- ... configuração
+	return initCombat
+end
+```
+
+**Benefício:** DRY - reutilização código combat creation.
+
+### Padrão 2: WOD Area Dispatch Logic
+
+```lua
+if player:getWheelSpellAdditionalArea("Energy Wave") then
+	return combatWOD:execute(creature, var)
+end
+return combat:execute(creature, var)
+```
+
+**Benefício:** Smart dispatch baseado wheel.
+
+### Padrão 3: Shared Formula
+
+```lua
+local function formulaFunction(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 4.5)
+	local max = (level / 5) + (maglevel * 9)
+	return -min, -max
+end
+```
+
+**Benefício:** Mesma fórmula, diferentes áreas.
+
+---
+
+## 🤖 Documentação das Funções
+
+### formulaFunction(player, level, maglevel)
+
+**Descrição:** Calcula dano wave energia unificado.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 4.5)
+max = (level / 5) + (maglevel * 9)
+```
+
+**Exemplo:**
+
+```lua
+formulaFunction(sorcerer, 38, 15)
+// min = 7.6 + 67.5 = 75.1
+// max = 7.6 + 135 = 142.6
+// Retorna: -75, -142
+```
+
+---
+
+### createCombat(area, areaDiagonal, combatFunc)
+
+**Descrição:** Factory para criar combat customizado.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `area` | Constant | Área principal onda |
+| `areaDiagonal` | Constant | Área diagonal |
+| `combatFunc` | string | Nome função callback |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| Combat | Combat | Instância configurada |
+
+**Uso:**
+
+```lua
+local combat = createCombat(AREA_SQUAREWAVE5, AREADIAGONAL_SQUAREWAVE5, "onGetFormulaValues")
+local combatWOD = createCombat(AREA_WAVE7, AREADIAGONAL_WAVE7, "onGetFormulaValuesWOD")
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura wave com WOD area dispatch.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer conjurador |
+| `var` | Variant | Direction (obrigatório) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Wave ativada |
+| `false` | Validação falhou |
+
+**Requisitos:**
+- Level 38+
+- 170 mana
+- Direction required (não target)
+- Cooldown 8s
+
+**Lógica:**
+1. Valida creature é player
+2. Check getWheelSpellAdditionalArea("Energy Wave")
+3. Se WOD area: combatWOD (WAVE7 - maior!)
+4. Senão: combat (SQUAREWAVE5 - normal)
+
+**Efeito:**
+- Efeito energia área
+- Onda direcionada
+- Dano magic-level escalável EXTREMO
+- Area dinâmica per WOD
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 38, MLvl 15, COM WOD energy wave area
+spell.onCastSpell(sorcerer, directionVariant)
+// Validações OK
+// getWheelSpellAdditionalArea("Energy Wave") = true
+// Execute combatWOD
+// Area: WAVE7 + diagonal (maior!)
+// Dano: -75 a -142
+// Efeito energia
+// Cooldown 8s
+// Resultado: Onda GRANDE!
+
+-- Sorcerer lvl 38, MLvl 15, SEM WOD area
+spell.onCastSpell(sorcerer, directionVariant)
+// Validações OK
+// getWheelSpellAdditionalArea("Energy Wave") = false
+// Execute combat
+// Area: SQUAREWAVE5 + diagonal (normal)
+// Dano: -75 a -142
+// Efeito energia
+// Cooldown 8s
+// Resultado: Onda NORMAL!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Mid-Late Sorcerer
+
+```lua
+-- Sorcerer level 38
+// Energy Wave = mid-late AOE
+// Non-premium (gratuito!)
+// Escalabilidade EXTREMA MLvl
+```
+
+### Caso 2: WOD Progression
+
+```lua
+-- Sorcerer com WOD energy wave area
+// Sem WOD: SQUAREWAVE5 normal
+// Com WOD: WAVE7 upgrade!
+// Área cresce com skill tree
+```
+
+### Caso 3: High Mana AOE
+
+```lua
+-- Sorcerer power farming
+// 170 mana = custoso
+// Escalabilidade EXTREMA compensa
+// Area WAVE7 (WOD) = multi-target
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_ENERGYDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Areas:** AREA_SQUAREWAVE5, AREADIAGONAL_SQUAREWAVE5, AREA_WAVE7, AREADIAGONAL_WAVE7
+- **WOD:** getWheelSpellAdditionalArea, Energy Wave
+- **Effects:** CONST_ME_ENERGYAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant - WOD) |
+| **Função** | Onda energia AOE |
+| **Dano Type** | COMBAT_ENERGYDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*4.5), max=(lvl/5)+(mlvl*9) |
+| **Mana** | 170 (custoso!) |
+| **Area Normal** | SQUAREWAVE5 + AREADIAGONAL_SQUAREWAVE5 |
+| **Area WOD** | WAVE7 + AREADIAGONAL_WAVE7 (maior!) |
+| **Level** | 38 (mid-late) |
+| **Cooldown** | 8s |
+| **Premium** | Não (gratuito!) |
+| **WOD Skill** | Energy Wave Area (getWheelSpellAdditionalArea) |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | Dual combat + WOD area dispatch + factory function |

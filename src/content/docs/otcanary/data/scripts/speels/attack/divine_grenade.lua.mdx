@@ -1,0 +1,613 @@
+---
+title: "Spell - divine_grenade.lua"
+description: "Spell complexo de granada divina com WOD system e cooldown dinâmico"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `divine_grenade.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant - Complex) |
+| **ID do Spell** | 258 |
+| **Tipo de Dano** | COMBAT_HOLYDAMAGE |
+| **Vocações** | Paladin, Royal Paladin |
+| **Level Requerido** | 300 (MÁXIMO!) |
+| **Mana Requerida** | 160 |
+| **Words** | exevo tempo mas san |
+| **Alcance** | 7 (MUITO LONGE!) |
+| **Área** | 2x2 Circle (via explodeGrenade) |
+| **Cooldown** | Dinâmico (14-26s por grade) |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level (4-6 MLvl) + WOD multiplier (1.0-2.0) |
+| **Sistema** | WOD (Wheel of Destiny) com grades |
+| **Sons** | (Múltiplos callbacks) |
+| **Requer Target Creature** | Sim (callback criatura) |
+| **Bloqueia Walls** | Sim |
+| **Needlearn** | Sim (espécie rara!) |
+| **Linhas de Código** | 115 |
+| **Complexidade** | Muito Alto |
+
+**Descrição:**
+Spell EXTREMAMENTE COMPLEXO de granada divina para paladins nível 300 (máximo). Sistema WOD multi-grade com multiplicadores (1.3x-2.0x). Cooldown dinâmico de 14-26s baseado grade. Callback TARGETTILE com explosão atrasada 3s. Range 7. Area 2x2 explosão. Requer needlearn: true. SPELL ENDGAME PURO.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/divine_grenade.lua
+```
+
+**Tipo Spell:** Instant (Complex)
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(258)
+spell:name("Divine Grenade")
+spell:words("exevo tempo mas san")
+spell:level(300)
+spell:mana(160)
+spell:isPremium(true)
+spell:range(7)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:cooldown(1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(true)
+spell:vocation("paladin;true", "royal paladin;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Granada Divina - Endgame WOD System**
+
+Este spell implementa um **sistema extremamente complexo de bomba com WOD upgrade**:
+
+1. **Level 300 Endgame:**
+   - MÁXIMO level possível!
+   - Spell puro final progression
+   - needlearn: true (raro!)
+
+2. **WOD Upgrade System:**
+   - upgradeSpellsWOD() check
+   - Grades: NONE (1.0x) → GRADE_1 (1.3x) → GRADE_2 (1.6x) → GRADE_3 (2.0x)
+   - Multiplicadores progressivos
+
+3. **Callback Complexo:**
+   - CALLBACK_PARAM_TARGETCREATURE (onTargetCreature)
+   - Delay 3000ms até explosão
+   - explodeGrenade² callback
+   - Position calcula dentro range 4
+
+4. **Cooldown Dinâmico:**
+   - Grade 1: 26s cooldown
+   - Grade 2: 20s cooldown
+   - Grade 3: 14s cooldown
+   - CONDITION_SPELLCOOLDOWN management
+
+**Mult Visual:**
+```
+Paladin lvl 300, mlvl 50, grade 0:
+  min = 60 + 200 = 260
+  max = 60 + 300 = 360
+  mult = 1.0
+  final: -260 a -360
+
+Paladin lvl 300, mlvl 50, grade 3:
+  min = 60 + 200 = 260
+  max = 60 + 300 = 360
+  mult = 2.0
+  final: -520 a -720
+```
+
+**Diferencial:** WOD-integrated Granada com callbacks duplos!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `divine_grenade` é spell ENDGAME com WOD:
+
+- **Dano:** COMBAT_HOLYDAMAGE com WOD multipliers
+- **Sistema:** WOD grades (1.0-2.0x escalas)
+- **Level:** 300 (máximo)
+- **Callbacks:** TARGETCREATURE + tile explosão
+- **Mana:** 160
+
+### Arquitetura (Muito Complexa!)
+
+```
+Dual Combat System:
+
+1. combatGrenade (explosão damage)
+├─ Type: HOLYDAMAGE
+├─ Area: CIRCLE2X2
+├─ Callback: onGetFormulaValues (com WOD mult)
+└─ Position-based execute
+
+2. combatCast (targeting)
+└─ Callback: CALLBACK_PARAM_TARGETCREATURE (onTargetCreature)
+
+spell.onCastSpell() COMPLEX:
+├─ Player + grade check
+├─ validate revelationStageWOD
+├─ combatCast:execute(creature, var)
+├─ onTargetCreature triggered
+│  └─ addEvent(explodeGrenade, 3000ms)
+│     └─ combatGrenade:execute(player, varPos)
+└─ Cooldown dinâmico aplicado
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combatGrenade
+
+```lua
+local combatGrenade = Combat()
+combatGrenade:setParameter(COMBAT_PARAM_TYPE, COMBAT_HOLYDAMAGE)
+combatGrenade:setArea(createCombatArea(AREA_CIRCLE2X2))
+combatGrenade:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HOLYDAMAGE)
+```
+
+**Propósito:** Combat de explosão granada.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_HOLYDAMAGE | Dano sagrado |
+| `Area` | AREA_CIRCLE2X2 | 2x2 explosão |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HOLYDAMAGE | Efeito holy |
+
+---
+
+### Função Global: onGetFormulaValues (com WOD)
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 4)
+	local max = (level / 5) + (maglevel * 6)
+
+	local grade = player:upgradeSpellsWOD("Divine Grenade")
+
+	local multiplier = 1.0
+	if grade ~= WHEEL_GRADE_NONE then
+		local multiplierByGrade = { 1.3, 1.6, 2.0 }
+		multiplier = multiplierByGrade[grade]
+	end
+
+	min = min * multiplier
+	max = max * multiplier
+
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano com WOD multiplier.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Paladin |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula Base:**
+```
+min = (level / 5) + (maglevel * 4)
+max = (level / 5) + (maglevel * 6)
+```
+
+**WOD Multipliers:**
+
+| Grade | Multiplier | Efeito |
+|---|---|---|
+| NONE | 1.0 | Base (sem WOD) |
+| 1 | 1.3 | +30% dano |
+| 2 | 1.6 | +60% dano |
+| 3 | 2.0 | +100% dano (dobro!) |
+
+---
+
+### Função Global: explodeGrenade (CALLBACK)
+
+```lua
+local explodeGrenade = function(position, playerId)
+	local tile = Tile(position)
+	if not tile then
+		return
+	end
+
+	local player = Player(playerId)
+	if not player then
+		return
+	end
+
+	local var = {}
+	var.instantName = "Divine Grenade"
+	var.runeName = ""
+	var.type = 2 -- VARIANT_POSITION
+	var.pos = position
+	combatGrenade:execute(player, var)
+end
+```
+
+**Propósito:** Explosão atrasada 3s após cast.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `position` | Position | Explosão tile |
+| `playerId` | number | Player ID caster |
+
+**Lógica:**
+- Valida tile existe
+- Valida player existe
+- Cria variant position
+- Executa combatGrenade
+- Aplica dano em area 2x2
+
+---
+
+### Função Global: onTargetCreature (CALLBACK)
+
+```lua
+function onTargetCreature(creature, target)
+	if not (creature and target and creature:isPlayer()) then
+		return false
+	end
+
+	local position = creature:getPosition():getWithinRange(target:getPosition(), 4)
+	addEvent(explodeGrenade, 3000, position, creature:getId())
+	addEvent(removeGrenadeEffect, 3000, position)
+	return true
+end
+```
+
+**Propósito:** Trigger explosão após hit target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Paladin |
+| `target` | Creature | Target criatura |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Callback ok, granada "arremessada" |
+| `false` | Validação falhou |
+
+**Lógica:**
+- Valida creature é player
+- Calcula position within range 4
+- Agenda explodeGrenade 3s após
+- Agenda removeGrenadeEffect 3s (visual cleanup)
+
+---
+
+### Função Global: removeGrenadeEffect
+
+```lua
+local function removeGrenadeEffect(position)
+	position:removeMagicEffect(CONST_ME_DIVINE_GRENADE)
+end
+```
+
+**Propósito:** Remove efeito visual divin grenade.
+
+---
+
+### Variável Global: combatCast
+
+```lua
+local combatCast = Combat()
+combatCast:setCallback(CALLBACK_PARAM_TARGETCREATURE, "onTargetCreature")
+```
+
+**Propósito:** Combat targeting. Não faz dano - só dispara callback.
+
+---
+
+### Função Global: spell.onCastSpell (MUITO COMPLEXA!)
+
+```lua
+function spell.onCastSpell(creature, var)
+	if not creature or not creature:isPlayer() then
+		return false
+	end
+
+	local grade = creature:revelationStageWOD("Divine Grenade")
+
+	if grade == 0 then
+		creature:sendCancelMessage("You cannot cast this spell")
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local cooldownByGrade = { 26, 20, 14 }
+	local cooldown = cooldownByGrade[grade]
+
+	var.instantName = "Divine Grenade Cast"
+	if combatCast:execute(creature, var) then
+		local target = Creature(var:getNumber())
+		local position = creature:getPosition():getWithinRange(target:getPosition(), 4)
+		position:sendMagicEffect(CONST_ME_DIVINE_GRENADE)
+		local condition = Condition(CONDITION_SPELLCOOLDOWN, CONDITIONID_DEFAULT, 258)
+		condition:setTicks((cooldown * 1000) / configManager.getFloat(configKeys.RATE_SPELL_COOLDOWN))
+		creature:addCondition(condition)
+		return true
+	end
+	return false
+end
+```
+
+**Propósito:** Master handler com validações WOD.
+
+**Fluxo:**
+
+| Step | Ação | Resultado |
+|---|---|---|
+| 1 | Player check | Se não player: return false |
+| 2 | WOD stage check | revelationStageWOD("Divine Grenade") |
+| 3 | Grade 0 reject | Se grade 0: send cancel + POFF |
+| 4 | Select cooldown | cooldownByGrade[grade] (26/20/14s) |
+| 5 | combatCast execute | Triggers onTargetCreature |
+| 6 | Get target | Creature(var:getNumber()) |
+| 7 | Send visual | CONST_ME_DIVINE_GRENADE magic effect |
+| 8 | Add cooldown cond | CONDITION_SPELLCOOLDOWN ID 258 |
+| 9 | Return true | Cast success |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Granada lançada com sucesso |
+| `false` | Validação falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combatGrenade` | Combat | Arquivo | Explosão damage 2x2 |
+| `explodeGrenade` | function | Arquivo | Callback explosão 3s |
+| `removeGrenadeEffect` | function | Arquivo | Cleanup visual |
+| `onTargetCreature` | function | Arquivo | Callback target hit |
+| `combatCast` | Combat | Arquivo | Targeting (sem dano) |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: WOD Upgrade Integration
+
+```lua
+local grade = player:upgradeSpellsWOD("Divine Grenade")
+local multiplierByGrade = { 1.3, 1.6, 2.0 }
+multiplier = multiplierByGrade[grade]
+```
+
+**Benefício:** Escalabilidade progressiva via WOD.
+
+### Padrão 2: Delayed Callback Explosão
+
+```lua
+addEvent(explodeGrenade, 3000, position, creature:getId())
+```
+
+**Benefício:** 3s delay antes explosão (tático).
+
+### Padrão 3: Dinamic Cooldown por Grade
+
+```lua
+local cooldownByGrade = { 26, 20, 14 }
+local cooldown = cooldownByGrade[grade]
+```
+
+**Benefício:** Grades melhores = cooldowns menores.
+
+### Padrão 4: Dual Combat System
+
+```lua
+combatCast (targeting ONLY)
+combatGrenade (damage ONLY)
+```
+
+**Benefício:** Separação targeting vs damage.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano granada com WOD multiplier.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Paladin |
+| `level` | number | Level (300) |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo × WOD mult |
+| `-max` | number | Dano máximo × WOD mult |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(paladin, 300, 50)
+// Grade 0 (sem WOD):
+//   min = 60 + 200 = 260 × 1.0 = 260
+//   max = 60 + 300 = 360 × 1.0 = 360
+
+// Grade 3 (WOD máximo):
+//   min = 60 + 200 = 260 × 2.0 = 520
+//   max = 60 + 300 = 360 × 2.0 = 720
+  
+// Retorna: -520, -720 (grade 3)
+```
+
+---
+
+### onTargetCreature(creature, target)
+
+**Descrição:** Trigger explosão após hit target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster paladin |
+| `target` | Creature | Target atingido |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Callback ok |
+| `false` | Validação falhou |
+
+---
+
+### explodeGrenade(position, playerId)
+
+**Descrição:** Explosão atrasada em posição.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `position` | Position | Centro explosão |
+| `playerId` | number | Player ID caster |
+
+**Efeito:**
+- Executa combatGrenade em position
+- Area 2x2 ao redor position
+- Dano com multiplicador WOD
+- Dentro range 4 de target
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Cast master handler com WOD check.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Paladin caster |
+| `var` | Variant | Target creature |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Cast success |
+| `false` | Validação/WOD falhou |
+
+**Requisitos:**
+- Level 300
+- 160 mana
+- WOD revelation stage > 0
+- Target criatura
+- Cooldown dinâmico (14-26s)
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Endgame Paladin
+
+```lua
+-- Paladin lvl 300, WOD grade 3
+// Divine Grenade = ultimate weapon
+// Dano dobrado via WOD (2.0x)
+// Cooldown 14s = rápido (grade 3)
+```
+
+### Caso 2: WOD Progression
+
+```lua
+-- Paladin grind WOD grades
+// Grade 0: não pode usar
+// Grade 1: 1.3x + 26s CD
+// Grade 2: 1.6x + 20s CD
+// Grade 3: 2.0x + 14s CD
+// Progressão pura!
+```
+
+### Caso 3: Guild Wars
+
+```lua
+-- PvP escala endgame
+// Granada = ultimate spell
+// 3s delay = timing tático
+// WOD vantagem crítica
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_HOLYDAMAGE
+- **Callbacks:** CALLBACK_PARAM_TARGETCREATURE
+- **WOD System:** upgradeSpellsWOD, revelationStageWOD
+- **Cooldown:** CONDITION_SPELLCOOLDOWN
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant - Complexo) |
+| **Função** | Granada divina WOD-integrated |
+| **Dano Type** | COMBAT_HOLYDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*4), max=(lvl/5)+(mlvl*6) × WOD mult |
+| **WOD** | Grades 1-3: 1.3x-2.0x multiplier |
+| **Mana** | 160 |
+| **Range** | 7 (MUITO longe!) |
+| **Area** | 2x2 Circle (explosão) |
+| **Delay** | 3000ms até explosão |
+| **Cooldown** | Dinâmico: 26s (G1), 20s (G2), 14s (G3) |
+| **Level** | 300 (MÁXIMO!) |
+| **Needlearn** | Sim (raro!) |
+| **Vocações** | Paladin, Royal Paladin |
+| **Padrão** | WOD upgrade + dual combat + delayed callback |

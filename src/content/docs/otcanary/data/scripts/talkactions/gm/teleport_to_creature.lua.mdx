@@ -1,0 +1,129 @@
+---
+title: Teleport To Creature
+description: Comando GM para teleportar para criatura/jogador por nome direto
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `teleport_to_creature.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Teleportar para criatura |
+| **Comando** | `/goto <creature_name>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Nome da criatura |
+| **Separador** | Espaço |
+| **Alvo** | NPCs, Monstros, Jogadores |
+| **Busca** | Case-sensitive |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/teleport_to_creature.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando minimalista de teleportação direta. Busca criatura por nome via `Creature()`, valida existência, e teleporta. Sem efeitos visuais ou mensagens de sucesso. Simplicidade máxima focado apenas em teleportação sem fricção. Afeta qualquer tipo de criatura: NPC, monstro, jogador.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `teleport_to_creature.lua` implementa um comando TalkAction (`/goto`) que teleporta gamemasters diretamente para criatura (NPC, monstro, jogador) por nome. O sistema valida parâmetro, busca criatura via `Creature()`, e teleporta se encontrada. Implementação minimalista sem efeitos visuais ou confirmações.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local teleportToCreature = TalkAction("/goto")
+
+-- 2. Função Principal (onSay)
+function teleportToCreature.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Buscar criatura por nome
+    local target = Creature(param)
+    
+    -- Se encontrada: teleportar
+    if target then
+        player:teleportTo(target:getPosition())
+    else
+        -- Se não encontrada: erro
+        player:sendCancelMessage("Creature not found.")
+    end
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+teleportToCreature:separator(" ")
+teleportToCreature:groupType("gamemaster")
+teleportToCreature:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **teleportToCreature.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/goto` é utilizado. Teleporta para criatura por nome.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando
+- `words` (string): Palavras do comando (`/goto`)
+- `param` (string): **[OBRIGATÓRIO]** Nome da criatura (case-sensitive)
+
+**Formato de Comando:**
+```
+/goto Rat1              -- Teleporta para montro "Rat1"
+/goto Dragon            -- Teleporta para NPC "Dragon"
+/goto PlayerName        -- Teleporta para jogador
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Busca de Criatura:**
+   ```lua
+   local target = Creature(param)
+   ```
+   - Busca por nome (case-sensitive)
+   - Retorna criatura se encontrada, nil se não
+
+4. **Teleportação Condicional:**
+   ```lua
+   if target then
+       player:teleportTo(target:getPosition())
+   else
+       player:sendCancelMessage("Creature not found.")
+   end
+   ```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Creature(name)` | Busca criatura por nome |
+| `target:getPosition()` | Obtém Position da criatura |
+| `player:teleportTo()` | Teleporta GM |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `teleport_to_creature.lua` é ferramenta simplificada de teleportação. Implementação minimalista focado apenas em busca e teleportação diretos, sem efeitos visuais ou feedbacks extras. Essencial para GMs navegar rapidamente para qualquer criatura por nome. Design enxuto prioriza eficiência e rapidez.

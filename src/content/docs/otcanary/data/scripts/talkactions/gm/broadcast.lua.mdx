@@ -1,0 +1,168 @@
+---
+title: Broadcast
+description: Comando GM para enviar mensagens globais a todos os jogadores do servidor com função de filtro opcional
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `broadcast.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) + Função Global |
+| **Funcionalidade Principal** | Enviar mensagens globais a todos jogadores |
+| **Comando** | `/b <mensagem>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Mensagem de broadcast |
+| **Separador** | Espaço |
+| **Formato de Saída** | `NomeGM broadcasted: mensagem` |
+| **Tipo de Mensagem** | `MESSAGE_ADMINISTRATOR` |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/broadcast.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este comando implementa sistema de broadcast com função global `Broadcast(text, filter)` que itera todos os jogadores via `Game.getPlayers()` e envia mensagem. Suporta filtro opcional para seleção de destinatários (passa `filter` como função condicional). Mensagem é prefixada com nome do GM que transmitiu. Usa `goto continue` para pular jogadores que não passam no filtro (sintaxe Lua 5.2+). Log automático em servidor.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `broadcast.lua` implementa um sistema de mensagens globais com comando TalkAction (`/b`) e função auxiliar global `Broadcast()`. O sistema permite que gamemasters enviem mensagens a todos os jogadores do servidor, com suporte a filtro condicional para seleção de destinatários. A mensagem é prefixada automaticamente com nome do GM, iterando sobre todos os jogadores usando `Game.getPlayers()`, aplicando filtro opcional com goto/label, e enviando via `sendTextMessage()` com tipo `MESSAGE_ADMINISTRATOR`.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Função Global de Broadcast
+function Broadcast(text, filter)
+    -- Itera todos os jogadores online
+    for _, targetPlayer in ipairs(Game.getPlayers()) do
+        -- Se filtro definido, verificar condição
+        if filter and not filter(targetPlayer) then
+            -- Pular jogador se não passa no filtro
+            goto continue
+        end
+        
+        -- Enviar mensagem ao jogador
+        targetPlayer:sendTextMessage(MESSAGE_ADMINISTRATOR, text)
+        
+        -- Label para goto (pula para próxima iteração)
+        ::continue::
+    end
+end
+
+-- 2. Instanciação do TalkAction
+local broadcast = TalkAction("/b")
+
+-- 3. Função Principal (onSay)
+function broadcast.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro obrigatório
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Montar mensagem final: "NomeGM broadcasted: mensagem"
+    local text = player:getName() .. " broadcasted: " .. param
+    
+    -- Log no console do servidor
+    logger.info(text)
+    
+    -- Enviar broadcast global (sem filtro)
+    Broadcast(param)
+    
+    return true
+end
+
+-- 4. Configuração de Registro
+broadcast:separator(" ")
+broadcast:groupType("gamemaster")
+broadcast:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **Broadcast(text, filter)**
+
+**Descrição:** Função global que envia mensagem a todos ou grupo filtrado de jogadores online.
+
+**Parâmetros:**
+- `text` (string): Mensagem a enviar
+- `filter` (function|nil): Função condicionária opcional
+  - Recebe: `targetPlayer` (Player)
+  - Retorna: `true` se deve enviar, `false` se pular
+  - Se `nil`: Envia a todos
+
+**Fluxo de Execução:**
+1. `Game.getPlayers()` - Obtém lista de todos jogadores online
+2. Para cada jogador:
+   - Se filtro definido e `not filter(targetPlayer)`: pula (goto continue)
+   - Caso contrário: `targetPlayer:sendTextMessage(MESSAGE_ADMINISTRATOR, text)`
+3. Label `::continue::` marca ponto de salto para próxima iteração
+
+**Exemplos de Uso:**
+
+```lua
+-- Broadcast a todos (sem filtro)
+Broadcast("Server maintenance in 10 minutes!")
+
+-- Broadcast apenas para guilds específicas (com filtro)
+Broadcast("Guild event!", function(player)
+    return player:getGuild() and player:getGuild():getId() == 123
+end)
+
+-- Broadcast apenas para level > 100
+Broadcast("High level event!", function(player)
+    return player:getLevel() > 100
+end)
+```
+
+**Tipo de Mensagem:** `MESSAGE_ADMINISTRATOR` (cor de admin)
+
+**Controle de Fluxo:** Usa `goto`/`label` (Lua 5.2+) para pular iterações eficientemente
+
+---
+
+### **broadcast.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/b` é utilizado. Envia broadcast global.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavras do comando (`/b`)
+- `param` (string): **[OBRIGATÓRIO]** Mensagem de broadcast
+
+**Fluxo de Execução:**
+1. Registra comando em log via `logCommand(player, words, param)`
+2. **Validação de Parâmetro:**
+   - Se vazio: Envia `"Command param required."` e retorna
+3. **Construção de Mensagem:**
+   - Obtém nome do GM: `player:getName()`
+   - Formato: `"[NomeGM] broadcasted: [mensagem]"`
+   - Ex.: `"Vinicius broadcasted: Testing broadcast system"`
+4. **Log em Servidor:**
+   - `logger.info(text)` registra a mensagem em log de servidor
+5. **Broadcast Global:**
+   - `Broadcast(param)` envia para todos os jogadores
+   - **Nota:** Envia apenas o `param` (sem prefixo de nome)
+
+**Fluxo de Mensagens:**
+```
+[1] GM digitai: /b Teste
+[2] Registra: "GmName broadcasted: Teste"
+[3] Todos recebem: "Teste" (sem o "broadcasted:" na mensagem final)
+```
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `broadcast.lua` implementa sistema de mensagens globais com arquitetura de função reutilizável e comando TalkAction. Estrutura que separa lógica de broadcast (função `Broadcast()`) de parsing de comando, permitindo reuso em outros contextos. Suporta filtros condicionais para mensagens segmentadas, usa goto/label para eficiência, e fornece logging completo. Essencial para comunicação global GM-para-servidor, anúncios de maintenance, eventos, ou avisos.

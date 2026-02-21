@@ -1,0 +1,426 @@
+---
+title: Zone Management
+description: Comando GOD para gerenciar zonas do servidor
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | zones.lua |
+| **Tipo de Sistema** | Zone Management (GOD) |
+| **Funcionalidade Principal** | Gerenciar zonas dynamicamente |
+| **Comando** | /zones \<action\> [zoneName] |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Sistema** | Zone Registry API |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/zones.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /zones com 2+ params (cmd, zoneName opt). /zones list (all ou filtro). /zones goto, removeMonsters, countMonsters, countNpcs, removeNpcs, kickPlayers, listPlayers, countPlayers, size. Local function zoneFromParam busca Zone.getByName. Commands table com closures. Feedback MESSAGE_HEALED. Zone.getAll() para listas.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo zones.lua implementa comando versátil de zone management com 10 ações. Dispõe de lister com filtro, teleporter, monster/NPC/player managers, counter tools, size inspector, zone lookup automático. Ferramenta essencial de zone control.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **TalkAction /zones**
+
+```lua
+local zones = TalkAction("/zones")
+
+function zones.onSay(player, words, param)
+	local params = string.split(param, ",")
+	local cmd = params[1]
+	if not cmd then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Command not found.")
+		return true
+	end
+
+	-- AÇÃO 1: list
+	if cmd == "list" then
+		local list = {}
+		local filter = params[2] and params[2]:trim()
+		for _, zone in ipairs(Zone.getAll()) do
+			if filter then
+				if not zone:getName():lower():find(filter:lower()) then
+					goto continue
+				end
+			end
+			table.insert(list, zone:getName())
+			::continue::
+		end
+		player:sendTextMessage(MESSAGE_HEALED, "Zones:\n" .. table.concat(list, "\n "))
+		return true
+	end
+
+	-- Função helper para buscar zona
+	local function zoneFromParam()
+		local zoneName = params[2]:trim()
+		if not zoneName then
+			player:sendTextMessage(MESSAGE_HEALED, "Zone not found.")
+			return true
+		end
+		local zone = Zone.getByName(zoneName)
+		if not zone then
+			player:sendTextMessage(MESSAGE_HEALED, "Zone not found.")
+			return true
+		end
+		return zone
+	end
+
+	-- COMMAND TABLE
+	local commands = {
+		["goto"] = function(zone)
+			local pos = zone:randomPosition()
+			if not pos then
+				player:sendTextMessage(MESSAGE_HEALED, "No position found.")
+				return true
+			end
+			player:teleportTo(pos)
+			player:sendTextMessage(MESSAGE_HEALED, "You have been teleported to " .. zone:getName() .. ".")
+		end,
+		
+		["removeMonsters"] = function(zone)
+			zone:removeMonsters()
+			player:sendTextMessage(MESSAGE_HEALED, "Monsters removed from " .. zone:getName() .. ".")
+		end,
+		
+		["countMonsters"] = function(zone)
+			local monsters = zone:getMonsters()
+			player:sendTextMessage(MESSAGE_HEALED, "Zone " .. zone:getName() .. " monsters: " .. #monsters .. ".")
+		end,
+		
+		["removeNpcs"] = function(zone)
+			zone:removeNpcs()
+			player:sendTextMessage(MESSAGE_HEALED, "NPCs removed from " .. zone:getName() .. ".")
+		end,
+		
+		["countNpcs"] = function(zone)
+			local npcs = zone:getNpcs()
+			player:sendTextMessage(MESSAGE_HEALED, "Zone " .. zone:getName() .. " NPCs: " .. #npcs .. ".")
+		end,
+		
+		["kickPlayers"] = function(zone)
+			zone:removePlayers()
+			player:sendTextMessage(MESSAGE_HEALED, "Players kicked from " .. zone:getName() .. ".")
+		end,
+		
+		["listPlayers"] = function(zone)
+			local players = zone:getPlayers()
+			local list = {}
+			for _, player in ipairs(players) do
+				table.insert(list, player:getName())
+			end
+			player:sendTextMessage(MESSAGE_HEALED, "Zone " .. zone:getName() .. " players: " .. table.concat(list, ", ") .. ".")
+		end,
+		
+		["countPlayers"] = function(zone)
+			local players = zone:getPlayers()
+			player:sendTextMessage(MESSAGE_HEALED, "Zone " .. zone:getName() .. " players: " .. #players .. ".")
+		end,
+		
+		["size"] = function(zone)
+			local positions = zone:getPositions()
+			player:sendTextMessage(MESSAGE_HEALED, "Zone " .. zone:getName() .. " size: " .. #positions .. ".")
+		end,
+	}
+
+	local command = commands[cmd]
+	if not command then
+		player:sendTextMessage(MESSAGE_HEALED, "Command not found.")
+		return true
+	end
+	
+	local zone = zoneFromParam()
+	if not zone then
+		return true
+	end
+	
+	return command(zone)
+end
+
+zones:separator(" ")
+zones:groupType("god")
+zones:register()
+```
+
+---
+
+## **Ações Disponíveis**
+
+### **list**
+
+```
+/zones list                      -- Lista todas zonas
+/zones list, dragon              -- Filtra "dragon" (case-insensitive)
+```
+
+**Fluxo:**
+1. Zone.getAll() obtém todas
+2. Se filter: find(filter) case-insensitive
+3. Coleta nomes na lista
+4. table.concat com quebras
+5. Feedback MESSAGE_HEALED
+
+**Resultado:**
+```
+Zones:
+ dragon_arena
+ dragon_lair
+ dragon_chamber
+ fire_dragon_nest
+```
+
+---
+
+### **goto**
+
+```
+/zones goto, dragon_arena
+```
+
+**Fluxo:**
+1. zone:randomPosition() seleciona aleatória
+2. player:teleportTo(pos)
+3. Feedback com nome zona
+
+**Resultado:**
+- Player teleportado para zona
+- Mensagem: "You have been teleported to dragon_arena."
+
+---
+
+### **removeMonsters**
+
+```
+/zones removeMonsters, dragon_arena
+```
+
+**Fluxo:**
+1. zone:removeMonsters() limpa todos monstros
+2. Feedback: "Monsters removed from dragon_arena."
+
+**Resultado:**
+- TODOS monstros removidos
+- Zona limpa
+
+---
+
+### **countMonsters**
+
+```
+/zones countMonsters, dragon_arena
+```
+
+**Fluxo:**
+1. zone:getMonsters() obtém lista
+2. #monsters conta
+3. Feedback: "Zone dragon_arena monsters: 42."
+
+**Resultado:**
+- Mostra quantidade monstros
+
+---
+
+### **removeNpcs**
+
+```
+/zones removeNpcs, town_square
+```
+
+**Fluxo:**
+1. zone:removeNpcs() limpa todos NPCs
+2. Feedback: "NPCs removed from town_square."
+
+**Resultado:**
+- TODOS NPCs removidos
+
+---
+
+### **countNpcs**
+
+```
+/zones countNpcs, town_square
+```
+
+**Fluxo:**
+1. zone:getNpcs() obtém lista
+2. #npcs conta
+3. Feedback: "Zone town_square NPCs: 15."
+
+---
+
+### **kickPlayers**
+
+```
+/zones kickPlayers, no_trespassing
+```
+
+**Fluxo:**
+1. zone:removePlayers() expulsa todos
+2. Feedback: "Players kicked from no_trespassing."
+
+**Resultado:**
+- TODOS players teleportados para fora
+- Zona esvaziada
+
+---
+
+### **listPlayers**
+
+```
+/zones listPlayers, arena
+```
+
+**Fluxo:**
+1. zone:getPlayers() obtém lista
+2. Coleta getNames em array
+3. table.concat com ", "
+4. Feedback: "Zone arena players: Player1, Player2, Player3."
+
+---
+
+### **countPlayers**
+
+```
+/zones countPlayers, arena
+```
+
+**Fluxo:**
+1. zone:getPlayers() obtém lista
+2. #players conta
+3. Feedback: "Zone arena players: 5."
+
+---
+
+### **size**
+
+```
+/zones size, dungeon
+```
+
+**Fluxo:**
+1. zone:getPositions() obtém todas posições
+2. #positions conta
+3. Feedback: "Zone dungeon size: 1024."
+
+**Resultado:**
+- Mostra área em SQM
+
+---
+
+**Exemplos Completos:**
+
+```
+GM: /zones list
+
+Resultado:
+Zones:
+ dragon_arena
+ fire_cave
+ town_square
+ no_trespassing
+ arena
+ dungeon
+
+---
+
+GM: /zones list, dragon
+
+Resultado:
+Zones:
+ dragon_arena
+ dragon_lair
+ (filtra apenas com "dragon")
+
+---
+
+GM: /zones goto, dragon_arena
+
+Resultado:
+- Teleportado para posição aleatória em dragon_arena
+- Feedback: "You have been teleported to dragon_arena."
+
+---
+
+GM: /zones countMonsters, dragon_arena
+
+Resultado:
+- Feedback: "Zone dragon_arena monsters: 23."
+
+---
+
+GM: /zones removeMonsters, dragon_arena
+
+Resultado:
+- 23 monstros removidos
+- Feedback: "Monsters removed from dragon_arena."
+
+---
+
+GM: /zones kickPlayers, arena
+
+Resultado:
+- 5 players expulsos
+- Feedback: "Players kicked from arena."
+
+---
+
+GM: /zones listPlayers, arena
+
+Resultado:
+- Feedback: "Zone arena players: Player1, Player2, Player3."
+
+---
+
+GM: /zones size, dungeon
+
+Resultado:
+- Feedback: "Zone dungeon size: 2048."
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `string.split(str, sep)` | Divide string |
+| `string:trim()` | Remove espaços |
+| `string:lower()` | Lowercase |
+| `string:find(pattern)` | Busca substring |
+| `Zone.getAll()` | Lista todas zonas |
+| `Zone.getByName(name)` | Busca zona por nome |
+| `zone:getName()` | Obtém nome |
+| `zone:randomPosition()` | Posição aleatória |
+| `zone:removeMonsters()` | Remove monstros |
+| `zone:getMonsters()` | Lista monstros |
+| `zone:removeNpcs()` | Remove NPCs |
+| `zone:getNpcs()` | Lista NPCs |
+| `zone:removePlayers()` | Expulsa players |
+| `zone:getPlayers()` | Lista players |
+| `zone:getPositions()` | Lista todas posições |
+| `player:teleportTo(pos)` | Teleporta |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+| `table.insert(table, value)` | Insere na lista |
+| `table.concat(table, sep)` | Junta lista |
+
+**Constantes:**
+- `MESSAGE_EVENT_ADVANCE`
+- `MESSAGE_HEALED`
+
+---
+
+## 📌 Resumo
+
+O arquivo zones.lua é sistema robusto de zone management. Implementação com 10 ações (list/goto/remove/count/kick/size), filtro dinâmico, closures de comando, zoneFromParam helper. Essencial para GMs controlar zonas. Design modular com command table pattern.

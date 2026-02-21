@@ -1,0 +1,305 @@
+---
+title: Buy House
+description: Comando PLAYER para comprar casas
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | buy_house.lua |
+| **Tipo de Sistema** | House Purchasing (PLAYER) |
+| **Funcionalidade Principal** | Comprar casas |
+| **Comando** | !buyhouse |
+| **Requisito** | Premium + Level mínimo |
+| **Separador** | Nenhum |
+| **Gate** | Não registra se CYCLOPEDIA_HOUSE_AUCTION=true |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/buy_house.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Validações: HOUSE_PRICE_PER_SQM != -1, isPremium(), getLevel() >= mínimo. Position/direction navigation: getNextPosition(getDirection()), Tile(pos), tile:getHouse(). Checks: house exists, player at exit, sem dono, player sem casa, sem items. Calcula price = house:getPrice(), removeMoneyBank, setHouseOwner(playerGuid), metrics. Gate: se CYCLOPEDIA_HOUSE_AUCTION skip registro.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo buy_house.lua implementa sistema completo de house purchasing. Dispõe de validações múltiplas (premium/level/position/existência), directional navigation, metrics tracking, conditional registration via config gate. Ferramenta essencial de house system.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **TalkAction !buyhouse**
+
+```lua
+local buyHouse = TalkAction("!buyhouse")
+
+function buyHouse.onSay(player, words, param)
+	-- Gate 1: Preço configurado
+	local housePrice = configManager.getNumber(configKeys.HOUSE_PRICE_PER_SQM)
+	if housePrice == -1 then
+		return true  -- Desabilitado
+	end
+
+	-- Gate 2: Premium
+	if not player:isPremium() then
+		player:sendCancelMessage("You need a premium account.")
+		return true
+	end
+
+	-- Gate 3: Level mínimo
+	local houseBuyLevel = configManager.getNumber(configKeys.HOUSE_BUY_LEVEL)
+	if player:getLevel() < houseBuyLevel then
+		player:sendCancelMessage("You need to be level " .. houseBuyLevel .. " to buy a house.")
+		return true
+	end
+
+	-- Navegação: próxima posição na direção
+	local position = player:getPosition()
+	position:getNextPosition(player:getDirection())
+
+	-- Gate 4: Casa existe
+	local tile = Tile(position)
+	local house = tile and tile:getHouse()
+	local playerPos = player:getPosition()
+	local houseEntry = house and house:getExitPosition()
+
+	if not house or playerPos ~= houseEntry then
+		player:sendCancelMessage("You have to be looking at the door of the house you would like to buy.")
+		return true
+	end
+
+	-- Gate 5: Casa sem dono
+	if house:getOwnerGuid() > 0 then
+		player:sendCancelMessage("This house already has an owner.")
+		return true
+	end
+
+	-- Gate 6: Player sem casa
+	if player:getHouse() then
+		player:sendCancelMessage("You are already the owner of a house.")
+		return true
+	end
+
+	-- Gate 7: Casa vazia
+	if house:hasItemOnTile() then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You cannot buy this house, as there are items inside it. Please, contact an administrator.")
+		return true
+	end
+
+	-- Comprar
+	local price = house:getPrice()
+	if not player:removeMoneyBank(price) then
+		player:sendCancelMessage("You do not have enough money.")
+		return true
+	end
+	
+	-- Metrics tracking
+	metrics.addCounter("balance_decrease", remainsPrice, {
+		player = player:getName(),
+		context = "house_purchase",
+	})
+
+	-- Finalizar
+	house:setHouseOwner(player:getGuid())
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have successfully bought this house, be sure to have the money for the rent in the bank.")
+	return true
+end
+
+-- Conditional registration
+if not configManager.getBoolean(configKeys.CYCLOPEDIA_HOUSE_AUCTION) then
+	buyHouse:separator(" ")
+	buyHouse:groupType("normal")
+	buyHouse:register()
+end
+```
+
+**Comando:** `!buyhouse`
+
+**Fluxo:**
+1. Valida preço configurado
+2. Valida premium + level
+3. Valida posição (direção)
+4. Valida casa existe
+5. Valida posições (player at exit)
+6. Valida sem dono
+7. Valida player sem casa
+8. Valida vazia (sem items)
+9. Compra + metrics + set owner
+
+---
+
+## **Gates de Validação**
+
+### **Gate 1: Preço Configurado**
+
+```lua
+HOUSE_PRICE_PER_SQM != -1
+```
+
+Se -1: comando desabilitado
+
+---
+
+### **Gate 2: Premium Account**
+
+```lua
+player:isPremium() == true
+```
+
+Se falso: "You need a premium account."
+
+---
+
+### **Gate 3: Level Mínimo**
+
+```lua
+player:getLevel() >= HOUSE_BUY_LEVEL
+```
+
+Configurável via `HOUSE_BUY_LEVEL`
+
+---
+
+### **Gate 4-7: House Validation**
+
+| Gate | Check | Condição |
+|---|---|---|
+| 4 | Casa existe | house != nil |
+| 5 | Posição correta | playerPos == houseEntry |
+| 6 | Sem dono | ownerGuid == 0 |
+| 7 | Player sem casa | player:getHouse() == nil |
+| 8 | Casa vazia | hasItemOnTile() == false |
+
+---
+
+## **Configuração Necessária**
+
+```lua
+-- config.lua
+HOUSE_PRICE_PER_SQM = 1000    -- Preço por SQM (-1 = desabilitado)
+HOUSE_BUY_LEVEL = 20           -- Level mínimo
+CYCLOPEDIA_HOUSE_AUCTION = false  -- Usar leilão em vez de comando
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+Player: !buyhouse
+Posição: Frente da porta de casa
+
+Estado:
+- Premium: SIM
+- Level: 25 (mínimo 20)
+- Casa: vazia
+- Sem dono
+- Player: sem casa
+- Preço: 10000 gold
+
+Fluxo:
+1. Gates 1-3: PASS
+2. position:getNextPosition(direction) = posição frente
+3. tile:getHouse() = House
+4. Valida posição = houseEntry ✓
+5. ownerGuid = 0 ✓
+6. player:getHouse() = nil ✓
+7. hasItemOnTile() = false ✓
+8. house:getPrice() = 10000
+9. removeMoneyBank(10000) = true
+10. metrics.addCounter("balance_decrease")
+11. house:setHouseOwner(playerGuid)
+12. Feedback: "You have successfully bought this house..."
+
+Resultado:
+- Casa comprada
+- 10000 debitado do banco
+- Player agora é dono
+- Métrica registrada
+
+---
+
+Player: !buyhouse
+Premium: NÃO
+
+Fluxo:
+1. Gate 2: isPremium() = false
+2. Feedback: "You need a premium account."
+
+Resultado:
+- Compra rejeitada
+
+---
+
+Player: !buyhouse
+Posição: errada (não em frente da porta)
+
+Fluxo:
+1. Gates 1-3: PASS
+2. position:getNextPosition() = posição X
+3. tile:getHouse() = House
+4. playerPos (1000,1000) != houseEntry (1000,1001)
+5. Feedback: "You have to be looking at the door of the house you would like to buy."
+
+Resultado:
+- Compra rejeitada (posição errada)
+
+---
+
+Player: !buyhouse
+Casa: já tem dono
+
+Fluxo:
+1. Gates 1-5: PASS
+2. ownerGuid > 0 (casa tem dono)
+3. Feedback: "This house already has an owner."
+
+Resultado:
+- Compra rejeitada
+```
+
+---
+
+**Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `configManager.getNumber(key)` | Obtém config número |
+| `configManager.getBoolean(key)` | Obtém config bool |
+| `player:isPremium()` | Valida premium |
+| `player:getLevel()` | Obtém level |
+| `player:getPosition()` | Posição player |
+| `player:getDirection()` | Direção player |
+| `position:getNextPosition(dir)` | Próxima posição |
+| `Tile(position)` | Obtém tile |
+| `tile:getHouse()` | Obtém house |
+| `house:getExitPosition()` | Saída casa |
+| `house:getOwnerGuid()` | Dono GUID |
+| `house:hasItemOnTile()` | Valida items |
+| `house:getPrice()` | Preço |
+| `player:removeMoneyBank(amount)` | Remove banco |
+| `house:setHouseOwner(guid)` | Set dono |
+| `metrics.addCounter(event, value, tags)` | Registra métrica |
+| `player:getHouse()` | Casa própria |
+| `player:getGuid()` | Player GUID |
+| `player:sendCancelMessage(msg)` | Envia erro |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+
+**Constantes:**
+- `configKeys.HOUSE_PRICE_PER_SQM`
+- `configKeys.HOUSE_BUY_LEVEL`
+- `configKeys.CYCLOPEDIA_HOUSE_AUCTION`
+- `MESSAGE_EVENT_ADVANCE`
+
+**Retorno:** `true`
+
+---
+
+## 📌 Resumo
+
+O arquivo buy_house.lua é sistema robusto de house purchasing. Implementação com 8 gates de validação, directional positioning, metrics tracking, conditional registration via config. Essencial para house system. Design defensivo com validações em cascata.

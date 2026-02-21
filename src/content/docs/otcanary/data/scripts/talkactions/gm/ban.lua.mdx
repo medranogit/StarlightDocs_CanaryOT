@@ -1,0 +1,252 @@
+---
+title: Ban
+description: Comando GM para banir contas de jogadores com duração configurável, motivo e integração com webhooks
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `ban.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Banir conta de jogador |
+| **Comando** | `/ban <player>, <days> [, reason]` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetros Obrigatórios** | player, days |
+| **Parâmetro Opcional** | reason (motivo) |
+| **Separador** | Espaço |
+| **Banco de Dados** | Tabela `account_bans` |
+| **Integração** | Webhook, Broadcast, Logger |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/ban.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Sistema completo de banir com validação rigorosa. Parse de comando usando regex `match()` para capturar player, days, e reason separados por vírgula. Validações incluem: verificação se account existe (`getPlayerAccountId`), se dias válidos (maior que 0 e menor ou igual a 350000), se já banido e ban anterior é mais curto (estender). Usa timestamps (`os.time()`) para calcular expiração. Integra webhooks para anúncio, broadcast global, e remove jogador online se encontrado. Suporta banimentos novos e extensão de existentes.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `ban.lua` implementa um sistema completo de banimento com comando TalkAction (`/ban`) e integração multi-canal. O sistema realiza parse robusto de comando com regex, valida parâmetros (nome jogador, duração em dias, motivo opcional), executa múltiplas verificações (existência de conta, duração válida, banimentos prévios), e executa lógica de banimento dividida em dois cenários: INSERT novo banimento ou UPDATE extensão de banimento existente. Integra webhook Discord, broadcast global, logging de servidor, e remoção de jogador online se encontrado.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local ban = TalkAction("/ban")
+
+-- 2. Função Principal (onSay)
+function ban.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro não vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required. Use: /ban playername, days [, reason].")
+        return true
+    end
+    
+    -- Parse robusta de argumentos separados por vírgula
+    local name, daysStr, reason = param:match("^%s*([^,]+)%s*,%s*([^,]+)%s*,?%s*(.*)$")
+    if not name or not daysStr then
+        player:sendCancelMessage("Invalid command format. Use: /ban playername, days [, reason].")
+        return true
+    end
+    
+    -- Converter e validar dias
+    local banDays = tonumber(daysStr)
+    if not banDays or banDays <= 0 then
+        player:sendCancelMessage("Invalid number of days.")
+        return true
+    end
+    
+    -- Validar limite máximo de dias (350.000 dias ≈ 957 anos)
+    if banDays > 350000 then
+        player:sendCancelMessage("Ban duration cannot exceed 350000 days.")
+        return true
+    end
+    
+    -- Buscar accountId da conta
+    local accountId = Game.getPlayerAccountId(name)
+    if accountId == 0 then
+        player:sendCancelMessage("Player not found.")
+        return true
+    end
+    
+    -- Calcular timestamps
+    local timeNow = os.time()
+    local expiresAt = timeNow + (banDays * 86400)  -- 86400 segundos em um dia
+    
+    -- Verificar se conta já está banida
+    local resultId = db.storeQuery("SELECT `expires_at` FROM `account_bans` WHERE `account_id` = " .. accountId)
+    if resultId then
+        -- Conta JÁ está banida
+        local currentExpires = result.getNumber(resultId, "expires_at")
+        Result.free(resultId)
+        
+        if expiresAt > currentExpires then
+            -- Novo ban é mais longo, estender
+            db.query("UPDATE `account_bans` SET `reason` = " .. db.escapeString(reason or "") .. 
+                     ", `expires_at` = " .. expiresAt .. ", `banned_by` = " .. player:getGuid() .. 
+                     " WHERE `account_id` = " .. accountId)
+            player:sendTextMessage(MESSAGE_ADMINISTRATOR, name .. "'s ban has been extended to " .. banDays .. " days.")
+        else
+            -- Ban existente é mais longo ou igual, rejeitar
+            player:sendCancelMessage("Player is already banned for longer or equal duration.")
+        end
+        return true
+    else
+        -- Conta NÃO está banida, criar novo banimento
+        db.query("INSERT INTO `account_bans` (`account_id`, `reason`, `banned_at`, `expires_at`, `banned_by`) " ..
+                 "VALUES (" .. accountId .. ", " .. db.escapeString(reason or "") .. ", " .. timeNow .. 
+                 ", " .. expiresAt .. ", " .. player:getGuid() .. ")")
+    end
+    
+    -- Processar jogador online (se existe)
+    local target = Player(name)
+    local text = name .. " has been banned for " .. banDays .. " days."
+    
+    if target then
+        -- Jogador está ONLINE
+        player:sendTextMessage(MESSAGE_ADMINISTRATOR, text)
+        
+        -- Enviar webhook ao Discord
+        Webhook.sendMessage("Player Banned", 
+                           text .. " Reason: " .. (reason or "Not provided") .. ". (by: " .. player:getName() .. ")",
+                           WEBHOOK_COLOR_YELLOW, 
+                           announcementChannels["serverAnnouncements"])
+        
+        -- Remover jogador do servidor
+        target:remove()
+        
+        -- Broadcast global do banimento
+        local banGlobalMessage = "Player " .. text .. " (by: " .. player:getName() .. "), Reason: " .. (reason or "Not provided")
+        logger.info(banGlobalMessage)
+        Broadcast(banGlobalMessage)
+    else
+        -- Jogador está OFFLINE
+        player:sendTextMessage(MESSAGE_ADMINISTRATOR, text)
+    end
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+ban:separator(" ")
+ban:groupType("gamemaster")
+ban:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **ban.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/ban` é utilizado. Executa validações e banimento de conta.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando (GM)
+- `words` (string): Palavras do comando (`/ban`)
+- `param` (string): **[OBRIGATÓRIO]** Argumentos separados por vírgula: `playername, days [, reason]`
+
+**Formato de Comando:**
+```
+/ban PlayerName, 7                      -- Ban 7 dias sem motivo
+/ban PlayerName, 30, Spam abuse         -- Ban 30 dias com motivo
+/ban PlayerName, 365, Gold seller       -- Ban 1 ano (365 dias)
+```
+
+**Fluxo de Validação Sequencial:**
+
+1. **Parâmetro Vazio:**
+   - Se param == "", retorna erro de format com instruções
+
+2. **Parse de Argumentos (Regex):**
+   ```lua
+   local name, daysStr, reason = param:match("^%s*([^,]+)%s*,%s*([^,]+)%s*,?%s*(.*)$")
+   ```
+   - Captura: nome (tudo até 1ª vírgula), dias (entre vírgulas), motivo (após 2ª vírgula)
+   - Se name ou daysStr vazios: retorna erro de format
+
+3. **Validação de Dias:**
+   - Conversão: `banDays = tonumber(daysStr)`
+   - Se não número ou \<= 0: retorna "Invalid number of days."
+   - Se > 350000: retorna "Ban duration cannot exceed 350000 days."
+
+4. **Busca de Conta:**
+   - `accountId = Game.getPlayerAccountId(name)`
+   - Se accountId == 0: retorna "Player not found."
+
+5. **Cálculo de Timestamps:**
+   ```lua
+   local timeNow = os.time()                              -- Época atual
+   local expiresAt = timeNow + (banDays * 86400)          -- Epoch de expiração
+   ```
+
+6. **Verificação de Banimento Anterior:**
+   - Query `SELECT expires_at FROM account_bans WHERE account_id = ?`
+   - Se exists (resultId):
+     - Obtém `currentExpires` do resultado
+     - Se novo ban > existente: UPDATE (estender)
+     - Se novo ban menor ou igual ao existente: retorna erro "already banned longer"
+     - Libera recurso: `Result.free(resultId)`
+   - Se não exists: Procede para INSERT novo
+
+7. **INSERT Novo Banimento:**
+   ```sql
+   INSERT INTO account_bans 
+   (account_id, reason, banned_at, expires_at, banned_by) 
+   VALUES (accountId, reason|"", timeNow, expiresAt, player:getGuid())
+   ```
+
+8. **Processamento de Jogador Online:**
+   - Busca: `target = Player(name)` (caso sensível)
+   - Se online:
+     - Envia mensagem ao GM
+     - Webhook Discord: `Webhook.sendMessage()` com cor YELLOW
+     - Remove do servidor: `target:remove()`
+     - Broadcast global: `Broadcast()` + `logger.info()`
+   - Se offline:
+     - Apenas mensagem ao GM
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+### **Cálculo de Duração de Ban**
+
+| Dias | Resultado |
+|---|---|
+| 1 | Ban permanece 86.400 segundos (1 dia) |
+| 7 | Ban permanece 604.800 segundos (1 semana) |
+| 30 | Ban permanece 2.592.000 segundos (1 mês) |
+| 365 | Ban permanece 31.536.000 segundos (1 ano) |
+| 350000 | Ban permanece 30.240.000.000 segundos (máximo) |
+
+---
+
+### **Variáveis Globais Utilizadas**
+
+| Variável | Tipo | Descrição |
+|---|---|---|
+| `Game.getPlayerAccountId(name)` | function | Obtém ID da conta pelo nome |
+| `Player(name)` | function | Obtém referência do jogador se online |
+| `os.time()` | function | Retorna época Unix atual |
+| `db.storeQuery()` | function | Executa SELECT retornando ID de resultado |
+| `db.query()` | function | Executa INSERT/UPDATE/DELETE |
+| `db.escapeString()` | function | Escapa string para SQL (previne injection) |
+| `result.getNumber()` | function | Obtém número de célula de resultado |
+| `Result.free()` | function | Libera recursos de StoreQuery |
+| `Webhook.sendMessage()` | function | Envia mensagem a webhook (Discord) |
+| `announcementChannels[]` | table | Mapa de canais webhook |
+| `Broadcast()` | function | Envia mensagem global a todos jogadores |
+
+---
+
+## 📌 Resumo
+
+O arquivo `ban.lua` é sistema robusto de banimento com validação rigorosa em múltiplas camadas. Arquitetura que separa parsing, validação, verificação de conta, e execução de database, oferecendo UX clara com mensagens de erro específicas. Suporta banimentos novos e extensão de existentes, integra múltiplos canais de notificação (webhook Discord, broadcast, logs), e garante integridade de dados com escaping SQL. Essencial para moderação de servidor, com proteções contra abusos (limite de duração) e segurança contra SQL injection.

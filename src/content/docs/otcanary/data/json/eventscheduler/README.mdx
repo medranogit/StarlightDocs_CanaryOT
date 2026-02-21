@@ -1,0 +1,296 @@
+---
+title: README - Event Scheduler
+description: Guia de configuração do sistema de agendamento de eventos
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="README.md" icon="star">
+Documentação em Markdown explicando como configurar e usar o sistema de agendamento de eventos do servidor.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/json/eventscheduler/README.md`
+
+Arquivo de referência que explica a estrutura do events.json e como adicionar novos eventos.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O Event Scheduler é um sistema que permite agendar eventos em jogo com propriedades customizáveis. O arquivo `events.json` contém declarações de eventos periódicos que modificam taxas de experência, loot, spawn e habilidades durante períodos específicos. Cada evento pode executar um script Lua opcional para lógica personalizada.
+
+## Estrutura do Sistema
+
+### Fluxo de Uso
+
+```
+[Server Startup]
+    ↓
+[Load events.json]
+    ↓
+[Parse event array]
+    ↓
+[Check current date vs start/end dates]
+    ↓
+[Apply active events multipliers]
+    ↓
+[Execute optional event script]
+    ↓
+[Display event on game client]
+```
+
+## Componentes do Sistema
+
+### 1. events.json
+
+Arquivo JSON contendo array de eventos com configurações:
+
+```json
+{
+  "events": [
+    {
+      "name": "Double Exp",
+      "startdate": "11/12/2024",
+      "enddate": "11/17/2024",
+      "script": "example.lua",
+      "ingame": {
+        "exprate": 200
+      },
+      "description": "Double exp event",
+      "colors": { "colordark": "#002d00", "colorlight": "#004400" },
+      "details": { "displaypriority": 6, "isseasonal": 1, "specialevent": 1 }
+    }
+  ]
+}
+```
+
+### 2. Event Scripts (Lua)
+
+Scripts opcionais executados durante evento (ex: example.lua):
+
+```lua
+local globalEvent = GlobalEvent("EventScheduleExample")
+function globalEvent.onStartup() end
+globalEvent:register()
+```
+
+### 3. Client Display
+
+Eventos aparecem visualmente no cliente com prioridade e cores configuradas.
+
+## Atributos de Evento Explicados
+
+### Identificação
+
+| Atributo | Tipo | Exemplo | Propósito |
+|----------|------|---------|-----------|
+| name | string | "Double Exp" | Nome exibido |
+| startdate | date | "11/12/2024" | Início dd/mm/yyyy |
+| enddate | date | "11/17/2024" | Fim mm/dd/yyyy |
+
+### Script
+
+| Atributo | Tipo | Exemplo | Propósito |
+|----------|------|---------|-----------|
+| script | string | "example.lua" | Script Lua (opcional) |
+
+### In-Game Multipliers
+
+| Atributo | Tipo | Padrão | Propósito |
+|----------|------|--------|-----------|
+| exprate | integer | 100 | Experiência (100=normal) |
+| lootrate | integer | 100 | Loot (100=normal) |
+| bosslootrate | integer | 100 | Loot de boss |
+| spawnrate | integer | 100 | Respawn de monstros |
+| skillrate | integer | 100 | Ganho de skill |
+| forgechance | integer | 100 | Chance de forge |
+| bosscooldown | integer | 100 | Cooldown de boss |
+
+### Boolean Multipliers
+
+| Atributo | Tipo | Descrição |
+|----------|------|-----------|
+| doublebestiary | bool | Duplo progresso no Bestiário |
+| doublebosstiary | bool | Duplo progresso em Boss Bestiário |
+| fastexercise | bool | Armas de exercício 2x velocidade |
+
+### Visual (colors)
+
+```json
+"colors": {
+  "colordark": "#235c00",
+  "colorlight": "#2d7400"
+}
+```
+
+Define cores de exibição (hex) no cliente do jogo.
+
+### Details (Metadados)
+
+| Atributo | Tipo | Intervalo | Propósito |
+|----------|------|-----------|-----------|
+| displaypriority | int | 1-10 | Ordem de exibição |
+| isseasonal | bool | 0 ou 1 | Evento sazonal |
+| specialevent | bool | 0 ou 1 | Evento especial |
+
+## Como Adicionar Novo Evento
+
+### Passos
+
+1. Abrir `events.json`
+2. Adicionar novo objeto ao array `events`
+3. Seguir estrutura correta com todas as propriedades
+4. Validar JSON com validador online
+5. Salvar arquivo
+6. Restar servidor para aplicar mudanças
+
+### Template Básico
+
+```json
+{
+  "name": "Event Name",
+  "startdate": "mm/dd/yyyy",
+  "enddate": "mm/dd/yyyy",
+  "ingame": {
+    "exprate": 100,
+    "lootrate": 100,
+    "bosslootrate": 100,
+    "spawnrate": 100,
+    "skillrate": 100
+  },
+  "description": "Event description for players",
+  "colors": {
+    "colordark": "#hexcolor",
+    "colorlight": "#hexcolor"
+  },
+  "details": {
+    "displaypriority": 5,
+    "isseasonal": 0,
+    "specialevent": 0
+  }
+}
+```
+
+## Exemplos Práticos
+
+### Double XP Weekend
+
+```json
+{
+  "name": "Double XP Weekend",
+  "startdate": "01/01/2026",
+  "enddate": "01/03/2026",
+  "script": "double_xp.lua",
+  "ingame": {
+    "exprate": 200,
+    "lootrate": 100,
+    "bosslootrate": 150,
+    "spawnrate": 120,
+    "skillrate": 150
+  },
+  "description": "Enjoy double XP with increased boss loot and spawn!",
+  "colors": {
+    "colordark": "#1a2b3c",
+    "colorlight": "#3c4d5e"
+  },
+  "details": {
+    "displaypriority": 5,
+    "isseasonal": 0,
+    "specialevent": 1
+  }
+}
+```
+
+### Forge Special Event
+
+```json
+{
+  "name": "Forge Fest",
+  "startdate": "12/20/2025",
+  "enddate": "12/27/2025",
+  "ingame": {
+    "forgechance": 150
+  },
+  "description": "50% increased forge success for a limited time!",
+  "colors": {
+    "colordark": "#4a3a2a",
+    "colorlight": "#8b6a3a"
+  },
+  "details": {
+    "displaypriority": 8,
+    "isseasonal": 1,
+    "specialevent": 1
+  }
+}
+```
+
+## Troubleshooting
+
+### JSON Parsing Errors
+
+**Problema**: Erro ao inicializar eventos
+**Solução**: Verificar sintaxe JSON:
+- Commas entre propriedades obrigatórios
+- Quotes corretos em strings
+- Chaves fechadas corretamente
+- Usar validador online (jsonlint.com)
+
+### Event Não Aparece
+
+**Problema**: Evento não aparece no cliente
+**Solução**: 
+- Verificar datas (formato mm/dd/yyyy)
+- Confirmar data do servidor está correta
+- Verificar startdate &lt;= hoje &lt;= enddate
+- Reiniciar servidor após mudanças
+
+### Multiplier Não Funciona
+
+**Problema**: Taxas de evento não aplicadas
+**Solução**:
+- Verificar sintaxe JSON (validador)
+- Confirmar evento está ativo (datas corretas)
+- Verificar valor (100=normal, 200=dobro)
+- Logs do servidor para erros
+
+## Boas Práticas
+
+- Sempre fazer backup do events.json antes de editar
+- Usar formatador JSON para manter código limpo
+- Testar datas de eventos em ambiente teste
+- Documentar propósito em description
+- Usar cores consistentes para tipo de evento
+- Validar JSON antes de fazer deploy
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Event Scheduler permite eventos periódicos com multiplicadores
+2. JSON structure com array de eventos e propriedades aninhadas
+3. Datas em formato mm/dd/yyyy para ativação automática
+4. Multipliers em porcentagem (100=normal, 200=dobro)
+5. Scripts Lua opcionais para lógica customizada
+
+**Responsabilidades:**
+1. Definir eventos periódicos e datas de ativação
+2. Configurar multiplicadores de gameplay (exp, loot, spawn)
+3. Especificar aparência visual no cliente (cores, prioridade)
+4. Registrar eventos sazonais e especiais
+5. Fornecer descrições claras aos jogadores
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Documentação README  
+**Formato**: Markdown (convertido para MDX)  
+**Propósito**: Guia de referência para evento scheduler  
+**Status**: Completo
+</Card>
+
+<Aside type="note">
+Documentação convertida de README.md original para formato MDX/Astro Starlight. Contém instruções completas de configuração, exemplos práticos e troubleshooting do sistema de agendamento de eventos.
+</Aside>

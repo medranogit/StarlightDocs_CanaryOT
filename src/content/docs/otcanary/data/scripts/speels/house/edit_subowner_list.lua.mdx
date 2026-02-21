@@ -1,0 +1,300 @@
+---
+title: "Spell - edit_subowner_list.lua"
+description: "Spell de edição de lista de co-owners para casas"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `edit_subowner_list.lua` |
+| **Localização** | `data/scripts/spells/house/` |
+| **Tipo de Script** | Spell (Instant) |
+| **Tipo** | House Management (Subowner List) |
+| **Alvo** | Current Tile/House |
+| **Mana Requerida** | Nenhuma |
+| **Words** | aleta som |
+| **Spell ID** | Nenhum (house spell) |
+| **Cooldown** | Nenhum |
+| **Agressivo** | Não |
+| **Agressor Precisa Target ou Direção** | Não |
+| **Efeito Visual Erro** | CONST_ME_POFF |
+| **Som de Casting** | SOUND_EFFECT_TYPE_SPELL_INVITE_SUBOWNERS |
+| **Linhas de Código** | 18 |
+| **Complexidade** | Simples |
+
+**Descrição:**
+Spell de edição de lista de co-owners (subowners). Permite ao dono da casa editar lista de players co-owners/sub-proprietários. Busca casa no tile do player. Validação: canEditAccessList(SUBOWNER_LIST). Abre window de edição com sendHouseWindow. Constante SUBOWNER_LIST para type. Words: "aleta som". Som: SOUND_EFFECT_TYPE_SPELL_INVITE_SUBOWNERS. Spell gerenciamento de casa co-owners lista edição!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/house/edit_subowner_list.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:name("House Subowner List")
+spell:words("aleta som")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_INVITE_SUBOWNERS)
+spell:isAggressive(false)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Edição de Lista de Co-Owners - Gerenciamento de Casa**
+
+Este spell oferece interface para editar co-owners da casa:
+
+1. **Busca de Casa Simples:**
+   - getTile():getHouse()
+   - Obtém casa do tile atual
+   - Sem necessidade de target!
+
+2. **Validação de Permissões:**
+   - canEditAccessList(SUBOWNER_LIST, player)
+   - Apenas owner pode editar subowners
+   - Segurança máxima!
+
+3. **Interface de Co-Owners:**
+   - sendHouseWindow(house, SUBOWNER_LIST)
+   - Abre janela native client
+   - Edição intuitiva de subowners!
+
+4. **Feedback do Usuário:**
+   - Mensagem de erro se não pode editar
+   - Efeito visual CONST_ME_POFF
+   - Som especial SOUND_EFFECT_TYPE_SPELL_INVITE_SUBOWNERS
+
+**Uso Típico:**
+```
+House Owner lvl any
+// Cast "aleta som"
+// Dentro da casa ou no tile da casa
+// Sistema obtém casa do tile
+// Se válido: abre janela de edição
+// Se inválido: mensagem erro + efeito poff
+// Spell edição co-owners casa!
+```
+
+**Diferencial:** Simples, direto, sem target necessário, gerenciamento subowners/co-proprietários!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `edit_subowner_list` oferece gerenciamento de co-owners em casas através de interface nativa:
+
+- **Tipo:** House Management (Subowner Access)
+- **Função Principal:** Editar lista de co-owners/subowners
+- **Busca de Casa:** Tile do player (getTile)
+- **Validação:** canEditAccessList(SUBOWNER_LIST, player)
+- **Interface:** sendHouseWindow(house, SUBOWNER_LIST)
+- **Mensagem Erro:** RETURNVALUE_NOTPOSSIBLE
+- **Efeito Erro:** CONST_ME_POFF
+- **Requer Target:** Não
+
+### Arquitetura
+
+```
+local spell = Spell("instant")
+├─ onCastSpell(player, variant)
+│  ├─ getTile():getHouse()
+│  ├─ Validação: canEditAccessList(SUBOWNER_LIST, player)
+│  └─ sendHouseWindow(house, SUBOWNER_LIST) ou erro
+│
+└─ Configuração spell
+   ├─ name: "House Subowner List"
+   ├─ words: "aleta som"
+   ├─ isAggressive: false
+   └─ castSound: SOUND_EFFECT_TYPE_SPELL_INVITE_SUBOWNERS
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell de edição de subowners.
+
+**Tipo:** Instant (sem cast time)
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(player, variant)
+	local house = player:getTile():getHouse()
+	if not house then
+		return false
+	end
+
+	if house:canEditAccessList(SUBOWNER_LIST, player) then
+		player:setEditHouse(house, SUBOWNER_LIST)
+		player:sendHouseWindow(house, SUBOWNER_LIST)
+	else
+		player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		player:getPosition():sendMagicEffect(CONST_ME_POFF)
+	end
+	return true
+end
+```
+
+**Propósito:** Abre editor de co-owners da casa.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Caster (house owner) |
+| `variant` | Variant | Não utilizado |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Always (sucesso ou erro informado) |
+| `false` | Não está em casa |
+
+**Lógica Detalhada:**
+
+1. **Busca de Casa:**
+   - getTile() do player
+   - getHouse() do tile
+   - Se não existe: return false
+
+2. **Validação Permissões:**
+   - canEditAccessList(SUBOWNER_LIST, player)
+   - Constante SUBOWNER_LIST para tipo
+   - Normalmente apenas owner pode editar
+
+3. **Sucesso:**
+   - setEditHouse(house, SUBOWNER_LIST)
+   - sendHouseWindow(house, SUBOWNER_LIST)
+   - Abre interface nativa
+
+4. **Erro:**
+   - sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+   - sendMagicEffect(CONST_ME_POFF)
+   - Retorna true (spell executado)
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `spell` | Spell | Arquivo | Instância spell |
+
+### Variáveis Locais (onCastSpell)
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `house` | House | Casa obtida do tile do player |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Busca de Casa Simples
+
+```lua
+local house = player:getTile():getHouse()
+if not house then
+	return false
+end
+```
+
+**Benefício:** Early exit se não está em casa!
+
+### Padrão 2: Validação + Ação Condicional
+
+```lua
+if house:canEditAccessList(SUBOWNER_LIST, player) then
+	-- Sucesso
+else
+	-- Erro com feedback
+end
+```
+
+**Benefício:** Clear branching entre acesso permitido/negado!
+
+### Padrão 3: Constante SUBOWNER_LIST
+
+```lua
+house:canEditAccessList(SUBOWNER_LIST, player)
+player:sendHouseWindow(house, SUBOWNER_LIST)
+```
+
+**Benefício:** Especifica tipo de acesso (subowners vs guests vs doors)!
+
+### Padrão 4: Feedback Completo
+
+```lua
+sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+getPosition():sendMagicEffect(CONST_ME_POFF)
+```
+
+**Benefício:** Mensagem + efeito visual = feedback claro!
+
+---
+
+## 🤖 Documentação das Funções
+
+### spell.onCastSpell(player, variant)
+
+**Descrição:** Abre editor de co-owners da casa.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Caster (house owner) |
+| `variant` | Variant | Não utilizado |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Janela editora aberta ou erro enviado |
+| `false` | Player não está em casa |
+
+**Requisitos:**
+- Estar dentro de uma casa
+- Ser owner da casa (normalmente apenas owner edita)
+- Validação canEditAccessList(SUBOWNER_LIST) positiva
+
+**Exemplo de Uso:**
+```lua
+-- Player em casa como owner
+-- Cast "aleta som"
+-- Sistema obtém house do tile
+-- Se válido: abre sendHouseWindow(..., SUBOWNER_LIST)
+-- Se inválido: sendCancelMessage + efeito erro
+-- Spell edição co-owners casa!
+```
+
+---
+
+## 📌 Resumo
+
+**Edit Subowner List** é um spell de gerenciamento de casa que permite editar lista de co-owners/subowners. Com busca simples getTile():getHouse(), validação canEditAccessList(SUBOWNER_LIST), interface nativa sendHouseWindow, feedback erro com CONST_ME_POFF, words "aleta som", som SOUND_EFFECT_TYPE_SPELL_INVITE_SUBOWNERS, isAggressive false, sem requerimento de target. Spell house co-owners subowners lista edição gerenciamento interface nativa!

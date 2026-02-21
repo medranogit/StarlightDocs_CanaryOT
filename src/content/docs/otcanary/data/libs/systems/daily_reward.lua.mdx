@@ -1,0 +1,588 @@
+---
+title: "daily_reward.lua"
+description: "Sistema de recompensas diárias com regeneração de stamina/soul async, descontos em PZ e diferenciação VIP/Premium"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo de **sistema de recompensas diárias** que implementa regeneração contínua de stamina (39 minutos/ciclo com bonus em PZ) e soul points (diferenciadas por VIP/Premium vs regular). Fornece 6 tipos de rewards consumíveis (HP, MP, Stamina, Double HP, Double MP, Soul) e infrastructure de global storage para persistência de timestamps de last server save. Inclui string extension para formatação humanizada de diferença de tempo (e.g., "2 days, 3 hours and 5 minutes").
+
+**Caminho Original**: `data/libs/systems/daily_reward.lua`
+
+**Dependências**:
+- Player object (stamina, soul, getTile, isPremium, isVip)
+- Tile system (TILESTATE_PROTECTIONZONE)
+- Config manager (VIP_SYSTEM_ENABLED)
+- Database (global_storage table for persistence)
+- Event system (addEvent, stopEvent)
+
+<Aside>
+Este módulo se integra com **sistema de recompensas diárias** típico de MMOs, oferecendo bonus contínuo à stamina/soul enquanto jogador está em zona de proteção. A diferenciação VIP/Premium garante retenção de jogadores pagantes.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `daily_reward.lua` implementa **sistema de bonus de regeneração assíncrono** para stamina (regenera 1 minuto a cada 6 segundos em PZ quando stamina está em range bonus 2340-2520) e soul points (1 ponto a cada ciclo em PZ, com máximo diferenciado: 100 para regular, 200 para VIP/Premium). Sistema usa async event loop via addEvent() para reschedule contínuo, com registro global de event IDs em DailyRewardBonus tabelas para cleanup ao desconectar. Inclui string extension str:diff() para converter segundos em formato humanizado (e.g., "1 day, 2 hours, 3 minutes and 45 seconds"), e infrastructure de global storage (db upsert) para persistir timestamps críticos.
+
+### Arquitetura de Componentes
+
+```
+DailyReward System (global infrastructure)
+│
+├─ CONSTANTES (8 definidas)
+│  ├── DAILY_REWARD_HP_REGENERATION (2)
+│  ├── DAILY_REWARD_MP_REGENERATION (3)
+│  ├── DAILY_REWARD_STAMINA_REGENERATION (4)
+│  ├── DAILY_REWARD_DOUBLE_HP_REGENERATION (5)
+│  ├── DAILY_REWARD_DOUBLE_MP_REGENERATION (6)
+│  ├── DAILY_REWARD_SOUL_REGENERATION (7)
+│  ├── DAILY_REWARD_FIRST (2)
+│  └── DAILY_REWARD_LAST (7)
+│
+├─ TABELAS GLOBAIS (1 com 2 sub-tabelas)
+│  └── DailyRewardBonus
+│      ├── .Stamina {} → playerID -> eventID
+│      └── .Soul {} → playerID -> eventID
+│
+├─ REGENERAÇÃO ASYNC (2 funções)
+│  ├── RegenStamina(playerId, delayMs) → regenera stamina com bonus
+│  └── RegenSoul(playerId, delayMs) → regenera soul com VIP/Premium checks
+│
+├─ STRING EXTENSION (1 método)
+│  └── string.diff(secondsNum) → "X days, Y hours, Z minutes"
+│
+├─ GLOBAL STORAGE QUERIES (3 funções)
+│  ├── GetDailyRewardLastServerSave() → retrieve timestamp
+│  ├── UpdateDailyRewardGlobalStorage(key, value) → upsert db
+│  └── RetrieveGlobalStorage(key) → query com fallback 1
+│
+└─ EVENT LIFECYCLE (via addEvent/stopEvent)
+   ├── Init: addEvent(RegenStamina, ...) ao login
+   ├── Reschedule: stopEvent, re-addEvent cada ciclo
+   └── Cleanup: stopEvent ao logout
+```
+
+### Tabelas de Constantes
+
+**Reward Types** (1-7, enumeração):
+
+| Konstante | Valor | Descrição |
+|---|---|---|
+| DAILY_REWARD_HP_REGENERATION | 2 | HP regen daily reward |
+| DAILY_REWARD_MP_REGENERATION | 3 | Mana regen daily reward |
+| DAILY_REWARD_STAMINA_REGENERATION | 4 | Stamina regen daily reward |
+| DAILY_REWARD_DOUBLE_HP_REGENERATION | 5 | Double HP regen reward |
+| DAILY_REWARD_DOUBLE_MP_REGENERATION | 6 | Double Mana regen reward |
+| DAILY_REWARD_SOUL_REGENERATION | 7 | Soul regen daily reward |
+| DAILY_REWARD_FIRST | 2 | Primeiro tipo válido |
+| DAILY_REWARD_LAST | 7 | Último tipo válido |
+
+---
+
+## Variáveis Globais
+
+### DailyRewardBonus (tabela)
+
+```lua
+DailyRewardBonus = {
+	Stamina = {},
+	Soul = {},
+}
+```
+
+Tabela global que armazena **event IDs** de tasks assíncronas ativas.
+
+**Estrutura**:
+- DailyRewardBonus.Stamina[playerId] = eventId (ou nil)
+- DailyRewardBonus.Soul[playerId] = eventId (ou nil)
+
+**Uso**: Permite cleanup via stopEvent(eventId) ao desconectar, evita memory leaks de eventos órfãos.
+
+---
+
+## Funções Globais
+
+### 1. RegenStamina(playerId, delayMs) - REGENERAÇÃO STAMINA CRÍTICA
+
+Regenera stamina de jogador assincronamente, com delay especial em PZ quando stamina está em range bonus.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- delayMs (number): Delay em milissegundos até próximo tick
+
+**Retorna**: 
+- (boolean): true se sucesso, false se jogador not found
+
+**Lógica Detalhada**:
+
+```lua
+function RegenStamina(id, delay)
+    -- 1. BUSCAR EVENT ANTERIORMENTE AGENDADO
+    local staminaEvent = DailyRewardBonus.Stamina[id]
+    local player = Player(id)
+    
+    -- 2. VALIDAÇÃO: JOGADOR DESCONECTOU
+    if not player then
+        stopEvent(staminaEvent)
+        DailyRewardBonus.Stamina[id] = nil
+        return false
+    end
+    
+    -- 3. ONLY IN PZ
+    if player:getTile():hasFlag(TILESTATE_PROTECTIONZONE) then
+        local actualStamina = player:getStamina()
+        
+        -- 3A. BONUS LOGIC: Se stamina entre 2340-2520, delay = 6 minutos
+        --     (Bonus stamina range = 39 minutos de exaustão)
+        if actualStamina > 2340 and actualStamina < 2520 then
+            delay = 6 * 60 * 1000  -- 6 minutos em ms
+        end
+        
+        -- 3B. REGENERAR: Se stamina < 2520 (máximo)
+        if actualStamina < 2520 then
+            player:setStamina(actualStamina + 1)
+            player:sendTextMessage(MESSAGE_FAILURE, "One minute of stamina has been refilled.")
+        end
+    end
+    
+    -- 4. RESCHEDULE EVENT
+    stopEvent(staminaEvent)
+    DailyRewardBonus.Stamina[id] = addEvent(RegenStamina, delay, id, delay)
+    return true
+end
+```
+
+**Comportamento de Delay**:
+
+| Stamina Range | Delay | Motivo |
+|---|---|---|
+| 0 a 2339 | Standard (default) | Normal regen rate |
+| 2340 a 2520 | 6 minutos | Bonus stamina range (39 min total) |
+| 2520+ | Skipped (no regen) | Máximo atingido |
+
+**Peculiaridades**:
+- Stamina máximo é 2520 (42 minutos * 60 segundos)
+- Range bonus 2340-2520 = últimos 3 minutos, regen é 6x mais rápido
+- Reschedule ocorre mesmo se fora da PZ (mas sem regeneração)
+- stopEvent() limpa evento anterior antes de adicionar novo (no leak)
+
+---
+
+### 2. RegenSoul(playerId, delayMs) - REGENERAÇÃO SOUL CRÍTICA
+
+Regenera soul points de jogador assincronamente, com diferenciação VIP/Premium.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- delayMs (number): Delay em milissegundos até próximo tick
+
+**Retorna**: 
+- (boolean): true se sucesso, false se jogador not found
+
+**Lógica Detalhada**:
+
+```lua
+function RegenSoul(id, delay)
+    -- 1. BUSCAR EVENT ANTERIORMENTE AGENDADO
+    local soulEvent = DailyRewardBonus.Soul[id]
+    local player = Player(id)
+    
+    -- 2. VALIDAÇÃO: JOGADOR DESCONECTOU
+    if not player then
+        stopEvent(soulEvent)
+        DailyRewardBonus.Soul[id] = nil
+        return false
+    end
+    
+    -- 3. CALCULAR MÁXIMO SOUL CONFORME VIP/PREMIUM
+    local maxsoul = 100  -- Regular players
+    if (configManager.getBoolean(configKeys.VIP_SYSTEM_ENABLED) and player:isVip()) 
+       or player:isPremium() then
+        maxsoul = 200  -- VIP ou Premium = 2x máximo
+    end
+    
+    -- 4. REGENERAR APENAS EM PZ
+    if player:getTile():hasFlag(TILESTATE_PROTECTIONZONE) then
+        if player:getSoul() < maxsoul then
+            player:addSoul(1)
+            player:sendTextMessage(MESSAGE_FAILURE, "One soul point has been restored.")
+        end
+    end
+    
+    -- 5. RESCHEDULE EVENT
+    stopEvent(soulEvent)
+    DailyRewardBonus.Soul[id] = addEvent(RegenSoul, delay, id, delay)
+    return true
+end
+```
+
+**Diferenciação VIP/Premium**:
+
+| Tipo Jogador | Máximo Soul | Vantagem |
+|---|---|---|
+| Regular | 100 | Standard |
+| Premium | 200 | 2x máximo |
+| VIP (se habilitado) | 200 | 2x máximo |
+| VIP + Premium | 200 | Max é additive (200, não 300) |
+
+**Peculiaridades**:
+- configManager.getBoolean(configKeys.VIP_SYSTEM_ENABLED) = pode desabilitar VIP
+- Reset de maxsoul **a cada tick** (não cached) permite change dinâmico de status
+- Soul regenera 1 ponto por ciclo (não acumulativo)
+- Only regenera se em PZ e abaixo de max
+
+---
+
+### 3. string.diff(secondsNum) - STRING EXTENSION
+
+Estende objeto string Lua para converter segundos em format humanizado.
+
+**Parâmetros**:
+- self (number): Número de segundos a converter
+
+**Retorna**: 
+- (string): Formatação humanizada (e.g., "1 day, 2 hours, 3 minutes and 5 seconds")
+
+**Implementação Complexa**:
+
+```lua
+function string.diff(self)
+    -- 1. DEFINIR FORMATO: pares de (unidade, divisor)
+    local format = {
+        { "day", self / 60 / 60 / 24 },
+        { "hour", self / 60 / 60 % 24 },
+        { "minute", self / 60 % 60 },
+        { "second", self % 60 },
+    }
+    
+    -- 2. ACUMULAR UNIDADES COM VALOR > 0
+    local out = {}
+    for k, t in ipairs(format) do
+        local v = math.floor(t[2])  -- Piso do valor
+        if v > 0 then
+        if v > 0 then
+            -- Formatação especial: ", " ou " and "
+            local separator = (k < #format and (#out > 0 and ", " or "") or " and ")
+            local unitStr = t[1] .. (v ~= 1 and "s" or "")  -- Plural
+            table.insert(out, separator .. v .. " " .. unitStr)
+        end
+    end
+    
+    -- 3. CONCATENAR
+    local ret = table.concat(out)
+    
+    -- 4. POST-PROCESSING: Se muito curto e tem "second", remove tudo antes de " and "
+    if ret:len() < 16 and ret:find("second") then
+        local a, b = ret:find(" and ")
+        ret = ret:sub(b + 1)  -- Keep apenas " and Xs second(s)"
+    end
+    
+    return ret
+end
+```
+
+**Exemplos de Output**:
+
+| Segundos | Output |
+|---|---|
+| 5 | "5 seconds" |
+| 65 | "1 minute and 5 seconds" |
+| 3665 | "1 hour, 1 minute and 5 seconds" |
+| 90061 | "1 day, 1 hour, 1 minute and 1 second" |
+
+**Peculiaridades**:
+- Pluralização: "1 second" vs "2 seconds"
+- Separator logic: vírgulas entre múltiplos, " and " antes do último
+- Post-processing: se string muito curta (menor que 16 chars) e tem "second", trunca tudo antes de " and "
+  - Motivo: "5 seconds" é mantido, mas "0 minutes and 5 seconds" vira "5 seconds"
+
+---
+
+### 4. GetDailyRewardLastServerSave() - QUERY SERVIDOR SAVE
+
+Recupera timestamp do último server save.
+
+**Parâmetros**: (none)
+
+**Retorna**: 
+- (number): Timestamp (segundos desde epoch) ou 1 (fallback)
+
+**Implementação**:
+
+```lua
+function GetDailyRewardLastServerSave()
+    return RetrieveGlobalStorage(DailyReward.storages.lastServerSave)
+end
+```
+
+**Presumido**: DailyReward.storages.lastServerSave é uma constante numérica definida em outro módulo.
+
+---
+
+### 5. UpdateDailyRewardGlobalStorage(key, value) - UPSERT DB
+
+Insere ou atualiza valor em global_storage table (SQL).
+
+**Parâmetros**:
+- key (number): Chave armazenada
+- value (number): Valor a armazenar
+
+**Retorna**: 
+- (void)
+
+**Implementação**:
+
+```lua
+function UpdateDailyRewardGlobalStorage(key, value)
+    db.query("INSERT INTO `global_storage` (`key`, `value`) VALUES (" .. key .. ", " .. value .. ") ON DUPLICATE KEY UPDATE `value` = " .. value)
+end
+```
+
+**SQL Executada**:
+```sql
+INSERT INTO `global_storage` (`key`, `value`) VALUES (key, value) 
+ON DUPLICATE KEY UPDATE `value` = value
+```
+
+**Peculiaridades**:
+- ON DUPLICATE KEY UPDATE = upsert pattern (insert if not exists, update if exists)
+- String concatenation direta em SQL (sem prepared statement!) - vulnerável a SQL injection se key/value mal-validados
+- Executa fire-and-forget (sem validação de resultado)
+
+---
+
+### 6. RetrieveGlobalStorage(key) - QUERY DB
+
+Recupera valor de global_storage table (SQL).
+
+**Parâmetros**:
+- key (number): Chave a buscar
+
+**Retorna**: 
+- (number): Valor encontrado ou 1 (fallback/default)
+
+**Implementação**:
+
+```lua
+function RetrieveGlobalStorage(key)
+    local resultId = db.storeQuery("SELECT `value` FROM `global_storage` WHERE `key` = " .. key)
+    if resultId ~= false then
+        local val = Result.getNumber(resultId, "value")
+        Result.free(resultId)
+        return val
+    end
+    return 1
+end
+```
+
+**Fluxo**:
+
+1. db.storeQuery() executa SELECT, retorna resultId ou false
+2. if resultId != false sem erro
+3. Result.getNumber(resultId, "value") extrai coluna value
+4. Result.free(resultId) libera resultado
+5. Retorna val, ou 1 se não encontrado
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Iniciar Regeneração ao Login
+
+```lua
+function onPlayerLogin(player)
+    local playerId = player:getId()
+    local defaultDelay = 1000  -- 1 segundo inicial
+    
+    DailyRewardBonus.Stamina[playerId] = addEvent(RegenStamina, defaultDelay, playerId, defaultDelay)
+    DailyRewardBonus.Soul[playerId] = addEvent(RegenSoul, defaultDelay, playerId, defaultDelay)
+end
+```
+
+### Padrão 2: Limpar ao Logout
+
+```lua
+function onPlayerLogout(player)
+    local playerId = player:getId()
+    
+    if DailyRewardBonus.Stamina[playerId] then
+        stopEvent(DailyRewardBonus.Stamina[playerId])
+        DailyRewardBonus.Stamina[playerId] = nil
+    end
+    
+    if DailyRewardBonus.Soul[playerId] then
+        stopEvent(DailyRewardBonus.Soul[playerId])
+        DailyRewardBonus.Soul[playerId] = nil
+    end
+end
+```
+
+### Padrão 3: Usar string.diff() para Timeouts
+
+```lua
+function getTTLMessage(secondsRemaining)
+    return "Seu buff expira em: " .. (secondsRemaining):diff()
+end
+
+-- Exemplo: getTTLMessage(3661) → "1 hour, 1 minute and 1 second"
+```
+
+### Padrão 4: Persistir Timestamp
+
+```lua
+function onServerSave()
+    local timestamp = os.time()
+    UpdateDailyRewardGlobalStorage(DailyReward.storages.lastServerSave, timestamp)
+end
+```
+
+### Padrão 5: Query Timestamp
+
+```lua
+function getTimeSinceLastSave()
+    local lastSave = GetDailyRewardLastServerSave()
+    local now = os.time()
+    return now - lastSave
+end
+```
+
+### Padrão 6: Configurar Rewards Customizados
+
+```lua
+function configureReward(rewardType)
+    for i = DAILY_REWARD_FIRST, DAILY_REWARD_LAST do
+        if i == rewardType then
+            print("Configurando reward tipo: " .. i)
+        end
+    end
+end
+```
+
+### Padrão 7: Check VIP Status com Soul Max
+
+```lua
+function getSoulMax(player)
+    if (configManager.getBoolean(configKeys.VIP_SYSTEM_ENABLED) and player:isVip()) or player:isPremium() then
+        return 200
+    end
+    return 100
+end
+```
+
+### Padrão 8: Monitorar Stamina Bonus Range
+
+```lua
+function isStaminaInBonusRange(player)
+    local stamina = player:getStamina()
+    return stamina >= 2340 and stamina <= 2520
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Relação |
+|---|---|---|
+| **Async Event Loop** | Regeneração contínua via addEvent reschedule | RegenStamina, RegenSoul |
+| **Stamina Bonus Range** | 2340-2520 = 39 minutos, regen 6x mais rápido | RegenStamina delay logic |
+| **Soul Diferenciação** | Regular=100 max, VIP/Premium=200 max | RegenSoul maxsoul check |
+| **Global Storage** | DB upsert para persistência de timestamps | UpdateDailyRewardGlobalStorage |
+| **Event Cleanup** | stopEvent() critical ao desconectar | RegenStamina/Soul return false |
+| **PZ Requirement** | Regeneração só ocorre em TILESTATE_PROTECTIONZONE | getTile():hasFlag() |
+| **String Extension** | Estende string Lua com método diff() | string.diff() |
+| **Time Formatting** | Converte secondos em "X days, Y hours..." | string.diff() humanizado |
+
+### Padrões Arquiteturais
+
+1. **Event Loop Pattern**: Função reschedula a si mesma via addEvent() com delay dinâmico
+2. **Registry Table**: DailyRewardBonus stores event IDs por player para cleanup
+3. **Fallback Pattern**: RetrieveGlobalStorage() retorna 1 se não encontrado (nunca erro)
+4. **Toggle-able Features**: configManager checks para VIP system enable/disable
+5. **Separator Logic**: string.diff() usa ",", " and " com post-processing especial
+6. **Guard Clauses**: Early return false se jogador não existe (evita memory leak)
+7. **Dual Regenerations**: Stamina (tempo) + Soul (account premium) independentes
+8. **PZ-Gated Benefits**: Bonus só em zone de proteção (desencoraja afk grinding)
+
+### Responsabilidades do Módulo
+
+- ✅ Regenerar stamina assincronamente
+- ✅ Regenerar soul assincronamente
+- ✅ Aplicar bonus delay em PZ quando stamina em range
+- ✅ Diferenciar máximo soul por VIP/Premium status
+- ✅ Persistir event IDs para cleanup ao logout
+- ✅ Fornecer string extension para time formatting
+- ✅ Persistir timestamps em global storage  DB
+- ✅ Recuperar timestamps com fallback
+
+### Casos de Uso Principais
+
+1. **Login**: Iniciar RegenStamina + RegenSoul async loops
+2. **Logout**: Cleanup via stopEvent() de ambos os loops
+3. **Stamina em Bonus**: Aplicar 6-min delay especial (vs default)
+4. **VIP Upgrade**: Soul max automaticamente aumenta para 200
+5. **Server Save**: Persistir timestamp em global storage
+6. **Time Display**: Usar string.diff() para mensagens ao jogador
+7. **TTL Check**: Calcular diferença de tempo desde last server save
+
+---
+
+## 📚 Conclusão
+
+O módulo `daily_reward.lua` implementa **sistema de bonus de regeneração contínua** típico de MMOs, onde stamina e soul regeneram assincronamente enquanto jogador está em zona de proteção. Design é notável por sua **eficiência de delay dinâmico**: quando stamina está em range final (2340-2520), regeneração acelera 6x (6 minutos vs ~1 segundo default), incentivando jogadores a recuperar stamina em PZ antes de sair.
+
+A diferenciação VIP/Premium é simples mas eficaz: soul máximo dobra para 200, retenção potencial de pagantes. O uso de **global storage para persistência** (DB upsert) permite tracking de timestamps críticos (últimó server save) sem perder dados entre restarts.
+
+Particularmente elegante é a **string extension str:diff()** que converte segundos em formato humanizado (e.g., "1 day, 2 hours, 3 minutes and 5 seconds"), com pluralização automática e post-processing especial para valores curtos. O padrão de registro de event IDs em DailyRewardBonus tabelas garante **zero memory leaks** - cada resgate ao logout via stopEvent() elimina evento órfão.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadados do Documento">
+- **Versão do Módulo**: Atual (sem versionamento no código)
+- **Data da Documentação**: 19 de Fevereiro, 2026
+- **Cobertura**: 100% (6 funções globais, 2 tabelas, 8 constantes)
+- **Complexidade**: Baixa-Média (async loops, DB queries, string manipulation)
+- **Padrão**: 7 seções MDX/Astro
+- **Exemplos Inclusos**: 8 padrões de uso completos
+- **Linhas de Código**: ~110 linhas Lua
+</Card>
+
+<Aside type="tip">
+**Dica de Integração**: RegenStamina e RegenSoul devem ser iniciados em onPlayerLogin e cancelados em onPlayerLogout. Usar DailyRewardBonus.Stamina[id] e DailyRewardBonus.Soul[id] para recuperar event IDs. GetDailyRewardLastServerSave() presume DailyReward.storages.lastServerSave definido em outro arquivo (verificar config módulo).
+</Aside>
+
+<Aside type="caution">
+**Atenção Crítica**:
+- **SQL Injection Risk**: UpdateDailyRewardGlobalStorage usa concatenação direta - key/value devem ser validados/sanitizados antes
+- **Event Leak**: Se RegenStamina/RegenSoul não chamar stopEvent() antes de addEvent(), event anterior vaza (porém código tem guard)
+- **Stamina Máximo Hardcoded**: 2520 é constante (42 minutos), não configurável
+- **Soul Diferenciação Dinâmica**: maxsoul recalculado a cada tick (permite change VIP status mid-regen, não cached)
+- **PZ Requirement Crítico**: Se jogador sair de PZ, regeneração para mas async loop continua (esperando re-entrada PZ)
+- **String Extension Global**: string.diff() estende TODAS as strings em Lua - pode colidir com outros mods
+- **Fallback 1**: RetrieveGlobalStorage retorna 1 se não encontrado - pode causar problemas se 1 é valor inválido
+- **No Validation**: RegenStamina/RegenSoul não validam se stamina/soul storage corrupto
+</Aside>
+
+<Aside type="note">
+**Notas de Manutenção**:
+- DAILY_REWARD_FIRST = 2, DAILY_REWARD_LAST = 7 define range de tipos válidos
+- DailyRewardBonus é tabela local global - não acessível de fora sem esta declaração
+- Stamina range 2340-2520 = últimos 3 minutos de stamina, bonus = 6x speed
+- Soul regenera 1 ponto por ciclo, não acumulativo - delay > 1 ciclo permite múltiplos ticks
+- configManager.getBoolean(configKeys.VIP_SYSTEM_ENABLED) pode desabilitar VIP (VIP + Premium fallback para Premium)
+- addEvent(func, delayMs, arg1, arg2,...) permite argumento passthrough
+- stopEvent(eventId) cancela event async - critical para cleanup
+- Player:getTile():hasFlag(TILESTATE_PROTECTIONZONE) é check único para PZ
+- db.query() vs db.storeQuery() - query = fire-and-forget, storeQuery = retorna resultado
+- Result.free freeing é necessário para liberar memória de result object
+</Aside>

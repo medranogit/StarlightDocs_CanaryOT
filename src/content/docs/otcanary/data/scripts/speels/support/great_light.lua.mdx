@@ -1,0 +1,178 @@
+---
+title: Great Light
+description: Spell de suporte que cria condition de luz melhorada por 11 minutos 35 segundos para toda vocação
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `great_light.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Todas (10 vocações disponíveis) |
+| **Spell ID** | 11 |
+| **Mana Requerida** | 60 |
+| **Level Requerido** | 13 |
+| **Status Premium** | Não (acesso livre) |
+| **Duração da Luz** | 11 minutos 35 segundos (695 segundos = 695.000 ms) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utevo gran lux` |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Nível de Luz** | 8 (máximo) |
+| **Cor da Luz** | 215 (amarelo/branco) |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (suporte utilitário) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/great_light.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell aplica CONDITION_LIGHT com dois parâmetros visuais: CONDITION_PARAM_LIGHT_LEVEL (8 = máximo) e CONDITION_PARAM_LIGHT_COLOR (215 = amarelo/branco). O cálculo de duração é: (11 * 60 + 35) * 1000 = 695.000 ms. Disponível para TODAS as 10 vocações, tornando luz universal. Spell é não-premium e acessível extremamente cedo (level 13), indicando importância estratégica. O efeito visual blue diferencia de other support spells. Não há verificação de condição anterior - spell pode ser castado novamente imediatamente.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `great_light.lua` implementa source de luz universal para todas as vocações (level 13+) que aplica condition de luz melhorada por 11:35 minutos. É um dos poucos spells disponível a TODAS as 10 vocações (raridade em Canary). O spell cria Combat com condition CONDITION_LIGHT parametrizado com nível 8 (máximo) e cor 215 (amarelo), executa combat via handler simples, e oferece duração longa permitindo exploração em dungeons escuros. A implementação demonstra padrão minimalista de condition luminosa com duração calculada.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat com Efeito
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+
+-- 2. Criação de Condition de Luz
+local condition = Condition(CONDITION_LIGHT)
+condition:setParameter(CONDITION_PARAM_LIGHT_LEVEL, 8)
+condition:setParameter(CONDITION_PARAM_LIGHT_COLOR, 215)
+condition:setParameter(CONDITION_PARAM_TICKS, (11 * 60 + 35) * 1000)
+combat:addCondition(condition)
+
+-- 3. Instância do Spell
+local spell = Spell("instant")
+
+-- 4. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 4.1 Execução de Combat (aplica condition)
+    -- 4.2 Retorno de Status
+end
+
+-- 5. Configuração de Propriedades do Spell
+spell:name("Great Light")
+spell:words("utevo gran lux")
+spell:group("support")
+spell:vocation(...todas vocações...)
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_GREAT_LIGHT)
+spell:id(11)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(13)
+spell:mana(60)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat com condition de luz |
+| `condition` | `Condition` | Local | Condition de luz com nível 8 e cor 215 |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Qualquer player que executa o spell |
+| `variant` | `Variant` | Parâmetro | Dados variáveis (não utilizados - self target) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Condition com Múltiplos Parâmetros**
+```lua
+local condition = Condition(CONDITION_LIGHT)
+condition:setParameter(CONDITION_PARAM_LIGHT_LEVEL, 8)
+condition:setParameter(CONDITION_PARAM_LIGHT_COLOR, 215)
+condition:setParameter(CONDITION_PARAM_TICKS, ...)
+```
+Condition com 3 parâmetros: nível visual, cor visual, duração.
+
+### 2. **Padrão de Cálculo de Duração Legível**
+```lua
+condition:setParameter(CONDITION_PARAM_TICKS, (11 * 60 + 35) * 1000)
+```
+Calcula em componentes: 11 minutos + 35 segundos, converte para millisegundos.
+
+### 3. **Padrão de Vocação Universal**
+```lua
+spell:vocation("druid;true", "elder druid;true", "knight;true", "elite knight;true", 
+               "paladin;true", "royal paladin;true", "sorcerer;true", "master sorcerer;true", 
+               "monk;true", "exalted monk;true")
+```
+Todas as 10 vocações tem acesso (5 base + 5 promotions).
+
+### 4. **Padrão de Handler Simples**
+```lua
+function spell.onCastSpell(creature, variant)
+    return combat:execute(creature, variant)
+end
+```
+Handler sem lógica adicional - apenas delega ao Combat.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Aplica condition de luz melhorada ao caster.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Qualquer player (todas vocações) que executa o spell.
+- `variant` (Variant): Dados variáveis (não utilizados - self target).
+
+**Fluxo de Execução:**
+
+1. **Execução de Combat**:
+   - Chama `combat:execute(creature, variant)`
+   - Combat aplica condition de CONDITION_LIGHT
+
+2. **Aplicação de Condition**:
+   - Nível de luz: 8 (máximo)
+   - Cor: 215 (amarelo/branco)
+   - Duração: 695.000 ms (11:35 minutos)
+
+3. **Efeito Visual**:
+   - Efeito `CONST_ME_MAGIC_BLUE` na posição
+   - Confirma visualmente que spell foi castado
+
+4. **Retorno**:
+   - Retorna `true` (cast bem-sucedido, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Light condition aplicada, mana de 60 consumida
+
+**Lógica Detalhada:**
+
+O spell implementa luz melhorada com duração longa. O nível 8 é máximo no sistema de luz Tibia - oferece visibilidade máxima em dungeons escuros. A cor 215 é amarelo/branco, luz natural e leitura-friendly.
+
+A duração de 11:35 minutos é estratégica - suficiente para exploração de dungeon mediano, mas não indefinida. Permite re-cast conforme necessário durante sessões longas sem necessidade de manutenção constante.
+
+O acesso a TODAS as 10 vocações é raro em Canary. Most spells são restritos a 2-4 vocações. Great Light universal torna essencial para qualquer build.
+
+A mana de 60 é baixa para level 13, tornando altamente acessível. Level 13 é muito cedo na progressão, permitindo luz desde o início do mid-game.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_GREAT_LIGHT`: Som característico
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+
+## 📌 Resumo
+
+**Great Light** é um spell de suporte utilitário universal disponível a TODAS as vocações (level 13+) que aplica fonte de luz melhorada de nível 8 por 11 minutos 35 segundos. O spell requer apenas 60 de mana e cooldown de 2 segundos, tornando acessível extremamente cedo. A implementação é minimalista, usando apenas condition com parâmetros de nível e cor. É ferramenta essencial para exploração em dungeons escuros, oferecendo visibilidade máxima durante 695 segundos. O acesso universal (todas vocações) e requisitos baixos (mana, level) indicam importância estratégica como suporte base.
+
+A implementação segue padrão minimalista de condition, diferenciando-se por: (1) acesso universal a todas vocações, (2) parâmetros de nível e cor, (3) duração calculada em minutos+segundos, (4) mana e level extremamente baixos, (5) handler simples sem lógica adicional.

@@ -1,0 +1,317 @@
+---
+title: "Spell/Rune - poison_bomb.lua"
+description: "Runa que cria campo de veneno em área com dano terra"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `poison_bomb.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 91 |
+| **ID do Item (runeId)** | 3173 |
+| **Level Requerido** | 25 |
+| **Magic Level Requerido** | 4 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_EARTHDAMAGE |
+| **Área** | SQUARE 1x1 (single) |
+| **Field** | ITEM_POISONFIELD_PVP |
+| **Cooldown** | 2s |
+| **Cargas** | 2 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Bloqueio** | Não (creatures passam) |
+| **PZ Locked** | Sim |
+| **Agressividade** | Sim |
+| **Requer Target** | Não |
+| **Linhas de Código** | 28 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa que lança bomba de veneno com dano terra em área 1x1. Auto-cria campo de veneno (CREATEITEM). Área pequena (SQUARE 1x1) permite precisão. Sem bloqueio (creatures passam através) possibilita uso em movimento. Cargas poucas (2) indicam poder moderado. PZ locked força combate em dungeons.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/poison_bomb.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(91)
+rune:runeId(3173)
+rune:level(25)
+rune:magicLevel(4)
+rune:group("attack")
+rune:allowFarUse(true)
+rune:setPzLocked(true)
+rune:charges(2)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Bomba de Veneno com Campo Auto-Deploy**
+
+Esta runa implementa um **sistema de área com campo automático**:
+
+1. **Dano + Field:**
+   - COMBAT_EARTHDAMAGE + efeito GREEN_RINGS
+   - ITEM_POISONFIELD_PVP auto-criado
+   - Efeito duplo: dano + controle
+
+2. **Área SQUARE 1x1:**
+   - Single tile precision
+   - Não área grande (controlado)
+
+3. **Sem Bloqueio:**
+   - isBlocking: false
+   - Creatures passam através
+   - Uso livre, movimento fluido
+
+4. **Cargas Poucas:**
+   - 2 apenas
+   - Poder balanceado
+   - Uso tático
+
+**Fluxo:**
+```
+Lança bomba
+├─ Projétil viaja
+├─ Chega em tile
+├─ Dano earth aplicado
+├─ GREEN_RINGS efeito
+├─ POISONFIELD criado
+└─ Área efeito = controle!
+```
+
+**Diferencial:** Bomba com field = agressão + controle!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `poison_bomb` oferece dano + controle:
+
+- **Dano:** COMBAT_EARTHDAMAGE
+- **Field:** POISONFIELD_PVP automático
+- **Área:** SQUARE 1x1
+- **Bloqueio:** Não (passagem livre)
+- **Cargas:** 2
+
+### Arquitetura
+
+Combat com campo automático:
+
+```
+local combat = Combat()
+├─ Type: EARTHDAMAGE
+├─ Effect: GREEN_RINGS
+├─ Distance: POISON
+├─ CreateItem: POISONFIELD_PVP
+└─ Area: SQUARE 1x1
+
+rune.onCastSpell()
+└─ combat:execute() (auto-cria field)
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_GREEN_RINGS)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_POISON)
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_POISONFIELD_PVP)
+combat:setArea(createCombatArea(AREA_SQUARE1X1))
+```
+
+**Propósito:** Combat de dano + field automático.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_EARTHDAMAGE | Dano terra |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_GREEN_RINGS | Efeito anéis verdes |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_POISON | Projétil veneno |
+| `COMBAT_PARAM_CREATEITEM` | ITEM_POISONFIELD_PVP | Field automático |
+| `Area` | AREA_SQUARE1X1 | Área single tile |
+
+**Características:**
+- SQUARE 1x1 = single
+- Field auto-deploy
+- Sem armor bypass
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples, tudo no combat.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Bomba lançada + field criado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com field automático |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Field Automático
+
+```lua
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_POISONFIELD_PVP)
+```
+
+**Benefício:** Field criado automaticamente no impacto.
+
+### Padrão 2: Área Controlada
+
+```lua
+combat:setArea(createCombatArea(AREA_SQUARE1X1))
+```
+
+**Benefício:** Precision 1x1, sem splash excessivo.
+
+### Padrão 3: Sem Bloqueio
+
+```lua
+rune:isBlocking(false)
+```
+
+**Benefício:** Creatures passam, movimento fluido.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Lança bomba de veneno com field automático.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Position alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Bomba ativa + field criado |
+| `false` | Position falhou |
+
+**Efeito:**
+- Projétil veneno viaja
+- Impacto com anéis verdes
+- Dano earth aplicado (1x1)
+- POISONFIELD_PVP criado (campo tóxico)
+- Creatures passam (não bloqueio)
+
+**Exemplo:**
+
+```lua
+-- Mago nível 25, MLvl 4
+rune.onCastSpell(mago, positionVariant, false)
+// PZ locked: fora proteção
+// Projétil viaja
+// Impacto GREEN_RINGS
+// Dano earth em 1x1
+// Field POISONFIELD criado
+// Creatures passam (livres)
+// Resultado: Bomba + field!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Agressão Táctica
+
+```lua
+-- Mago aponta em inimigo
+// Bomba = dano + field
+// Field = controle territorial
+```
+
+### Caso 2: Área Precisa
+
+```lua
+-- SQUARE 1x1 = controlado
+// Não splash grande
+// Ideal para dungeons
+```
+
+### Caso 3: Movimento Livre
+
+```lua
+-- isBlocking: false
+// Creatures passam
+// Uso em combate fluido
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_EARTHDAMAGE
+- **Areas:** AREA_SQUARE1X1
+- **Field:** ITEM_POISONFIELD_PVP
+- **Effects:** CONST_ME_GREEN_RINGS, CONST_ANI_POISON
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Bomba veneno com field |
+| **Dano** | COMBAT_EARTHDAMAGE |
+| **Field** | POISONFIELD_PVP automático |
+| **Area** | SQUARE 1x1 (single) |
+| **Cargas** | 2 |
+| **Distancia** | Sim (allowFarUse) |
+| **Bloqueio** | Não (passagem) |
+| **PZ Locked** | Sim |
+| **Level** | 25 (early-mid) |
+| **MLvl** | 4 |
+| **Padrão** | Field automático + área precisa |

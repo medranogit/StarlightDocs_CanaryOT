@@ -1,0 +1,397 @@
+---
+title: Icons Functions
+description: Comando GOD para testar e gerenciar icons de jogadores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | icons_functions.lua |
+| **Tipo de Sistema** | Icon Management (GOD) |
+| **Funcionalidade Principal** | Testar ícones visuais |
+| **Comandos** | /testicon, /bakragoreicon, /playericon |
+| **Requisito** | Acesso de God |
+| **Separador** | Espaço (testicon, bakragoreicon), Vírgula (playericon) |
+| **Sistemas** | Network protocol, Conditions, CreatureIcons |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/icons_functions.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** 3 comandos para testes de icons. /testicon: normal icons via bit packing (NewBit, gmatch %d+), ou special icons (param="special, id"). /bakragoreicon: CONDITION_BAKRAGORE com subid como type, -1 ticks. /playericon: 24 icon types (quests), countdown function recursiva com addEvent (1000ms), seta icon via setIcon(key, category, iconId, count), suporta "up"/"down" direction.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo icons_functions.lua implementa 3 comandos GOD para testar e gerenciar icons visuais. Dispõe de sistema de icons normais (bit-packed), special icons (Bakragore), quest icons (24 tipos), countdown animado, validações, mensagens feedback. Ferramenta avançada de icon testing e efeitos visuais.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Funções Locais**
+
+#### **convertIconsToBitValue(iconList)**
+
+```lua
+local function convertIconsToBitValue(iconList)
+	local bitObj = NewBit(0)
+	for icon in string.gmatch(iconList, "%d+") do
+		icon = tonumber(icon)
+		if icon then
+			local flag = bit.lshift(1, icon - 1)
+			bitObj:updateFlag(flag)
+		end
+	end
+	return bitObj:getNumber()
+end
+```
+
+**Descrição:** Converte lista de IDs em número bit-packed.
+
+**Parâmetro:**
+- `iconList` (string): "1, 2, 3, 4" ou "1,2,3,4"
+
+**Retorno:** Número com bits setados
+
+**Exemplo:**
+```lua
+convertIconsToBitValue("1, 2, 3")
+-- Retorna: número com bits 1, 2, 3 setados
+```
+
+---
+
+#### **Player:sendNormalIcons(icons)**
+
+```lua
+function Player:sendNormalIcons(icons)
+	local msg = NetworkMessage()
+	msg:addByte(0xA2)
+	msg:addU64(icons)
+	msg:addByte(0)
+	msg:sendToPlayer(self)
+end
+```
+
+**Descrição:** Envia mensagem de network com icons normais.
+
+**Protocolo:**
+- Byte: 0xA2 (message type)
+- U64: valor de icons
+- Byte: 0 (tipo normal)
+
+---
+
+#### **Player:sendIconBakragore(specialIcon)**
+
+```lua
+function Player:sendIconBakragore(specialIcon)
+	local msg = NetworkMessage()
+	msg:addByte(0xA2)
+	msg:addU64(0)
+	msg:addByte(specialIcon)
+	msg:sendToPlayer(self)
+end
+```
+
+**Descrição:** Envia mensagem com special Bakragore icon.
+
+**Protocolo:**
+- Byte: 0xA2 (message type)
+- U64: 0 (icons normais zeradas)
+- Byte: specialIcon (custom icon ID)
+
+---
+
+### **Comando /testicon**
+
+```lua
+local testIcons = TalkAction("/testicon")
+
+function testIcons.onSay(player, words, param)
+	if param == "" then
+		player:sendCancelMessage("Icon required.")
+		logger.error("[testIcons.onSay] - Icon number's required")
+		return true
+	end
+	
+	local split = param:split(",")
+	local firstParam = split[1]:trim():lower()
+	
+	if firstParam == "special" and tonumber(split[2]) then
+		local specialIcon = tonumber(split[2])
+		player:sendIconBakragore(specialIcon)
+	else
+		local icons = convertIconsToBitValue(param)
+		player:sendNormalIcons(icons)
+	end
+	
+	return true
+end
+
+testIcons:separator(" ")
+testIcons:setDescription("[Usage]: /testicon {icon1}, {icon2}, {icon3}, ... [Usage2]: /testicon special, {icon}")
+testIcons:groupType("god")
+testIcons:register()
+```
+
+**Comando:**
+```
+/testicon 1                         -- Icon 1
+/testicon 1, 2, 3, 4, 5           -- Icons 1-5
+/testicon special, 2               -- Special Bakragore icon 2
+```
+
+**Fluxo:**
+1. Valida param não vazio
+2. Parse split[1] = "special"?
+3. Se special: sendIconBakragore(split[2])
+4. Se normal: convertIconsToBitValue(param) + sendNormalIcons()
+
+---
+
+### **Comando /bakragoreicon**
+
+```lua
+local condition = Condition(CONDITION_BAKRAGORE, CONDITIONID_DEFAULT, 0, true)
+
+local bakragoreIcon = TalkAction("/bakragoreicon")
+
+function bakragoreIcon.onSay(player, words, param)
+	if param == "" then
+		player:sendCancelMessage("Icon number required.")
+		logger.error("[addBakragoreIcon.onSay] - Icon number's required")
+		return true
+	end
+	
+	if param == "remove" then
+		player:removeIconBakragore()
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Removed all Bakragore icons.")
+		return true
+	end
+	
+	local numParam = tonumber(param)
+	if numParam then
+		if player:hasCondition(CONDITION_BAKRAGORE, numParam) then
+			player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You already have the Bakragore icon.")
+			return true
+		end
+		
+		condition:setParameter(CONDITION_PARAM_SUBID, numParam)
+		condition:setParameter(CONDITION_PARAM_TICKS, -1)
+		player:addCondition(condition)
+		
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Added Bakragore icon with ID: " .. numParam)
+	end
+	
+	return true
+end
+
+bakragoreIcon:separator(" ")
+bakragoreIcon:groupType("god")
+bakragoreIcon:register()
+```
+
+**Comando:**
+```
+/bakragoreicon 1                    -- Adiciona Bakragore icon 1
+/bakragoreicon remove              -- Remove todos
+```
+
+**Fluxo:**
+1. Valida param
+2. Se "remove": player:removeIconBakragore()
+3. Se número: cria Condition(CONDITION_BAKRAGORE)
+4. Seta subid = numParam, ticks = -1 (permanente)
+5. Valida não tem já
+
+---
+
+### **Comando /playericon**
+
+```lua
+local creatureIconQuests = {
+	[0] = "None",
+	[1] = "WhiteCross",
+	[2] = "RedCross",
+	[3] = "RedBall",
+	[4] = "GreenBall",
+	[5] = "RedGreenBall",
+	[6] = "GreenShield",
+	[7] = "YellowShield",
+	[8] = "BlueShield",
+	[9] = "PurpleShield",
+	[10] = "RedShield",
+	[11] = "Dove",
+	[12] = "Energy",
+	[13] = "Earth",
+	[14] = "Water",
+	[15] = "Fire",
+	[16] = "Ice",
+	[17] = "ArrowUp",
+	[18] = "ArrowDown",
+	[19] = "ExclamationMark",
+	[20] = "QuestionMark",
+	[21] = "CancelMark",
+	[22] = "Hazard",
+	[23] = "BrownSkull",
+	[24] = "BloodDrop",
+}
+
+local creatureIconAction = TalkAction("/playericon")
+
+function creatureIconAction.onSay(player, words, param)
+	if param == "" then
+		player:sendCancelMessage("Usage: /playericon {icon_id}, {quantity}, {direction (optional: up/down)}")
+		return true
+	end
+	
+	local split = param:split(",")
+	local iconId = tonumber(split[1] and split[1]:trim())
+	local count = tonumber(split[2] and split[2]:trim()) or 0
+	local direction = (split[3] and split[3]:trim():lower()) or "down"
+	
+	-- Validação icon ID
+	local maxIconId = 0
+	for id in pairs(creatureIconQuests) do
+		if id > maxIconId then
+			maxIconId = id
+		end
+	end
+	
+	if not iconId or not creatureIconQuests[iconId] then
+		iconId = maxIconId
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Invalid icon ID. Using maximum valid ID: " .. iconId .. " (" .. creatureIconQuests[iconId] .. ")")
+	end
+	
+	if count <= 0 then
+		player:sendCancelMessage("Invalid quantity. It must be greater than 0.")
+		return true
+	end
+	
+	if direction ~= "up" and direction ~= "down" then
+		player:sendCancelMessage("Invalid direction. Use 'up' or 'down'.")
+		return true
+	end
+	
+	-- Countdown function
+	local iconName = creatureIconQuests[iconId]
+	local key = "player-test-icon"
+	local category = CreatureIconCategory_Quests
+	
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("Applied icon '%s' in %s mode with quantity: %d", iconName, direction, count))
+	
+	local function updateIcon(current, target, step)
+		if not player or not player:isPlayer() then
+			return
+		end
+		
+		player:setIcon(key, category, iconId, current)
+		
+		if (step > 0 and current < target) or (step < 0 and current > target) then
+			addEvent(function()
+				updateIcon(current + step, target, step)
+			end, 1000)
+		else
+			player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Icon countdown ended. Removing in 10 seconds...")
+			addEvent(function()
+				if player and player:isPlayer() then
+					player:setIcon(key, category, 0, 0)
+					player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Icon removed.")
+				end
+			end, 10000)
+		end
+	end
+	
+	if direction == "down" then
+		updateIcon(count, 0, -1)
+	else
+		updateIcon(0, count, 1)
+	end
+	
+	return true
+end
+
+creatureIconAction:separator(" ")
+creatureIconAction:setDescription("[Usage]: /playericon {icon_id}, {quantity}, {direction (up/down)}")
+creatureIconAction:groupType("god")
+creatureIconAction:register()
+```
+
+**Comando:**
+```
+/playericon 1, 10, down            -- Countdown 10->0
+/playericon 3, 5, up              -- Countup 0->5
+/playericon 20                    -- Default: down, count=0
+```
+
+**Fluxo:**
+1. Parse icon_id, count, direction
+2. Validações: icon exists, count > 0, direction valid
+3. Cria recursive updateIcon function
+4. Chamadas addEvent a cada 1000ms
+5. Atualiza icon via player:setIcon()
+6. Remove após 10 segundos
+
+**Countdown Recursivo:**
+```lua
+if step > 0 and current < target then
+    -- Continue up
+else
+    -- Reached target, remove in 10s
+end
+```
+
+---
+
+## **Tabela de Quest Icons**
+
+| ID | Nome | ID | Nome |
+|---|---|---|---|
+| 0 | None | 12 | Energy |
+| 1 | WhiteCross | 13 | Earth |
+| 2 | RedCross | 14 | Water |
+| 3 | RedBall | 15 | Fire |
+| 4 | GreenBall | 16 | Ice |
+| 5 | RedGreenBall | 17 | ArrowUp |
+| 6 | GreenShield | 18 | ArrowDown |
+| 7 | YellowShield | 19 | ExclamationMark |
+| 8 | BlueShield | 20 | QuestionMark |
+| 9 | PurpleShield | 21 | CancelMark |
+| 10 | RedShield | 22 | Hazard |
+| 11 | Dove | 23 | BrownSkull |
+| 24 | BloodDrop | | |
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `NewBit(init)` | Cria objeto bit |
+| `bitObj:updateFlag(flag)` | Seta flag |
+| `bitObj:getNumber()` | Obtém valor |
+| `bit.lshift(v, n)` | Left shift |
+| `string.gmatch(s, pat)` | Regex match |
+| `NetworkMessage()` | Cria mensagem |
+| `msg:addByte(b)` | Adiciona byte |
+| `msg:addU64(n)` | Adiciona u64 |
+| `msg:sendToPlayer(p)` | Envia ao jogador |
+| `Condition(type, id, ticks, param)` | Cria condition |
+| `condition:setParameter(key, val)` | Seta parâmetro |
+| `player:addCondition(cond)` | Aplica condition |
+| `player:hasCondition(type, subid)` | Verifica condition |
+| `player:removeIconBakragore()` | Remove icon |
+| `player:setIcon(key, category, id, count)` | Seta icon |
+| `addEvent(func, delay)` | Agenda evento |
+
+---
+
+## 📌 Resumo
+
+O arquivo icons_functions.lua é sistema avançado de icon testing. Implementação com 3 comandos distintos, bit-packing para icons normais, conditions para Bakragore, countdown recursivo com animação, 24 quest icons, validações rigorosas. Essencial para GMs testar icons visuais e efeitos. Design robusto com cleanup automático.

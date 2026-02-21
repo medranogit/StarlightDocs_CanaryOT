@@ -1,0 +1,191 @@
+---
+title: Magic Rope
+description: Spell de suporte para todas vocações que teleporta player para cima em rope spots via validação de tile
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `magic_rope.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Todas (10 vocações disponíveis) |
+| **Spell ID** | 76 |
+| **Mana Requerida** | 20 |
+| **Level Requerido** | 9 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exani tera` |
+| **Efeito Visual Sucesso** | `CONST_ME_TELEPORT` |
+| **Efeito Visual Falha** | `CONST_ME_POFF` |
+| **Validação** | tile:isRopeSpot() |
+| **Teleporte Destino** | Um nível acima (moveUpstairs) |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (suporte de movimento) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/magic_rope.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell valida se current tile possui flag isRopeSpot() antes de permitir teleporte. Depois valida se tile acima (via moveUpstairs) existe. O teleporte usa `creature:teleportTo(position, false)` que move para mesma posição mas um nível acima (efeito: escavação). A validação retorna RETURNVALUE_NOTPOSSIBLE se não é rope spot e RETURNVALUE_NOTENOUGHROOM se não há tile acima. Premium-only + level 9 acesso cedo para premium players. Sem parâmetros necessários.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `magic_rope.lua` implementa teletransporte vertical condicional para todas as vocações (level 9+) que permite ao player escavar para cima se estiver em um rope spot válido. É um dos poucos spells que usa validação de tile especial (isRopeSpot). O spell valida posição atual, verifica flag isRopeSpot, calcula posição acima (moveUpstairs), valida existência de tile alvo, executa teletransporte, e retorna status. A implementação demonstra padrão de validação condicional com teletransporte baseado em propriedade especial de tile.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância do Spell
+local spell = Spell("instant")
+
+-- 2. Função de Cast Principal
+function spell.onCastSpell(creature, var)
+    -- 2.1 Obtenção de Posição Atual
+    -- 2.2 Efeito Visual Inicial
+    -- 2.3 Validação de Rope Spot
+    -- 2.4 Validação de Tile Acima
+    -- 2.5 Teletransporte
+    -- 2.6 Efeito Visual de Sucesso
+    -- 2.7 Retorno de Status
+end
+
+-- 3. Configuração de Propriedades do Spell
+spell:name("Magic Rope")
+spell:words("exani tera")
+spell:group("support")
+spell:vocation(...todas vocações...)
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_MAGIC_ROPE)
+spell:id(76)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(9)
+spell:mana(20)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Player que executa o spell |
+| `var` | `Variant` | Parâmetro | Dados variáveis (não utilizados) |
+| `position` | `Position` | Local | Posição atual do player |
+| `tile` | `Tile` | Local | Tile atual ou acima (validado) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Validação de Rope Spot**
+```lua
+local tile = Tile(position)
+if not tile:isRopeSpot() then
+    creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+    return false
+end
+```
+Verifica se tile tem propriedade especial isRopeSpot antes de permitir teletransporte.
+
+### 2. **Padrão de Validação de Tile Acima**
+```lua
+tile = Tile(position:moveUpstairs())
+if not tile then
+    creature:sendCancelMessage(RETURNVALUE_NOTENOUGHROOM)
+    return false
+end
+```
+Verifica se existe tile acima antes de teletransportar.
+
+### 3. **Padrão de Teletransporte com Flag false**
+```lua
+creature:teleportTo(position, false)
+```
+Teleporta para mesmo X,Y mas Z incrementado (moveUpstairs implícito).
+
+### 4. **Padrão de Efeito Visual de Tentativa**
+```lua
+position:sendMagicEffect(CONST_ME_POFF)
+```
+Efeito visual inicial (mesmo que falhe).
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, var)`
+
+**Descrição:** Função principal de execução do spell. Valida rope spot e teletransporta player para cima.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Player que executa o spell.
+- `var` (Variant): Dados variáveis (não utilizados).
+
+**Fluxo de Execução:**
+
+1. **Obtenção de Posição e Efeito Inicial**:
+   - `position = creature:getPosition()`
+   - `position:sendMagicEffect(CONST_ME_POFF)`
+   - Efeito visual imediato (Explore effect)
+
+2. **Validação de Rope Spot**:
+   - Obtém `tile = Tile(position)`
+   - Verifica `if not tile:isRopeSpot()`
+   - Se não é rope spot:
+     - Envia `RETURNVALUE_NOTPOSSIBLE`
+     - Retorna `false`
+
+3. **Validação de Tile Acima**:
+   - Calcula `position:moveUpstairs()` (incrementa Z)
+   - Obtém `tile = Tile(...)`
+   - Se não existe:
+     - Envia `RETURNVALUE_NOTENOUGHROOM`
+     - Retorna `false`
+
+4. **Teletransporte**:
+   - Executa `creature:teleportTo(position, false)`
+   - Move player para cima imediatamente
+
+5. **Efeito Visual de Sucesso**:
+   - `position:sendMagicEffect(CONST_ME_TELEPORT)`
+   - Confirma visualmente teleporte bem-sucedido
+
+6. **Retorno**:
+   - Retorna `true` (teleporte executado, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Teleporte bem-sucedido, mana de 20 consumida
+- `false`: Validação falhou (não rope spot ou sem tile acima)
+
+**Lógica Detalhada:**
+
+O spell implementa teletransporte vertical condicional baseado em propriedade especial de tile. A validação de isRopeSpot garante que apenas tiles específicos permitem uso - previne teleporte arbitrário.
+
+A validação de tile acima prevents teleporting ao void (sem estrutura acima). Ambas validações são críticas para prevenir exploits de geometria.
+
+O efeito visual POFF inicial é incondicionalmente enviado na tentativa, mesmo se falhar - oferece feedback visual imediato ao player.
+
+A mana de 20 é baixa para level 9, tornando acessível cedo. Premium-only + level 9 indica que é recurso de subscription mas com acesso rápido.
+
+O teleporte usa mesmo X,Y mas incrementa Z um nível - equivalente a "escavar para cima" através de rope spot.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_MAGIC_ROPE`: Som característico
+
+**Mensagens ao Jogador:**
+- Não rope spot: RETURNVALUE_NOTPOSSIBLE (engine traduz)
+- Sem tile acima: RETURNVALUE_NOTENOUGHROOM (engine traduz)
+
+## 📌 Resumo
+
+**Magic Rope** é um spell de suporte premium para TODAS as vocações (level 9+) que teleporta player para cima se estiver em um rope spot válido. O spell requer apenas 20 de mana e cooldown de 2 segundos. A implementação valida que tile atual é rope spot via isRopeSpot(), verifica existência de tile acima via moveUpstairs(), executa teletransporte, e oferece feedback visual. É ferramenta essencial para exploração vertical em dungeons com múltiplos níveis, permitindo escavação para cima apenas em locais designados. Acesso universal (todas vocações) + level 9 + premium-only indica balanceamento cuidado entre acessibilidade e restrição.
+
+A implementação segue padrão de teletransporte condicional, diferenciando-se por: (1) validação isRopeSpot, (2) validação de tile acima, (3) teletransporte implícito moveUpstairs, (4) efeito visual incondicionado, (5) acesso universal.

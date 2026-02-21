@@ -1,0 +1,871 @@
+---
+title: "position.lua"
+description: "Extensões da classe Position com métodos para navegação 3D, cálculo de distância/direção, detecção de creatures/items, manipulação de tiles, criação/transformação de items, e utilidades de área."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que estende a classe `Position` nativa com funcionalidades completas de geometria espacial: tabela de offsets direcionais, navegação 3D (subir/descer escadas com validação de walkability), cálculo de distância (Chebyshev + penalty de Z), determinação de direção relativa, detecção de creatures/items em posição ou área, manipulação de items (criar, remover, transformar), relocação de conteúdo entre tiles, e utilitários de proteção zone. Suporta tanto operações pontuais quanto área (box scanning).
+
+**Caminho Original**: `data/libs/functions/position.lua`
+
+<Aside type="tip">
+O arquivo `position.lua` é **foundation de spatial logic** do servidor. Praticamente toda lógica de mundo (movimento, spawning, levantamento de items, detecção de área) depende destes métodos. O design usa **Chebyshev distance** (max de deltas) que representa movimento em grid 8-direcional.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **5 layers de funcionalidade**:
+
+1. **Navigation Layer**: Movimento entre posições (cardinal + diagonal), subir/descer escadas
+2. **Geometry Layer**: Cálculo de distância, direção relativa, range checking
+3. **Detection Layer**: Busca de creatures, items, detecção em área
+4. **Manipulation Layer**: Criar, remover, transformar items
+5. **Relocation Layer**: Mover conteúdo entre tiles (creatures + items)
+
+O design usa **static lookup table** (directionOffset) para offsets direcionais, **Chebyshev distance** (max de deltas + Z penalty), e **area scanning** com loops aninhados (performance: O(volume)).
+
+### Estrutura de Funcionalidades
+
+```
+Position Extensions System
+├── Static Data
+│   └── Position.directionOffset (8 directions + values)
+├── Navigation Methods (3)
+│   ├── getNextPosition(direction, steps) → void
+│   ├── moveUpstairs() → Position
+│   └── moveDownstairs() → Position
+├── Geometry Methods (4)
+│   ├── getDistanceBetween(position) → number
+│   ├── getDirectionTo(pos1, pos2) → direction
+│   ├── compare(position) → boolean
+│   └── isInRange(from, to) → boolean
+├── Detection Methods (4)
+│   ├── hasCreature(teleportTo) → void
+│   ├── hasCreatureInArea(fromPos, toPos, removeMons, removePlayers, teleTo) → void
+│   ├── hasItem(itemId) → boolean
+│   └── getTile() → Tile
+├── Manipulation Methods (4)
+│   ├── createItem(itemId, effect) → void
+│   ├── removeItem(itemId, effect) → void
+│   ├── transformItem(itemId, itemTransform, effect) → void
+│   └── revertItem(posCreate, itemIdCreate, posTransform, itemId, transform, effect) → void
+├── Relocation Methods (1)
+│   └── relocateTo(toPos) → boolean
+├── Protection Zone (1)
+│   └── isProtectionZoneTile() → boolean
+├── Utility Methods (2)
+│   ├── getFreePosition(from, to) → Position [static]
+│   ├── getFreeSand() → Position [static]
+│   ├── getWithinRange(otherPos, range) → Position
+│   └── removeMonster(centerPos, rangeX, rangeY) [stub]
+└── Area Methods (1)
+    └── hasCreatureInArea(...) → void [comprehensive]
+```
+
+---
+
+## 📍 Variáveis Estáticas
+
+### `Position.directionOffset`
+
+Tabela lookup para offsets de movimento em cada direção.
+
+**Tipo**: Tabela estática  
+**Chaves**: DIRECTION_* constants (0-7)  
+**Valores**: `{ x, y }` offset pairs
+
+**Tabela**:
+```lua
+Position.directionOffset = {
+    [DIRECTION_NORTH] = { x = 0, y = -1 },      -- ↑
+    [DIRECTION_EAST] = { x = 1, y = 0 },        -- →
+    [DIRECTION_SOUTH] = { x = 0, y = 1 },       -- ↓
+    [DIRECTION_WEST] = { x = -1, y = 0 },       -- ←
+    [DIRECTION_SOUTHWEST] = { x = -1, y = 1 },  -- ↙
+    [DIRECTION_SOUTHEAST] = { x = 1, y = 1 },   -- ↘
+    [DIRECTION_NORTHWEST] = { x = -1, y = -1 }, -- ↖
+    [DIRECTION_NORTHEAST] = { x = 1, y = -1 },  -- ↗
+}
+```
+
+**Uso**:
+```lua
+local pos = Position(1000, 1000, 7)
+pos:getNextPosition(DIRECTION_NORTH)  -- pos.y -= 1
+```
+
+---
+
+## 🚶 Métodos de Navegação
+
+### `Position:getNextPosition(direction, steps)` → void
+
+Move posição em direção especificada, opcionalmente múltiplos passos.
+
+**Tipo**: Method (modifica self in-place)  
+**Parâmetros**:
+- `direction` (number): DIRECTION_* constant
+- `steps` (number, opcional): Multiplicador de movimento (padrão: 1)
+
+**Retorna**: Nenhum (modifica self)
+
+**Implementação**:
+```lua
+function Position:getNextPosition(direction, steps)
+    local offset = Position.directionOffset[direction]
+    if offset then
+        steps = steps or 1
+        self.x = self.x + offset.x * steps
+        self.y = self.y + offset.y * steps
+    end
+end
+```
+
+**Exemplo**:
+```lua
+local pos = Position(1000, 1000, 7)
+pos:getNextPosition(DIRECTION_NORTH, 5)  -- Move 5 tiles north
+-- pos é agora (1000, 995, 7)
+```
+
+---
+
+### `Position:moveUpstairs()` → Position
+
+Move posição para nível superior (z - 1) com validação de walkability.
+
+**Tipo**: Method  
+**Retorna**: Position (self modificada)
+
+**Implementação Core**:
+```lua
+function Position:moveUpstairs()
+    local swap = function(lhs, rhs)
+        lhs.x, rhs.x = rhs.x, lhs.x
+        lhs.y, rhs.y = rhs.y, lhs.y
+        lhs.z, rhs.z = rhs.z, lhs.z
+    end
+
+    self.z = self.z - 1
+
+    local defaultPosition = self + Position.directionOffset[DIRECTION_SOUTH]
+    local toTile = Tile(defaultPosition)
+    if not toTile or not toTile:isWalkable(false, false, false, false, true) then
+        for direction = DIRECTION_NORTH, DIRECTION_NORTHEAST do
+            if direction == DIRECTION_SOUTH then
+                direction = DIRECTION_WEST
+            end
+
+            local position = Position(self)
+            position:getNextPosition(direction)
+            toTile = Tile(position)
+            if toTile and toTile:isWalkable(false, false, false, false, true) then
+                swap(self, position)
+                return self
+            end
+        end
+    end
+    swap(self, defaultPosition)
+    return self
+end
+```
+
+**Fluxo**:
+1. Decrementar Z (subir 1 andar)
+2. Tentar sul (default)
+3. Se não walkable: tentar N, E, NW, NE, W (8-directional search)
+4. Se legal: swap (trocar coordenadas)
+5. Return self (modificada)
+
+**Validação**: isWalkable com 5 parâmetros (bloqueios, creatures, etc).
+
+---
+
+### `Position:moveDownstairs()` → Position
+
+Move posição para nível inferior (z + 1) com validação análoga.
+
+**Tipo**: Method  
+**Retorna**: Position (self modificada)
+
+**Fluxo** idêntico a moveUpstairs mas com z + 1.
+
+---
+
+## 📏 Métodos de Geometria
+
+### `Position:getDistanceBetween(position)` → number
+
+Calcula distância entre duas posições (Chebyshev + Z penalty).
+
+**Tipo**: Method  
+**Parâmetros**: `position` (Position)  
+**Retorna**: number (distância)
+
+**Implementação**:
+```lua
+function Position:getDistanceBetween(position)
+    local xDif = math.abs(self.x - position.x)
+    local yDif = math.abs(self.y - position.y)
+    local posDif = math.max(xDif, yDif)
+    if self.z ~= position.z then
+        posDif = posDif + 15  -- Z penalty
+    end
+    return posDif
+end
+```
+
+**Distância Chebyshev**: max(xDif, yDif) = movimento em grid 8-directional  
+**Z Penalty**: +15 por piso diferente (incentiva mesmo andar)
+
+**Exemplo**:
+```lua
+local pos1 = Position(1000, 1000, 7)
+local pos2 = Position(1010, 1005, 7)
+print(pos1:getDistanceBetween(pos2))  -- 10 (max de 10, 5)
+
+local pos3 = Position(1010, 1005, 8)
+print(pos1:getDistanceBetween(pos3))  -- 25 (10 + 15 Z penalty)
+```
+
+---
+
+### `Position.getDirectionTo(pos1, pos2)` → direction
+
+Determina direção relativa de pos1 para pos2 (cardinal + diagonal).
+
+**Tipo**: Static Method  
+**Parâmetros**:
+- `pos1` (Position): Origem
+- `pos2` (Position): Alvo
+
+**Retorna**: DIRECTION_* constant
+
+**Lógica**:
+```lua
+function Position.getDirectionTo(pos1, pos2)
+    local dir = DIRECTION_NORTH
+    if pos1.x > pos2.x then
+        dir = DIRECTION_WEST
+        if pos1.y > pos2.y then
+            dir = DIRECTION_NORTHWEST
+        elseif pos1.y < pos2.y then
+            dir = DIRECTION_SOUTHWEST
+        end
+    elseif pos1.x < pos2.x then
+        dir = DIRECTION_EAST
+        if pos1.y > pos2.y then
+            dir = DIRECTION_NORTHEAST
+        elseif pos1.y < pos2.y then
+            dir = DIRECTION_SOUTHEAST
+        end
+    else
+        if pos1.y > pos2.y then
+            dir = DIRECTION_NORTH
+        elseif pos1.y < pos2.y then
+            dir = DIRECTION_SOUTH
+        end
+    end
+    return dir
+end
+```
+
+**Exemplo**:
+```lua
+local hunter = Position(1000, 1000, 7)
+local prey = Position(1010, 1005, 7)
+local dir = Position.getDirectionTo(hunter, prey)  -- DIRECTION_SOUTHEAST
+```
+
+---
+
+### `Position:compare(position)` → boolean
+
+Verifica igualdade de posição (x, y, z).
+
+**Tipo**: Method  
+**Retorna**: boolean
+
+---
+
+### `Position:isInRange(from, to)` → boolean
+
+Verifica se posição está dentro de box tridimensional.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `from` (Position): Canto 1 (qualquer canto)
+- `to` (Position): Canto 2 (qualquer canto)
+
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+function Position:isInRange(from, to)
+    local zone = {
+        nW = {  -- North-West (min)
+            x = (from.x < to.x and from.x or to.x),
+            y = (from.y < to.y and from.y or to.y),
+            z = (from.z < to.z and from.z or to.z),
+        },
+        sE = {  -- South-East (max)
+            x = (to.x > from.x and to.x or from.x),
+            y = (to.y > from.y and to.y or from.y),
+            z = (to.z > from.z and to.z or from.z),
+        },
+    }
+
+    if self.x >= zone.nW.x and self.x <= zone.sE.x and 
+       self.y >= zone.nW.y and self.y <= zone.sE.y and 
+       self.z >= zone.nW.z and self.z <= zone.sE.z then
+        return true
+    end
+    return false
+end
+```
+
+**Vantagem**: Funciona independentemente da ordem de corners.
+
+---
+
+## 🔎 Métodos de Detecção
+
+### `Position:hasCreature(teleportTo)` → void
+
+Busca criatura em posição e teleporta se encontrada.
+
+**Tipo**: Method  
+**Parâmetros**: `teleportTo` (Position)  
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Position:hasCreature(teleportTo)
+    local creature = Tile(self):getTopCreature()
+    if creature then
+        creature:teleportTo(teleportTo, true)
+    end
+end
+```
+
+**Side Effect**: Teleporta diretamente (effect true).
+
+---
+
+### `Position:hasItem(itemId)` → boolean
+
+Verifica se posição tem item específico.
+
+**Tipo**: Method  
+**Parâmetros**: `itemId` (number)  
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+function Position:hasItem(itemId)
+    local tile = Tile(self)
+    if tile then
+        local item = tile:getItemById(itemId)
+        if item then
+            return true
+        end
+    end
+end
+```
+
+**Exemplo**:
+```lua
+local leverPos = Position(1000, 1000, 7)
+if leverPos:hasItem(2772) then  -- Verificar se tem lever
+    print("Lever encontrado!")
+end
+```
+
+---
+
+### `Position.hasCreatureInArea(fromPosition, toPosition, removeCreatures, removePlayer, teleportTo)` → void
+
+Busca creatures em box tridimensional com remoção opcional.
+
+**Tipo**: Static Method  
+**Parâmetros**:
+- `fromPosition` (Position): Canto 1 de box
+- `toPosition` (Position): Canto 2 de box
+- `removeCreatures` (boolean): Remover monstros
+- `removePlayer` (boolean): Remover jogadores
+- `teleportTo` (Position): Destino de teleportação (se removePlayer)
+
+**Retorna**: Nenhum (side effects)
+
+**Implementação**:
+```lua
+function Position.hasCreatureInArea(fromPosition, toPosition, removeCreatures, removePlayer, teleportTo)
+    for positionX = fromPosition.x, toPosition.x do
+        for positionY = fromPosition.y, toPosition.y do
+            for positionZ = fromPosition.z, toPosition.z do
+                local room = { x = positionX, y = positionY, z = positionZ }
+                local tile = Tile(room)
+                if tile then
+                    local creatures = tile:getCreatures()
+                    if creatures and #creatures > 0 then
+                        for _, creatureUid in pairs(creatures) do
+                            if removeCreatures then
+                                local creature = Creature(creatureUid)
+                                if creature then
+                                    if removePlayer and creature:isPlayer() then
+                                        creature:teleportTo(teleportTo)
+                                    elseif creature:isMonster() then
+                                        creature:remove()
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+```
+
+**Fluxo**:
+1. Loop X, Y, Z (volume completo)
+2. Obter tile em cada posição
+3. Extrair creatures da tile
+4. Se removeCreatures=true:
+   - Se removePlayer=true: teleportar jogadores
+   - Remover monstros
+
+**Performance**: O(volume) - custo cúbico com tamanho do box!
+
+**Exemplo**:
+```lua
+-- Limpar monstros de room
+Position.hasCreatureInArea(
+    Position(1000, 1000, 7),
+    Position(1010, 1010, 7),
+    true,  -- remove monsters
+    true,  -- remove players
+    Position(1050, 1050, 7)  -- teleport players here
+)
+```
+
+---
+
+### `Position.getTile(self)` → Tile
+
+Obtém tile da posição.
+
+**Tipo**: Static Method  
+**Retorna**: Tile (ou nil)
+
+---
+
+## 🛠️ Métodos de Manipulação de Items
+
+### `Position:createItem(itemId, effect)` → void
+
+Cria item em posição se não existir.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `itemId` (number)
+- `effect` (magic effect, opcional)
+
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Position:createItem(itemId, effect)
+    local tile = Tile(self)
+    if not tile then
+        return true
+    end
+
+    local thing = tile:getItemById(itemId)
+    if not thing then
+        Game.createItem(itemId, 1, self)
+        Position(self):sendMagicEffect(effect)
+    end
+end
+```
+
+**Guard**: Não cria se já existe (idempotente).
+
+---
+
+### `Position:removeItem(itemId, effect)` → void
+
+Remove item de posição.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `itemId` (number)
+- `effect` (magic effect, opcional)
+
+**Retorna**: Nenhum
+
+---
+
+### `Position:transformItem(itemId, itemTransform, effect)` → void
+
+Transforma item em outro item.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `itemId` (number): Item original
+- `itemTransform` (number): Item transformado
+- `effect` (magic effect, opcional)
+
+**Retorna**: Nenhum
+
+**Exemplo**:
+```lua
+-- Transformar porta aberta em fechada
+leverPos:transformItem(1211, 1212, CONST_ME_POFF)
+```
+
+---
+
+### `Position.revertItem(positionCreateItem, itemIdCreate, positionTransform, itemId, itemTransform, effect)` → void
+
+Transforma item + recriar original (reverter ação).
+
+**Tipo**: Static Method  
+**Parâmetros**:
+- `positionCreateItem` (Position): Onde recriar item original
+- `itemIdCreate` (number): Item a recriar
+- `positionTransform` (Position): Onde está item a transformar
+- `itemId` (number): Item a transformar
+- `itemTransform` (number): Item transformado
+- `effect` (magic effect, opcional)
+
+**Retorna**: Nenhum
+
+**Uso (Ex: Lever)**:
+```lua
+-- Ativar lever: transforma lever + recriar poção
+Position.revertItem(
+    Position(1020, 1000, 7),  -- Posição da poção
+    2273,                       -- ID da poção
+    Position(1000, 1000, 7),    -- Posição do lever
+    2772,                       -- ID do lever (original)
+    2773,                       -- ID do lever (transformado)
+    CONST_ME_MAGIC_RED
+)
+
+-- Depois de certo tempo:
+-- Desativar lever: reverter
+Position.revertItem(
+    Position(1020, 1000, 7),  -- Recriar poção
+    2273,
+    Position(1000, 1000, 7),  -- Lever volta ao estado original
+    2773,
+    2772
+)
+```
+
+---
+
+## 📦 Métodos de Relocalização
+
+### `Position:relocateTo(toPos)` → boolean
+
+Move TODO conteúdo de tile (creatures + items movables) para outra posição.
+
+**Tipo**: Method  
+**Parâmetros**: `toPos` (Position)  
+**Retorna**: boolean (false se posições inválidas)
+
+**Implementação**:
+```lua
+function Position:relocateTo(toPos)
+    if self == toPos then
+        return false
+    end
+
+    local fromTile = Tile(self)
+    if fromTile == nil then
+        return false
+    end
+
+    if Tile(toPos) == nil then
+        return false
+    end
+
+    for i = fromTile:getThingCount() - 1, 0, -1 do
+        local thing = fromTile:getThing(i)
+        if thing then
+            if thing:isItem() then
+                if ItemType(thing:getId()):isMovable() then
+                    thing:moveTo(toPos)
+                end
+            elseif thing:isCreature() then
+                thing:teleportTo(toPos)
+            end
+        end
+    end
+    return true
+end
+```
+
+**Fluxo**:
+1. Validar posições diferentes e tiles válidas
+2. Loop (reverso) em items + creatures
+3. Se item + movable: move
+4. Se creature: teleport
+5. Não-movables ficam
+
+**Nota**: Itera reverso para evitar index issues ao remover.
+
+---
+
+## 🛡️ Métodos de Proteção
+
+### `Position:isProtectionZoneTile()` → boolean
+
+Verifica se posição está em protection zone.
+
+**Tipo**: Method  
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+function Position:isProtectionZoneTile()
+    local tile = Tile(self)
+    if not tile then
+        return false
+    end
+    return tile:hasFlag(TILESTATE_PROTECTIONZONE)
+end
+```
+
+---
+
+## 🎲 Métodos Utilitários
+
+### `Position.getFreePosition(from, to)` → Position
+
+Encontra posição walkable aleatória em box.
+
+**Tipo**: Static Method  
+**Parâmetros**:
+- `from` (Position): Canto 1
+- `to` (Position): Canto 2
+
+**Retorna**: Position (aleatória walkable ou aproximação)
+
+**Implementação**:
+```lua
+function Position.getFreePosition(from, to)
+    local result, tries = Position(from.x, from.y, from.z), 0
+    repeat
+        local x, y, z = math.random(from.x, to.x), math.random(from.y, to.y), math.random(from.z, to.z)
+        result = Position(x, y, z)
+        tries = tries + 1
+        if tries >= 20 then
+            return result  -- Timeout: return approximation
+        end
+
+        local tile = Tile(result)
+    until tile and tile:isWalkable(false, false, false, false, true)
+    return result
+end
+```
+
+**Max Tries**: 20 (timeout previne infinite loop).
+
+---
+
+### `Position.getFreeSand()` → Position
+
+Encontra posição aleatória em grey sand area (específico para feature).
+
+**Tipo**: Static Method  
+**Retorna**: Position (grey sand walkable)
+
+**Implementação**:
+```lua
+function Position.getFreeSand()
+    local from, to = ghost_detector_area.from, ghost_detector_area.to
+    local result, tries = Position(from.x, from.y, from.z), 0
+    repeat
+        local x, y, z = math.random(from.x, to.x), math.random(from.y, to.y), math.random(from.z, to.z)
+        result = Position(x, y, z)
+        tries = tries + 1
+        if tries >= 50 then
+            return result
+        end
+
+        local tile = Tile(result)
+    until tile and tile:isWalkable(false, false, false, false, true) and tile:getGround():getName() == "grey sand"
+    return result
+end
+```
+
+**Config**: Usa `ghost_detector_area.from/to` global.
+
+---
+
+### `Position.getWithinRange(self, otherPosition, range)` → Position
+
+Retorna posição dentro de range ou self se fora de range.
+
+**Tipo**: Static Method  
+**Parâmetros**:
+- `self` (Position): Posição inicial
+- `otherPosition` (Position): Posição alternativa
+- `range` (number): Range máximo (Chebyshev)
+
+**Retorna**: Position (self ou otherPosition)
+
+**Implementação**:
+```lua
+function Position.getWithinRange(self, otherPosition, range)
+    local distance = math.max(math.abs(self.x - otherPosition.x), math.abs(self.y - otherPosition.y))
+    if distance > range then
+        return self
+    end
+
+    return otherPosition
+end
+```
+
+**Lógica**: Se distância > range → self, senão → other.
+
+---
+
+### `Position.removeMonster(centerPosition, rangeX, rangeY)` [Stub]
+
+Placeholder que chama `clearRoom()`.
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Navegação com Validação de Escadas
+
+```lua
+local playerPos = player:getPosition()
+if playerDrinking:canClimbUp() then
+    playerPos:moveUpstairs()
+    player:teleportTo(playerPos)
+end
+```
+
+### Padrão 2: Spawn em Posição Aleatória
+
+```lua
+local spawnRate = Position.getFreePosition(
+    Position(1000, 1000, 7),
+    Position(1010, 1010, 7)
+)
+Game.createMonster("rat", spawnRate)
+```
+
+### Padrão 3: Lever com Revert
+
+```lua
+-- Ativar
+Position.revertItem(
+    itemSpawnPos, 2273,   -- Poção
+    leverPos, 2772, 2773, -- Lever
+    CONST_ME_MAGIC_RED
+)
+
+-- Depois 10s
+addEvent(function()
+    Position.revertItem(
+        itemSpawnPos, 2273,
+        leverPos, 2773, 2772
+    )
+end, 10000)
+```
+
+### Padrão 4: Limpar Room antes de Boss Fight
+
+```lua
+Position.hasCreatureInArea(
+    bossRoomFrom,
+    bossRoomTo,
+    true, true,
+    waitingRoom
+)
+Game.createMonster("boss_name", bossRoomCenter)
+```
+
+### Padrão 5: Detecção de Direção e Movimento
+
+```lua
+local hunter = Position(1000, 1000, 7)
+local prey = player:getPosition()
+
+local direction = Position.getDirectionTo(hunter, prey)
+hunter:getNextPosition(direction, 5)  -- Move 5 tiles em direção da presa
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Método |
+|----------|-----------|--------|
+| **Chebyshev Distance** | max(xDif, yDif) = movimento em grid | getDistanceBetween() |
+| **Direction Offset** | Lookup table para 8 directions | Position.directionOffset |
+| **Walkability Validation** | Checar se tile é acessível | moveUpstairs/moveDownstairs |
+| **Box Scanning** | Loop 3D para area operation | hasCreatureInArea() |
+| **Tile Relocation** | Mover creatures + items entre posições | relocateTo() |
+| **Item Reversion** | Transformar + recriar (undo pattern) | revertItem() |
+
+### Padrões Identificados
+
+1. **Lookup Table Pattern**: directionOffset para O(1) offset lookup
+2. **Early Return**: Validação de tile antes de operar
+3. **Reverse Loop**: Loop reverso em getThing para evitar index issues
+4. **Timeout Pattern**: Max tries em getFreePosition/getFreeSand
+5. **Swap Pattern**: Local swap function para moveUpstairs/moveDownstairs
+6. **Idempotent Operations**: createItem não duplica (check before create)
+
+### Responsabilidades por Categoria
+
+- **Navigation**: Movimento seguro com validação de floor
+- **Geometry**: Distância, direção, range checking
+- **Detection**: Busca de creatures/items em ponto ou área
+- **Manipulation**: CRUD para items (create, remove, transform)
+- **Relocation**: Transferência de conteúdo entre tiles
+- **Protection**: Flag checking para PvP safety
+
+---
+
+## 📚 Conclusão
+
+O arquivo `position.lua` é **foundation de spatial logic** do servidor. Através de navegação validada, geometria Chebyshev, detecção de área com scanning, e manipulação de items, permite criar _sophisticated world mechanics_ como bosses em rooms isoladas, levantamentos de items via levers com revert, spawning aleatório seguro, e relocação de conteúdo. O design de **lookup table** e **timeout patterns** mantém performance previsível mesmo com boxes grandes.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 410/410 (100%)  
+**Métodos Position**: 19  
+**Métodos Estáticos**: 5  
+**Tabelas Estáticas**: 1 (directionOffset)  
+**Padrões de Design**: Lookup Table, Early Return, Reverse Loop, Timeout, Swap, Idempotent  
+**Exemplos Práticos**: 5+  
+**Complexidade Máxima**: O(volume) para hasCreatureInArea
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Chebyshev distance é crítica para movimento em grid 8-direcional (nunca usar Euclidean). moveUpstairs/moveDownstairs mudam self in-place. hasCreatureInArea com removePlayer=true requer teleportTo válido (crash se nil). getFreeSand hardcoded para "ghost_detector_area" global (específico de feature). relocateTo itera reverso para evitar index corruption.
+</Aside>

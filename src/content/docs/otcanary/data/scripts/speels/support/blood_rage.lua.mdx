@@ -1,0 +1,201 @@
+---
+title: Blood Rage
+description: Spell de suporte para Knights que aumenta dano corpo-a-corpo em 35% e dano recebido em 15% por 10 segundos, desativando defesa
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `blood_rage.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Knight / Elite Knight |
+| **Spell ID** | 133 |
+| **Mana Requerida** | 290 |
+| **Level Requerido** | 60 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração do Buff** | 10 segundos (10.000 ms) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utito tempo` |
+| **Efeito Visual** | `CONST_ME_MAGIC_GREEN` |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (buff defensivo) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/blood_rage.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell cria uma `condition de atributos` que modifica multiplicadores de dano. Ao conjurar, verifica se há condição anterior aplicada e a remove antes de aplicar uma nova. O spell utiliza `AttrSubId_BloodRageProtector` como identificador único da condition, permitindo rastrear e remover especificamente essa buff antes de reaplicar. É um buff que se sobrescreve - conjurar novamente reseta a duração.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `blood_rage.lua` implementa um buff ofensivo exclusivo para Knights (level 60+) que aumenta significativamente o dano corpo-a-corpo (135% do normal) em troca de vulnerabilidade defensiva (115% dano recebido). É um dos spells de transformação de atributos que sacrifica defesa por ofensa. O spell cria uma condition de atributos com ID único (`AttrSubId_BloodRageProtector`), verifica e remove condições anteriores para evitar stack, e aplica modificadores de dano via `CONDITION_PARAM_SKILL_MELEEPERCENT` e `CONDITION_PARAM_BUFF_DAMAGERECEIVED`. O sistema utiliza flags de spell buff (`CONDITION_PARAM_BUFF_SPELL`) e desabilita defesa (`CONDITION_PARAM_DISABLE_DEFENSE`) para criar o efeito de total ofensividade.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Criação da Condição de Atributos
+local condition = Condition(CONDITION_ATTRIBUTES)
+condition:setParameter(CONDITION_PARAM_SUBID, AttrSubId_BloodRageProtector)
+condition:setParameter(CONDITION_PARAM_TICKS, 10000)
+condition:setParameter(CONDITION_PARAM_SKILL_MELEEPERCENT, 135)
+condition:setParameter(CONDITION_PARAM_BUFF_DAMAGERECEIVED, 115)
+condition:setParameter(CONDITION_PARAM_DISABLE_DEFENSE, true)
+condition:setParameter(CONDITION_PARAM_BUFF_SPELL, true)
+
+-- 2. Instância Combat para Efeito
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_GREEN)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+combat:addCondition(condition)
+
+-- 3. Instância do Spell
+local spell = Spell("instant")
+
+-- 4. Função de Cast Principal
+function spell.onCastSpell(creature, var)
+    -- 4.1 Validação de Condition Anterior
+    -- 4.2 Remoção de Condition Anterior (se existir)
+    -- 4.3 Execução de Combat
+    -- 4.4 Aplicação de Condition
+    -- 4.5 Efeito Visual Green
+    -- 4.6 Retorno de Status
+end
+
+-- 5. Configuração de Propriedades do Spell
+spell:name("Blood Rage")
+spell:words("utito tempo")
+spell:group("support", "focus")
+spell:vocation("knight;true", "elite knight;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_BLOOD_RAGE)
+spell:id(133)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000, 2 * 1000)
+spell:level(60)
+spell:mana(290)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `condition` | `Condition` | Local | Objeto que encapsula modificadores de dano e desabilitação de defesa |
+| `combat` | `Combat` | Local | Instância de combat que aplica a condition e efeito visual |
+| `spell` | `Spell` | Local | Instância do spell instantâneo que define comportamento e propriedades |
+| `creature` | `Creature/Player` | Parâmetro | Entidade que executa o cast (Knight ou Elite Knight) |
+| `var` | `Variant` | Parâmetro | Dados variáveis do spell (não utilizados neste spell - self target) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Condition com ID Único**
+```lua
+local condition = Condition(CONDITION_ATTRIBUTES)
+condition:setParameter(CONDITION_PARAM_SUBID, AttrSubId_BloodRageProtector)
+```
+Utiliza `CONDITION_PARAM_SUBID` para criar identificador único, permitindo rastrear e diferenciar esta condition de outras do tipo `CONDITION_ATTRIBUTES`.
+
+### 2. **Padrão de Remoção de Condition Anterior**
+```lua
+if creature:getCondition(CONDITION_ATTRIBUTES, CONDITIONID_COMBAT, AttrSubId_BloodRageProtector) then
+    creature:removeCondition(CONDITION_ATTRIBUTES, CONDITIONID_COMBAT, AttrSubId_BloodRageProtector)
+end
+```
+Verifica existência de condition anterior antes de aplicar, evitando stacking. Checa por tipo, ID e subID específico.
+
+### 3. **Padrão de Modificadores de Atributos**
+```lua
+condition:setParameter(CONDITION_PARAM_SKILL_MELEEPERCENT, 135)      -- +35% dano corpo-a-corpo
+condition:setParameter(CONDITION_PARAM_BUFF_DAMAGERECEIVED, 115)     -- +15% dano recebido
+condition:setParameter(CONDITION_PARAM_DISABLE_DEFENSE, true)        -- sem defesa
+condition:setParameter(CONDITION_PARAM_BUFF_SPELL, true)             -- flag de spell buff
+```
+Múltiplos parâmetros modificam comportamento de combate de forma coordenada.
+
+### 4. **Padrão de Spell de Foco**
+```lua
+spell:group("support", "focus")
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+```
+Pertence a grupo "focus" que agrupa buffs de transformação pessoal. Sempre auto-target e não-agressivo.
+
+### 5. **Padrão de Cooldown Duplo**
+```lua
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000, 2 * 1000)
+```
+Cooldown individual e de grupo sincronizados (ambos 2 segundos), impedindo cast rápido mesmo em grupo.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, var)`
+
+**Descrição:** Função principal de execução do spell. Remove condition anterior se existir e aplica novo buff de Blood Rage com modificadores de atributos.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Knight ou Elite Knight que executa o spell.
+- `var` (Variant): Dados variáveis do spell (não utilizados - é self target).
+
+**Fluxo de Execução:**
+
+1. **Validação de Condition Anterior**:
+   - Checa se `creature` possui `CONDITION_ATTRIBUTES` com subID `AttrSubId_BloodRageProtector`
+   - Busca por tipo de condition e ID específico do combat
+
+2. **Remoção de Condition Anterior** (se existir):
+   - Executa `creature:removeCondition(CONDITION_ATTRIBUTES, CONDITIONID_COMBAT, AttrSubId_BloodRageProtector)`
+   - Remove buff anterior para evitar stack e reseta duração
+
+3. **Execução de Combat**:
+   - Chama `combat:execute(creature, var)`
+   - Combat aplica condition e efeito visual simultaneamente
+
+4. **Aplicação de Efeitos**:
+   - Efeito visual `CONST_ME_MAGIC_GREEN` na posição do conjurador
+   - Condition de atributos com duração de 10.000 ms (10 segundos) é aplicada
+
+5. **Modificadores Aplicados**:
+   - Dano corpo-a-corpo: 135% (aumento de 35%)
+   - Dano recebido: 115% (aumento de 15%)
+   - Defesa: desabilitada completamente
+   - Marcação como spell buff para rastreamento
+
+6. **Retorno**:
+   - Retorna `true` (cast bem-sucedido, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Spell executado com sucesso, buff aplicado, mana de 290 consumida
+- `false`: Raro - falha interna do combat
+
+**Lógica Detalhada:**
+
+O spell implementa um tradeoff ofensivo-defensivo característico de Knights. A verificação e remoção de condition anterior evita que o buff seja stackeado infinitamente - cada cast sobrescreve o anterior, reiniciando a duração. O `AttrSubId_BloodRageProtector` é um identificador único que diferencia esta condition de outras buffs de atributos, permitindo rastreamento preciso.
+
+O modificador `CONDITION_PARAM_SKILL_MELEEPERCENT` com valor 135 significa multiplicação por 1.35x (35% aumento). O `CONDITION_PARAM_BUFF_DAMAGERECEIVED` com valor 115 significa multiplicação por 1.15x (15% aumento de dano recebido). A desabilitação de defesa (`CONDITION_PARAM_DISABLE_DEFENSE`) torna o Knight vulnerável durante esses 10 segundos.
+
+O cooldown de 2 segundos permite recast frequente, mas a duração de 10 segundos significa que há sobreposição possível se o jogador não esperar expiração. O cooldown de grupo também de 2 segundos garante que não haja vantagem ao ter múltiplos Knights castando em sequência.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_BLOOD_RAGE`: Som característico de ativação do spell
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem de erro (sempre sucesso se mana suficiente)
+- Cliente exibe feedback visual de transformação atributo
+
+## 📌 Resumo
+
+**Blood Rage** é um spell de suporte ofensivo premium exclusivo para Knights (level 60+) que aplica buff de +35% dano corpo-a-corpo mas impõe penalidade de +15% dano recebido e desabilita defesa completamente por 10 segundos. A transformação requer 290 de mana e cooldown de 2 segundos. O spell é auto-target (não requer alvo externo) e remover automaticamente buffs anteriores para evitar stacking, permitindo recast contínuo conforme necessário em combate. O identificador único `AttrSubId_BloodRageProtector` garante rastreamento preciso da condition entre castings sequenciais.
+
+A implementação segue padrão consolidado de buffs de transformação de atributos, diferenciando-se por ser exclusivo de Knights (vocação warrior) e oferecer tradeoff agressivo com penalidade defensiva direta.

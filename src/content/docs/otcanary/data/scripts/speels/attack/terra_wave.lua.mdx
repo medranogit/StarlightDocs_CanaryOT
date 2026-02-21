@@ -1,0 +1,417 @@
+---
+title: "Spell - terra_wave.lua"
+description: "Spell de onda terrestre para druids level 38 com escalabilidade magic-level ALTA"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `terra_wave.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 120 |
+| **Tipo de Dano** | COMBAT_EARTHDAMAGE |
+| **Vocações** | Druid, Elder Druid |
+| **Level Requerido** | 38 |
+| **Mana Requerida** | 170 |
+| **Words** | exevo tera hur |
+| **Alcance** | -1 (direction) |
+| **Área** | AREA_SQUAREWAVE5 + AREADIAGONAL_SQUAREWAVE5 (square wave) |
+| **Cooldown** | 4s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level ALTA (3.5-7.0 coef - ALTA!) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_TERRA_WAVE |
+| **Requer Direction** | Sim (needDirection) |
+| **Bloqueia Walls** | Não |
+| **Grupo** | attack |
+| **Linhas de Código** | 29 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de onda terrestre para druids nível 38 (mid-level). Dano terra escalável magic-level ALTA (3.5-7.0 coef - ALTA!). 170 mana (CARO!). Area SQUAREWAVE5 direcionada. Direcionado (não target). Cooldown 4s. Premium only. Mid-level power wave spell!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/terra_wave.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(120)
+spell:name("Terra Wave")
+spell:words("exevo tera hur")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_TERRA_WAVE)
+spell:level(38)
+spell:mana(170)
+spell:isPremium(true)
+spell:needDirection(true)
+spell:cooldown(4 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("druid;true", "elder druid;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Onda Terrestre - Mid-Level Magic-Level ALTA**
+
+Este spell implementa um sistema de mid-level wave com escalabilidade ALTA:
+
+1. **Magic-Level ALTA:**
+   - min = (level/5) + (maglevel × 3.5)
+   - max = (level/5) + (maglevel × 7.0)
+   - Coef ALTOS (3.5-7.0!)
+   - Linear escalabilidade ALTA!
+
+2. **Mid-Level Power:**
+   - Level 38 (MID!)
+   - 170 mana (MUITO CARO!)
+   - Premium only
+   - Cooldown 4s
+
+3. **Square Wave Area:**
+   - AREA_SQUAREWAVE5 + AREADIAGONAL_SQUAREWAVE5
+   - needDirection: true
+   - Wave direcionada quadrada
+   - Covers large area
+
+4. **Tipo Terra:**
+   - COMBAT_EARTHDAMAGE
+   - Effect SMALLPLANTS
+   - Direction required
+   - AOE direcionado
+
+**Fórmula Visual:**
+```
+Druid lvl 38, mlvl 10:
+  min = 7.6 + 35 = 42.6
+  max = 7.6 + 70 = 77.6
+
+Druid lvl 38, mlvl 20:
+  min = 7.6 + 70 = 77.6
+  max = 7.6 + 140 = 147.6
+
+Druid lvl 38, mlvl 30:
+  min = 7.6 + 105 = 112.6
+  max = 7.6 + 210 = 217.6
+```
+
+**Diferencial:** Mid-level wave magic-level ALTA square direcionada!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `terra_wave` oferece dano terra AOE ALTA escalável:
+
+- **Dano:** COMBAT_EARTHDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel × 3.5/7.0) (ALTA!)
+- **Mana:** 170 (caro)
+- **Level:** 38 (mid-level)
+- **Area:** AREA_SQUAREWAVE5 + diagonal (direcionada)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: EARTHDAMAGE
+├─ Effect: SMALLPLANTS
+├─ Area: SQUAREWAVE5 + AREADIAGONAL
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max magic-level ALTA
+
+spell.onCastSpell(creature, var)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_SMALLPLANTS)
+combat:setArea(createCombatArea(AREA_SQUAREWAVE5, AREADIAGONAL_SQUAREWAVE5))
+```
+
+**Propósito:** Combat de onda terra direcionada.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_EARTHDAMAGE | Dano terra |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_SMALLPLANTS | Efeito plantas pequenas |
+| `Area` | SQUAREWAVE5 + diagonal | Wave quadrada |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 3.5)
+	local max = (level / 5) + (maglevel * 7)
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano terra AOE ALTAMENTE escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 3.5)
+max = (level / 5) + (maglevel * 7.0)
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 3.5 (ALTO!)
+- Maglevel max: 7.0 (ALTO!)
+- Bônus: 0 (direto no coef!)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 38 | 10 | 42.6 | 77.6 |
+| 38 | 15 | 60.1 | 112.6 |
+| 38 | 20 | 77.6 | 147.6 |
+| 38 | 30 | 112.6 | 217.6 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Wave ativada |
+| `false` | Direction falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | AOE SQUAREWAVE5 |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Magic-Level ALTA
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 3.5)
+	local max = (level / 5) + (maglevel * 7)
+	return -min, -max
+end
+```
+
+**Benefício:** Escalabilidade ALTA com magic level!
+
+### Padrão 2: Mid-Level Premium Wave
+
+```lua
+spell:level(38)
+spell:isPremium(true)
+spell:mana(170)
+```
+
+**Benefício:** Premium mid-level power wave!
+
+### Padrão 3: Wave Direcionada Square
+
+```lua
+spell:needDirection(true)
+combat:setArea(createCombatArea(AREA_SQUAREWAVE5, AREADIAGONAL_SQUAREWAVE5))
+```
+
+**Benefício:** AOE wave square direcionada!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano terra AOE ALTAMENTE escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(druid, 38, 20)
+// min = 7.6 + 70 = 77.6
+// max = 7.6 + 140 = 147.6
+// Retorna: -77.6, -147.6
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura ondas terra em direção.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druid |
+| `var` | Variant | Direction (não target) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Ondas ativadas |
+| `false` | Direction falhou |
+
+**Requisitos:**
+- Level 38+
+- 170 mana (CARO!)
+- Direction required
+- Premium account
+- Cooldown 4s
+
+**Efeito:**
+- Efeito plantas pequenas
+- Wave SQUAREWAVE5 + diagonal
+- Dano magic-level ALTA
+- Direction livre
+- Multiple targets
+- AOE direcionado
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Mid-Level Power Wave
+
+```lua
+-- Druid lvl 38+ premium
+// Terra Wave = mid power wave
+// Magic-level ALTA escalável
+// 170 mana = expensive! = powerful!
+// Direction = controle perfeito
+// SQUAREWAVE5 = cobertura direcionada
+```
+
+### Caso 2: Wave Training Terra
+
+```lua
+-- Druid training mid-level terra
+// Terra Wave = dano terra mid AOE
+// Escalabilidade ALTA magic-level
+// 38 magic-level = HUGE damage
+// Direction control = tático
+// Premium power wave!
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_EARTHDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Areas:** AREA_SQUAREWAVE5, AREADIAGONAL_SQUAREWAVE5
+- **Effects:** CONST_ME_SMALLPLANTS
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Mid-level wave spell |
+| **Dano Type** | COMBAT_EARTHDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*3.5), max=(lvl/5)+(mlvl*7.0) |
+| **Mana** | 170 (caro) |
+| **Area** | AREA_SQUAREWAVE5 + diagonal |
+| **Level** | 38 (mid-level) |
+| **Cooldown** | 4s |
+| **Premium** | Sim |
+| **Direction** | Sim (needDirection) |
+| **Vocações** | Druid, Elder Druid |
+| **Padrão** | Magic-level ALTA + mid-level + wave direcionada |

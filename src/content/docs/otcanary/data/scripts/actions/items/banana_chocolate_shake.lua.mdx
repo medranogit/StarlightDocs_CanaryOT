@@ -1,0 +1,183 @@
+---
+title: banana_chocolate_shake.lua
+description: Script de bebida especial com cooldown e efeito de felicidade
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="banana_chocolate_shake.lua" icon="star">
+Script de ação Lua minimalista que implementa bebida especial com sistema de cooldown e efeito emocional.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/banana_chocolate_shake.lua`
+
+Script simples (18 linhas) que registra handler para banana chocolate shake (item ID 9083). Inclui cooldown de 10 minutos e efeito de corações.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `banana_chocolate_shake.lua` implementa uma bebida especial com sistema de cooldown por player. Ao usar, emite efeito de corações, personagem diz "Slurp" e item é consumido. Cooldown de 10 minutos previne spam e permite uso gerenciado. Sem validações de nível ou quest.
+
+**Estrutura Fundamental**
+
+```
+[Create bananaChocolateShake Action]
+    ↓
+[onUse function]
+    ├─ Check exhaustion: special-foods-cooldown?
+    ├─ SIM → "You need to wait..." + return true
+    └─ NÃO → continuar
+    ↓
+    ├─ Send message: "You don't really know..."
+    ├─ Player say: "Slurp."
+    ├─ sendMagicEffect: hearts
+    ├─ setExhaustion: 10 minutos
+    ├─ item:remove(1)
+    └─ return true
+    ↓
+[Register Action on item ID 9083]
+```
+
+## Funções
+
+### bananaChocolateShake.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback acionado quando player usa a bebida.
+
+**Parâmetros:**
+- player: Creature player
+- item: Item sendo usado (banana chocolate shake)
+- fromPosition: Posição do uso
+- target: Target (pode ser nil)
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```
+1. hasExhaustion("special-foods-cooldown")?
+   ├─ SIM → sendTextMessage + return true
+   └─ NÃO → continuar
+
+2. sendTextMessage: "You don't really know..."
+   ↓
+
+3. player:say("Slurp.", TALKTYPE_MONSTER_SAY)
+   ↓
+
+4. sendMagicEffect(CONST_ME_HEARTS) na posição
+   ↓
+
+5. setExhaustion("special-foods-cooldown", 10 * 60)
+   ↓
+
+6. item:remove(1)
+   ↓
+
+7. return true
+```
+
+**Bloco 1: Cooldown Check**
+
+```lua
+if player:hasExhaustion("special-foods-cooldown") then
+  player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+  return true
+end
+```
+
+Valida se player está em cooldown. Se sim, rejeita uso.
+
+**Bloco 2: Effects and Consume**
+
+```lua
+player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You don't really know what this did to you, but suddenly you feel very happy.")
+player:say("Slurp.", TALKTYPE_MONSTER_SAY)
+player:getPosition():sendMagicEffect(CONST_ME_HEARTS)
+player:setExhaustion("special-foods-cooldown", 10 * 60)
+item:remove(1)
+return true
+```
+
+Executa efeitos, cooldown e remove item.
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Valor | Descrição |
+|------|------|-------|-----------|
+| special-foods-cooldown | string (key) | - | Chave de exhaustion |
+| 10 * 60 | integer | 600 | Cooldown em segundos (10 min) |
+| CONST_ME_HEARTS | constant | - | Efeito de corações |
+| TALKTYPE_MONSTER_SAY | constant | - | Tipo de fala do player |
+| MESSAGE_EVENT_ADVANCE | constant | - | Tipo de mensagem destacada |
+
+## Efeitos de Ação
+
+### Efeito Mágico: CONST_ME_HEARTS
+
+Emite efeito visual de corações na posição do player.
+
+### Comportamento do Player: say("Slurp")
+
+Player emite som/command "Slurp" visível a outros jogadores na área.
+
+### Mensagem: "You don't really know..."
+
+Mensagem em cor destaque informando o efeito desconhecido e felicidade repentina.
+
+## Sistema de Cooldown
+
+**Key**: "special-foods-cooldown"  
+**Duration**: 600 segundos (10 minutos)  
+**Efeito**: Impede reutilização até expirar
+
+**Fluxo:**
+1. Usar bebida → setExhaustion inicia
+2. Timeout 10 min
+3. Pode usar novamente
+
+## Comportamento de Consumo
+
+| Elemento | Ação |
+|----------|------|
+| Item | remove(1) - consome 1 unidade |
+| Quantity | Reduz stack by 1 |
+| Despawn | Item desaparece do mundo |
+
+Se player tiver stack de 3, fica com 2. Se tiver 1, item desaparece.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Sistema de cooldown com exhaustion key
+2. Sem validações (level, quest, house)
+3. Efeito visual (hearts) e emote (Slurp) combinados
+4. Consumo de item (remove) ao usar
+5. Cooldown de 10 minutos por player
+
+**Responsabilidades:**
+1. Verificar cooldown antes de permitir uso
+2. Emitir mensagem de rejeição se em cooldown
+3. Executar todos os efeitos (mensagem, say, magic effect)
+4. Setar novo cooldown após uso
+5. Remover 1 unidade do item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 18 linhas (bem simples)  
+**Funções**: 1 (onUse)  
+**Item ID**: 9083  
+**Cooldown**: 10 minutos (600s)  
+**Tipo de Consumo**: Item consumível (remove 1)
+</Card>
+
+<Aside type="note">
+Script minimalista de bebida com cooldown. Sem configurações externas ou tabelas lookup. Sem validações de nível ou quest. Serve como exemplo de item consumível simples com efeitos e cooldown.
+</Aside>

@@ -1,0 +1,213 @@
+---
+title: Haste
+description: Spell de suporte para todas vocações que aplica buff de haste com sincronização opcional de familiares por 30-33 segundos
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `haste.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Todas (10 vocações disponíveis) |
+| **Spell ID** | 6 |
+| **Mana Requerida** | 60 |
+| **Level Requerido** | 14 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração do Buff (Caster)** | 30 segundos (30.000 ms) |
+| **Duração do Buff (Familiar)** | 33 segundos (33.000 ms) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utani hur` |
+| **Efeito Visual** | `CONST_ME_MAGIC_GREEN` |
+| **Multiplicador de Haste** | 1.3x (formula base) |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (buff defensivo) |
+| **Afeta Familiares** | Sim (sincronização com cálculo proporcional) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/haste.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell é similar a Charge mas com parâmetros diferentes. A duração caster é 30s enquanto familiar é 33s (3s bônus). O multiplicador de haste é 1.3x via setFormula(1.3, 40, 1.3, 40). A sincronização familiar usa fórmula: `FamiliarSpeed = ((summon:getBaseSpeed() + deltaSpeed) * 0.3) - 24`. Comparado a Charge (0.9, -72), Haste oferece menor ajuste (0.3) e menos penalidade (-24), indicando que Haste é mais conservador que Charge. Premium-only spell + level 14 acesso cedo para premium players.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `haste.lua` implementa buff de haste premium para todas as vocações (level 14+) que aumenta velocidade de movimento do caster em 1.3x com suporte opcional de sincronização de familiares. É versão universal (todas vocações) de Charge, parametrizada com duração mais curta (30s vs Charge 5s) e fatores de sincronização diferentes. O spell obtém summons se existem, filtra familiares, calcula velocidade proporcional com fator 0.3 (vs Charge 0.9), aplica condition separada com duração 33s para familiares, executa combat para caster. A implementação demonstra padrão de sincronização familiar com parâmetros vocação-específicos.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Criação da Condição de Haste Principal
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_GREEN)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+
+local condition = Condition(CONDITION_HASTE)
+condition:setParameter(CONDITION_PARAM_TICKS, 30000)
+condition:setFormula(1.3, 40, 1.3, 40)
+combat:addCondition(condition)
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 3.1 Obtenção de Summons (se existem)
+    -- 3.2 Iteração sobre Summons
+    -- 3.3 Filtro de Familiares
+    -- 3.4 Cálculo de Velocidade Proporcional
+    -- 3.5 Aplicação de Haste em Familiar
+    -- 3.6 Execução de Combat (aplica ao Caster)
+    -- 3.7 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:name("Haste")
+spell:words("utani hur")
+spell:group("support")
+spell:vocation(...todas vocações...)
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_HASTE)
+spell:id(6)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(14)
+spell:mana(60)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat que aplica haste ao caster |
+| `condition` | `Condition` | Local | Condition base de HASTE com fórmula 1.3x |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Player que conjura o spell |
+| `variant` | `Variant` | Parâmetro | Dados variáveis (não utilizados - self target) |
+| `summons` | `table` | Local (onCastSpell) | Lista de summons do caster |
+| `summon` | `Creature` | Local (loop) | Summon atual na iteração |
+| `summon_t` | `MonsterType` | Local (loop) | Tipo do summon para validação |
+| `deltaSpeed` | `number` | Local (loop) | Diferença de velocidade entre caster e familiar |
+| `FamiliarSpeed` | `number` | Local (loop) | Velocidade calculada para familiar durante haste |
+| `FamiliarHaste` | `Condition` | Local (loop) | Condition separada de HASTE para familiar |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Iteração sobre Summons**
+```lua
+local summons = creature:getSummons()
+if summons and type(summons) == "table" and #summons > 0 then
+    for i = 1, #summons do
+```
+Valida existência e tipo antes de iterar.
+
+### 2. **Padrão de Filtro de Familiar**
+```lua
+local summon_t = summon:getType()
+if summon_t and summon_t:familiar() then
+```
+Filtra apenas familiares, ignora outro tipos de summons.
+
+### 3. **Padrão de Cálculo Proporcional com Fator Reduzido**
+```lua
+local FamiliarSpeed = ((summon:getBaseSpeed() + deltaSpeed) * 0.3) - 24
+```
+Fator 0.3 é mais conservador que Charge (0.9), penalidade -24 vs -72.
+
+### 4. **Padrão de Duração Diferente para Familiar**
+```lua
+condition:setParameter(CONDITION_PARAM_TICKS, 30000)  -- acaster
+FamiliarHaste:setParameter(CONDITION_PARAM_TICKS, 33000)  -- familiar
+```
+Familiar ganha 3 segundos extra de duração.
+
+### 5. **Padrão de Haste com Fórmula**
+```lua
+condition:setFormula(1.3, 40, 1.3, 40)
+```
+Fórmula 1.3x (30% aumento) comparado a Charge 1.9x (90% aumento).
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Aplica buff de haste ao caster e dinamicamente ajusta familiares se existem.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Qualquer player (todas vocações) que conjura o spell.
+- `variant` (Variant): Dados variáveis (não utilizados - self target).
+
+**Fluxo de Execução:**
+
+1. **Obtenção de Summons**:
+   - Chama `creature:getSummons()`
+   - Valida tipo table e existência de elementos
+   - Se vazio, pula loop de familiares
+
+2. **Iteração sobre Summons** (se existem):
+   - Loop `for i = 1, #summons`
+   - Obtém `summon_t = summon:getType()`
+
+3. **Filtro de Familiares**:
+   - Verifica `summon_t:familiar()`
+   - Ignora summons que não são familiares
+
+4. **Cálculo de Velocidade Individual**:
+   - Calcula `deltaSpeed = math.max(creature:getBaseSpeed() - summon:getBaseSpeed(), 0)`
+   - Diferença positiva em pixels/sec
+
+5. **Ajuste Proporcional com Fator 0.3**:
+   - Calcula `FamiliarSpeed = ((summon:getBaseSpeed() + deltaSpeed) * 0.3) - 24`
+   - Aplica 30% do ajuste (vs 90% em Charge)
+   - Subtrai penalidade de 24 pixels/sec
+
+6. **Aplicação de Haste na Familiar**:
+   - Cria `FamiliarHaste = Condition(CONDITION_HASTE)` separada
+   - Define duração para 33.000 ms (3s extra vs caster)
+   - Aplica velocidade customizada via setParameter
+   - Adiciona à familiar
+
+7. **Aplicação de Haste no Caster**:
+   - Executa `combat:execute(creature, variant)`
+   - Combat aplica condition base (1.3x formula) ao caster
+   - Duração 30.000 ms
+   - Efeito visual CONST_ME_MAGIC_GREEN
+
+8. **Retorno**:
+   - Retorna `true` (cast bem-sucedido)
+
+**Valores de Retorno:**
+- `true`: Spell executado, mana de 60 consumida
+
+**Lógica Detalhada:**
+
+O spell implementa haste universal com sincronização familiar sofisticada. O fator 0.3 é mais conservador que Charge 0.9 - indica que Haste é spell base para todas vocações, enquanto Charge é exclusive de Knights com bonus de sincronização alta.
+
+O multiplicador 1.3x (30% aumento) vs Charge 1.9x (90% aumento) reflete diferença de design - Haste é mais acessível universalmente, Charge é premium high-level.
+
+A duração de 30s para caster e 33s para familiar oferece 3s buffer - familiar não fica para trás quando haste expira no caster.
+
+A mana de 60 é baixa para level 14, tornando acessível cedo no jogo para premium players. Premium-only flag força subscription.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_HASTE`: Som característico
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+
+## 📌 Resumo
+
+**Haste** é um spell de suporte premium para TODAS as vocações (level 14+) que aplica buff de haste aumentando velocidade de movimento do caster em 1.3x com sincronização opcional de familiares por 30 segundos (33 para familiares). O spell requer 60 de mana e cooldown de 2 segundos. A implementação itera summons dinamicamente, filtra familiares, e aplica velocidade proporcional com fator 0.3 (conservador) e penalidade -24. É versão universal de Charge, acessível a todas vocações. Crítico para mobilidade em exploração prolongada, permitindo deslocamento rápido mantendo formação familiar sincronizada para familiares que existem.
+
+A implementação segue padrão de sincronização familiar com parâmetros reduzidos, diferenciando-se por: (1) acesso universal, (2) fator de sincronização 0.3 (vs Charge 0.9), (3) duração 30s caster/33s familiar, (4) multiplicador 1.3x (vs Charge 1.9x), (5) premium-only access.

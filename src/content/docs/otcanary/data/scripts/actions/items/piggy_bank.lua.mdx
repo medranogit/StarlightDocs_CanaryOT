@@ -1,0 +1,209 @@
+---
+title: piggy_bank.lua
+description: Sistema de RNG para mealheiro com duas probabilidades - 1/6 moedas ouro mais achievement, ou moedas platina garantidas.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="piggy_bank.lua" icon="pencil">
+Sistema de RNG para mealheiro com duas probabilidades: 1/6 moedas ouro + achievement, ou moedas platina garantidas.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/piggy_bank.lua`
+
+**Linhas:** 18 | **ID do Item:** 2995 → 2996 | **Tipo:** Action Handler
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa um mealheiro com mecânica RNG onde cada uso gera moedas aleatórias: 1/6 chances (16.67%) de 1 moeda de ouro + achievement "Allowance Collector" +50, ou 5/6 chances (83.33%) de 1 moeda de platina. Ao conseguir ouro, o mealheiro transforma em versão quebrada (2996).
+
+### Estrutura de Funcionalidades
+
+```
+piggyBank (Action)
+  ├─ onUse(player, item, fromPosition, target, toPosition, isHotkey)
+  │   ├─ math.random(6) == 1 → Resultado sucesso (1/6)
+  │   │   ├─ Efeito: CONST_ME_POFF
+  │   │   ├─ Transform: 2995 → 2996
+  │   │   ├─ addItem(ITEM_GOLD_COIN, 1)
+  │   │   └─ Achievement "Allowance Collector" +50
+  │   └─ Falha (5/6)
+  │       ├─ Efeito: CONST_ME_SOUND_YELLOW
+  │       └─ addItem(ITEM_PLATINUM_COIN, 1)
+  └─ register() → ID 2995
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| piggyBank | Action | Objeto handler para o mealheiro |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | ID | Descrição |
+|------|----|------------|
+| Piggy Bank Original | 2995 | Item ID para trigger |
+| Piggy Bank Quebrado | 2996 | Item ID após sucesso (transformação) |
+| Moeda de Ouro | ITEM_GOLD_COIN | Recompensa de sucesso (1/6) |
+| Moeda de Platina | ITEM_PLATINUM_COIN | Recompensa padrão (5/6) |
+| Efeito Falha | CONST_ME_POFF | Efeito visual de falha (sucesso paradoxal) |
+| Efeito Sucesso | CONST_ME_SOUND_YELLOW | Efeito visual de sucesso |
+| Achievement | Allowance Collector | Progresso de 50 pontos |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function piggyBank.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Teste de 1 em 6 chances
+	if math.random(6) == 1 then
+		-- Raro sucesso (16.67%): ouro + achievement
+		fromPosition:sendMagicEffect(CONST_ME_POFF)
+		item:transform(2996)
+		player:addItem(ITEM_GOLD_COIN, 1)
+		player:addAchievementProgress("Allowance Collector", 50)
+	else
+		-- Comum (83.33%): platina
+		fromPosition:sendMagicEffect(CONST_ME_SOUND_YELLOW)
+		player:addItem(ITEM_PLATINUM_COIN, 1)
+	end
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa piggy_bank (2995)
+  │
+  ├─ Teste: math.random(6) == 1?
+  │   │
+  │   ├─ SIM (1/6 = 16.67%) → Sucesso Raro
+  │   │   ├─ Efeito: POFF
+  │   │   ├─ Transform 2995 → 2996
+  │   │   ├─ Gold Coin +1
+  │   │   ├─ Achievement "Allowance Collector" +50
+  │   │   └─ return true
+  │   │
+  │   └─ NÃO (5/6 = 83.33%) → Sucesso Comum
+  │       ├─ Efeito: SOUND_YELLOW
+  │       ├─ Platinum Coin +1
+  │       └─ return true
+  │
+  └─ Sempre retorna true (Always success)
+```
+
+### Probabilidades
+
+```
+Resultado      | Probabilidade | Efeito        | Resultado
+--- | --- | --- | ---
+Ouro           | 1/6 (16.67%)  | POFF          | Gold Coin, Quebrado
+Platina        | 5/6 (83.33%)  | SOUND_YELLOW  | Platinum Coin
+```
+
+### Contraste de Efeitos
+
+Interestingly, o mealheiro usa **POFF effect para sucesso raro** (ouro), sugerindo falha paradoxal ("o mealheiro 'quebra'" ao dar ouro). Este design invertido melhora a experiência de jogo.
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **RNG Simples**: `math.random(6) == 1` gera 1/6 chance
+- **Probabilidade**: 16.67% sucesso raro, 83.33% sucesso comum
+- **Branching**: Padrão if/else para desfechos diferentes
+- **Transform Condicional**: Apenas nunc ocorre em branch sucesso
+- **Efectos Invertidos**: POFF (falha) para sucesso raro (design intencional)
+- **Achievement Progress**: Apenas no desfecho raro
+- **Sempre Retorna True**: Item sempre funciona (nunca falha)
+
+### Responsabilidades do Handler
+
+1. **Gerar RNG**: Usar `math.random(6)` para teste de 1/6
+2. **Branch pelo resultado**: if/else para duas recompensas
+3. **Aplicar efeito visual**: POFF ou SOUND_YELLOW conforme resultado
+4. **Transformar no sucesso raro**: Quebrar mealheiro em versão 2996
+5. **Conceder moedas**: Gold (rara) ou Platinum (comum)
+6. **Registrar achievement**: Apenas para resultado raro
+7. **Confirmar ação**: Sempre return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão RNG Simples
+
+Este script demonstra RNG básico em Tibia:
+
+```lua
+-- Teste de probabilidade 1 em N
+if math.random(6) == 1 then
+	-- Resultado raro (1/6)
+	doRareThing()
+else
+	-- Resultado comum (5/6)
+	doCommonThing()
+end
+```
+
+### Comparação: Piggy Bank vs Lottery Ticket
+
+| Aspecto | Piggy Bank | Lottery Ticket |
+|---------|-----------|---|
+| Probabilidade Sucesso | 1/6 (16.67%) | 1/98 (1.02%) |
+| Recompensa Sucesso | Gold + Achievement | Item transform |
+| Recompensa Falha | Platinum | Remover item |
+| Transformação | Sim (quebra mealheiro) | Sim (transforma para vencedor) |
+| Achievement | Sim (Allowance) | Não |
+| Efeito Sucesso | POFF | SOUND_YELLOW |
+| Efeito Falha | SOUND_YELLOW | POFF |
+
+### Fluxo de Moedas
+
+```
+Piggy Bank (2995)
+  │
+  ├─ 1/6: → Gold Coin + Achievement
+  │        + Transform 2995 → 2996
+  │
+  └─ 5/6: → Platinum Coin (nenhuma transformação)
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: piggy_bank.lua" icon="star">
+Análise do mealheiro com RNG 1/6, transformação condicional e sistema de probabilidades equilibrado. Demonstra branching simples e design invertido de efeitos.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: RNG com branching | Complexidade: Baixa
+</Aside>

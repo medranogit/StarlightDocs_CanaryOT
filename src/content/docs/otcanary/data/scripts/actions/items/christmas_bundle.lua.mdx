@@ -1,0 +1,231 @@
+---
+title: christmas_bundle.lua
+description: Gerador aleatório de 7 presentes de bundles temáticos
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="christmas_bundle.lua" icon="star">
+Script de ação Lua que implementa gerador aleatório de presentes temáticos para 3 bundles natalinos.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/christmas_bundle.lua`
+
+Sistema que abre bundles natalinos (red, blue, green) gerando 7 itens aleatórios únicos de um pool temático. Cada bundle tem 10 opções (8 comuns + 2 exclusivos).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `christmas_bundle.lua` implementa loot system aleatório para bundles temáticos. Três bundles (red/blue/green) compartilham 8 itens base mas cada um tem 2 itens exclusivos. Ao usar, gera 7 itens únicos (sem repetição) selecionados aleatoriamente do pool configurado, com suporte a stacks variáveis.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define setting table com 3 bundles]
+    ├─ 6506 (red bundle)
+    │   ├─ 8 itens base (compartilhados)
+    │   └─ 2 itens exclusivos (red)
+    ├─ 6507 (blue bundle)
+    │   ├─ 8 itens base (compartilhados)
+    │   └─ 2 itens exclusivos (blue)
+    └─ 6508 (green bundle)
+        ├─ 8 itens base (compartilhados)
+        └─ 2 itens exclusivos (green)
+    ↓
+[Create christmasBundle Action]
+    ↓
+[onUse function]
+    ├─ Get targetItem list por bundle ID
+    ├─ While #rewards < 7
+    │   ├─ randIndex = random(targetItem)
+    │   ├─ Extract gift (pode ser table ou ID)
+    │   ├─ If table: gift, count = unpack
+    │   ├─ Else: count = 1
+    │   ├─ Add em rewards
+    │   └─ Remove de targetItem
+    ├─ For cada reward: player:addItem
+    ├─ sendMagicEffect(GIFT_WRAPS)
+    ├─ item:remove(1)
+    └─ return true
+    ↓
+[Register Action on 3 bundle IDs]
+```
+
+## Variáveis Globais
+
+### setting (local table)
+
+```lua
+local setting = {
+	[6506] = { { 6569, 15 }, { 3585, 5 }, { 3586, 10 }, { 3598, 20 }, { 3599, 10 }, 6500, 6501, 6489, 6503, 6387 },
+	[6507] = { { 6569, 15 }, { 3585, 5 }, { 3586, 10 }, { 3598, 20 }, { 3599, 10 }, 6500, 6501, 6489, 6505, 6387 },
+	[6508] = { { 6569, 15 }, { 3585, 5 }, { 3586, 10 }, { 3598, 20 }, { 3599, 10 }, 6500, 6501, 6489, 6502, 6387 },
+}
+```
+
+Configuração de pools de itens por bundle.
+
+**Estrutura:**
+- Índice: Bundle ID (6506, 6507, 6508)
+- Valor: Array de 10 itens (8 comuns + 2 exclusivos)
+
+**Itens base (compartilhados)**: 6569 x15, 3585 x5, 3586 x10, 3598 x20, 3599 x10, 6500, 6501, 6489
+
+**Itens exclusivos:**
+- Red (6506): 6503, 6387
+- Blue (6507): 6505, 6387
+- Green (6508): 6502, 6387
+
+## Funções
+
+### christmasBundle.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que abre bundle e distribui presentes.
+
+**Parâmetros:**
+- player: Creature player
+- item: Bundle sendo aberto
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. Get targetItem = setting[item.itemid]
+   ├─ Não existe? return true
+   └─ Existe? continuar
+
+2. rewards = empty array
+
+3. While #rewards < 7
+   ├─ randIndex = random(1, #targetItem)
+   ├─ gift = targetItem[randIndex]
+   ├─ count = 1
+   ├─ If type(gift) == "table"
+   │   └─ gift, count = unpack(gift)
+   ├─ rewards[++] = { gift, count }
+   └─ table.remove(targetItem, randIndex)
+
+4. For _, reward in ipairs(rewards)
+   └─ player:addItem(unpack(reward))
+
+5. sendMagicEffect(CONST_ME_GIFT_WRAPS)
+
+6. item:remove(1) + return true
+```
+
+**Implementação:**
+
+```lua
+function christmasBundle.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local targetItem = setting[item.itemid]
+	if not targetItem then
+		return true
+	end
+
+	local rewards = {}
+	while #rewards < 7 do
+		local randIndex = math.random(#targetItem)
+		local gift = targetItem[randIndex]
+		local count = 1
+		if type(gift) == "table" then
+			gift, count = unpack(gift)
+		end
+		rewards[#rewards + 1] = { gift, count }
+		table.remove(targetItem, randIndex)
+	end
+
+	for _, reward in ipairs(rewards) do
+		player:addItem(unpack(reward))
+	end
+
+	player:getPosition():sendMagicEffect(CONST_ME_GIFT_WRAPS)
+	item:remove(1)
+	return true
+end
+```
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| targetItem | table | Pool de itens do bundle |
+| rewards | table | Array de presente selecionados |
+| randIndex | integer | Índice aleatório no pool |
+| gift | integer | ID do item a dar |
+| count | integer | Quantidade do item |
+| CONST_ME_GIFT_WRAPS | constant | Efeito mágico |
+
+## Fluxo de Operação
+
+```
+[Player usa bundle]
+    ↓
+[Lookup setting[bundle ID]]
+    ├─ Não configurado? return true
+    └─ Configurado? continuar
+    ↓
+[Initialize rewards empty]
+    ↓
+[While loop: 7 iterações]
+    ├─ Pick random index
+    ├─ Extract gift (podendo ser table)
+    ├─ Unpack se table (gift ID, count)
+    ├─ Add em rewards array
+    └─ Remove de pool (sem repetição)
+    ↓
+[Distribute all rewards]
+    ├─ For each: player:addItem(ID, count)
+    └─ Efeito visual gift wraps
+    ↓
+[item:remove(1) + return true]
+```
+
+## Padrão de Configuração
+
+**Formato misto:**
+- ID simples: `6500` = `{ID, quantity: 1}`
+- Table: `{6569, 15}` = `{ID, quantity: 15}`
+
+**Vantagem**: Itens sem stack definem quantidade implícita, itens stack definem explicita.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Pool de loot com seleção aleatória sem repetição
+2. Tabelas com dois formatos (ID puro vs table com count)
+3. Unpack para desempacotar arrays
+4. Type checking para diferenciar formatos
+5. table.remove mantém seleção única
+6. Multi-ID registration com loop
+
+**Responsabilidades:**
+1. Validar bundle ID existente
+2. Selecionar 7 itens únicos aleatoriamente
+3. Lidar com itens de stack variável
+4. Distribuir todos os itens ao player
+5. Emitir efeito visual
+6. Remover bundle após abertura
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 40 linhas  
+**Função**: 1 (onUse)  
+**Bundle IDs**: 3 (red, blue, green)  
+**Pool por Bundle**: 10 itens  
+**Presentes Gerados**: 7 únicos  
+**Efeito**: GIFT_WRAPS
+</Card>
+
+<Aside type="note">
+Sistema loot aleatório sem repetição. Três bundles compartilham base mas diferem em 2 itens exclusivos. Suporta itens com stacks variáveis via table format.
+</Aside>

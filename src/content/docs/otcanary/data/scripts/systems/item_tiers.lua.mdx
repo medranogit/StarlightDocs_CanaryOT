@@ -1,0 +1,278 @@
+---
+title: Item Tiers
+description: Sistema de classificação de items com tiers de upgrade parametrizáveis com escalas de preço e convergence fusion/transfer
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `item_tiers.lua` |
+| **Tipo de Sistema** | Item tier classification (upgrade hierarchy) |
+| **Total de Classificações** | 4 (classifications 1-4) |
+| **Tiers por Classificação** | 1 (C1), 2 (C2), 3 (C3), 10 (C4 - máximo) |
+| **Campos por Tier** | regular (gold price), core (item cost), convergence (fusion/transfer prices) |
+| **Preços** | Até 300 bilhões de gold (C4 convergence transfer tier 10) |
+| **Registro** | Via Game.createItemClassification() + register() |
+| **Escalas** | Linear (C1-C3) até exponencial (C4) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/systems/item_tiers.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este arquivo define 4 classificações de items com tiers de upgrade. Cada tier tem preço em gold (regular) + items core necessários. Classificação 4 é premium com até 10 tiers + convergence (fusion/transfer alternate mechanics) com preços massivos. O sistema registra no Game via loop que itera classificações e tiers, inserindo Upgrades table com TierId, Core, RegularPrice, ConvergenceFusionPrice, ConvergenceTransferPrice. Convergence é opcional para C1-C3 (valor 0 se não exists). Escalas exponenciais em C4 demostram progression end-game com preços em bilhões.
+</Aside>
+
+Analisando arquivo de item tiers. Vou criar as 3 documentações:
+
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `item_tiers.lua` implementa sistema de classificação de items com 4 tiers de upgrade escalados exponencialmente, cada um com custos em gold (regular), items core necessários, e opcionalmente convergence fusion/transfer prices. É arquivo de configuração + registro que define 1D-10D tiers por classificação com estrutura aninhada [classificationId][tierId]. Os tiers C1-C3 são simples (regular + core), C4 é premium com até 10 tiers e convergence para fusion/transfer mechanics com preços massivos até 300 bilhões de gold. A implementação utiliza loop que itera classificações, cria Upgrades array, registra via Game.createItemClassification() factory. Padrão de escalação exponencial com alternativas de upgrade (fusion vs transfer).
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Tabela de Classificações de Items
+local itemTierClassifications = {
+    -- Classification 1: 1 tier (tier 0)
+    [1] = {
+        [1] = {
+            regular = 25000,        -- gold price
+            core = 1,               -- items needed
+        },
+    },
+    
+    -- Classification 2: 2 tiers (tier 0-1)
+    [2] = {
+        [1] = { regular = 750000, core = 1 },
+        [2] = { regular = 5000000, core = 1 },
+    },
+    
+    -- Classification 3: 3 tiers (tier 0-2)
+    [3] = {
+        [1] = { regular = 4000000, core = 1 },
+        [2] = { regular = 10000000, core = 2 },
+        [3] = { regular = 20000000, core = 3 },
+    },
+    
+    -- Classification 4: 10 tiers (tier 0-9) + convergence
+    [4] = {
+        [1] = { 
+            regular = 8000000, 
+            core = 1,
+            convergence = { 
+                fusion = { price = 55000000 }, 
+                transfer = { price = 65000000 } 
+            },
+        },
+        [2] = { ... convergence ... },
+        -- ... até tier 10
+    },
+}
+
+-- 2. Loop de Registro
+for classificationId, classificationTable in ipairs(itemTierClassifications) do
+    local itemClassification = Game.createItemClassification(classificationId)
+    local classification = {}
+    
+    -- Cria Upgrades array
+    classification.Upgrades = {}
+    for tierId, tierTable in ipairs(classificationTable) do
+        table.insert(classification.Upgrades, {
+            TierId = tierId,
+            Core = tierTable.core,
+            RegularPrice = tierTable.regular,
+            ConvergenceFusionPrice = tierTable.convergence and tierTable.convergence.fusion.price or 0,
+            ConvergenceTransferPrice = tierTable.convergence and tierTable.convergence.transfer.price or 0,
+        })
+    end
+    
+    -- Registra classificação
+    itemClassification:register(classification)
+end
+```
+
+## 📊 Catálogo de Classificações
+
+### Classification 1 (Básica)
+
+| Tier ID | Regular Price | Core Items | Convergence Fusion | Convergence Transfer |
+|---|---|---|---|---|
+| 1 | 25.000 | 1 | - | - |
+
+**Escala:** Mínima (entrada)
+**Preço Total:** 25.000 gold
+
+---
+
+### Classification 2 (Intermediária)
+
+| Tier ID | Regular Price | Core Items | Convergence Fusion | Convergence Transfer |
+|---|---|---|---|---|
+| 1 | 750.000 | 1 | - | - |
+| 2 | 5.000.000 | 1 | - | - |
+
+**Escala:** Pequena
+**Preço Total:** 5.750.000 gold
+
+---
+
+### Classification 3 (Avançada)
+
+| Tier ID | Regular Price | Core Items | Convergence Fusion | Convergence Transfer |
+|---|---|---|---|---|
+| 1 | 4.000.000 | 1 | - | - |
+| 2 | 10.000.000 | 2 | - | - |
+| 3 | 20.000.000 | 3 | - | - |
+
+**Escala:** Média
+**Preço Total:** 34.000.000 gold
+**Progression:** 1 → 1 → 3 core items
+
+---
+
+### Classification 4 (Premium/End-game)
+
+| Tier ID | Regular Price | Core Items | Convergence Fusion | Convergence Transfer |
+|---|---|---|---|---|
+| 1 | 8.000.000 | 1 | 55.000.000 | 65.000.000 |
+| 2 | 20.000.000 | 2 | 110.000.000 | 165.000.000 |
+| 3 | 40.000.000 | 5 | 170.000.000 | 375.000.000 |
+| 4 | 65.000.000 | 10 | 300.000.000 | 800.000.000 |
+| 5 | 100.000.000 | 15 | 875.000.000 | 2.000.000.000 |
+| 6 | 250.000.000 | 25 | 2.350.000.000 | 5.250.000.000 |
+| 7 | 750.000.000 | 35 | 6.950.000.000 | 14.500.000.000 |
+| 8 | 2.500.000.000 | 50 | 21.250.000.000 | 42.500.000.000 |
+| 9 | 8.000.000.000 | 60 | 50.000.000.000 | 100.000.000.000 |
+| 10 | 15.000.000.000 | 85 | 125.000.000.000 | 300.000.000.000 |
+
+**Escala:** Exponencial (end-game)
+**Preço Total Regular:** 27.508.000.000 gold
+**Core Items Total:** 288 items
+**Preços Convergence:** Até 300 bilhões (tier 10 transfer)
+
+**Observações:**
+- Core items escalám: 1 → 1 → 5 → 10 → 15 → 25 → 35 → 50 → 60 → 85
+- Transfer sempre mais caro que Fusion (~1.5-1.8x em tiers altos)
+- Tier 10: convergence transfer é 300B (20x preço regular)
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Tier Simples (C1-C3)**
+
+```lua
+[1] = {
+    regular = 25000,
+    core = 1,
+},
+```
+
+Tier simples com preço e cost de items.
+
+### 2. **Padrão de Tier com Convergence (C4)**
+
+```lua
+[4] = {
+    regular = 8000000,
+    core = 1,
+    convergence = {
+        fusion = { price = 55000000 },
+        transfer = { price = 65000000 }
+    },
+},
+```
+
+Tier com upgrade alternativo (fusion vs transfer).
+
+### 3. **Padrão de Escalação Exponencial**
+
+Tier 1: 8M → Tier 10: 15B (1875x escalão)
+
+Valores crescem exponencialmente por fator ~1.8-3.0 por tier.
+
+### 4. **Padrão de Registro Factory**
+
+```lua
+for classificationId, classificationTable in ipairs(itemTierClassifications) do
+    local itemClassification = Game.createItemClassification(classificationId)
+    itemClassification:register(classification)
+end
+```
+
+Factory pattern com loop automático de registro.
+
+## 🤖 Documentação das Funções
+
+### **Game.createItemClassification(classificationId)**
+
+**Descrição:** Engine function que cria nova instância de classificação de items.
+
+**Parâmetros:**
+- `classificationId` (number): ID único (1-4 neste arquivo)
+
+**Retorno:**
+- `ItemClassification`: Instância para configurar + registrar
+
+---
+
+### **itemClassification:register(classification)**
+
+**Descrição:** Registra classificação com array de tiers no jogo.
+
+**Parâmetros:**
+- `classification` (table): Tabela com campo Upgrades (array de tiers)
+
+**Estrutura de classification:**
+
+```lua
+{
+    Upgrades = {
+        {
+            TierId = 1,
+            Core = 1,
+            RegularPrice = 8000000,
+            ConvergenceFusionPrice = 55000000,
+            ConvergenceTransferPrice = 65000000,
+        },
+        -- ... tiers adicionais
+    }
+}
+```
+
+---
+
+### **Upgrades Array (dentro de classification)**
+
+**Estrutura:**
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `TierId` | number | ID do tier (1-10) |
+| `Core` | number | Items necessários |
+| `RegularPrice` | number | Preço em ouro |
+| `ConvergenceFusionPrice` | number | Preço convergence fusion (0 se N/A) |
+| `ConvergenceTransferPrice` | number | Preço convergence transfer (0 se N/A) |
+
+**Exemplo:**
+
+```lua
+{
+    TierId = 5,
+    Core = 15,
+    RegularPrice = 100000000,
+    ConvergenceFusionPrice = 875000000,
+    ConvergenceTransferPrice = 2000000000,
+}
+```
+
+## 📌 Resumo
+
+**Item Tiers** é sistema de classificação de items com 4 tiers escalados (C1: 1 tier, C2: 2 tiers, C3: 3 tiers, C4: 10 tiers), cada tier com regular price em gold + core items necessários + opcionalmente convergence fusion/transfer prices (alternadas). Classification 1-3 são simples (preços pequenos 25K-20M), C4 é premium exponencial até 300 bilhões de gold com 10 tiers e core escalada (1-85 items). Implementação registra via Game.createItemClassification() factory + loop automático. Padrão de escalação exponencial oferece progression end-game com múltiplas estratégias de upgrade (regular vs fusion vs transfer). Core items crescem simultaneamente com preços para balanceamento de custo.
+
+A implementação segue padrão de factory registration, diferenciando-se por: (1) 4 classificações distintas, (2) 1-10 tiers por classificação, (3) escalação exponencial em C4, (4) convergence fusion/transfer alternativas, (5) preços até 300 bilhões, (6) core items escalonados paralelos.

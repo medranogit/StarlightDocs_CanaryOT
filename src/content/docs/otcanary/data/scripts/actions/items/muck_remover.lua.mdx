@@ -1,0 +1,219 @@
+---
+title: muck_remover.lua
+description: Removedor de lama com loot aleatório por ranges
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="muck_remover.lua" icon="star">
+Script de ação Lua que implementa removedor de lama com loot ponderado.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/muck_remover.lua`
+
+Removedor (ID 16101) que alvo lama específica (ID 16102). Usa ranges de chance 1-9999 para loot: from/to ranges com items variados (alguns com count 1-10). Remove target + item ao usar. Achievement "Goo Goo Dancer" +100 progress. Containers reconhecem (addItem vs createItem).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `muck_remover.lua` implementa removedor de lama com loot aleatório ponderado. Alvo específico: lama ID 16102. Ranges de chance 1-9999 distribuem 9 items diferentes. Items variam: quantidade fixa (1) ou múltipla (5, 10). Container check: addItem (container full) fallback em inventory. Achievement "Goo Goo Dancer" +100 progress ao remover.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define config com 9 ranges]
+    ├─ 1-1644: item 16100 (qty 1)
+    ├─ 1645-3189: item 3041 (qty 1)
+    ├─ 3190-4725: item 16097 (qty 1)
+    ├─ 4726-6225: item 16120 (qty 5)
+    ├─ 6226-7672: item 16124 (qty 10)
+    ├─ 7673-9083: item 16119 (qty 10)
+    ├─ 9084-9577: item 3333 (qty 1)
+    ├─ 9578-9873: item 8050 (qty 1)
+    └─ 9874-9999: item 16160 (qty 1)
+
+[Create muckRemover Action]
+    ↓
+[onUse function]
+    ├─ If target != lama (16102)
+    │   └─ return false
+    ├─ chance = random(9999)
+    ├─ For i = 1, #config
+    │   ├─ randomItem = config[i]
+    │   ├─ If chance in range [from, to]
+    │   │   ├─ If toPosition in container
+    │   │   │   └─ player:addItem(itemId, qty)
+    │   │   └─ Else
+    │   │       └─ Game.createItem(itemId, qty, toPosition)
+    │   │   ├─ Progress "Goo Goo Dancer" +100
+    │   │   ├─ sendMagicEffect(GREEN_RINGS)
+    │   │   ├─ target:remove()
+    │   │   ├─ item:remove()
+    │   │   └─ break
+    └─ return true
+    ↓
+[Register on item ID 16101]
+```
+
+## Variáveis Globais
+
+### config (local table - 9 ranges)
+
+Mapeamento de ranges 1-9999 para items.
+
+**Estrutura**:
+```lua
+{ from = start, to = end, itemId = id, count = qty (optional) }
+```
+
+## Ranges e Distribuição
+
+| Range | Item | Count | Droprate |
+|-------|------|-------|----------|
+| 1-1644 | 16100 | 1 | 16.44% |
+| 1645-3189 | 3041 | 1 | 15.45% |
+| 3190-4725 | 16097 | 1 | 15.36% |
+| 4726-6225 | 16120 | 5 | 15.00% |
+| 6226-7672 | 16124 | 10 | 14.47% |
+| 7673-9083 | 16119 | 10 | 14.11% |
+| 9084-9577 | 3333 | 1 | 4.94% |
+| 9578-9873 | 8050 | 1 | 2.96% |
+| 9874-9999 | 16160 | 1 | 1.27% |
+
+## Funções
+
+### muckRemover.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que remove lama.
+
+**Parâmetros:**
+- player: Creature player
+- item: Removedor sendo usado
+- fromPosition: Posição original
+- target: Lama alvo
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. if target.itemid ~= 16102 (lama)
+   └─ return false
+
+2. chance = random(9999)
+
+3. for i = 1, #config
+   ├─ randomItem = config[i]
+   ├─ if chance in range [from, to]
+   │   ├─ if toPosition.x == CONTAINER_POSITION
+   │   │   └─ player:addItem(itemId, count)
+   │   └─ else
+   │       └─ Game.createItem(itemId, count, toPosition)
+   │   ├─ addAchievementProgress("Goo Goo Dancer", 100)
+   │   ├─ target:getPosition():sendMagicEffect(GREEN_RINGS)
+   │   ├─ target:remove(1)
+   │   ├─ item:remove(1)
+   │   └─ break
+   └─ continue
+
+4. return true
+```
+
+**Implementação:**
+
+```lua
+function muckRemover.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if target.itemid ~= 16102 then
+		return false
+	end
+
+	local chance, randomItem = math.random(9999)
+	for i = 1, #config do
+		randomItem = config[i]
+		if chance >= randomItem.from and chance <= randomItem.to then
+			if toPosition.x == CONTAINER_POSITION then
+				player:addItem(randomItem.itemId, randomItem.count or 1)
+			else
+				Game.createItem(randomItem.itemId, randomItem.count or 1, toPosition)
+			end
+
+			player:addAchievementProgress("Goo Goo Dancer", 100)
+			target:getPosition():sendMagicEffect(CONST_ME_GREEN_RINGS)
+			target:remove(1)
+			item:remove(1)
+			break
+		end
+	end
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| 16102 | ID | Lama target |
+| 16101 | ID | Removedor |
+| 9999 | integer | Range max |
+| from/to | integer | Range inclusive |
+| itemId | integer | Loot ID |
+| count | integer | Quantidade |
+| CONTAINER_POSITION | constant | Check container |
+| CONST_ME_GREEN_RINGS | constant | Efeito |
+
+## Container Handling
+
+**Container Placement** (toPosition.x == CONTAINER_POSITION):
+```lua
+player:addItem(itemId, count)
+```
+Adiciona ao inventory do player.
+
+**Ground Placement**:
+```lua
+Game.createItem(itemId, count, toPosition)
+```
+Cria item no chão.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Range-based loot (1-9999)
+2. Loop break ao encontrar
+3. Conditional quantity (or 1 default)
+4. Container vs ground placement
+5. Achievement progress (não unlock)
+6. Magic effect feedback
+7. Remove ambos (target + item)
+
+**Responsabilidades:**
+1. Validar target é lama
+2. Gerar chance 1-9999
+3. Encontrar range match
+4. Place loot (container vs ground)
+5. Progress achievement
+6. Emitir efeito
+7. Remove lama + removedor
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 41 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 16101  
+**Target ID**: 16102 (lama)  
+**Loot Items**: 9 ranges  
+**Ranges**: 1-9999  
+**Achievement**: Goo Goo Dancer (+100)  
+**Efeito**: GREEN_RINGS
+</Card>
+
+<Aside type="note">
+Removedor que alvo lama (16102) com loot ponderado 9 ranges (1-9999). Container/ground placement automático. Achievement "Goo Goo Dancer" +100 progress. Remove ambos (target + item).
+</Aside>

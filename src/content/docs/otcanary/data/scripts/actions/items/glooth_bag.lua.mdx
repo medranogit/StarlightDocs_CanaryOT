@@ -1,0 +1,204 @@
+---
+title: glooth_bag.lua
+description: Bolsa de loot aleatório com ranges de chance
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="glooth_bag.lua" icon="star">
+Script de ação Lua que implementa bolsa de loot com distribuição de chance ponderada.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/glooth_bag.lua`
+
+Bolsa de loot (ID 21203) com 10 items possíveis distribuídos por ranges de chance 0-10000. Items variam desde spears/clubs/axes até alimentos e control units. Quantidade pode ser fixa ou array [min, max]. Efeito de poison ao abrir.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `glooth_bag.lua` implementa bolsa de loot ponderada com 10 items glooth possíveis. Usa sistema de ranges de chance (0-10000) para distribuição desigual - items com count menor (spear: 1875) são mais fáceis, control unit raro (1978). Quantidade pode ser fixa (1) ou array [min, max] para randomização. Efeito HITBYPOISON ao abrir.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define config com 10 items]
+    ├─ Ranges: 0-10000
+    ├─ Items: weapons (spear, club, axe, blade)
+    ├─ Items: armor (amulet, backpack)
+    ├─ Items: consumibles (sandwich, soup, steak)
+    └─ Items: special (control unit - raro)
+
+[Create gloothBag Action]
+    ↓
+[onUse function]
+    ├─ chance = random(0, 10000)
+    ├─ For i = 1, #config
+    │   ├─ randomItem = config[i]
+    │   ├─ If chance in range
+    │   │   ├─ gift = itemId
+    │   │   ├─ count = count or 1
+    │   │   ├─ If count is table [min, max]
+    │   │   │   └─ count = random(min, max)
+    │   │   ├─ player:addItem(gift, count)
+    │   │   ├─ sendMagicEffect(HITBYPOISON)
+    │   │   ├─ item:remove(1)
+    │   │   └─ return true
+    └─ return false (rare fail)
+    ↓
+[Register on item ID 21203]
+```
+
+## Variáveis Globais
+
+### config (local table - 10 items)
+
+Mapeamento de ranges de chance para items.
+
+**Estrutura**:
+```lua
+{
+  chanceFrom = inicio_range,
+  chanceTo = fim_range,
+  itemId = ID,
+  count = quantidade (optional / array)
+}
+```
+
+## Items e Distribuição
+
+| Range | Item | Count | Droprate |
+|-------|------|-------|----------|
+| 0-1875 | glooth spear | 2 | 18.75% |
+| 1876-3418 | glooth amulet | 1 | 15.43% |
+| 3419-4933 | glooth club | 1 | 15.15% |
+| 4934-6397 | glooth axe | 1 | 14.64% |
+| 6398-7829 | glooth blade | 1 | 14.32% |
+| 7830-8462 | glooth backpack | 1 | 6.33% |
+| 8463-8975 | glooth sandwich | 10 | 5.13% |
+| 8976-9469 | bowl of glooth soup | 10 | 4.94% |
+| 9470-9922 | glooth steak | 10 | 4.53% |
+| 9923-10000 | control unit | 1 | 0.78% |
+
+## Funções
+
+### gloothBag.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que abre bolsa.
+
+**Parâmetros:**
+- player: Creature player
+- item: Bolsa sendo aberta
+- fromPosition: Posição original
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. chance = random(0, 10000)
+
+2. For i = 1, #config
+   ├─ randomItem = config[i]
+   ├─ If chance >= chanceFrom AND chance <= chanceTo
+   │   ├─ gift = randomItem.itemId
+   │   ├─ count = randomItem.count or 1
+   │   ├─ If type(count) == "table"
+   │   │   └─ count = random(count[1], count[2])
+   │   ├─ player:addItem(gift, count)
+   │   ├─ item:getPosition():sendMagicEffect(HITBYPOISON)
+   │   ├─ item:remove(1)
+   │   └─ return true
+
+3. return false (sem match - raro demais)
+```
+
+**Implementação:**
+
+```lua
+function gloothBag.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local chance = math.random(0, 10000)
+	for i = 1, #config do
+		local randomItem = config[i]
+		if chance >= randomItem.chanceFrom and chance <= randomItem.chanceTo then
+			if randomItem.itemId then
+				local gift = randomItem.itemId
+				local count = randomItem.count or 1
+				if type(count) == "table" then
+					count = math.random(count[1], count[2])
+				end
+
+				player:addItem(gift, count)
+			end
+
+			item:getPosition():sendMagicEffect(CONST_ME_HITBYPOISON)
+			item:remove(1)
+			return true
+		end
+	end
+	return false
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| chanceFrom | integer | Início range (0-10000) |
+| chanceTo | integer | Fim range |
+| itemId | integer | ID item |
+| count | integer/table | Qty fixa ou [min, max] |
+| CONST_ME_HITBYPOISON | constant | Efeito poison |
+
+## Probabilidade e Ranges
+
+**Sistema 0-10000**:
+- Cada item ocupa faixa contígua
+- Range size = chanceTo - chanceFrom
+- Control unit: só 78 valores (0.78%)
+- Spear: 1876 valores (18.75%)
+
+**Exemplo Seleção**:
+- chance = 5000 (random)
+- Verifica ranges até encontrar: 4934-6397 match
+- Resultado: glooth axe
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Ranges de chance ponderadas (0-10000)
+2. Loop de verificação de ranges
+3. Quantity fixa ou randomizada via [min, max]
+4. Type checking para array vs integer
+5. Efeito visual ao abrir
+6. Loot ponderado (items raros vs comuns)
+
+**Responsabilidades:**
+1. Gerar número aleatório 0-10000
+2. Verificar ranges em ordem
+3. Aplicar quantidade (fixa ou array)
+4. Adicionar item ao jogador
+5. Emitir efeito visual
+6. Remover bolsa
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 50 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 21203  
+**Items**: 10 possíveis  
+**Sistema Chance**: 0-10000 ranges  
+**Efeito**: HITBYPOISON  
+**Droprates**: 0.78% a 18.75%
+</Card>
+
+<Aside type="note">
+Bolsa com 10 items glooth distribuídos por ranges de chance ponderados. Control unit raro (0.78%), spear comum (18.75%). Quantidade fixa ou random [min, max]. Efeito poison ao abrir.
+</Aside>

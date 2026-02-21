@@ -1,0 +1,217 @@
+---
+title: Levitate
+description: Spell de suporte para todas vocações que move verticalmente (acima ou abaixo) com parâmetro e validação de tile
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `levitate.lua` |
+| **Tipo de Spell** | Spell parametrizado (Support) |
+| **Vocação** | Todas (10 vocações disponíveis) |
+| **Spell ID** | 81 |
+| **Mana Requerida** | 50 |
+| **Level Requerido** | 12 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exani hur` |
+| **Efeito Visual Sucesso** | `CONST_ME_TELEPORT` |
+| **Efeito Visual Falha** | `CONST_ME_POFF` |
+| **Parâmetro Requerido** | "up" ou "down" (string) |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (suporte de movimento) |
+| **Função Auxiliar** | levitate(creature, parameter) |
+| **Validação de Z** | Verifica limites Z (7 e 8) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/levitate.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell utiliza função auxiliar `levitate()` que implementa lógica complexa de validação de tile e movimento. Recebe parâmetro "up" ou "down" e valida se pode mover em direção especificada. Verifica flags TILESTATE_IMMOVABLEBLOCKSOLID e TILESTATE_BLOCKSOLID para evitar mover através de paredes. O movimento usa `creature:move()` com flags FLAG_IGNOREBLOCKITEM + FLAG_IGNOREBLOCKCREATURE para permitir movimento mesmo com obstáculos. Retorna RETURNVALUE_NOTPOSSIBLE se não pode mover.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `levitate.lua` implementa movimentação vertical parametrizada para todas as vocações (level 12+) que permite ao caster mover acima ou abaixo validando tile e flags de impassibilidade. É um dos poucos spells com função auxiliar complexa que encapsula lógica de validação. O spell recebe parâmetro string ("up" ou "down"), chama função `levitate()` que valida limites de Z, verifica flags de tile (IMMOVABLEBLOCKSOLID, BLOCKSOLID, FLOORCHANGE), executa movimento com flags especiais, e retorna status. A implementação demonstra padrão avançado de validação multi-camada com lógica condicional de tile-checking.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Função Auxiliar de Levitate
+local function levitate(creature, parameter)
+    -- 1.1 Obtenção de Posição Atual
+    -- 1.2 Validação de Limites Z
+    -- 1.3 Cálculo de Tile Alvo
+    -- 1.4 Validação de Ground/Flags
+    -- 1.5 Execução de Movimento
+    -- 1.6 Retorno de Status
+end
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 3.1 Obtenção de Parâmetro (up/down)
+    -- 3.2 Chamada de Função Auxiliar
+    -- 3.3 Validação de Resultado
+    -- 3.4 Envio de Mensagem de Erro (se necessário)
+    -- 3.5 Efeito Visual
+    -- 3.6 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:name("Levitate")
+spell:words("exani hur")
+spell:group("support")
+spell:vocation(...todas vocações...)
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_LEVITATE)
+spell:id(81)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(12)
+spell:mana(50)
+spell:hasParams(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `creature` | `Creature/Player` | Parâmetro (ambas funções) | Player que executa o spell |
+| `parameter` | `string` | Parâmetro (levitate) | "up" ou "down" (convertido lowercase) |
+| `variant` | `Variant` | Parâmetro (onCastSpell) | Contém parâmetro como string |
+| `fromPosition` | `Position` | Local (levitate) | Posição atual do caster |
+| `toPosition` | `Position` | Local (levitate) | Posição alvo (calcula com direção) |
+| `tile` | `Tile` | Local (levitate) | Tile validado para movimento |
+| `returnValue` | `ReturnValue` | Local (onCastSpell) | Resultado de levitate() |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Função Auxiliar com Lógica Complexa**
+```lua
+local function levitate(creature, parameter)
+    local fromPosition = creature:getPosition()
+    if parameter == "up" and fromPosition.z ~= 8 or parameter == "down" and fromPosition.z ~= 7 then
+```
+Função local encapsula validação e lógica de movimento, retorna RETURNVALUE.
+
+### 2. **Padrão de Validação Multi-Camada de Tile**
+```lua
+if not tile or not tile:getGround() and not tile:hasFlag(...) then
+    tile = Tile(...)
+    if tile and tile:getGround() and not tile:hasFlag(bit.bor(...)) then
+```
+Validação em cascata: primeiro alvo direto, se inválido tenta posição offset.
+
+### 3. **Padrão de Flags Combinadas com Bitwise OR**
+```lua
+return creature:move(tile, bit.bor(FLAG_IGNOREBLOCKITEM, FLAG_IGNOREBLOCKCREATURE))
+```
+Combina flags para permitir movimento através de certos obstáculos.
+
+### 4. **Padrão de Parâmetro String Parametrizado**
+```lua
+spell:hasParams(true)
+local returnValue = levitate(creature, variant:getString():lower())
+```
+Parâmetro string convertido lowercase para "up" ou "down".
+
+### 5. **Padrão de Validação de Limite de Z**
+```lua
+if parameter == "up" and fromPosition.z ~= 8 or parameter == "down" and fromPosition.z ~= 7 then
+```
+Verifica limites de Z: se subindo, z não é 8 (topo); se descendo, z não é 7 (embaixo).
+
+## 🤖 Documentação das Funções
+
+### `levitate(creature, parameter)` (Função Auxiliar Local)
+
+**Descrição:** Função que implementa lógica de validação e movimento vertical (up/down).
+
+**Parâmetros:**
+- `creature` (Creature/Player): Player que será movido.
+- `parameter` (string): "up" ou "down" (lowercase).
+
+**Fluxo:**
+1. Obtém posição: `fromPosition = creature:getPosition()`
+2. Valida limites:
+   - Se "up": `fromPosition.z ~= 8` (pode subir?)
+   - Se "down": `fromPosition.z ~= 7` (pode descer?)
+3. Calcula toPosition com direção do creature
+4. Valida primeiro tile:
+   - `Tile` na posição alvo ou offset
+   - Verifica `getGround()` e flags de impassibilidade
+5. Se inválido, tenta tile com offset Z
+6. Se válido: `creature:move()` com flags especiais
+7. Retorna RETURNVALUE_NOTPOSSIBLE se não consegue
+
+**Retorno:**
+- RETURNVALUE_NOERROR: Movimento bem-sucedido
+- RETURNVALUE_NOTPOSSIBLE: Não pode mover (validação falhou)
+
+---
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Extrai parâmetro e chama função auxiliar de levitate.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Player que conjura o spell.
+- `variant` (Variant): Contém parâmetro "up" ou "down".
+
+**Fluxo de Execução:**
+
+1. **Obtenção e Formatação de Parâmetro**:
+   - `returnValue = levitate(creature, variant:getString():lower())`
+   - Extrai string, converte para lowercase
+
+2. **Validação de Resultado**:
+   - Se `returnValue ~= RETURNVALUE_NOERROR`:
+     - Envia mensagem: `creature:sendCancelMessage(returnValue)`
+     - Aplica efeito visual erro: `CONST_ME_POFF`
+     - Retorna `false`
+
+3. **Sucesso - Aplicação de Efeito Visual**:
+   - `creature:getPosition():sendMagicEffect(CONST_ME_TELEPORT)`
+   - Confirma visualmente movimento bem-sucedido
+
+4. **Retorno**:
+   - Retorna `true` (movimento executado, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Movimento bem-sucedido, mana de 50 consumida
+- `false`: Falha em validações, mana não consumida
+
+**Lógica Detalhada:**
+
+O spell implementa teletransporte vertical condicional. A função auxiliar encapsula validação complexa em um local limpo. A validação de Z garante que player não tente transcender limites verticais do mapa.
+
+A validação de flags é crítica - evita mover através de paredes ou descontinuidades. O bit.bor() de flags permite movimento ignorando certos obstáculos mas respeitando estrutura de tile.
+
+A posição "toPosition" é calculada com base na direção do creature, permitindo movimento na direção que está olhando ao invés de direto acima/abaixo.
+
+A mana de 50 é baixa para level 12, tornando acessível cedo. Premium-only indica que é recurso de subscription. Cooldown de 2 segundos permite movimento rápido em exploração.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_LEVITATE`: Som característico
+
+**Mensagens ao Jogador:**
+- Falha: RETURNVALUE_NOTPOSSIBLE (traduzido pelo engine)
+
+## 📌 Resumo
+
+**Levitate** é um spell de suporte premium para TODAS as vocações (level 12+) que permite movimentação vertical parametrizada (acima ou abaixo) com validação rigorosa de tile e flags de impassibilidade. O spell requer 50 de mana e cooldown de 2 segundos. A implementação utiliza função auxiliar `levitate()` que valida limites Z, verifica flags de tile (IMMOVABLEBLOCKSOLID, BLOCKSOLID, FLOORCHANGE), e executa movimento com flags especiais (IGNOREBLOCKITEM, IGNOREBLOCKCREATURE). É ferramenta essencial para navegação vertical em dungeons com múltiplos níveis, permitindo exploração eficiente sem mapa externo. Acesso universal (todas vocações) indica importância estratégica como suporte base.
+
+A implementação segue padrão de função auxiliar com lógica complexa, diferenciando-se por: (1) função auxiliar encapsulada, (2) validação multi-camada de tile, (3) parâmetro string (up/down), (4) flags combinadas bitwise, (5) validação de limites Z, (6) acesso universal.

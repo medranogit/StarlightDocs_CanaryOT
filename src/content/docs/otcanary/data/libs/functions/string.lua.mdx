@@ -1,0 +1,669 @@
+---
+title: "string.lua"
+description: "Extensões da biblioteca string do Lua: split, trim, capitalize, titleCase, starts, diff (tempo para formato legível), removeAllSpaces, trimSpace, splitTrimmed, splitFirst, formatNamed (template com ${var}), toPosition (parser para Position). Utilities para processamento de strings."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que estende **Lua string library com 13 funções utilitárias**: split/splitTrimmed/splitFirst para parsing, trim/trimSpace/removeAllSpaces para whitespace, starts para prefix checking, titleCase/capitalize para case conversion, diff para tempo em segundos para formato legível (days/hours/minutes/seconds), formatNamed para template strings com `$` + `{var}` syntax, toPosition para parsear strings em Position objects (suporta múltiplos formatos). Todas adicionadas ao global `string` table.
+
+**Caminho Original**: `data/libs/functions/string.lua`
+
+<Aside type="tip">
+O arquivo `string.lua` é **essential string utilities library**. Fornece parsing, formatting, case conversion, e whitespace utilities. Perfeito para data validation, time display, configuração parsing. Funções como `string.diff` convertem segundos em "1 day, 2 hours and 3 minutes", formatNamed permite template strings.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **13 funções de extensão**:
+
+1. **Parsing**: split, splitTrimmed, splitFirst, toPosition
+2. **Whitespace**: trim, trimSpace, removeAllSpaces
+3. **Searching**: starts (prefix detection)
+4. **Formatting**: diff (time), formatNamed (templates), titleCase, capitalize
+5. **Conversions**: toPosition (string → Position)
+
+O design usa **gmatch para parsing** com regex patterns, **gsub para replacements**, **string.find para splitting**, e **pattern matching para Position conversion**. Todas funções adicionadas globalmente a `string` table.
+
+### Estrutura de Funcionalidades
+
+```
+String Extensions
+├── Splitting Functions (4)
+│   ├── string.split(str, sep) → table [gmatch]
+│   ├── string.splitTrimmed(str, sep) → table [split + trim each]
+│   ├── string.splitFirst(str, delimiter) → first, rest [string.find]
+│   └── [Legacy] string.split (duplicate implementation)
+├── Whitespace Functions (3)
+│   ├── string.trim(str) → trimmed [removes begin/end spaces]
+│   ├── string.trimSpace(str) → trimmed [gsub variant]
+│   ├── string.removeAllSpaces(str) → no_spaces [gsub %s+]
+│   └── [Legacy] string.trim (duplicate implementation)
+├── Case Conversion (2)
+│   ├── string.titleCase(str) → TitleCase [gsub with capture]
+│   └── string.capitalize(str) → CapitializeEachWord [%f[%a]]
+├── Searching (1)
+│   └── string.starts(str, substr) → boolean [substring prefix]
+├── Time Formatting (1)
+│   └── string.diff(diff_seconds) → "1 day, 2 hours and 3 minutes"
+├── Template Formatting (1)
+│   └── string.formatNamed(str, args) → formatted_string [${var} syntax]
+└── Conversion (1)
+    └── string.toPosition(str) → Position [3 pattern formats]
+```
+
+---
+
+## 🔀 Funções de Split
+
+### `string.split(str, sep)` → table
+
+Divide string em partes usando separador.
+
+**Tipo**: Função estendida (adicionada a string library)  
+**Parâmetros**:
+- str (string): String a dividir
+- sep (string): Separador (regex character class)
+
+**Retorna**: table de partes (array)
+
+**Implementação**:
+```lua
+string.split = function(str, sep)
+	local res = {}
+	for v in str:gmatch("([^" .. sep .. "]+)") do
+		res[#res + 1] = v
+	end
+	return res
+end
+```
+
+**Padrão Regex**: `([^sep]+)` - Captura sequências sem separador
+
+**Exemplo**:
+```lua
+local parts = string.split("apple,banana,orange", ",")
+-- parts = {"apple", "banana", "orange"}
+
+local words = string.split("hello world test", " ")
+-- words = {"hello", "world", "test"}
+```
+
+---
+
+### `string.splitTrimmed(str, sep)` → table
+
+Divide string e remove whitespace de cada parte.
+
+**Tipo**: Função estendida  
+**Parâmetros**:
+- `str` (string): String a dividir
+- `sep` (string): Separador
+
+**Retorna**: table de partes trimadas
+
+**Implementação**:
+```lua
+string.splitTrimmed = function(str, sep)
+	local res = {}
+	for v in str:gmatch("([^" .. sep .. "]+)") do
+		res[#res + 1] = v:trim()
+	end
+	return res
+end
+```
+
+**Fluxo**:
+1. Split normal via gmatch
+2. Trim cada parte via v:trim()
+3. Inserir em resultado
+
+**Exemplo**:
+```lua
+local parts = string.splitTrimmed("apple , banana , orange", ",")
+-- parts = {"apple", "banana", "orange"} (sem espaços)
+
+local csv = string.splitTrimmed("John , 25 , Developer", ",")
+-- csv = {"John", "25", "Developer"}
+```
+
+---
+
+### `string.splitFirst(str, delimiter)` → first, rest
+
+Divide string na PRIMEIRA ocorrência do delimiter.
+
+**Tipo**: Função estendida  
+**Parâmetros**:
+- str (string): String a dividir
+- delimiter (string): Delimitador
+
+**Retorna**: first (string), rest (string|nil)
+
+**Implementação**:
+```lua
+function string.splitFirst(str, delimiter)
+	local start, finish = string.find(str, delimiter)
+	if start == nil then
+		return str, nil
+	end
+	local firstPart = string.sub(str, 1, start - 1)
+	local secondPart = string.sub(str, finish + 1)
+	return firstPart:trim(), secondPart:trim()
+end
+```
+
+**Fluxo**:
+1. Encontrar primeiro delimiter via string.find()
+2. Se não encontrado: retornar (str, nil)
+3. Dividir em firstPart (antes start) + secondPart (após finish)
+4. Trim ambas partes
+5. Retornar (first, rest)
+
+**Exemplo**:
+```lua
+local key, value = string.splitFirst("name=John", "=")
+-- key = "name", value = "John"
+
+local command, args = string.splitFirst("say hello world", " ")
+-- command = "say", args = "hello world"
+
+local noDelim, _ = string.splitFirst("hello", ":")
+-- noDelim = "hello", _ = nil
+```
+
+---
+
+## 🧹 Funções de Whitespace
+
+### `string.trim(str)` → string
+
+Remove espaços em branco do início e fim.
+
+**Tipo**: Função estendida  
+**Parâmetros**: `str` (string)  
+**Retorna**: string trimada
+
+**Implementação** (versão final):
+```lua
+string.trim = function(str)
+	return str:match("^%s*(.*%S)") or ""
+end
+```
+
+**Padrão Regex**: `^%s*` (espaços no início) + `(.*%S)` (até último não-espaço)
+
+**Exemplo**:
+```lua
+print(string.trim("  hello  "))       -- "hello"
+print(string.trim("   world"))        -- "world"
+print(string.trim("spaces   "))       -- "spaces"
+print(string.trim("   "))             -- ""
+```
+
+---
+
+### `string.trimSpace(str)` → string
+
+Alternativa trim usando gsub.
+
+**Tipo**: Função estendida  
+**Parâmetros**: str (string)  
+**Retorna**: string trimada
+
+**Implementação**:
+```lua
+string.trimSpace = function(str)
+	return str:gsub("^%s*(.-)%s*$", "%1")
+end
+```
+
+**Padrão Regex**: `^%s*(.-)%s*$` - Captura middle sem espaços
+
+---
+
+### `string.removeAllSpaces(str)` → string
+
+Remove TODOS espaços (incluindo entre palavras).
+
+**Tipo**: Função estendida  
+**Parâmetros**: str (string)  
+**Retorna**: string sem espaços
+
+**Implementação**:
+```lua
+string.removeAllSpaces = function(str)
+	return str:gsub("%s+", "")
+end
+```
+
+**Padrão Regex**: `%s+` - Qualquer whitespace (1+)
+
+**Exemplo**:
+```lua
+print(string.removeAllSpaces("hello world"))   -- "helloworld"
+print(string.removeAllSpaces("  test  123  ")) -- "test123"
+print(string.removeAllSpaces("a b c d"))       -- "abcd"
+```
+
+---
+
+## 🔤 Funções de Case Conversion
+
+### `string.titleCase(str)` → string
+
+Primeira letra de cada palavra maiúscula.
+
+**Tipo**: Função estendida  
+**Parâmetros**: str (string)  
+**Retorna**: TitleCase string
+
+**Implementação**:
+```lua
+string.titleCase = function(str)
+	return str:gsub("(%a)([%w_']*)", function(first, rest)
+		return first:upper() .. rest:lower()
+	end)
+end
+```
+
+**Padrão Regex**: `(%a)([%w_']*)` - Captures letra + resto da palavra (word chars, underscore, apostrof)
+
+**Fluxo**:
+1. Encontrar cada palavra (primeira letra + resto)
+2. Uppercase primeira letra
+3. Lowercase resto
+
+**Exemplo**:
+```lua
+print(string.titleCase("hello world"))      -- "Hello World"
+print(string.titleCase("john's cafe"))      -- "John's Cafe"
+print(string.titleCase("hello_world_test")) -- "Hello_World_Test"
+```
+
+---
+
+### `string.capitalize(str)` → string
+
+Capitaliza primeira letra de cada palavra.
+
+**Tipo**: Função estendida  
+**Parâmetros**: str (string)  
+**Retorna**: Capitalized string
+
+**Implementação**:
+```lua
+string.capitalize = function(str)
+	return str:gsub("%f[%a].", string.upper)
+end
+```
+
+**Padrão Regex**: `%f[%a].` - Encontra fronteira de letra + próximo char (capitaliza)
+
+**Exemplo**:
+```lua
+print(string.capitalize("hello world"))   -- "Hello World"
+print(string.capitalize("test123abc456")) -- "Test123Abc456"
+```
+
+---
+
+## 🔍 Funções de Busca
+
+### `string.starts(str, substr)` → boolean
+
+Verifica se string começa com substring.
+
+**Tipo**: Função estendida  
+**Parâmetros**:
+- str (string): String a verificar
+- substr (string): Prefix a buscar
+
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+string.starts = function(str, substr)
+	return string.sub(str, 1, #substr) == substr
+end
+```
+
+**Lógica**: Compara primeiros #substr caracteres
+
+**Exemplo**:
+```lua
+print(string.starts("hello world", "hello"))  -- true
+print(string.starts("hello world", "he"))     -- true
+print(string.starts("hello world", "world"))  -- false
+print(string.starts("test", "test123"))       -- false (substr maior)
+```
+
+---
+
+## ⏱️ Time Formatting
+
+### `string.diff(diff)` → string
+
+Converte segundos em formato legível (days, hours, minutes, seconds).
+
+**Tipo**: Função estendida  
+**Parâmetros**: diff (number): Tempo em segundos  
+**Retorna**: string legível formatada
+
+**Implementação**:
+```lua
+string.diff = function(diff)
+	local format = {
+		{ "day", diff / 60 / 60 / 24 },
+		{ "hour", diff / 60 / 60 % 24 },
+		{ "minute", diff / 60 % 60 },
+		{ "second", diff % 60 },
+	}
+
+	local out = {}
+	for k, t in ipairs(format) do
+		local v = math.floor(t[2])
+		if v > 0 then
+			table.insert(out, (k < #format and (#out > 0 and ", " or "") or " and ") .. v .. " " .. t[1] .. (v ~= 1 and "s" or ""))
+		end
+	end
+	local ret = table.concat(out)
+	if ret:len() < 16 and ret:find("second") then
+		local a, b = ret:find(" and ")
+		ret = ret:sub(b + 1)
+	end
+	return ret
+end
+```
+
+**Fluxo**:
+1. Calcular days, hours, minutes, seconds (com modulo para ranges)
+2. Loop cada unidade, inserir se > 0
+3. Usar ", " entre units (exceto último que usa " and ")
+4. Se resultado curto + contém "second": remover " and " prefix
+5. Retornar formatado
+
+**Exemplos**:
+```lua
+print(string.diff(45))              -- "45 seconds"
+print(string.diff(125))             -- "2 minutes and 5 seconds"
+print(string.diff(3665))            -- "1 hour, 1 minute and 5 seconds"
+print(string.diff(90061))           -- "1 day, 1 hour, 1 minute and 1 second"
+print(string.diff(86400))           -- "1 day"
+print(string.diff(3600))            -- "1 hour"
+```
+
+---
+
+## 📝 Template Formatting
+
+### `string.formatNamed(str, args)` → string
+
+Formata string com variáveis nomeadas `${var}`.
+
+**Tipo**: Função estendida  
+**Parâmetros**:
+- str (string): Template com `${varname}`
+- args (table): Table de `{varname = value}`
+
+**Retorna**: formatted string
+
+**Implementação**:
+```lua
+string.formatNamed = function(str, args)
+	return (str:gsub("($%b{})", function(w)
+		return args[w:sub(3, -2)] or w
+	end))
+end
+```
+
+**Padrão**: `$%b{}` - Captura `${...}`
+
+**Fluxo**:
+1. Encontrar cada `${varname}`
+2. Extrair varname (skip `${` prefix e `}` suffix: w:sub(3, -2))
+3. Lookup em args table
+4. Retornar value ou w (original) se não encontrado
+
+**Exemplo**:
+```lua
+local msg = string.formatNamed("Hello ${name}, you are ${age} years old", {
+	name = "John",
+	age = 25
+})
+-- msg = "Hello John, you are 25 years old"
+
+local template = "Welcome ${user}! Your balance: ${balance} gold"
+local values = { user = "Alice", balance = 1000 }
+print(string.formatNamed(template, values))
+-- "Welcome Alice! Your balance: 1000 gold"
+```
+
+---
+
+## 🗺️ Position Conversion
+
+### `string.toPosition(inputString)` → Position
+
+Parseia string em Position object (suporta 3 formatos).
+
+**Tipo**: Função estendida  
+**Parâmetros**: inputString (string)  
+**Retorna**: Position(x, y, z) ou nil
+
+**Implementação**:
+```lua
+function string.toPosition(inputString)
+	local positionPatterns = {
+		"{%s*x%s*=%s*(%d+)%s*,%s*y%s*=%s*(%d+)%s*,%s*z%s*=%s*(%d+)%s*}",
+		"Position%s*%((%d+)%s*,%s*(%d+)%s*,%s*(%d+)%s*%)",
+		"(%d+)%s*,%s*(%d+)%s*,%s*(%d+)",
+	}
+
+	for _, pattern in ipairs(positionPatterns) do
+		local posX, posY, posZ = string.match(inputString, pattern)
+		if posX and posY and posZ then
+			return Position(tonumber(posX), tonumber(posY), tonumber(posZ))
+		end
+	end
+	return nil
+end
+```
+
+**Padrões Suportados**:
+1. **Map format**: `{x=100, y=200, z=7}` (allow spaces)
+2. **Function format**: `Position(100, 200, 7)` (allow spaces)
+3. **CSV format**: `100, 200, 7`
+
+**Fluxo**:
+1. Loop cada pattern
+2. Tentar match com string.match
+3. Se todos 3 números encontrados: retornar Position
+4. Se nenhum pattern match: retornar nil
+
+**Exemplo**:
+```lua
+local pos1 = string.toPosition("{x=100, y=200, z=7}")
+-- Position(100, 200, 7)
+
+local pos2 = string.toPosition("Position(150, 250, 8)")
+-- Position(150, 250, 8)
+
+local pos3 = string.toPosition("100, 200, 7")
+-- Position(100, 200, 7)
+
+local invalid = string.toPosition("invalid")
+-- nil
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Parsing CSV
+
+```lua
+local csv = "apple,banana,orange"
+local fruits = string.split(csv, ",")
+-- fruits = {"apple", "banana", "orange"}
+
+local users = "John , 25 , Engineer"
+local data = string.splitTrimmed(users, ",")
+-- data = {"John", "25", "Engineer"} (sem espaços)
+```
+
+---
+
+### Padrão 2: Parse Key-Value
+
+```lua
+local line = "name=John"
+local key, value = string.splitFirst(line, "=")
+-- key = "name", value = "John"
+
+local command = "teleport 100 200 7"
+local cmd, args = string.splitFirst(command, " ")
+-- cmd = "teleport", args = "100 200 7"
+```
+
+---
+
+### Padrão 3: String Sanitization
+
+```lua
+local input = "  hello  world  "
+local clean = string.trim(input)
+-- clean = "hello  world" (remove begin/end, keep middle spaces)
+
+local noSpaces = string.removeAllSpaces(input)
+-- noSpaces = "helloworld" (remove ALL spaces)
+```
+
+---
+
+### Padrão 4: Case Formatting
+
+```lua
+local title = string.titleCase("hello world")
+-- "Hello World"
+
+local header = string.capitalize("user login page")
+-- "User Login Page"
+
+local cmd = string.starts("help", "hel")
+-- true (comando 'help' começa com 'hel')
+```
+
+---
+
+### Padrão 5: Time Display
+
+```lua
+local loginTime = os.time()
+local logoutTime = os.time() + 3665  -- 1 hour, 1 minute, 5 seconds after
+
+local session = string.diff(logoutTime - loginTime)
+-- "1 hour, 1 minute and 5 seconds"
+
+local uptime = string.diff(86400 * 5 + 3600 * 12)  -- 5 days 12 hours
+-- "5 days, 12 hours"
+```
+
+---
+
+### Padrão 6: Template System
+
+```lua
+local welcome = string.formatNamed("Welcome ${player}! You have ${gold} gold.", {
+	player = "John",
+	gold = 5000
+})
+-- "Welcome John! You have 5000 gold."
+
+local status = string.formatNamed(
+	"Player: ${name}, Level: ${level}, Health: ${hp}/${maxhp}",
+	{ name = "Alice", level = 50, hp = 100, maxhp = 200 }
+)
+-- "Player: Alice, Level: 50, Health: 100/200"
+```
+
+---
+
+### Padrão 7: Position Parsing
+
+```lua
+local posString = "{x=100, y=200, z=7}"
+local position = string.toPosition(posString)
+-- Position(100, 200, 7)
+
+-- Flexível com espaços e formatos
+local pos1 = string.toPosition("Position(150, 250, 8)")
+local pos2 = string.toPosition("100,200,7")
+local pos3 = string.toPosition("{ x = 100 , y = 200 , z = 7 }")
+-- Todos retornam Position(x, y, z)
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Função |
+|----------|-----------|--------|
+| **gmatch Pattern Splitting** | Regex patterns para parse sem split() | string.split, splitTrimmed |
+| **string.find Position** | Encontra primeira ocorrência | string.splitFirst |
+| **gsub Replacement** | Replace with pattern + captures | trim, titleCase, removeAllSpaces |
+| **Regex Frontier** | `%f[%a]` marca fronteira | string.capitalize |
+| **Temporal Calculation** | Modulo math para unidades de tempo | string.diff |
+| **Template Variables** | `${var}` replacement via gsub | string.formatNamed |
+| **Multi-Format Parsing** | Loop patterns até match | string.toPosition |
+| **Whitespace Handling** | Diversos graus de trimming | trim vs trimSpace vs removeAllSpaces |
+
+### Padrões Identificados
+
+1. **Extension Library**: Tudo adicionado a global `string` table
+2. **Regex-Based**: gmatch, gsub, string.match para heavy lifting
+3. **Flexible Parsing**: Múltiplos formatos support (toPosition)
+4. **Fallback Handling**: Retorna original ou nil se parsing falha
+5. **Utility Functions**: Simple, focused, composable
+
+### Responsabilidades
+
+- **Splitting**: gmatch-based para performance
+- **Trimming**: match vs gsub variants
+- **Searching**: Prefix detection via substring comparison
+- **Formatting**: Time/template conversion
+- **Parsing**: Multi-format position string → Position
+
+---
+
+## 📚 Conclusão
+
+O arquivo `string.lua` estende **Lua string library com utilities essenciais** para processamento de strings. Splitting via gmatch, trimming com regex, case conversion, time formatting, template strings, e position parsing. Todas funções globalmente adicionadas a `string` table para uso direto sem imports. Ideal para data validation, configuration parsing, time display, e string manipulation tasks.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 180+/180+ (100%)  
+**Funções Principais**: 13  
+**Funções Adicionadas a**: Global `string` library  
+**Categorias**: Splitting (4), Whitespace (3), Case (2), Searching (1), Time (1), Template (1), Conversion (1)  
+**Padrões Regex**: gmatch, gsub, string.find, string.match, %s, %a, %f  
+**Exemplos Práticos**: 7  
+**Nota**: Algumas funções duplicadas (split, trim) com diferentes implementações - última versão sobrescreve
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Funções adicionadas globalmente a `string` table (ex: string.split, string.trim). Note duplicatas: string.split definida 2x, string.trim definida 2x (última versão sobrescreve). gmatch-based split usa `[^sep]+` pattern (tudo exceto separator). toPosition suporta 3 formatos: `{x=..., y=..., z=...}`, `Position(...)`, `x, y, z`. formatNamed usa `$%b{}` para capturar `${varname}`. diff calcula com modulo para range correto (% 24 para hours, % 60 para minutes). capitalize usa `%f[%a].` (boundary + char) para capitalizar primeira letra de palavra.
+</Aside>

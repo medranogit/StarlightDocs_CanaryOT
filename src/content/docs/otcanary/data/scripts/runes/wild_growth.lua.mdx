@@ -1,0 +1,513 @@
+---
+title: "Spell/Rune - wild_growth.lua"
+description: "Runa que cria bloqueios de vegetação selvagem com callback tile"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `wild_growth.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune (Callback Tile) |
+| **ID da Runa** | 94 |
+| **ID do Item (runeId)** | 3156 |
+| **Level Requerido** | 27 |
+| **Magic Level Requerido** | 8 |
+| **Grupo** | attack |
+| **Tipo** | Item Creation (Tile Callback) |
+| **Item Criado** | ITEM_WILDGROWTH / ITEM_WILDGROWTH_SAFE |
+| **Duração Item** | 30 segundos |
+| **Cooldown** | 2s |
+| **Cargas** | 2 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Bloqueio** | Sim (isBlocking: true, true) |
+| **Agressividade** | Sim |
+| **Requer Target** | Não (tile-based) |
+| **Vocações** | Druid, Elder Druid |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_WILD_GROWTH_RUNE |
+| **Linhas de Código** | 45 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Runa que cria bloqueios vegetação selvagem via callback tile. Não usa combat direto - cria item. Detecta world type (PvP/No-PvP) e seleciona item apropriado. Validações complexas: floorchange check, creature check, position check. Duração 30s. Cargas poucas (2). Vocações Druid/Elder Druid.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/wild_growth.lua
+```
+
+**Tipo Spell:** Rune (Spell com Callback Tile)
+
+**Registração:**
+```lua
+rune:id(94)
+rune:name("Wild Growth Rune")
+rune:group("attack")
+rune:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+rune:impactSound(SOUND_EFFECT_TYPE_SPELL_WILD_GROWTH_RUNE)
+rune:cooldown(2 * 1000)
+rune:groupCooldown(2 * 1000)
+rune:level(27)
+rune:magicLevel(8)
+rune:runeId(3156)
+rune:charges(2)
+rune:isBlocking(true, true)
+rune:allowFarUse(true)
+rune:vocation("druid;true", "elder druid;true")
+rune:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Barragem Vegetação Selvagem com Callback Tile**
+
+Esta runa implementa um **sistema de item creation via callback tile**:
+
+1. **Não é Combat Direto:**
+   - Sem COMBAT_PARAM_TYPE
+   - Sem dano instantâneo
+   - Cria item em tile
+
+2. **Callback TARGETTILE:**
+   - onCreateWildGrowth handler
+   - Position-based (tile)
+   - Item generation
+
+3. **World Type Detection:**
+   - WORLD_TYPE_NO_PVP → ITEM_WILDGROWTH_SAFE
+   - Outro → ITEM_WILDGROWTH
+   - Adaptativo
+
+4. **Validações Complexas:**
+   - Tile existence: must exist
+   - FloorChange: reject se TILESTATE_FLOORCHANGE
+   - Creature: reject se non-player creature
+   - Position: sem items já lá
+
+5. **Item Metadata:**
+   - Duration: 30 segundos
+   - Description: caster name
+   - Blocking: bloqueio total
+
+**Fluxo:**
+```
+Runa conjurada
+├─ Tile callback trigger
+├─ Validações múltiplas
+│  ├─ Tile exists?
+│  ├─ No floorchange?
+│  ├─ No non-player creatures?
+│  └─ Safe zone?
+└─ Item criado
+   ├─ Duration 30s
+   ├─ Blocking visual
+   └─ Caster stored
+```
+
+**Diferencial:** Não-combat callback + item creation + world detection!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `wild_growth` oferece bloqueio tático via items:
+
+- **Tipo:** Item creation (não combat)
+- **Callback:** TARGETTILE (onCreateWildGrowth)
+- **Item:** WILDGROWTH ou WILDGROWTH_SAFE (world dependent)
+- **Duração:** 30s
+- **Cargas:** 2
+
+### Arquitetura
+
+Callback tile com validações:
+
+```
+combat:setCallback(CALLBACK_PARAM_TARGETTILE, "onCreateWildGrowth")
+
+onCreateWildGrowth(creature, position)
+├─ Tile(position) check
+├─ FloorChange check: reject
+├─ TopCreature check: reject se non-player
+├─ WorldType detect:
+│  ├─ NO_PVP → ITEM_WILDGROWTH_SAFE
+│  └─ else → ITEM_WILDGROWTH
+└─ Game.createItem(item, 1, position)
+   ├─ setDuration(30)
+   └─ setAttribute(description, caster_name)
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
+combat:setCallback(CALLBACK_PARAM_TARGETTILE, "onCreateWildGrowth")
+```
+
+**Propósito:** Combat com apenas projétil + callback tile.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ENERGY | Projétil energia |
+| `Callback` | CALLBACK_PARAM_TARGETTILE | Trigger tile |
+
+**Nota:** Sem COMBAT_PARAM_TYPE (não é dano!).
+
+---
+
+### Função Global: onCreateWildGrowth
+
+```lua
+function onCreateWildGrowth(creature, position)
+	local tile = Tile(position)
+	if not tile then
+		return false
+	end
+
+	if tile:hasFlag(TILESTATE_FLOORCHANGE) then
+		return false
+	end
+
+	if tile:getTopCreature() and not tile:getTopCreature():isPlayer() then
+		return false
+	end
+
+	local wildGrowth
+	if Game.getWorldType() == WORLD_TYPE_NO_PVP then
+		wildGrowth = ITEM_WILDGROWTH_SAFE
+	else
+		wildGrowth = ITEM_WILDGROWTH
+	end
+
+	local item = Game.createItem(wildGrowth, 1, position)
+	if item then
+		item:setDuration(30)
+		item:setAttribute(ITEM_ATTRIBUTE_DESCRIPTION, string.format("Casted by: %s", creature:getName()))
+	end
+end
+```
+
+**Propósito:** Cria vegetação selvagem com validações.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `position` | Position | Tile destination |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Item criado sucesso |
+| `false` | Validação falhou |
+
+**Validações:**
+
+| Validação | Descrição | Rejeita |
+|---|---|---|
+| `Tile(position)` | Tile existence | Não existe |
+| `hasFlag(TILESTATE_FLOORCHANGE)` | Floor change check | É floorchange |
+| `getTopCreature()` | Creature presence | Non-player creature |
+
+**World Type Selection:**
+
+| WorldType | Item Selecionado |
+|---|---|
+| WORLD_TYPE_NO_PVP | ITEM_WILDGROWTH_SAFE |
+| Outro | ITEM_WILDGROWTH |
+
+**Item Attributes:**
+
+| Atributo | Valor | Descrição |
+|---|---|---|
+| `Duration` | 30 | Segundos |
+| `Description` | "Casted by: [name]" | Caster metadata |
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+local rune = Spell("rune")
+function rune.onCastSpell(creature, variant, isHotkey)
+	return combat:execute(creature, variant)
+end
+```
+
+**Propósito:** Handler simples - trigger callback tile.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `variant` | Variant | Position (tile) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Vegetação criada |
+| `false` | Validação falhou |
+
+**Fluxo:**
+1. combat:execute() triggered
+2. Tile callback activated
+3. onCreateWildGrowth() executes
+4. Item creation (se validações OK)
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Tile callback |
+| `rune` | Spell | Arquivo | Instância runa |
+
+**Variáveis Locais (em onCreateWildGrowth):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `tile` | Tile | Destino posição |
+| `wildGrowth` | number | ItemID (WILDGROWTH ou SAFE) |
+| `item` | Item | Criado sucesso |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Callback Tile (Não Combat)
+
+```lua
+combat:setCallback(CALLBACK_PARAM_TARGETTILE, "onCreateWildGrowth")
+```
+
+**Benefício:** Item creation ao invés de dano direto.
+
+### Padrão 2: World Type Detection
+
+```lua
+if Game.getWorldType() == WORLD_TYPE_NO_PVP then
+	wildGrowth = ITEM_WILDGROWTH_SAFE
+else
+	wildGrowth = ITEM_WILDGROWTH
+end
+```
+
+**Benefício:** Adaptativo PvP/No-PvP.
+
+### Padrão 3: Múltiplas Validações
+
+```lua
+if not tile then return false end
+if tile:hasFlag(TILESTATE_FLOORCHANGE) then return false end
+if tile:getTopCreature() and not tile:getTopCreature():isPlayer() then return false end
+```
+
+**Benefício:** Proteção contra abuso tile.
+
+### Padrão 4: Item Metadata
+
+```lua
+item:setDuration(30)
+item:setAttribute(ITEM_ATTRIBUTE_DESCRIPTION, string.format("Casted by: %s", creature:getName()))
+```
+
+**Benefício:** Rastreamento caster + duração.
+
+### Padrão 5: Vocações Específicas
+
+```lua
+rune:vocation("druid;true", "elder druid;true")
+```
+
+**Benefício:** Apenas druids podem usar.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onCreateWildGrowth(creature, position)
+
+**Descrição:** Cria vegetação selvagem em tile com validações.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `position` | Position | Tile destination |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Item criado sucesso |
+| `false` | Validação falhou |
+
+**Validações Executadas:**
+
+```
+1. Tile existence
+   └─ Se não existe: return false
+
+2. FloorChange check
+   └─ Se TILESTATE_FLOORCHANGE: return false
+
+3. Creature check
+   └─ Se non-player creature presente: return false
+
+4. World type detect
+   └─ NO_PVP → WILDGROWTH_SAFE
+   └─ Outro → WILDGROWTH
+
+5. Item creation
+   └─ Game.createItem(item, 1, position)
+   └─ setDuration(30)
+   └─ setAttribute(description, caster_name)
+```
+
+**Exemplo:**
+
+```lua
+onCreateWildGrowth(druid, tilePosition)
+// ✓ Tile OK
+// ✓ No floorchange
+// ✓ No non-player creatures
+// ✓ World: NO_PVP → WILDGROWTH_SAFE
+// Item criado: ITEM_WILDGROWTH_SAFE
+// Duration: 30s
+// Description: "Casted by: druid_name"
+// Resultado: Vegetação bloqueante criada!
+```
+
+---
+
+### rune.onCastSpell(creature, variant, isHotkey)
+
+**Descrição:** Lança wild growth em posição tile.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `variant` | Variant | Position (tile) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Vegetação criada |
+| `false` | Validação falhou |
+
+**Efeito:**
+- Projétil energia viaja
+- Impacto na posição
+- Callback tile trigger
+- Item criado (se validações OK)
+- Bloqueio visual + físico
+- Duração 30s
+- Só druids podem usar
+
+**Exemplo:**
+
+```lua
+-- Druid nível 27, MLvl 8
+rune.onCastSpell(druid, tileVariant, false)
+// Vocação check: ✓ Druid
+// Combat executa
+// Projétil energia viaja
+// Callback tile trigger
+// Validações OK
+// Item: WILDGROWTH ou WILDGROWTH_SAFE
+// Duração: 30 segundos
+// Bloqueio: visual + fisicamente passável após 30s
+// Resultado: Barragem tática criada! 2 cargas consumidas.
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Bloqueio Tático
+
+```lua
+-- Druid quer bloquear corredor
+// Wild growth = obstáculo temporário
+// 30 segundos de duração
+// Bloqueio físico
+```
+
+### Caso 2: PvP Protection
+
+```lua
+-- No-PvP world
+// WILDGROWTH_SAFE versão
+// Proteção contra abuso
+```
+
+### Caso 3: Dungeon Control
+
+```lua
+-- Controle de área
+// 2 cargas = múltiplos bloqueios
+// Duration timing crítico
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat Callback Tile
+- **Callback:** CALLBACK_PARAM_TARGETTILE
+- **Items:** ITEM_WILDGROWTH, ITEM_WILDGROWTH_SAFE
+- **World Types:** WORLD_TYPE_NO_PVP
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune (Tile Callback) |
+| **Função** | Cria vegetação bloqueante |
+| **Sistema** | Item creation (não combat) |
+| **Callback** | TARGETTILE (onCreateWildGrowth) |
+| **Item** | WILDGROWTH / WILDGROWTH_SAFE |
+| **Duration** | 30 segundos |
+| **Cargas** | 2 |
+| **Distancia** | Sim (allowFarUse) |
+| **Bloqueio** | Sim (isBlocking: true, true) |
+| **Vocações** | Druid, Elder Druid |
+| **Level** | 27 |
+| **MLvl** | 8 |
+| **Padrão** | Tile callback + world detection + validações |

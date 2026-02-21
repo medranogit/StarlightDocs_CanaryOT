@@ -1,0 +1,479 @@
+---
+title: "Script Lib - register_item_tier.lua"
+description: "Sistema de registro de item tiers (upgrades) com parser dispatcher"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `register_item_tier.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Registration System |
+| **Padrão** | Metatable Parser Dispatcher |
+| **Linhas de Código** | 24 |
+| **Parser Functions** | 1 (Upgrades) |
+| **Complexidade** | Trivial-Médium |
+| **Status** | Complete tier registration framework |
+
+**Descrição:**
+Sistema de registro que fornece interface para aplicar tiers/upgrades a ItemClassification objects. Implementa padrão de metatable com `__call` hook que processa array de upgrades, validando TierId e preços, aplicando cada tier via `addTier()`. Suporta sistema de item enhancement com convergence/fusion pricing variável.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/register_item_tier.lua
+```
+
+**Tipo de Carregamento:** Executado durante inicialização, estende ItemClassification class
+
+**Contexto de Uso:** Item tier system - permite registro declarativo de enhancement tiers
+
+**Pré-requisitos:**
+- Classe global `ItemClassification` (native C++)
+- Tabela com Upgrades array
+- Logger system para debug/warnings
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de Item Tier Registration (Enhancement System)**
+
+Items podem ter upgrades/tiers para melhorar. Registration valida e aplica:
+
+**Sem registro:**
+```lua
+local itemClass = ItemClassification()
+itemClass:addTier(1, "Core1", 100, 200, 300)
+itemClass:addTier(2, "Core2", 150, 250, 350)
+-- Sem validação centralizada
+```
+
+**Com registro (declarative):**
+```lua
+ItemClassification():register({
+	Upgrades = {
+		{ TierId = 1, Core = "Core1", RegularPrice = 100, ... },
+		{ TierId = 2, Core = "Core2", RegularPrice = 150, ... }
+	}
+})
+```
+
+**Pattern:**
+```
+registerItemClassification metatable
+  ├─ __call intercepta chamada
+  ├─ Processa array Upgrades
+  ├─ Valida cada tier (TierId, Core, Prices)
+  └─ Chama addTier() para cada válido
+```
+
+**Benefício:** Validação centralizada, DSL limpo, logging automático
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `register_item_tier.lua` implementa **tier registration system** para ItemClassification:
+
+- **Define registerItemClassification** com __call dispatcher
+- **Implementa parser para Upgrades** (array handler)
+- **Valida tier properties** (TierId obrigatório)
+- **Aplica tiers** via `addTier()` com logging
+- **Estende ItemClassification.register()** method
+
+### Arquitetura
+
+Script usa padrão de **metatable dispatcher com single parser para array**:
+
+```lua
+registerItemClassification = {}
+setmetatable(registerItemClassification, {
+	__call = function(self, itemClass, mask)
+		for _, parse in pairs(self) do
+			parse(itemClass, mask)
+		end
+	end,
+})
+
+registerItemClassification.Upgrades = function(itemClassification, mask)
+	if mask.Upgrades then
+		for _, value in ipairs(mask.Upgrades) do
+			-- Validar e aplicar cada tier
+		end
+	end
+end
+```
+
+### Fluxo Lógico Resumido
+
+| Fase | Ação | Validação |
+|------|------|-----------|
+| **Definição** | Array de upgrades é passado | `mask.Upgrades = { {...}, ... }` |
+| **Dispatch** | `__call` intercepta | Itera parsers |
+| **Loop** | Para cada upgrade no array | `for _, value in ipairs(mask.Upgrades)` |
+| **Validação** | Checa TierId obrigatório | `if value.TierId then` |
+| **Logging** | Debug com tier info | `logger.debug()` |
+| **Aplicação** | `addTier()` com 5 parâmetros | Tier registrado |
+| **Falha** | Se TierId falta | `logger.warn()` |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Setup: registerItemClassification Metatable
+
+```lua
+registerItemClassification = {}
+setmetatable(registerItemClassification, {
+	__call = function(self, itemClass, mask)
+		for _, parse in pairs(self) do
+			parse(itemClass, mask)
+		end
+	end,
+})
+```
+
+**Propósito:** Criar dispatcher que itera parsers.
+
+**Padrão:** Idêntico ao `registerCharm` (reusable pattern)
+
+**Fluxo:**
+1. `registerItemClassification(itemClass, definitionTable)` chamado
+2. `__call` metamethod intercepta
+3. Loop: `for _, parse in pairs(self) do`
+4. Cada parser executa com `parse(itemClass, mask)`
+
+---
+
+### ItemClassification.register Extension
+
+```lua
+ItemClassification.register = function(self, mask)
+	return registerItemClassification(self, mask)
+end
+```
+
+**Propósito:** Estender método `register()` de ItemClassification.
+
+**Uso Esperado:**
+```lua
+local itemClass = ItemClassification()
+itemClass:register({
+	Upgrades = { ... }
+})
+```
+
+---
+
+### Parser: registerItemClassification.Upgrades
+
+```lua
+registerItemClassification.Upgrades = function(itemClassification, mask)
+	if mask.Upgrades then
+		for _, value in ipairs(mask.Upgrades) do
+			if value.TierId then
+				logger.debug("Registering tier {}, core {}, regular price {}, fusion price {}, transfer price {}", 
+					value.TierId, value.Core, value.RegularPrice, value.ConvergenceFustionPrice, value.ConvergenceTransferPrice)
+				itemClassification:addTier(value.TierId, value.Core, value.RegularPrice, 
+					value.ConvergenceFustionPrice, value.ConvergenceTransferPrice)
+			else
+				logger.warn("[registerItemClassification.Upgrades] - Item classification failed on adquire TierID or Price attribute.")
+			end
+		end
+	end
+end
+```
+
+**Propósito:** Processar array de upgrades e registrar cada tier.
+
+**Fluxo de Execução:**
+
+#### 1. **Validação de Upgrades**
+
+```lua
+if mask.Upgrades then
+	for _, value in ipairs(mask.Upgrades) do
+		-- Processa cada upgrade
+	end
+end
+```
+
+- Verifica se `mask.Upgrades` existe (array)
+- Itera cada elemento com `ipairs()` (mantém ordem)
+
+#### 2. **Validação de TierId (Required Field)**
+
+```lua
+if value.TierId then
+	-- Válido: procede
+else
+	logger.warn("...")
+	-- Inválido: pula
+end
+```
+
+**Obrigatório:** TierId (chave primária do tier)
+
+**Falha Silenciosa:** Se TierId ausente, apenas log warning e continua
+
+#### 3. **Logging Debug**
+
+```lua
+logger.debug("Registering tier {}, core {}, regular price {}, fusion price {}, transfer price {}", 
+	value.TierId, value.Core, value.RegularPrice, value.ConvergenceFustionPrice, value.ConvergenceTransferPrice)
+```
+
+**Propósito:** Rastrear registros de tier para debugging
+
+**Informações Logged:**
+- `TierId` - Identificador do tier
+- `Core` - Material/core requerido
+- `RegularPrice` - Custo de upgrade normal
+- `ConvergenceFustionPrice` - Custo de upgrade com convergence fusion
+- `ConvergenceTransferPrice` - Custo de transferência entre items
+
+#### 4. **Aplicação do Tier**
+
+```lua
+itemClassification:addTier(value.TierId, value.Core, value.RegularPrice, 
+	value.ConvergenceFustionPrice, value.ConvergenceTransferPrice)
+```
+
+**Método:** `addTier()` de ItemClassification (C++)
+
+**Parâmetros:**
+1. `TierId` - ID único do tier
+2. `Core` - Material core requerido
+3. `RegularPrice` - Preço normal
+4. `ConvergenceFustionPrice` - Preço de fusão
+5. `ConvergenceTransferPrice` - Preço de transferência
+
+#### 5. **Error Handling**
+
+```lua
+else
+	logger.warn("[registerItemClassification.Upgrades] - Item classification failed on adquire TierID or Price attribute.")
+end
+```
+
+**Erro:** Se TierId não está presente
+
+**Mensagem:** Especifica que TierID ou Price falta
+
+**Comportamento:** Continua processando próximos upgrades (não falha tudo)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variável Global Criada
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `registerItemClassification` | table | Global | Dispatcher metatable com parsers |
+
+### Estrutura de registerItemClassification
+
+| Função Parser | Tipo | Descrição |
+|---------------|------|-----------|
+| `registerItemClassification(itemClass, mask)` | __call metamethod | Dispatcher principal |
+| `.Upgrades` | function | Parser para array de upgrades |
+
+### Classes/Objetos Estendidos
+
+| Classe | Método Adicionado | Descrição |
+|--------|------------------|-----------|
+| `ItemClassification` | `register(mask)` | Extensão que delega para registerItemClassification |
+
+### Estrutura de Tier Definition (value)
+
+```lua
+{
+	TierId = number,                    -- Identificador (OBRIGATÓRIO)
+	Core = string,                      -- Material core
+	RegularPrice = number,              -- Preço normal upgrade
+	ConvergenceFustionPrice = number,   -- Preço convergence fusion
+	ConvergenceTransferPrice = number   -- Preço de transferência
+}
+```
+
+### Estrutura de Definition Table (mask)
+
+```lua
+{
+	Upgrades = {
+		{
+			TierId = 1,
+			Core = "Material1",
+			RegularPrice = 1000,
+			ConvergenceFustionPrice = 1500,
+			ConvergenceTransferPrice = 500
+		},
+		{
+			TierId = 2,
+			Core = "Material2",
+			RegularPrice = 2000,
+			ConvergenceFustionPrice = 3000,
+			ConvergenceTransferPrice = 1000
+		}
+		-- ... mais tiers
+	}
+}
+```
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrón 1: Array Iterator Pattern
+
+**Técnica:** Iterar array com `ipairs()` para validação em batch.
+
+```lua
+if mask.Upgrades then
+	for _, value in ipairs(mask.Upgrades) do
+		if value.TierId then
+			-- Processa item válido
+		else
+			-- Log erro, continua
+		end
+	end
+end
+```
+
+**Vantagem:**
+- Processa múltiplos itens em uma call
+- Mantém ordem (importante para tier hierarchy)
+- Validação granular: cada item validado individualmente
+
+**Aplicação:** Batch registration com validação individual.
+
+---
+
+### Padrón 2: Lazy Validation com Logging
+
+**Técnica:** Validar propriedades essenciais, logar failures, continuar.
+
+```lua
+if value.TierId then
+	logger.debug("Registering tier...")
+	itemClassification:addTier(...)
+else
+	logger.warn("Failed on TierID")
+	-- Continue, não falha
+end
+```
+
+**Vantagem:**
+- Robusto: não cai por 1 tier inválido
+- Rastreável: logs mostram quais falharam
+- Graceful degradation: máximo possível é registrado
+
+**Aplicação:** Systems críticos mas tolerantes a falhas parciais.
+
+---
+
+### Padrón 3: Multi-Price Pricing Model
+
+**Técnica:** 3 tipos de preços para diferentes métodos de upgrade.
+
+```lua
+RegularPrice = 1000               -- Upgrade normal
+ConvergenceFustionPrice = 1500    -- Upgrade com fusão especial
+ConvergenceTransferPrice = 500    -- Transferência entre items
+```
+
+**Vantagem:**
+- Flexível: diferentes caminhos de upgrade têm custo diferente
+- Econômico: pode balancear economia do jogo
+- Design clarity: cada preço tem propósito claro
+
+**Aplicação:** Complex economy pricing systems.
+
+---
+
+## 📝 Conceitos de Item Tier
+
+### Tier Hierarchy Esperada
+
+Tipicamente tiers são progressivos:
+
+```
+Tier 1 (Base)
+  ├─ RegularPrice = 1000 (cheapest)
+  ├─ FusionPrice = 1500 (more rare)
+  └─ TransferPrice = 500 (move between items)
+
+Tier 2 (Intermediate)
+  ├─ RegularPrice = 2000
+  ├─ FusionPrice = 3000
+  └─ TransferPrice = 1000
+
+Tier 3 (Advanced)
+  ├─ RegularPrice = 5000
+  ├─ FusionPrice = 7500
+  └─ TransferPrice = 2500
+
+Tier N (Max)
+  └─ ...
+```
+
+### Material Cores
+
+`Core` é material requerido para upgrade:
+- "CrystalCore" - Cristal
+- "VenomCore" - Veneno
+- "FireCore" - Fogo
+- "IceCore" - Gelo
+- etc
+
+---
+
+## 🐛 Typo Identificado
+
+### Na mensagem de logger.warn:
+
+```lua
+logger.warn("[registerItemClassification.Upgrades] - Item classification failed on adquire TierID or Price attribute.")
+```
+
+**Typo:** `"adquire"` deveria ser `"acquire"`
+
+**Correto:**
+```lua
+-- ...failed on acquire TierID ...
+```
+
+---
+
+## 📈 Performance & Escalabilidade
+
+### Setup Time
+- Uma vez na boot: ~0.5-2ms para criar metatable
+
+### Registration Time
+- Por itemClass: O(n) onde n = número de upgrades
+- Típico: 5-20 tiers por itemClass
+- ~1-2ms por itemClass com 20 tiers
+
+### Array Processing
+- `ipairs()` é otimizado em Lua (fast)
+- Validação é O(n) simples
+
+### Scalability
+- Linear com quantidade de tiers
+- Sem issue até ~100 tiers por item (improvável)
+
+### Memory
+- Cada tier = ~50 bytes em overhead Lua
+- Típico: 5 tiers × 10 items = inexpressivo

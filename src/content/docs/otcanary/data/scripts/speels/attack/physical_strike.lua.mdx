@@ -1,0 +1,427 @@
+---
+title: "Spell - physical_strike.lua"
+description: "Spell de golpe físico para druids level 16 com escalabilidade magic-level ALTA"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `physical_strike.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 148 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Druid, Elder Druid |
+| **Level Requerido** | 16 |
+| **Mana Requerida** | 20 |
+| **Words** | exori moe ico |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Cooldown** | 2s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level escalável (1.403-2.203 coef - ALTA!) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_PHYSICAL_STRIKE |
+| **Distance Effect** | CONST_ANI_EXPLOSION |
+| **Requer Target/Direction** | Sim (needCasterTargetOrDirection) |
+| **Bloqueia Walls** | Sim |
+| **BLOCKARMOR** | 1 |
+| **Linhas de Código** | 34 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de golpe físico premium para druids nível 16 (early-mid). Dano físico escalável magic-level MUITO ALTO (1.403-2.203 coef). 20 mana (baato). Range 3 (ranged). Targeting flexível. Cooldown 2s (rápido). Efeito EXPLOSION. BLOCKARMOR: 1 (ignora armadura!). Early-mid premium physical!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/physical_strike.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(148)
+spell:name("Physical Strike")
+spell:words("exori moe ico")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_PHYSICAL_STRIKE)
+spell:level(16)
+spell:mana(20)
+spell:isPremium(true)
+spell:range(3)
+spell:needCasterTargetOrDirection(true)
+spell:blockWalls(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("druid;true", "elder druid;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Golpe Físico - Physical Druid Magic-Level ALTA Block Armor**
+
+Este spell implementa um sistema de dano físico escalonado com armor ignore:
+
+1. **Magic-Level MUITO Alta:**
+   - min = (level/5) + (maglevel × 1.403) + 8
+   - max = (level/5) + (maglevel × 2.203) + 13
+   - Coef MUITO ALTOS (1.4-2.2!)
+
+2. **Early-Mid Premium Physical:**
+   - Level 16 (early-mid!)
+   - 20 mana (baato!)
+   - Premium only
+   - Cooldown 2s (rápido)
+
+3. **Armor Ignore (Unique!):**
+   - BLOCKARMOR: 1
+   - Ignora defesa de armadura!
+   - Physical damage bypass!
+   - Estratégico contra armored
+
+4. **Tipo Físico:**
+   - COMBAT_PHYSICALDAMAGE
+   - Distance effect EXPLOSION
+   - Range 3 (ranged)
+   - Targeting flexível
+
+**Fórmula Visual:**
+```
+Druid lvl 16, mlvl 5:
+  min = 3.2 + 7.015 + 8 = 18.215
+  max = 3.2 + 11.015 + 13 = 27.215
+
+Druid lvl 30, mlvl 10:
+  min = 6 + 14.03 + 8 = 28.03
+  max = 6 + 22.03 + 13 = 41.03
+```
+
+**Diferencial:** Physical magic-level ALTA com armor ignore early-mid druid!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `physical_strike` oferece dano físico escalável com armor ignore:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel × 1.403/2.203) (MUITO ALTA!)
+- **Mana:** 20 (baato)
+- **Level:** 16 (early-mid)
+- **Range:** 3 (ranged)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ Effect: EXPLOSIONAREA
+├─ Distance Effect: EXPLOSION
+├─ BlockArmor: 1
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max magic-level MUITO alta
+
+spell.onCastSpell(creature, var)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_EXPLOSIONAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_EXPLOSION)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+```
+
+**Propósito:** Combat de dano físico distance com armor ignore.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_EXPLOSIONAREA | Efeito explosão área |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_EXPLOSION | Projétil explosão |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Ignora armadura! |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.403) + 8
+	local max = (level / 5) + (maglevel * 2.203) + 13
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano físico escalável MUITO alto.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 1.403) + 8
+max = (level / 5) + (maglevel * 2.203) + 13
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 1.403 (MUITO ALTO!)
+- Maglevel max: 2.203 (MUITO ALTO!)
+- Bônus: 8/13 (significativo)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 16 | 5 | 18 | 27 |
+| 30 | 10 | 28 | 41 |
+| 50 | 20 | 50 | 74 |
+| 80 | 35 | 92 | 139 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Physical strike ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback magic |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Escalabilidade MLvl Muito Alta
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.403) + 8
+	local max = (level / 5) + (maglevel * 2.203) + 13
+	return -min, -max
+end
+```
+
+**Benefício:** Dano escala MUITO com magic level!
+
+### Padrão 2: Armor Ignore Physical
+
+```lua
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+```
+
+**Benefício:** Ignora defesa de armadura!
+
+### Padrão 3: Premium Early Physical
+
+```lua
+spell:isPremium(true)
+spell:level(16)
+spell:mana(20)
+```
+
+**Benefício:** Acesso CEDO level 16 para physical magic!
+
+### Padrão 4: Targeting Flexível
+
+```lua
+spell:needCasterTargetOrDirection(true)
+spell:range(3)
+```
+
+**Benefício:** Target ou direction = flexível!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano físico escalável MUITO alto.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(druid, 30, 10)
+// min = 6 + 14.03 + 8 = 28.03
+// max = 6 + 22.03 + 13 = 41.03
+// Retorna: -28, -41
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura golpe físico em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druid |
+| `var` | Variant | Target ou direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Physical strike ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 16+
+- 20 mana
+- Target ou direction
+- Premium account
+- Cooldown 2s
+
+**Efeito:**
+- Efeito explosão área
+- Projétil explosão
+- Dano magic-level escalável
+- Ignora armadura!
+- Range 3 tiles
+- Bloqueia walls
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Early-Mid Premium Physical
+
+```lua
+-- Novo Druid lvl 16+ premium
+// Physical Strike = golpe físico
+// Magic-level MUITO ALTA escalável
+// Armor ignore = vantagem!
+// Range 3 = safe distance
+```
+
+### Caso 2: Premium Druid Training
+
+```lua
+-- Premium druid farming early-mid
+// Physical Strike = dano físico magic
+// Magic-level escalabilidade
+// 20 mana = baato
+// Cooldown 2s = rápido
+// Armor ignore = contra armored
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Effects:** CONST_ME_EXPLOSIONAREA, CONST_ANI_EXPLOSION
+- **Parameter:** COMBAT_PARAM_BLOCKARMOR
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Golpe físico armor ignore |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*1.403)+8, max=(lvl/5)+(mlvl*2.203)+13 |
+| **Mana** | 20 (baato!) |
+| **Range** | 3 |
+| **Level** | 16 (early-mid) |
+| **Cooldown** | 2s (rápido) |
+| **Premium** | Sim |
+| **BlockArmor** | 1 (ignora!) |
+| **Vocações** | Druid, Elder Druid |
+| **Padrão** | Magic-level ALTA + armor ignore + premium + physical |

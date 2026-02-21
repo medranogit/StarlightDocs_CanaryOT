@@ -1,0 +1,255 @@
+---
+title: items.xml
+description: Declaração de todos os itens do jogo com atributos e propriedades
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="items.xml" icon="star">
+Arquivo de configuração XML central contendo declarações de todos os itens do jogo com suas propriedades, atributos e comportamentos.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/items/items.xml`
+
+Arquivo crítico de 84.662 linhas. Cada item do jogo deve ser declarado aqui com seu ID único e atributos.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O arquivo `items.xml` é o repositório central de declaração de itens do servidor Canary. Contém definições de mais de 30.000 itens únicos, cada um com ID, nome e atributos específicos. É a fonte de verdade para o sistema de itens, mapeando IDs numéricos para nomes, tipologia, peso, comportamentos especiais e propriedades de renderização.
+
+**Estrutura Fundamental**
+
+```xml
+<items>
+  ├── Líquidos (IDs 1-20)
+  ├── Objetos Gerais (IDs 100+)
+  ├── Containers (IDs 100+)
+  ├── Equipamento (IDs range)
+  ├── Quest Items (IDs range)
+  ├── Construções (IDs range)
+  ├── Magia Fields (IDs range)
+  └── Ranges (fromid/toid para series)
+</items>
+```
+
+## Estrutura de Items
+
+### Tipos de Declaração
+
+#### 1. Item Simples
+
+```xml
+<item id="5" name="blood"/>
+```
+
+Menor declaração possível - apenas ID e nome.
+
+#### 2. Item com Article (Artigo)
+
+```xml
+<item id="102" article="a" name="white flower"/>
+```
+
+Article define o pronunciamento em inglês: "a white flower".
+
+#### 3. Item com Atributos
+
+```xml
+<item id="111" article="a" name="dead human">
+  <attribute key="containerSize" value="10"/>
+  <attribute key="decayTo" value="4240"/>
+  <attribute key="duration" value="10"/>
+  <attribute key="fluidsource" value="blood"/>
+</item>
+```
+
+Atributos definem comportamentos e propriedades específicas.
+
+#### 4. Item com Range (Série)
+
+```xml
+<item fromid="146" toid="149" article="a" name="fire shrine">
+  <attribute key="primarytype" value="shrines and altars"/>
+</item>
+```
+
+Range declara 4 items (146, 147, 148, 149) com mesmas propriedades.
+
+### Atributos Comuns
+
+| Chave | Tipo | Exemplo | Propósito |
+|-------|------|---------|-----------|
+| primarytype | string | "quest items" | Categoria visual/filtro |
+| weight | integer | "50" | Peso em unidades |
+| description | string | "It smells bad" | Descrição ao examinar |
+| containersize | integer | "10" | Slots de capacidade |
+| decayTo | integer | "4240" | ID do item após decay |
+| duration | integer | "1800" | Segundos até decay |
+| fluidsource | string | "water" | Líquido dispensado |
+| floorchange | string | "down" | Mudança de floor |
+| writeable | boolean | "1" | Permite escrita (books) |
+| maxtextlen | integer | "1023" | Máximo caracteres |
+| armor | integer | "1" | Defesa (equipamento) |
+| type | string | "magicfield" | Tipo especial |
+
+### Atributos Aninhados
+
+Alguns atributos contêm sub-atributos:
+
+```xml
+<attribute key="field" value="poison">
+  <attribute key="ticks" value="5000"/>
+  <attribute key="start" value="5"/>
+  <attribute key="damage" value="100"/>
+</attribute>
+```
+
+Exemplo de Magic Field com configuração de dano.
+
+```xml
+<attribute key="script" value="moveevent">
+  <attribute key="eventType" value="stepin"/>
+</attribute>
+```
+
+Exemplo de trigger de script ao pisar.
+
+## Categorias de Items
+
+### Líquidos (IDs 1-20)
+
+Fluidos consumíveis e especiais:
+
+```
+1=water, 2=wine, 3=beer, 4=mud, 5=blood, 6=slime,
+7=oil, 8=urine, 9=milk, 10=manafluid, 11=lifefluid,
+12=lemonade, 13=rum, 14=fruit_juice, 15=coconut_milk,
+16=mead, 17=tea, 18=ink, 19=candyfluid, 20=chocolate
+```
+
+Loop após ID 20. Importante para fluidsource em containers.
+
+### Quest Items (PrimaryType: "quest items")
+
+Itens com propósito narrativo:
+- Documentos (parchments, contracts)
+- Artefatos especiais (magical watch, scrying crystal)
+- Colecionáveis (animal parts, disguises)
+
+### Containers (PrimaryType: "containers")
+
+Itens que guardam outros itens:
+
+```xml
+<attribute key="containersize" value="15"/>
+<attribute key="weight" value="8000"/>
+```
+
+- containersize: slots disponíveis
+- weight: peso total do container vazio
+
+### Equipamento
+
+Armaduras, armas, acessórios:
+
+```xml
+<attribute key="armor" value="1"/>
+<attribute key="defense" value="1"/>
+<attribute key="weight" value="700"/>
+```
+
+### Magic Fields
+
+Estruturas de dano ao pisar:
+
+```xml
+<attribute key="type" value="magicfield"/>
+<attribute key="decayTo" value="0"/>
+<attribute key="duration" value="248"/>
+```
+
+### Construções (PrimaryType: "constructions")
+
+Objetos do mundo: camas, plantas, estruturas.
+
+## Padrões de Configuração
+
+### Decay (Deterioração)
+
+Itens que se transformam com o tempo:
+
+```xml
+<attribute key="decayTo" value="3120"/>      <!-- Item resultante -->
+<attribute key="duration" value="1800"/>     <!-- Segundos (30 min) -->
+```
+
+Exemplo: Comida apodrece em outro item, carcaça vira ossos.
+
+### Writeables (Itens Escritáveis)
+
+Livros e pergaminhos:
+
+```xml
+<attribute key="writeable" value="1"/>
+<attribute key="maxtextlen" value="1023"/>
+```
+
+Permite jogadores escrever até 1023 caracteres.
+
+### Fluids (Fontes de Líquido)
+
+Containers que dispensam líquidos:
+
+```xml
+<attribute key="fluidsource" value="water"/>
+```
+
+Player usa container com empty bottle, obtém water bucket.
+
+### Floor Changes (Mudança de Andar)
+
+Transportes entre floors:
+
+```xml
+<attribute key="floorchange" value="down"/>
+<attribute key="floorchange" value="up"/>
+<attribute key="floorchange" value="north"/>
+```
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Arquivo XML com 84.662 linhas declarando 30.000+ items
+2. Cada item requer ID único, nome, e 0+ atributos
+3. Atributos podem ser primitivos ou aninhados
+4. Ranges (fromid/toid) permitem declarações em massa
+5. Categorias por primarytype (quest items, containers, etc)
+
+**Responsabilidades:**
+1. Manter registro único de todos os item IDs do jogo
+2. Definir propriedades que afetam gameplay (weight, container)
+3. Vincular IDs com nomes humano-legíveis
+4. Especificar comportamentos (decay, fluidsource, floorchange)
+5. Sincronizar com appearances.dat para renderização correta
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Configuração XML  
+**Tamanho**: ~3-5 MB no disco  
+**Linhas**: 84.662 total  
+**Items Declarados**: 30.000+  
+**Editável**: Sim, manualmente
+</Card>
+
+<Aside type="note">
+Documentação conceitual simplificada focando em estrutura e padrões. Arquivo completo é muito grande para análise linha-a-linha. Consulte seções específicas de items.xml no repositório para item IDs exatos.
+
+Sincronização com appearances.dat crítica - adicionar novo item aqui também requer sprite em appearances.dat.
+</Aside>

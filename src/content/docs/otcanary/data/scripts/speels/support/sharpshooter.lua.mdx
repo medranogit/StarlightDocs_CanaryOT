@@ -1,0 +1,249 @@
+---
+title: Sharpshooter
+description: "Spell de suporte para Paladins que aplica múltiplas conditions: paralyze, cooldown, e skill distance com WOD variant scaling"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `sharpshooter.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Paladin / Royal Paladin |
+| **Spell ID** | 135 |
+| **Mana Requerida** | 450 |
+| **Level Requerido** | 60 |
+| **Status Premium** | Não (acesso livre) |
+| **Duração do Buff** | 10 segundos (10.000 ms) |
+| **Cooldown Individual** | 10 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utito tempo san` |
+| **Efeito Visual** | `CONST_ME_MAGIC_GREEN` |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (buff ofensivo) |
+| **Grupos** | support, focus |
+| **Conditions Aplicadas** | CONDITION_PARALYZE, CONDITION_SPELLGROUPCOOLDOWN (x2), CONDITION_ATTRIBUTES |
+| **Distance Skill** | +140% (ou +145% se WOD UPGRADED) |
+| **Disable Defense** | true |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/sharpshooter.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell aplica 4 conditions simultâneas com lógica complexa baseada em Wheel. A ordem é importante: primeiro executa combat com paralyze + cooldown healing (CONDITION_SPELLGROUPCOOLDOWN subid 2), depois se sucesso: adiciona condition de attributes com distance skill. Se sem Wheel (WHEEL_GRADE_NONE): também adiciona cooldown support (subid 3). A paralyze usa formula (0.7, 56) que reduz velocidade mas compatível com distance buff. A mana de 450 é alta para level 60, tornando spell planejado.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `sharpshooter.lua` implementa buff ofensivo multi-condition free-to-play para Paladins (level 60+) que aplica paralyze + dois cooldown effects + skill distance com variação WOD. É one dos spells mais complexos em aplicação de conditions, oferecendo trade-off entre mana alta (450) e duração curta (10s) com foco em ofensiva de distância. O spell executa combat inicial com paralyze + healing cooldown, valida sucesso, depois adiciona condition de attributes com distance +140% (ou +145% WOD), desabilita defense, e aplica support cooldown (se sem Wheel). A implementação demonstra padrão avançado de aplicação condicional multi-staged com lógica WOD.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Variável de Duração
+local spellDuration = 10000
+
+-- 2. Instância Combat (paralyze + healing cooldown)
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_GREEN)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+
+-- 2.1 Condition Paralyze
+local speed = Condition(CONDITION_PARALYZE)
+speed:setParameter(CONDITION_PARAM_TICKS, spellDuration)
+speed:setFormula(0.7, 56, 0.7, 56)
+combat:addCondition(speed)
+
+-- 2.2 Condition Healing Cooldown
+local exhaustHealGroup = Condition(CONDITION_SPELLGROUPCOOLDOWN)
+exhaustHealGroup:setParameter(CONDITION_PARAM_SUBID, 2)
+exhaustHealGroup:setParameter(CONDITION_PARAM_TICKS, spellDuration)
+combat:addCondition(exhaustHealGroup)
+
+-- 3. Instância do Spell
+local spell = Spell("instant")
+
+-- 4. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 4.1 Execução de Combat
+    -- 4.2 Validação de Sucesso
+    -- 4.3 Criação de Condition Attributes
+    -- 4.4 Consulta de Wheel
+    -- 4.5 Aplicação Condicional de Support Cooldown
+    -- 4.6 Setagem de Distance Skill
+    -- 4.7 Aplicação de Condition ao Creature
+    -- 4.8 Retorno de Status
+end
+
+-- 5. Configuração de Propriedades do Spell
+spell:name("Sharpshooter")
+spell:words("utito tempo san")
+spell:group("support", "focus")
+spell:vocation("paladin;true", "royal paladin;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_SHARPSHOOTER)
+spell:id(135)
+spell:cooldown(10 * 1000)
+spell:groupCooldown(2 * 1000, 10 * 1000)
+spell:level(60)
+spell:mana(450)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(false)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `spellDuration` | `number` | Local | Duração em ms (10000) |
+| `combat` | `Combat` | Local | Combat com paralyze + healing cooldown |
+| `speed` | `Condition` | Local | CONDITION_PARALYZE com formula (0.7, 56) |
+| `exhaustHealGroup` | `Condition` | Local | CONDITION_SPELLGROUPCOOLDOWN subid 2 (healing) |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Paladin que executa o spell |
+| `variant` | `Variant` | Parâmetro | Dados variáveis (self target) |
+| `skill` | `Condition` | Local (onCastSpell) | CONDITION_ATTRIBUTES com distance skill |
+| `grade` | `number` | Local (onCastSpell) | Wheel upgrade grade para "Sharpshooter" |
+| `exhaustSupportGroup` | `Condition` | Local (onCastSpell) | CONDITION_SPELLGROUPCOOLDOWN subid 3 (support, se sem Wheel) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Application Multi-Staged Condicional**
+```lua
+if combat:execute(creature, variant) then
+    local skill = Condition(CONDITION_ATTRIBUTES)
+    ...
+    creature:addCondition(skill)
+    return true
+end
+return false
+```
+Aplicação secundária apenas se combat inicial bem-sucedido.
+
+### 2. **Padrão de Condições Múltiplas via Combat**
+```lua
+local speed = Condition(CONDITION_PARALYZE)
+...
+combat:addCondition(speed)
+
+local exhaustHealGroup = Condition(CONDITION_SPELLGROUPCOOLDOWN)
+...
+combat:addCondition(exhaustHealGroup)
+```
+Combat carrega múltiplas conditions aplicadas simultaneamente.
+
+### 3. **Padrão de Lógica WOD Condicional**
+```lua
+local grade = creature:upgradeSpellsWOD("Sharpshooter")
+if grade == WHEEL_GRADE_NONE then
+    -- Adiciona support cooldown se sem Wheel
+    exhaustSupportGroup:setParameter(...)
+    creature:addCondition(exhaustSupportGroup)
+end
+if grade == WHEEL_GRADE_UPGRADED then
+    skill:setParameter(CONDITION_PARAM_SKILL_DISTANCEPERCENT, 145)
+else
+    skill:setParameter(CONDITION_PARAM_SKILL_DISTANCEPERCENT, 140)
+end
+```
+Lógica bifurcada baseada em Wheel: sem = cooldown extra + 140%, upgraded = sem cooldown + 145%.
+
+### 4. **Padrão de Formula em Condition**
+```lua
+speed:setFormula(0.7, 56, 0.7, 56)
+```
+Paralyze usa formula que reduz velocidade mantendo proporcionalidade.
+
+### 5. **Padrão de Disable Defense Flag**
+```lua
+skill:setParameter(CONDITION_PARAM_DISABLE_DEFENSE, true)
+skill:setParameter(CONDITION_PARAM_BUFF_SPELL, true)
+```
+Desabilita defesa do alvo durante buff.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Executa combat multi-condition e aplica skill distance com lógica WOD.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Paladin que executa o spell.
+- `variant` (Variant): Dados variáveis (self target).
+
+**Fluxo de Execução:**
+
+1. **Execução de Combat Inicial**:
+   - `combat:execute(creature, variant)`
+   - Aplica CONDITION_PARALYZE (formula 0.7, 56)
+   - Aplica CONDITION_SPELLGROUPCOOLDOWN subid 2 (healing cooldown)
+   - Efeito visual CONST_ME_MAGIC_GREEN
+
+2. **Validação de Sucesso**:
+   - Se combat falhou: `return false`
+
+3. **Criação de Condition de Attributes**:
+   - `Condition(CONDITION_ATTRIBUTES)`
+   - Subid: AttrSubId_Sharpshooter
+   - Duration: 10000 ms (10 segundos)
+
+4. **Consulta de Wheel**:
+   - `grade = creature:upgradeSpellsWOD("Sharpshooter")`
+
+5. **Aplicação Condicional de Support Cooldown**:
+   - Se `grade == WHEEL_GRADE_NONE`:
+     - Cria CONDITION_SPELLGROUPCOOLDOWN subid 3
+     - Duration: 10000 ms
+     - Aplica ao creature
+   - Se `grade == WHEEL_GRADE_UPGRADED`:
+     - Não aplica support cooldown (bônus)
+
+6. **Setagem de Distance Skill**:
+   - Se `grade == WHEEL_GRADE_UPGRADED`:
+     - Distance: +145% (CONDITION_PARAM_SKILL_DISTANCEPERCENT)
+   - Senão:
+     - Distance: +140%
+
+7. **Flags de Buff**:
+   - Disable defense: `true`
+   - Buff spell: `true`
+
+8. **Aplicação de Condition**:
+   - `creature:addCondition(skill)`
+
+9. **Retorno**:
+   - Retorna `true` (cast bem-sucedido, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Skill distance aplicada, mana de 450 consumida
+- `false`: Combat falhou, mana não consumida
+
+**Lógica Detalhada:**
+
+O spell implementa buff ofensivo multi-facetado para Paladins. A paralyze com formula (0.7, 56) reduz movimento mas permite playstyle alternativo (reduz speed mas aumenta damage %).
+
+A aplicação em dois stages oferece melhor controle: se combat falhar (improvável), spell falha completamente. Se bem-sucedido, aplica skill distance.
+
+A lógica WOD oferece dois builds diferentes:
+- Sem Wheel: +140% distance, +cooldown support (menos overkill)
+- Com Wheel: +145% distance, sem cooldown support (mais puro DPS)
+
+A duração de 10 segundos combina com cooldown de 10 segundos - permite manter buff constantemente com planejamento exato.
+
+A mana de 450 é investimento significativo para level 60, tornando gem planejado vs improviso.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_SHARPSHOOTER`: Som característico
+
+## 📌 Resumo
+
+**Sharpshooter** é um spell de suporte gratuito para Paladins (level 60+) que aplica múltiplas conditions: paralyze (formula 0.7, 56), healing cooldown, distance skill (+140% ou +145% WOD), e opcionalmente support cooldown (se sem Wheel). O spell requer 450 de mana e cooldown de 10 segundos (2s grupo). A duração é 10 segundos em todas as conditions. A implementação executa combat com paralyze + healing cooldown, valida sucesso, aplica condition de atributos com distance skill escalada por Wheel. É ferramenta ofensiva essencial para Paladins, permitindo buff de distance puro com duração controlada.
+
+A implementação segue padrão avançado de aplicação multi-staged, diferenciando-se por: (1) execução multi-staged condicional, (2) múltiplas conditions via combat + manual, (3) formula em paralyze, (4) lógica WOD bifurcada (cooldown + skill), (5) disable defense flag.

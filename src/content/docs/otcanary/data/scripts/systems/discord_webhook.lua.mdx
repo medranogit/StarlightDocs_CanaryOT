@@ -1,0 +1,202 @@
+---
+title: Discord Webhook
+description: Sistema de configuração de webhooks Discord para notificações de servidor com 5 canais pré-definidos
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `discord_webhook.lua` |
+| **Tipo de Sistema** | Configuração de webhooks (Discord integration) |
+| **Tabela Principal** | announcementChannels |
+| **Total de Canais** | 5 pré-definidos |
+| **Formato de URL** | https://discord.com/api/webhooks/:id/:token |
+| **Valores Padrão** | Strings vazias (desabilitado) |
+| **Integração** | Via Webhook.sendMessage() library |
+| **Uso** | Notificações server para Discord |
+
+## 📍 Caminho Original
+
+```
+data/scripts/systems/discord_webhook.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este arquivo é apenas configuração de URLs de webhooks Discord. Para usar, preencha os valores vazios com URLs reais de webhooks (formato: https://discord.com/api/webhooks/:id/:token). A tabela announcementChannels é global e usada por Webhook.sendMessage() para redirecionar mensagens a canais específicos. Deixar vazio desabilita aquele canal. Exemplo de uso: Webhook.sendMessage(title, message, WEBHOOK_COLOR_YELLOW, announcementChannels["serverAnnouncements"]).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `discord_webhook.lua` implementa sistema de configuração puro para webhooks Discord com 5 canais pré-definidos (serverAnnouncements, raids, player-kills, player-levels, reports). É arquivo de setup que define tabela global announcementChannels com URLs de webhooks vazias (desabilitadas por padrão). Não contém lógica de execução - apenas declaração de configuração. Documentação comentada demonstra uso via Webhook.sendMessage() com title, message, color, channel. Pattern permite customização simples alterando as URLs de webhook para cada canal. Valores vazios indicam canal desabilitado (sem notificações).
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Verificação de Existência
+if not announcementChannels then
+    -- Se tabela não existe, criar nova
+end
+
+-- 2. Tabela Global de Canais
+announcementChannels = {
+    ["serverAnnouncements"] = "", -- URL webhook ou vazio
+    ["raids"] = "",
+    ["player-kills"] = "",
+    ["player-levels"] = "",
+    ["reports"] = "",
+}
+
+-- 3. Uso via Webhook Library
+Webhook.sendMessage(
+    title,           -- string: título da mensagem
+    message,         -- string: corpo da mensagem
+    color,           -- constant: WEBHOOK_COLOR_YELLOW, etc
+    announcementChannels["canalName"]  -- URL ou ""
+)
+
+-- 4. Canais Disponíveis
+-- - serverAnnouncements: Anúncios gerais do servidor
+-- - raids: Eventos de raid
+-- - player-kills: PvP kills
+-- - player-levels: Levelups de players
+-- - reports: Reports/denúncias de players
+```
+
+## 📊 Canais Configuráveis
+
+| Canal | Chave | Descrição | Exemplo de Uso |
+|---|---|---|---|
+| Server Announcements | `serverAnnouncements` | Anúncios gerais | Manutenção, eventos, notícias |
+| Raids | `raids` | Eventos de raid | Raid schedule, raid results |
+| Player Kills | `player-kills` | Mortes de players | PvP kills com detalhes |
+| Player Levels | `player-levels` | Progressão de players | Levelups, milestones |
+| Reports | `reports` | Reporte de comportamento | Player bans, rule violations |
+
+## 🎯 Padrões de Configuração
+
+### 1. **Padrão de Verificação e Inicialização**
+
+```lua
+if not announcementChannels then
+    announcementChannels = {
+        ["serverAnnouncements"] = "",
+        ["raids"] = "",
+        ["player-kills"] = "",
+        ["player-levels"] = "",
+        ["reports"] = "",
+    }
+end
+```
+
+Verifica se tabela já existe antes de criar (permite override).
+
+### 2. **Padrão de Webhook URL**
+
+```lua
+["serverAnnouncements"] = "https://discord.com/api/webhooks/123456789/abcdefgh"
+```
+
+Format: https://discord.com/api/webhooks/:id/:token
+
+### 3. **Padrão de Canal Desabilitado**
+
+```lua
+["raids"] = ""  -- Vazio = desabilitado
+```
+
+String vazia indica canal desabilitado (no-op em sendMessage).
+
+### 4. **Padrão de Uso com Color Constants**
+
+```lua
+Webhook.sendMessage(
+    "Title",
+    "Message body",
+    WEBHOOK_COLOR_YELLOW,
+    announcementChannels["serverAnnouncements"]
+)
+```
+
+Color constants pré-definidas: YELLOW, RED, GREEN, BLUE, etc.
+
+## 🤖 Documentação das Funções
+
+### **announcementChannels (Tabela Global)**
+
+**Descrição:** Tabela global que armazena URLs de webhooks Discord para 5 canais diferentes.
+
+**Campos:**
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `serverAnnouncements` | string | URL webhook para anúncios gerais |
+| `raids` | string | URL webhook para eventos de raid |
+| `player-kills` | string | URL webhook para PvP kills |
+| `player-levels` | string | URL webhook para level-ups |
+| `reports` | string | URL webhook para reports |
+
+**Valores Padrão:** Todos vazios (desabilitados)
+
+**Configuração Necessária:**
+Substitua strings vazias com URLs reais de webhooks Discord:
+
+```lua
+announcementChannels = {
+    ["serverAnnouncements"] = "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN",
+    ["raids"] = "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN",
+    ["player-kills"] = "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN",
+    ["player-levels"] = "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN",
+    ["reports"] = "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN",
+}
+```
+
+---
+
+### **Webhook.sendMessage(title, message, color, webhookUrl)**
+
+**Descrição:** Library function que envia mensagem para webhook Discord.
+
+**Parâmetros:**
+- `title` (string): Titulo da embed message
+- `message` (string): Corpo da mensagem
+- `color` (constant): Cor da embed (WEBHOOK_COLOR_YELLOW, etc)
+- `webhookUrl` (string): URL do webhook (ou vazio para desabilitar)
+
+**Comportamento:**
+- Se webhookUrl vazio: no-op (não envia)
+- Se webhookUrl válido: envia POST request com embed
+- Format: Discord embed com title, description, color
+
+**Exemplo:**
+
+```lua
+local monsterName = "Dragon Lord"
+local killer = "PlayerName"
+local message = ("Player %s was killed by %s"):format(killer, monsterName)
+
+Webhook.sendMessage(
+    "Player Death",
+    message,
+    WEBHOOK_COLOR_RED,
+    announcementChannels["player-kills"]
+)
+```
+
+---
+
+### **Webhook.specialSend()**
+
+**Descrição:** Library function mencionada em comentários para envios customizados.
+
+**Uso:** Permite enviar para canais customizados não listados na tabela padrão.
+
+**Dev Comment:** "This lib can be used to add special webhook channels where you are going to send your messages. Webhook.specialSend was designed to be used with countless possibilities."
+
+## 📌 Resumo
+
+**Discord Webhook** é sistema de configuração puro para integração Discord com 5 canais pré-definidos: serverAnnouncements (anúncios gerais), raids (eventos), player-kills (PvP), player-levels (progressão), reports (violações). Implementação é tabela global announcementChannels com strings vazias (desabilitados por padrão). Uso via Webhook.sendMessage() library function que redireciona mensagens a canais específicos baseado em URL configurada. Padrão simples de configuração permite enable/disable de canais sem código change - apenas preencha URLs de webhooks reais ou deixe em branco para desabilitar. Sistema básico de integração Discord para notificações de servidor.
+
+A implementação segue padrão de pure configuration, diferenciando-se por: (1) 5 canais pré-definidos, (2) verificação de existência antes de criar, (3) valores vazios para desabilitar, (4) URL format Discord padrão, (5) integração com Webhook library.

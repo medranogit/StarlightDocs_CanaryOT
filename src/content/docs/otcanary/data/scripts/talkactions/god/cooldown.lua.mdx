@@ -1,0 +1,149 @@
+---
+title: Cooldown Reset
+description: Comando GOD para resetar/limpar cooldowns de spells de um jogador
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `cooldown.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Limpar cooldowns de spells |
+| **Comando** | `/resetcd [playername]` |
+| **Requisito** | Acesso de God |
+| **Parâmetro Opcional** | Nome do jogador (padrão: self) |
+| **Efeito** | Remove todos cooldowns ativos |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/cooldown.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando minimalista com parâmetro alvo opcional. Se param vazio, usa self via `player:clearSpellCooldowns()`. Se parâmetro fornecido, busca jogador e limpa cooldowns via mesma função. Retorna silencioso em ambos casos. Feedback visual POFF se jogador não encontrado.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `cooldown.lua` implementa um comando TalkAction (`/resetcd`) que limpa todos os cooldowns de spells de um jogador. O sistema oferece parâmetro alvo opcional com default self, valida existência de jogador, aplica `clearSpellCooldowns()`, e fornece feedback visual de erro. Ferramenta de debug spell system.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local resetCooldowns = TalkAction("/resetcd")
+
+function resetCooldowns.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    -- Modo 1: Parâmetro vazio - resetar cooldowns do próprio jogador
+    if param == "" then
+        player:clearSpellCooldowns()
+        return true
+    end
+    
+    -- Modo 2: Parâmetro fornecido - resetar cooldowns de outro jogador
+    local target = Player(param)
+    if not target then
+        player:sendCancelMessage("The given player name does not exist or is not online.")
+        player:getPosition():sendMagicEffect(CONST_ME_POFF)
+        return true
+    end
+    
+    -- Limpar cooldowns do alvo
+    target:clearSpellCooldowns()
+    
+    return true
+end
+
+resetCooldowns:separator(" ")
+resetCooldowns:groupType("god")
+resetCooldowns:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **resetCooldowns.onSay(player, words, param)**
+
+**Descrição:** Função callback que limpa todos os cooldowns de spell de um jogador (self ou outro).
+
+**Parâmetros:**
+- `words` (string): `/resetcd`
+- `param` (string): Nome do jogador (opcional, padrão: self)
+
+**Formato de Comando:**
+```
+/resetcd                    -- Limpa cooldowns do GM executor
+/resetcd PlayerName         -- Limpa cooldowns de outro jogador
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Modo 1: Parâmetro Vazio (Self)**
+   ```lua
+   if param == "" then
+       player:clearSpellCooldowns()
+       return true
+   end
+   ```
+   - Aplica diretamente ao executor
+   - Sem validação, sem feedback explícito
+
+3. **Modo 2: Parâmetro Fornecido (Outro Jogador)**
+   ```lua
+   local target = Player(param)
+   if not target then
+       player:sendCancelMessage("The given player name does not exist or is not online.")
+       player:getPosition():sendMagicEffect(CONST_ME_POFF)
+       return true
+   end
+   ```
+   - Busca jogador por nome
+   - Se não encontrado: mensagem de erro + POFF effect
+
+4. **Limpar Cooldowns:**
+   ```lua
+   target:clearSpellCooldowns()
+   ```
+   - Remove todos cooldowns ativos
+
+**Exemplo de Uso:**
+
+```
+GM: /resetcd
+
+Resultado:
+- GM tem cooldowns de spells removidos
+- Spells ficam disponíveis imediatamente
+
+---
+
+GM: /resetcd TestPlayer
+
+Resultado:
+- Busca "TestPlayer" online
+- Se encontrado: cooldowns removidos
+- Se não encontrado: "The given player name does not exist or is not online."
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Player(name)` | Busca jogador online |
+| `player:clearSpellCooldowns()` | Remove todos cooldowns |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `cooldown.lua` é ferramenta de debug spell system. Implementação minimalista com parâmetro alvo opcional, feedback de erro visual (POFF), sem fricção. Essencial para testar spells após cooldown ou resetar em eventos. Design enxuto prioriza rapidez.

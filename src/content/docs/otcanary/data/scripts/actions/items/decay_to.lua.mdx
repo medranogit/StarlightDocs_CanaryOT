@@ -1,0 +1,266 @@
+---
+title: decay_to.lua
+description: Mapeamento extenso de transformações de itens com sistema de decay
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="decay_to.lua" icon="star">
+Script de ação Lua que implementa sistema de transformação de decorações e móveis com decay automático.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/decay_to.lua`
+
+Sistema de decay com mapeamento massivo (500+ item pairs) para decorações, lâmpadas, estátuas e móveis. Cada item pode transformar em versão alternada (on/off, estado 1/2/3/4 cíclicos). Suporta voice lines para itens específicos. Registra todos via loop automático.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `decay_to.lua` é o maior handler de decorações do jogo, mapeando 500+ pares de transformações bidirecionais. Lâmpadas, estátuas, móveis alternam entre estados (on/off, cores, versões). Alguns itens emitem voice lines ("Au au!", "Grooaarr!"). Ao usar, transforma item em par mapeado, inicia decay timer para regeneração automática, permitindo decoradores criar ciclos e animações visuais.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define voices table: 2 entries]
+    ├─ 23708 → "Au au!"
+    └─ 23443 → "Grooaarr!"
+
+[Define transformItems table: 500+ entries]
+    ├─ Pares bidirecionais
+    ├─ Exemplo: 2062 ↔ 2063 (sacred statue)
+    ├─ Exemplo: 27667 → 27668 → 27669 → 27670 → 27667 (cycles)
+    └─ Rotulados com comments
+
+[Create decayTo Action]
+    ↓
+[onUse function]
+    ├─ itemId = item:getId()
+    ├─ If voices[itemId]
+    │   ├─ Get spectators na área
+    │   └─ For each: spectator:say(voice)
+    ├─ newItemId = transformItems[itemId]
+    ├─ If newItemId
+    │   ├─ item:transform(newItemId)
+    │   └─ item:decay()
+    └─ return true
+
+[Register via loop: for all transformItems keys]
+```
+
+## Variáveis Globais
+
+### voices (local table)
+
+```lua
+local voices = {
+	[23708] = "Au au!",
+	[23443] = "Grooaarr!",
+}
+```
+
+Voice lines emitidas por certos itens ao transformar.
+
+| ID | Frase | Descrição |
+|----|-------|-----------|
+| 23708 | Au au! | Dog house |
+| 23443 | Grooaarr! | Baby dragon |
+
+### transformItems (local table - massivo)
+
+```lua
+local transformItems = {
+	[2062] = 2063,
+	[2063] = 2062, -- sacred statue
+	[2064] = 2065,
+	[2065] = 2064, -- sacred statue
+	-- ... 500+ mais entries
+}
+```
+
+Mapeamento de item ID para seu par transformado.
+
+**Estrutura:**
+- Índice: Item ID original
+- Valor: Item ID after transformation
+
+**Padrões:**
+- Bidirecional: A → B, B → A (on/off)
+- Cíclico: A → B → C → D → A (4 estados)
+- Unidirecional: Alguns só vão em uma direção
+
+**Categorias:**
+- Lâmpadas (street lamps, wall lamps: 50+ pairs)
+- Chamas (candles, torches, candlesticks: 30+ pairs)
+- Móveis (tables, ovens: 20+ pairs)
+- Estátuas (carvings, busts: 50+ pairs)
+- Tema (Christmas, Kraken, Dragon, etc: 200+ pairs)
+
+## Funções
+
+### decayTo.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que transforma item com decay automático.
+
+**Parâmetros:**
+- player: Creature player
+- item: Decoração sendo transformada
+- fromPosition: Posição do uso
+- target: Target (pode ser nil, não usado)
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo de Execução:**
+
+```lua
+1. itemId = item:getId()
+
+2. If voices[itemId] then
+   ├─ Get spectators no mapa
+   └─ For each: spectator:say(voices[itemId], TALKTYPE_MONSTER_SAY)
+
+3. newItemId = transformItems[itemId]
+
+4. If newItemId then
+   ├─ item:transform(newItemId)
+   └─ item:decay()
+
+5. return true
+```
+
+**Implementação:**
+
+```lua
+function decayTo.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local itemId = item:getId()
+	if voices[itemId] then
+		local spectators = Game.getSpectators(fromPosition, false, true, 3, 3)
+		for _, spectator in ipairs(spectators) do
+			player:say(voices[itemId], TALKTYPE_MONSTER_SAY, false, spectator, fromPosition)
+		end
+	end
+
+	local newItemId = transformItems[itemId]
+	if newItemId then
+		item:transform(newItemId)
+		item:decay()
+	end
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| itemId | integer | ID original item |
+| newItemId | integer | ID após transformação |
+| voices | table | Mapa de voice lines |
+| transformItems | table | Mapa de transformações |
+| TALKTYPE_MONSTER_SAY | constant | Tipo fala monster |
+| 3, 3 | integer | Reach (3x3 squares)|
+
+## Decay System
+
+### item:decay()
+
+Inicia timer de decay que automaticamente regenera item de volta para ID original.
+
+**Duração**: Configurada em items.xml per-item (típico 10-30 minutos)
+
+**Efeito**: Permite decoradores criar ciclos on/off automáticos ou cores alternadas.
+
+### Exemplos de Padrões
+
+#### Bidirecional (toggle)
+
+```
+2062 (off) ↔ 2063 (on) ↔ 2062 (off) ↔ ...
+```
+
+Alterna entre two states infinitamente.
+
+#### Cíclico 4 states
+
+```
+27667 → 27668 → 27669 → 27670 → 27667 → ...
+(light of change: empty → red → green → blue → empty)
+```
+
+Ciclo de 4 cores contínuo.
+
+## Voice Lines
+
+### Spectator System
+
+```lua
+local spectators = Game.getSpectators(fromPosition, false, true, 3, 3)
+for _, spectator in ipairs(spectators) do
+	player:say(voices[itemId], TALKTYPE_MONSTER_SAY, false, spectator, fromPosition)
+end
+```
+
+Emite voice para todos espectadores dentro 3x3 squares da posição.
+
+**Itens com Voice:**
+- 23708 (dog house): "Au au!"
+- 23443 (baby dragon): "Grooaarr!"
+
+## Transformações por Categoria
+
+### Lâmpadas (40+ pairs)
+
+Street lamps, wall lamps, floor lamps alternando on/off estados.
+
+### Chamas (25+ pairs)
+
+Candles, torches, candlesticks, lamp posts, candlebrums.
+
+### Móveis (30+ pairs)
+
+Tables (múltiplas variantes), ovens, benches, shelves.
+
+### Estátuas (50+ pairs)
+
+Busts, sculptures (ferumbras, bonelord, scholar), pillars.
+
+### Temáticas (200+ pairs)
+
+Christmas (branches, trees), Kraken (tentacles, lamps), Dragon (baby), Volcanic, Knightly, Seafarer, etc.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Mapeamento bidirecional vs cíclico
+2. Voice lines condicionais por item
+3. Spectators system com range
+4. Decay automático para regeneração
+5. Comment documentation em tabelas grandes
+6. Registration via loop automático
+7. Escalabilidade (500+ items com código simples)
+
+**Responsabilidades:**
+1. Emitir voice se item tem
+2. Transformar em par mapeado
+3. Iniciar decay timer
+4. Suportar todos 500+ items
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 513 linhas  
+**Função**: 1 (onUse)  
+**Transformações Mapeadas**: 500+  
+**Voice Lines**: 2 itens  
+**Categorias**: 7 (lâmpadas, chamas, móveis, estátuas, temáticas, etc)  
+**Registration**: Dinâmica via loop
+</Card>
+
+<Aside type="note">
+Sistema massivo de transformações para decorações com decay automático. Mapeamento bidirecional/cíclico permite decoradores criar ciclos on/off contínuos. 500+ pares covering lâmpadas, chamas, móveis, estátuas, temáticas (Christmas, Kraken, Dragon, etc). Voice lines para itens animados.
+</Aside>

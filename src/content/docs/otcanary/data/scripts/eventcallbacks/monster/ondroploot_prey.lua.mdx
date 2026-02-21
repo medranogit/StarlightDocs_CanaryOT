@@ -1,0 +1,481 @@
+---
+title: "ondroploot_prey.lua"
+description: "Sistema de prey loot bonus com chance de drop baseada na ativação de prey em participantes, incluindo diminishing factor para party sharing"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Event callback que implementa **sistema de prey loot bonus** quando um monstro alvo de prey está pronto para dar bonus. Coleta todos os participantes (include party se sharing habilitado), acumula percentual de prey chance de cada um, aplica diminishing factor baseado em número de ativadores para party balancing, valida chance com random, e gera single loot roll com mensagem nomeando quem tem prey ativo. Padrão de **party-aware bonus** onde participação múltipla dilui chance via exponential diminishing.
+
+**Caminho Original**: `data/scripts/eventcallbacks/monster/ondroploot_prey.lua`
+
+**Tipo**: EventCallback (monsterOnDropLoot trigger)
+
+**Dependências**:
+- EventCallback API (engine C++)
+- Monster/Player object methods
+- Party object API
+- Concoction system (implícito via getPreyLootPercentage)
+- ConfigManager: `PARTY_SHARE_LOOT_BOOSTS`, `PARTY_SHARE_LOOT_BOOSTS_DIMINISHING_FACTOR`
+- Constants: `ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX`
+
+<Aside>
+Prey system oferece chance de loot bonus baseado em qual jogador(es) tem prey ativo no monstro. Diferente de hazard que sempre executa, prey é **probabilístico** - pode não triggerar mesmo com chance. Diminishing factor (ex: 0.5) faz que 2 players com prey cada um não dobrem a chance, criando balanceamento de party.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `ondroploot_prey.lua` implementa **gerador de loot probabilístico baseado em prey system** que intercepta `monsterOnDropLoot` e executa: (1) coleta participants (jogador ou party inteira se sharing enabled), (2) soma percentuais de prey chance de cada participant para o monstro (baseado em race), (3) aplica diminishing factor exponencial ao divisor para mitigar party stacking, (4) valida com random chance, (5) se passar, gera single loot roll e annexa mensagem com nome de quem tinha prey. Padrão de **probabilistic party-aware bonus** com clear diminishing returns.
+
+### Arquitetura de Componentes
+
+```
+Prey Loot Handler
+│
+├─ PARTICIPANT COLLECTION (4 operações)
+│  ├── player = Player(corpse:getCorpseOwner())
+│  ├── Validação: canReceiveLoot()
+│  ├── if PARTY_SHARE_LOOT_BOOSTS:
+│  │  ├─ party = player:getParty()
+│  │  ├─ if party:isSharedExperienceEnabled()
+│  │  │  └─ participants = party:getMembers() + party:getLeader()
+│  │  └─ else: participants = {player}
+│  └─ else: participants = {player}
+│
+├─ PREY CHANCE CALCULATION (4 operações)
+│  ├── For each participant:
+│  │  ├── preyChance += participant:getPreyLootPercentage(mType:raceId())
+│  │  └── preyActivators[] += participant:getName()
+│  │
+│  ├── Apply diminishing factor (exponential divisor)
+│  │  └── preyChance = preyChance / (numActivators ^ diminishing_factor)
+│  │
+│  └── Random validation: random(1, 100) > preyChance? return (skip)
+│
+├─ LOOT GENERATION (1 operação)
+│  └── mType:generateLootRoll({factor=1.0, gut=false}, {}, player)
+│
+├─ MESSAGE ASSEMBLY (2 operações)
+│  ├── if PARTY_SHARE_LOOT_BOOSTS:
+│  │  └── msgSuffix = "active prey bonus for <name1>, <name2>, ..."
+│  └─ else:
+│     └── msgSuffix = "active prey bonus"
+│
+└─ ATTRIBUTION (2)
+   ├── corpse:addLoot(lootTable)
+   └── corpse:setAttribute(LOOTMESSAGE_SUFFIX, ...)
+```
+
+### Fluxo de Diminishing Factor
+
+```
+Diminishing Factor Logic:
+    final_chance = accumulated_chance / (num_activators ^ diminishing_factor)
+
+Exemplo com diminishing_factor = 0.5:
+    
+    1 activator (player): chance / (1 ^ 0.5) = chance / 1 = chance
+    2 activators (party): chance / (2 ^ 0.5) = chance / 1.414 = 70% of chance
+    3 activators (party): chance / (3 ^ 0.5) = chance / 1.732 = 57% of chance
+    4 activators (party): chance / (4 ^ 0.5) = chance / 2.0 = 50% of chance
+
+Efeito: Múltiplos activators dilui a chance, evitando stacking infinito
+```
+
+---
+
+## Detalhes da Função Global
+
+### `callback.monsterOnDropLoot(monster, corpse)`
+
+**Tipo**: EventCallback hook
+
+**Descrição**: Função disparada quando monstro morre. Valida se algum participant tem prey ativo, calcula chance cumulativa com diminishing, e gera loot se chance passar em random test.
+
+**Parâmetros**:
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `monster` | userdata | Monstro morto (pode ser prey target) |
+| `corpse` | userdata | Corpse destination para loot |
+
+**Retorna**: 
+- `nil` (implícito)
+
+**Algoritmo Completo**:
+
+```lua
+function callback.monsterOnDropLoot(monster, corpse)
+    -- 1. PLAYER VALIDATION
+    local player = Player(corpse:getCorpseOwner())
+    if not player or not player:canReceiveLoot() then
+        return
+    end
+
+    -- 2. MONSTER TYPE VALIDATION
+    local mType = monster:getType()
+    if not mType then
+        return
+    end
+
+    -- 3. INITIALIZE LOOT PARAMETERS
+    local factor = 1.0
+    local msgSuffix = ""
+    local participants = { player }
+
+    -- 4. COLLECT PARTICIPANTS (party or solo)
+    if configManager.getBoolean(configKeys.PARTY_SHARE_LOOT_BOOSTS) then
+        local party = player:getParty()
+        if party and party:isSharedExperienceEnabled() then
+            participants = party:getMembers()
+            table.insert(participants, party:getLeader())
+        end
+    end
+
+    -- 5. CALCULATE PREY CHANCE
+    local preyChance = 0
+    local preyActivators = {}
+    
+    for _, participant in ipairs(participants) do
+        -- Get chance from participant's prey system for this monster race
+        local participantChance = participant:getPreyLootPercentage(mType:raceId())
+        table.insert(preyActivators, participant:getName())
+        preyChance = preyChance + participantChance
+    end
+
+    -- 6. APPLY DIMINISHING FACTOR
+    if #preyActivators > 0 then
+        local numActivators = #preyActivators
+        -- Divide by (numActivators ^ diminishing_factor)
+        -- Ex: diminishing=0.5, numActivators=4 → divide by 2.0
+        preyChance = preyChance / numActivators ^ configManager.getFloat(configKeys.PARTY_SHARE_LOOT_BOOSTS_DIMINISHING_FACTOR)
+    end
+
+    -- 7. VALIDATE CHANCE (random test)
+    if math.random(1, 100) > preyChance then
+        return  -- Chance failed: no loot
+    end
+
+    -- 8. GENERATE LOOT (passed chance test)
+    local existingSuffix = corpse:getAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX) or ""
+
+    -- 9. ASSEMBLE MESSAGE
+    if configManager.getBoolean(configKeys.PARTY_SHARE_LOOT_BOOSTS) then
+        -- Show all activators
+        msgSuffix = string.len(existingSuffix) > 0 and 
+            string.format(", active prey bonus for %s", table.concat(preyActivators, ", ")) or 
+            string.format("active prey bonus for %s", table.concat(preyActivators, ", "))
+    else
+        -- Generic message
+        msgSuffix = string.len(existingSuffix) > 0 and ", active prey bonus" or "active prey bonus"
+    end
+
+    -- 10. ADD LOOT AND ATTRIBUTE
+    corpse:addLoot(mType:generateLootRoll({ factor = factor, gut = false }, {}, player))
+    corpse:setAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX, existingSuffix .. msgSuffix)
+end
+```
+
+**Características Principais**:
+
+| Característica | Valor | Notas |
+|---|---|---|
+| Chance Calculation | Cumulativa | Somada por participants |
+| Diminishing Factor | Exponencial | pow(numActivators, factor) |
+| Validation | Random test | random(1, 100) > chance |
+| Party Support | Condicional | if PARTY_SHARE_LOOT_BOOSTS |
+| Factor Fixed | 1.0 | Sem multiplicador |
+| Message Names | Configurável | Mostra nomes se party sharing enabled |
+
+---
+
+## Detalhes das Variáveis Locais
+
+### `player` (userdata | nil)
+
+**Tipo**: userdata (Player object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local player = Player(corpse:getCorpseOwner())`
+
+**Descrição**: Jogador proprietário do corpse. Primeiro participant por padrão.
+
+### `mType` (MonsterType | nil)
+
+**Tipo**: userdata (MonsterType object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local mType = monster:getType()`
+
+**Descrição**: Tipo do monstro. `raceId()` usado para lookup de prey chances.
+
+### `factor` (number)
+
+**Tipo**: number
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local factor = 1.0`
+
+**Descrição**: Multiplicador de loot fixado em 1.0 (sem bonus multiplicador).
+
+### `msgSuffix` (string)
+
+**Tipo**: string
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local msgSuffix = ""`
+
+**Descrição**: Mensagem de feedback. Construída dinamicamente com nomes de activators se party sharing.
+
+### `participants` (table)
+
+**Tipo**: `table<number, userdata>`
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local participants = { player }`
+
+**Descrição**: Array de jogadores que podem ter prey ativo. Começa com solo player, expande se party enabled.
+
+**Valores**:
+```lua
+participants = {player}              -- Solo
+participants = {members..., leader}  -- Party (shared exp enabled)
+```
+
+### `preyChance` (number)
+
+**Tipo**: number (percentage 0-100)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local preyChance = 0`
+
+**Descrição**: Soma acumulativa de chances de prey. Começando 0, adiciona cada participant. Antes de diminishing, é total bruto.
+
+**Evolução**:
+```lua
+preyChance = 0
+preyChance = preyChance + participant1:getPreyLootPercentage(...) → 30
+preyChance = preyChance + participant2:getPreyLootPercentage(...) → 60
+-- Após loop: preyChance = 60 (bruto)
+-- Após diminishing: preyChance = 60 / (2 ^ 0.5) ≈ 42.4
+```
+
+### `preyActivators` (table)
+
+**Tipo**: `table<number, string>`
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local preyActivators = {}`
+
+**Descrição**: Array de nomes de jogadores que têm prey ativo. Coletado durante loop. Usado para message assembly e diminishing factor calculation.
+
+**Conteúdo**:
+```lua
+preyActivators = {
+    "PlayerA",
+    "PlayerB",
+    "PlayerC"
+}
+```
+
+### `numActivators` (number)
+
+**Tipo**: number
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local numActivators = #preyActivators`
+
+**Descrição**: Contagem de activators. Usado como base para diminishing factor exponent.
+
+---
+
+## Padrões & Implementação
+
+### 1. Padrão de Cumulative Chance with Diminishing Returns
+
+Acumular chances múltiplas mas aplicar penalty para evitar stacking:
+
+```lua
+-- ❌ Sem diminishing (stacking infinito)
+local totalChance = 0
+for _, player in ipairs(participants) do
+    totalChance = totalChance + player:getChance()
+    -- 4 players com 25% cada = 100% chance (muito OP)
+end
+
+-- ✅ Com diminishing factor (balanceado)
+local totalChance = 0
+for _, player in ipairs(participants) do
+    totalChance = totalChance + player:getChance()
+end
+totalChance = totalChance / (numParticipants ^ diminishing_factor)
+-- 4 players com 25% cada = 25 / (4 ^ 0.5) ≈ 12.5% chance
+```
+
+**Fórmula**:
+```
+final_chance = sum_of_chances / (count ^ diminishing_factor)
+```
+
+**Diminishing Factor = 0.5**:
+| Participants | Sum = 100 | Final Chance |
+|---|---|---|
+| 1 | 100 | 100 / 1.0 = 100% |
+| 2 | 100 | 100 / 1.41 = 70% |
+| 4 | 100 | 100 / 2.0 = 50% |
+
+### 2. Padrão de Conditional Party Data
+
+Coleta different participants baseado em config:
+
+```lua
+-- Solo (padrão)
+local participants = { player }
+
+-- Party (se habilitado)
+if configManager.getBoolean(PARTY_SHARE_LOOT_BOOSTS) then
+    if party and party:isSharedExperienceEnabled() then
+        participants = party:getMembers()
+        table.insert(participants, party:getLeader())
+    end
+end
+```
+
+**Benefício**:
+- Sem party ou sem shared exp: solo only
+- Com ambas: incluir todos
+- Flexível via config
+
+### 3. Padrão de Dynamic Message with Join
+
+Mostrar names de activators apenas se enabled:
+
+```lua
+if PARTY_SHARE_LOOT_BOOSTS then
+    -- Modo verbose: mostrar nomes
+    msgSuffix = "prey bonus for " .. table.concat(preyActivators, ", ")
+else
+    -- Modo genérico
+    msgSuffix = "prey bonus"
+end
+```
+
+---
+
+## Fluxo de Operação
+
+### Caso: Solo Player com Prey Ativo
+
+```
+[Monster Death - Solo Prey]
+    │
+    ├─ player = corpse owner
+    ├─ participants = {player}
+    │
+    ├─ player:getPreyLootPercentage(race) = 50%
+    ├─ preyChance = 50
+    ├─ preyActivators = {"PlayerName"}
+    │
+    ├─ numActivators = 1
+    ├─ preyChance = 50 / (1 ^ 0.5) = 50
+    │
+    ├─ random(1, 100) > 50?
+    │  ├─ 75 > 50: YES → return (failed)
+    │  └─ 30 > 50: NO → continue (passed)
+    │
+    ├─ msgSuffix = "active prey bonus" (generic, no names)
+    ├─ corpse:addLoot(...)
+    │
+    └─ Player recebe: "You received loot. [active prey bonus]"
+```
+
+### Caso: Party 3 Members com Prey
+
+```
+[Monster Death - Party Prey]
+    │
+    ├─ PARTY_SHARE_LOOT_BOOSTS = true
+    ├─ party:isSharedExperienceEnabled() = true
+    ├─ participants = {member1, member2, member3, leader}
+    │
+    ├─ member1:getPreyLootPercentage(race) = 30 → preyChance = 30, preyActivators = {"Member1"}
+    ├─ member2:getPreyLootPercentage(race) = 30 → preyChance = 60, preyActivators = {"Member1", "Member2"}
+    ├─ member3:getPreyLootPercentage(race) = 30 → preyChance = 90, preyActivators = {"Member1", "Member2", "Member3"}
+    ├─ leader:getPreyLootPercentage(race) = 0 → preyChance = 90, preyActivators = {...} (3 names)
+    │
+    ├─ numActivators = 3
+    ├─ diminishing_factor = 0.5
+    ├─ preyChance = 90 / (3 ^ 0.5) = 90 / 1.732 ≈ 51.96
+    │
+    ├─ random(1, 100) > 51.96?
+    │  └─ 45 > 51.96: NO → continue (passed)
+    │
+    ├─ msgSuffix = "active prey bonus for Member1, Member2, Member3"
+    ├─ corpse:addLoot(...)
+    │
+    └─ Party recebe: "You received loot. [active prey bonus for Member1, Member2, Member3]"
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+**Versão da Documentação**: 1.0
+
+**Última Atualização**: 2026-02-20
+
+**Tipo de Complexidade**: 🟡 **Média**
+- Arquivo com 57 linhas de código
+- 1 função callback
+- 6 variáveis locais
+- Lógica: participant collection + cumulative chance + diminishing factor + validation + loot generation
+- Padrões: diminishing returns, conditional party data, dynamic messaging
+- Tempo estimado de aprendizado: 25-30 minutos
+
+**Cobertura de Tópicos**:
+- ✅ Variáveis locais (6)
+- ✅ Função global
+- ✅ Padrões de implementação
+- ✅ Fluxo de operação
+- ✅ Diminishing factor formula
+
+**Referências Relacionadas**:
+- [ARQUITETURA_PROJETO.mdx](../../../ARQUITETURA_PROJETO.mdx)
+- ondroploot_hazard.lua - Similar pattern com fractional rolls
+- Prey system API (getPreyLootPercentage)
+- Party API (getMembers, isSharedExperienceEnabled)
+
+**Status de Implementação**: ✅ **Completamente Implementado**
+- Participant collection operacional
+- Diminishing factor aplicado corretamente
+- Message assembly dinâmico
+- Random validation in place
+
+**Padrões Principais Implementados**:
+1. ✅ Cumulative chance calculation
+2. ✅ Exponential diminishing factor
+3. ✅ Conditional party collection
+4. ✅ Dynamic message with join
+5. ✅ Single roll validation
+
+**Notas para Futuros Desenvolvedores**:
+1. Diminishing factor é **exponencial** - ajustar via configManager pode ter grande impacto
+2. `getPreyLootPercentage(raceId)` retorna percentage (0-100)
+3. Chance é **accumulative** antes de diminishing - múltiplos activators não dobram chance
+4. Random validation: `random(1, 100) > chance` significa chance é percentual (100 = 100%)
+5. Single loot roll gerado (diferente de hazard/wealth que podem gerar múltiplos)
+

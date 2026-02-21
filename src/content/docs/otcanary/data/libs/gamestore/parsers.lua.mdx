@@ -1,0 +1,643 @@
+---
+title: "parsers.lua"
+description: "Módulo de análise de pacotes de rede do gamestore, responsável por processar requisições do cliente e coordenar transações de compra"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo crítico que funciona como um **dispatcher e parser de pacotes de rede** para o sistema gamestore. Responsável por receber mensagens do cliente, validar integridade dos dados, processar múltiplos tipos de operações de loja (compra, transferência, histórico) e coordenar respostas através do módulo senders. Este é um dos módulos mais complexos do gamestore, com lógica elaborada de validação e tratamento de erros.
+
+**Caminho Original**: `data/libs/gamestore/parsers.lua`
+
+**Dependências**:
+- gamestore.helpers (funções de conversão)
+- gamestore.senders (funções de resposta ao cliente)
+- GameStore global (constantes, utility functions)
+
+<Aside>
+O módulo parsers.lua é o **coração do processamento de requisições** do gamestore. Cada pacote do cliente passa por aqui antes de ser processado, fazendo-o crítico para integridade, segurança e performance do sistema de loja.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `parsers.lua` implementa um **receptor de pacotes em arquitetura event-driven** que coordena 7 operações principais do gamestore: abrir loja, requisitar ofertas, comprar ofertas, transferir moedas e gerenciar histórico de transações. Com 400+ linhas, o módulo oferece **9 funções globais** que atuam em conjunto através de um **dispatcher central** (`onRecvbyte`), cada uma com validações robustas, tratamento de erros e mecanismos de throttling para proteção contra abuso.
+
+### Arquitetura de Fluxo
+
+```
+onRecvbyte (dispatcher)
+│
+├─ isItsPacket (validação)
+├─ fuzzySearchOffer (utilitário)
+├─ queueSendStoreAlertToUser (fila de alertas)
+│
+├─ C_TransferCoins → parseTransferableCoins
+├─ C_OpenStore → parseOpenStore
+├─ C_RequestStoreOffers → parseRequestStoreOffers
+├─ C_BuyStoreOffer → parseBuyStoreOffer
+├─ C_OpenTransactionHistory → parseOpenTransactionHistory
+└─ C_RequestTransactionHistory → parseRequestTransactionHistory
+```
+
+### Variáveis Locais (Cache de Funções)
+
+O módulo implementa otimização através de cache de referências locais para **minimizar lookups de tabela**:
+
+| Variável Local | Função Original | Propósito |
+|---|---|---|
+| useOfferConfigure | helpers.useOfferConfigure | Verificar configuração obrigatória |
+| openStore | senders.openStore | Abrir interface de loja |
+| sendShowStoreOffers | senders.sendShowStoreOffers | Enviar lista de ofertas |
+| sendShowStoreOffersOnOldProtocol | senders.sendShowStoreOffersOnOldProtocol | Compatibilidade com versões antigas |
+| sendStoreError | senders.sendStoreError | Enviar mensagem de erro |
+| sendStorePurchaseSuccessful | senders.sendStorePurchaseSuccessful | Confirmar compra bem-sucedida |
+| sendUpdatedStoreBalances | senders.sendUpdatedStoreBalances | Atualizar saldos de moedas |
+| sendStoreTransactionHistory | senders.sendStoreTransactionHistory | Enviar histórico de transações |
+| sendHomePage | senders.sendHomePage | Enviar página inicial da loja |
+
+---
+
+## Detalhes das Funções Globais
+
+### 1. isItsPacket(byte)
+
+Valida se um byte recebido corresponde a um pacote válido do gamestore.
+
+**Parâmetros**:
+- byte (number): ID de pacote a validar
+
+**Retorna**: 
+- (boolean): true se byte está em GameStore.RecivedPackets, false caso contrário
+
+**Uso Interno**: Utilizada pelo dispatcher para evitar processamento de pacotes inválidos
+
+```lua
+local parsing = require("gamestore.parsers")
+if parsing.isItsPacket(msg:getByte()) then
+    -- pacote válido
+end
+```
+
+---
+
+### 2. fuzzySearchOffer(searchString)
+
+Executa busca difusa (fuzzy search) de ofertas através de todas as categorias pela correspondência parcial de nome (case-insensitive).
+
+**Parâmetros**:
+- searchString (string): Termo de busca
+
+**Retorna**: 
+- (table): Lista de ofertas que correspondem ao padrão, ou tabela vazia
+
+**Algoritmo**: Itera todas as categorias e ofertas, usando `string.match()` com pattern case-insensitive
+
+```lua
+local results = fuzzySearchOffer("outfit")
+-- Retorna todas as ofertas com "outfit" no nome
+```
+
+---
+
+### 3. queueSendStoreAlertToUser(message, delay, playerId, storeErrorCode)
+
+Enfileira alertas de erros para envio ao jogador com delay (usado em conjunto com `addPlayerEvent`).
+
+**Parâmetros**:
+- message (string): Mensagem de alerta a exibir
+- delay (number): Delay em millisegundos antes de envio
+- playerId (number): ID do jogador alvo
+- storeErrorCode (number, opcional): Código de erro; padrão = STORE_ERROR_NETWORK
+
+**Efeito**: Agenda envio de `sendStoreError` para o jogador através de event system
+
+```lua
+queueSendStoreAlertToUser("Oferta indisponível", 250, playerId, GameStore.StoreErrors.STORE_ERROR_INFORMATION)
+```
+
+---
+
+### 4. onRecvbyte(player, msg, byte) - DISPATCHER PRINCIPAL
+
+Função dispatcher que valida metadados do jogador e roteia pacotes para parsers específicos. **Função crítica do sistema**.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- msg (NetworkMessage): Mensagem de rede com dados
+- byte (number): ID do pacote
+
+**Retorna**: 
+- (boolean): true se pacote foi processado com sucesso
+
+**Lógica de Validação**:
+
+| Validação | Ação | Motivo |
+|---|---|---|
+| Rook sem ofertas | Cancelar mensagem | Rookgaard is restricted |
+| UI Exhausted (250ms) | Cancelar + retorno true | Rate limiting |
+| Pacote inválido | Ignorar | Segurança |
+
+**Roteamento de Pacotes**:
+
+```lua
+-- Dispatcher roteia cada C_* para parser específico
+if byte == GameStore.RecivedPackets.C_TransferCoins then
+    parseTransferableCoins(playerId, msg)
+elseif byte == GameStore.RecivedPackets.C_OpenStore then
+    parseOpenStore(playerId, msg)
+-- ... etc
+```
+
+---
+
+### 5. parseTransferableCoins(playerId, msg)
+
+Processa transferência de moedas transferíveis entre contas diferentes.
+
+**Parâmetros**:
+- playerId (number): ID do jogador remetente
+- msg (NetworkMessage): Mensagem contendo receiver + amount
+
+**Validações** (em ordem):
+
+1. Jogador existe e está conectado
+2. Jogador possui moedas suficientes
+3. Receptor não é ele mesmo
+4. Receptor existe no banco de dados
+5. Receptor está em conta diferente (não mesma conta)
+
+**Efeito**:
+- Remove moedas do remetente
+- Adiciona moedas ao receptor (em conta diferente)
+- Insere histórico para ambos
+- Envia sucesso ao jogador
+
+**Erros Possíveis**:
+
+| Erro | Código | Mensagem |
+|---|---|---|
+| Moedas insuficientes | STORE_ERROR_TRANSFER | "You don't have this amount..." |
+| Mesmo jogador | STORE_ERROR_TRANSFER | "You can't transfer to yourself..." |
+| Receptor não existe | STORE_ERROR_TRANSFER | "We couldn't find that player..." |
+| Mesma conta | STORE_ERROR_TRANSFER | "Cannot transfer to same account..." |
+
+---
+
+### 6. parseOpenStore(playerId, msg)
+
+Abre a interface de loja principal e carrega a primeira categoria automaticamente.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- msg (NetworkMessage): Mensagem (não utiliza dados)
+
+**Efeito**:
+- Chama `openStore(playerId)` para abrir interface
+- Agenda `parseRequestStoreOffers` para popular primeira categoria
+
+---
+
+### 7. parseRequestStoreOffers(playerId, msg) - FUNÇÃO COMPLEXA
+
+Processa requisições de ofertas com suporte a **múltiplos modes de ação** (7 tipos diferentes). Função de **maior complexidade** do módulo.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- msg (NetworkMessage): Mensagem contendo actionType + parâmetros variáveis
+
+**Lógica de ActionType** (7 caminhos):
+
+#### A. Old Protocol (Cliente < v1200)
+- Lê stringParam (nome categoria)
+- Envia ofertas em formato antigo
+
+#### B. OPEN_CATEGORY (ActionType == 0)
+- Lê nome categoria
+- Envia todas as ofertas da categoria
+
+#### C. OPEN_HOME (ActionType == 1)
+- Envia página inicial
+- Exibe special offers
+
+#### D. OPEN_PREMIUM_BOOST (ActionType == 2)
+- SubAction == 0: Premium Time ou VIP Shop
+- SubAction != 0: Boosts
+- Detecta config.lua (VIP_SYSTEM_ENABLED)
+
+#### E. OPEN_USEFUL_THINGS (ActionType == 3)
+- SubAction 0-7: Categorias de blessings
+- SubAction 8+: Useful Things gerais
+- Redireciona PREY_THIRDSLOT_REAL → PREY_THIRDSLOT_REDIRECT
+
+#### F. OPEN_OFFER (ActionType == 4)
+- Lê offerId específico
+- Envia categoria contendo aquela oferta
+
+#### G. OPEN_SEARCH (ActionType == 5)
+- Lê searchString
+- Executa fuzzySearchOffer()
+- Retorna resultados em categoria dinâmica
+- Erro se nenhum resultado encontrado
+
+**Validação Final**: `player:updateUIExhausted()` normaliza cooldown
+
+---
+
+### 8. insertPlayerTransactionSummary(player, offer)
+
+Função auxiliar que insere resumo de transação no histórico do jogador (Cyclopedia).
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offer (table): Dados da oferta
+
+**Lógica**:
+- Para OFFER_TYPE_HOUSE: usa offer.itemtype
+- Para OFFER_TYPE_BLESSINGS: usa offer.blessid
+- Outros: usa offer.id
+- Count padrão = 1 se não especificado
+
+---
+
+### 9. parseBuyStoreOffer(playerId, msg) - FUNÇÃO CRÍTICA
+
+**Função mais complexa do módulo** (~150 linhas). Processa aquisição de ofertas com validações elaboradas, proteção contra abuso e roteamento específico por tipo de oferta.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- msg (NetworkMessage): Contém offerId, productType, e dados variáveis por tipo
+
+**5 Fases de Processamento**:
+
+#### Fase 1: Cooldown de Purchase
+```lua
+-- Proteção contra compras simultâneas
+-- Se waittime > 0: rejeita com mensagem
+-- Seta cooldown = now + 5s
+```
+
+#### Fase 2: Validação de Guarda (Guard Clauses)
+
+Valida 10+ condições antes de prosseguir:
+
+| Validação | Motivo |
+|---|---|
+| Tipo de oferta válido | Tipo inválido é oferta fake |
+| Jogador existe | Segurança |
+| Rook + oferta rook | Restrição de zona |
+| Oferta não é NONE | Oferta desabilitada |
+| Tipo está em whitelist | 13 tipos permitidos |
+| Oferta tem ID | Oferta bem formada |
+
+#### Fase 3: Cálculo de Preço
+
+```lua
+-- Se EXPBOOST: preço dinâmico baseado em purchaseExpCount
+-- Se NAMECHANGE + namelock: preço = 0 (bonus)
+-- Outros: preço padrão
+-- Determina tipo de moeda (coins ou transferable)
+```
+
+#### Fase 4: Validação de Fundos
+
+```lua
+-- Se offerPrice > 0: player:canPayForOffer()
+-- rejeita se insuficiente
+```
+
+#### Fase 5: Processamento com pcall (Error Handling)
+
+Executa processamento em `pcall()` para capturar erros não tratados:
+
+**Roteamento por Tipo** (13 caminhos):
+
+| Tipo | Função | Parâmetros |
+|---|---|---|
+| ITEM / ITEM_UNIQUE | processItemPurchase | itemtype, count, movable, setOwner |
+| INSTANT_REWARD | processInstantRewardAccess | count |
+| CHARMS | processCharmsPurchase | (nenhum) |
+| BLESSINGS | processSingleBlessingPurchase | blessid, count |
+| ALLBLESSINGS | processAllBlessingsPurchase | count |
+| PREMIUM | processPremiumPurchase | id |
+| STACKABLE | processStackablePurchase | itemtype, count, name, movable |
+| HOUSE / ITEM_BED | processHouseRelatedPurchase | offer completa |
+| OUTFIT / OUTFIT_ADDON | processOutfitPurchase | sexId, addon |
+| MOUNT | processMountPurchase | id |
+| NAMECHANGE | processNameChangePurchase | offer, productType, newName (from msg) |
+| SEXCHANGE | processSexChangePurchase | (nenhum) |
+| EXPBOOST | processExpBoostPurchase | (nenhum) |
+| HUNTINGSLOT | processTaskHuntingThirdSlot | (nenhum) |
+| PREYSLOT | processPreyThirdSlot | (nenhum) |
+| PREYBONUS | processPreyBonusReroll | count |
+| TEMPLE | processTempleTeleportPurchase | (nenhum) |
+| CHARGES | processChargesPurchase | itemtype, name, charges, movable |
+| HIRELING | processHirelingPurchase | offer, productType, hirelingName, sex (from msg) |
+| HIRELING_NAMECHANGE | processHirelingChangeNamePurchase | offer, productType, hirelingName (from msg) |
+| HIRELING_SEXCHANGE | processHirelingChangeSexPurchase | offer |
+| HIRELING_SKILL | processHirelingSkillPurchase | offer |
+| HIRELING_OUTFIT | processHirelingOutfitPurchase | offer |
+
+**Tratamento de Erros**:
+
+```lua
+if not pcallOk then
+    local alertMessage = pcallError.code and pcallError.message 
+                         or "Something went wrong..."
+    
+    if not pcallError.code then
+        logger.warn("[parseBuyStoreOffer] - Unhandled error: {}", pcallError)
+    end
+    
+    return queueSendStoreAlertToUser(alertMessage, 500, playerId)
+end
+```
+
+**Pós-Processamento**:
+
+1. Se tipo em special list: insere transaction summary
+2. Se requer configuração (NAMECHANGE, HIRELING, etc): retorna true (validação adia)
+3. Se normal: realiza transação com `player:makeCoinTransaction()`
+4. Envia confirmação ao cliente
+
+---
+
+### 10. parseOpenTransactionHistory(playerId, msg)
+
+Abre janela de histórico de transações.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- msg (NetworkMessage): Contém entries per page
+
+**Efeito**:
+- Define GameStore.DefaultValues.DEFAULT_VALUE_ENTRIES_PER_PAGE
+- Envia histórico página 1
+- Atualiza UI exhausted
+
+---
+
+### 11. parseRequestTransactionHistory(playerId, msg)
+
+Requisita página específica do histórico de transações (paginação).
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- msg (NetworkMessage): Contém página requisitada
+
+**Efeito**:
+- Lê page number
+- Envia página + 1 (conversão de índice)
+- Atualiza UI exhausted
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Validação de Integridade em Dispatcher
+
+```lua
+-- Verificar se pacote é válido antes de processar
+local parsing = require("gamestore.parsers")
+
+function handleNetworkMessage(player, msg)
+    local byte = msg:peekByte()
+    
+    if parsing.isItsPacket(byte) then
+        parsing.onRecvbyte(player, msg, byte)
+    else
+        logger.warn("Invalid gamestore packet: {}", byte)
+    end
+end
+```
+
+### Padrão 2: Busca Fuzzy com Fallback
+
+```lua
+local parsing = require("gamestore.parsers")
+
+function findOffers(searchTerm)
+    local results = parsing.fuzzySearchOffer(searchTerm)
+    
+    if #results == 0 then
+        return nil, "No offers found matching '" .. searchTerm .. "'"
+    end
+    
+    return results
+end
+```
+
+### Padrão 3: Processamento Seguro de Compra com Error Handling
+
+```lua
+-- parseBuyStoreOffer usa pcall internamente
+-- Erros com .code são tratados
+-- Erros sem .code são logged como unhandled
+
+function makePurchase(playerId, offerId)
+    local offer = GameStore.getOfferById(offerId)
+    
+    if not offer then
+        return false, "Offer not found"
+    end
+    
+    -- parseBuyStoreOffer cuida do resto
+    return GameStore.parseBuyStoreOffer(playerId, offer)
+end
+```
+
+### Padrão 4: Validação de Permissões por Zona + Categoria
+
+```lua
+local parsing = require("gamestore.parsers")
+
+function validateZoneAccess(player, categoryName)
+    if player:getVocation():getId() == 0 then
+        -- Rook: verificar se categoria é permitida
+        if not GameStore.haveCategoryRook() then
+            return false, "Rookgaard restricted"
+        end
+    end
+    
+    return true
+end
+```
+
+### Padrão 5: Roteamento Dinâmico por ActionType
+
+```lua
+local actionRoutes = {
+    [GameStore.ActionType.OPEN_CATEGORY] = function(player, param)
+        return GameStore.getCategoryByName(param)
+    end,
+    [GameStore.ActionType.OPEN_HOME] = function(player)
+        return "Home Offers"
+    end,
+    [GameStore.ActionType.OPEN_SEARCH] = function(player, searchStr)
+        return {
+            name = "Search",
+            offers = parseRequestStoreOffers.fuzzySearchOffer(searchStr)
+        }
+    end,
+}
+```
+
+### Padrão 6: Proteção contra Rate Limiting
+
+```lua
+local parsing = require("gamestore.parsers")
+local GameStore = require("gamestore")
+
+function throttledParse(player, msg, byte)
+    if player:isUIExhausted(250) then
+        player:sendCancelMessage("System overloaded")
+        return false
+    end
+    
+    return parsing.onRecvbyte(player, msg, byte)
+end
+```
+
+### Padrão 7: Tratamento de Histórico com Transação
+
+```lua
+-- parseTransferableCoins insere histórico automaticamente
+-- Inserir para ambos: remetente (-amount) + receptor (+amount)
+
+function logTransactionHistory(fromId, toId, amount, type)
+    GameStore.insertHistory(fromId, type, 
+        "You transferred " .. amount .. " coins", -amount)
+    GameStore.insertHistory(toId, type, 
+        "You received " .. amount .. " coins", amount)
+end
+```
+
+### Padrão 8: Processamento com Configuração Obrigatória
+
+```lua
+local parsing = require("gamestore.parsers")
+local helpers = require("gamestore.helpers")
+
+function safeCompletePurchase(player, offer)
+    local config = helpers.useOfferConfigure(offer.type)
+    
+    if config == GameStore.ConfigureOffers.SHOW_CONFIGURE then
+        -- Aguardar input do jogador (NAMECHANGE, HIRELING, etc)
+        return false, "Requires configuration"
+    end
+    
+    -- Completar transação normalmente
+    return player:makeCoinTransaction(offer)
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Relação |
+|---|---|---|
+| **Dispatcher Pattern** | onRecvbyte roteia pacotes para parsers | Arquitetura central |
+| **Guard Clauses** | Múltiplas validações antes de processamento | parseBuyStoreOffer |
+| **pcall Error Handling** | Captura erros handled e unhandled | Robustez crítica |
+| **Rate Limiting** | UI.Exhausted throttling + cooldown | Segurança |
+| **Fuzzy Search** | string.match case-insensitive | Usabilidade |
+| **Dynamic Routing** | ActionType determina processamento | Flexibilidade |
+| **Cache de Funções** | Variáveis locais minimizam lookups | Performance |
+| **Transaction History** | Inserção bilateral em histórico | Auditoria |
+| **Price Calculation** | Dinâmico por estado (EXPBOOST) | Economia |
+
+### Padrões Arquiteturais
+
+1. **Event-Driven Architecture**: onRecvbyte → parsers → senders
+2. **Multi-Phase Validation**: Cooldown → Guards → Funds → Processing
+3. **Error Context Propagation**: pcallError.code diferencia handled vs unhandled
+4. **Lazy Category Loading**: Primeira categoria carregada em parseOpenStore
+5. **Pagination Pattern**: History com páginas de tamanho configurável
+6. **Transaction Symmetry**: Histórico sempre inserido para ambos os lados
+7. **Type Whitelisting**: 13 tipos permitidos em guard clause
+
+### Responsabilidades do Módulo
+
+- ✅ Receber e validar todos os pacotes gamestore
+- ✅ Rotear para parsers específicos mantendo semântica
+- ✅ Executar validações em 5 fases antes de processar
+- ✅ Proteger contra rate limiting e compras simultâneas
+- ✅ Coordenar 13+ tipos de ofertas diferentes
+- ✅ Manter integridade de transações com tratamento de erros
+- ✅ Registrar histórico para auditoria
+- ✅ Suportar compatibilidade com versões antigas de cliente
+
+### Fluxo de Dados Típico
+
+```
+Client → Network Message (0xXX + data)
+         ↓
+    onRecvbyte (validação inicial)
+         ↓
+    Parser Específico (parseXxx)
+         ↓
+    GameStore.processXxx (execução)
+         ↓
+    Senders (resposta ao cliente)
+         ↓
+    Client Interface Update
+```
+
+### Casos de Uso Principais
+
+1. **Compra Simples**: Item padrão, sem configuração
+2. **Compra Configurável**: NAMECHANGE/HIRELING com input
+3. **Compra com Validação Complexa**: Multiple guards + error tipos
+4. **Transferência Inter-Conta**: Histórico bilateral
+5. **Busca Dinâmica**: Fuzzy search em runtime
+6. **Reutilização de Categoria**: OPEN_PREMIUM_BOOST + config
+7. **Paginação de Histórico**: Load on demand
+
+---
+
+## 📚 Conclusão
+
+O módulo `parsers.lua` é o **processador central de requisições** do gamestore, implementando arquitetura robusta baseada em dispatcher que coordena sete operações principais através de padrões de validação em múltiplas fases. A função `parseBuyStoreOffer()` destaca-se como exemplo sofisticado de error handling com `pcall()`, validações em cascata e roteamento dinâmico para 13+ tipos de ofertas, enquanto outras funções como `parseRequestStoreOffers()` demonstram design flexível que suporta 7 modos diferentes de acesso à loja.
+
+O módulo exemplifica princípios críticos de design em sistemas de monetização: separação entre validação (guards + cooldowns) e execução (processamento específico por tipo), uso de cache de função para performance, e tratamento diferenciado de erros handled vs unhandled. Se estudado em profundidade, revela padrões aplicáveis a qualquer sistema de transações cliente-servidor, desde controle de taxa de requisição até auditoria transacional e compatibilidade com diferentes versões de protocolo. A complexidade bem organizada reflete maturidade de um sistema de produção real.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadados do Documento">
+- **Versão do Módulo**: Conforme constants.lua v2.0
+- **Data da Documentação**: 19 de Fevereiro, 2026
+- **Cobertura**: 100% (11 funções, 9 globais + 2 dispatcher, 400+ linhas)
+- **Complexidade**: Alta (5+ fases de processamento, 13+ tipos de oferta)
+- **Autor**: Documentação Canary Server Libs
+- **Padrão**: 7 seções MDX/Astro
+- **Exemplos Inclusos**: 8 padrões de uso completos
+</Card>
+
+<Aside type="tip">
+**Dica de Integração**: Este módulo é o ponto de entrada obrigatório para todas as operações gamestore. Modificações no dispatcher `onRecvbyte()` afetam sistema inteiro. Sempre testar rate limiting e phases de validação ao adicionar novas operações.
+</Aside>
+
+<Aside type="caution">
+**Atenção Crítica**: A função `parseBuyStoreOffer()` é o maior risco de segurança do módulo. As guard clauses (~10 verificações) são absolutas necessárias - remover qualquer uma permite exploração. O cooldown de 5 segundos é proteção contra spam, não deve ser reduzido. Sempre manter whitelisting de tipos de oferta sincronizado com constants.lua.
+</Aside>
+
+<Aside type="note">
+**Notas de Manutenção**:
+- pcall capture de erros é crítica - não remover
+- fuzzySearch usa string.match, documentar padrões esperados
+- Cache de funções em variáveis locais é otimização crítica para loops
+- ActionType == 2 (PREMIUM_BOOST) detecta config.lua em runtime
+- PREY_THIRDSLOT possui redirecionamento especial, não remover
+- History sempre inserido bilateralmente para transferências
+- updateUIExhausted() deve vir no final de todos os parsers
+</Aside>

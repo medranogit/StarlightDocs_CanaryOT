@@ -1,0 +1,273 @@
+---
+title: anniversary_reward_boxes.lua
+description: Sistema de abertura de caixas de recompensa com múltiplos conteúdos
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="anniversary_reward_boxes.lua" icon="star">
+Script de ação Lua que implementa sistema de caixas de recompensa com 4 tipos diferentes oferecendo múltiplos itens ao jogador.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/anniversary_reward_boxes.lua`
+
+Script que abre caixas de aniversário e distribui recompensas variadas com efeitos mágicos. Sem limite de uso ou cooldown.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `anniversary_reward_boxes.lua` implementa sistema de recompensas em caixas para o evento de aniversário. Cada caixa possui configuração independente com 8-13 itens diferentes. Ao usar caixa, todos os itens são adicionados ao player com efeito mágico prismatic spark. Inclui: small reward box, standard reward box, balloon collection box, e big reward box premium.
+
+**Estrutura Fundamental**
+
+```
+[Load config table]
+    ↓
+[4 box types defined]
+    ├── Small reward box (8 items)
+    ├── Reward box (13 items)
+    ├── Box full of balloons (10 numbered balloons)
+    └── Big reward box (13+ items)
+    ↓
+[Create rewardBox Action]
+    ↓
+[onUse function]
+    ├─ Validate box exists in config
+    ├─ Loop all items in reward array
+    ├─ player:addItem() each reward
+    ├─ sendMagicEffect() per item
+    └─ Remove used box
+    ↓
+[Register Action on 4 box IDs]
+```
+
+## Variáveis Globais
+
+### config (local table)
+
+```lua
+local config = {
+  [39704] = { items array },  -- small reward box
+  [39705] = { items array },  -- reward box
+  [39706] = { items array },  -- box full of balloons
+  [39710] = { items array },  -- big reward box
+}
+```
+
+Tabela contendo configurações por box ID.
+
+**Estrutura de Reward:**
+
+```lua
+{ id = 37533, count = 1 }  -- Birthday layer cake x1
+{ id = 37530, count = 2 }  -- Bottle of champagne x2
+```
+
+Cada reward é tabela com id e count.
+
+## Box Configurations
+
+### Box 1: Small Reward Box (ID 39704)
+
+**Itens: 8 tipos**
+
+```lua
+[39704] = {
+  { id = 37533, count = 1 },  -- Birthday layer cake
+  { id = 37530, count = 1 },  -- Bottle of champagne
+  { id = 37531, count = 1 },  -- Candy floss
+  { id = 37532, count = 1 },  -- Ice cream cone
+  { id = 37461, count = 1 },  -- Balloon box
+  { id = 37463, count = 1 },  -- Luminous box
+  { id = 37467, count = 1 },  -- Carpet box
+  { id = 37468, count = 1 },  -- Special FX box
+}
+```
+
+Versão pequena: 1x cada item básico.
+
+### Box 2: Reward Box (ID 39705)
+
+**Itens: 13 tipos**
+
+```lua
+[39705] = {
+  { id = 37530, count = 2 },  -- Bottle of champagne x2
+  { id = 37531, count = 2 },  -- Candy floss x2
+  { id = 37532, count = 2 },  -- Ice cream cone x2
+  { id = 37533, count = 2 },  -- Birthday layer cake x2
+  { id = 37461, count = 2 },  -- Balloon box x2
+  { id = 37463, count = 1 },  -- Luminous box x1
+  { id = 37467, count = 2 },  -- Carpet box x2
+  { id = 37468, count = 3 },  -- Special FX box x3
+  { id = 37462, count = 2 },  -- Special carpet box x2
+  { id = 37465, count = 2 },  -- Box full of presents x2
+  { id = 37457, count = 1 },  -- Supernatural box x1
+  { id = 37469, count = 2 },  -- Special balloon box x2
+  { id = 37466, count = 1 },  -- Embroidered box x1
+}
+```
+
+Versão padrão: 2x itens comuns, 3x special FX.
+
+### Box 3: Box Full of Balloons (ID 39706)
+
+**Itens: 10 balloons numerados**
+
+```lua
+[39706] = {
+  { id = 39671, count = 1 },  -- Balloon no. 0
+  { id = 39672, count = 1 },  -- Balloon no. 1
+  -- ... até 9
+  { id = 39680, count = 1 },  -- Balloon no. 9
+}
+```
+
+Coleção completa: um balão de cada número.
+
+### Box 4: Big Reward Box (ID 39710)
+
+**Itens: 13+ tipos (premium)**
+
+```lua
+[39710] = {
+  { id = 39693, count = 1 },  -- 25 years backpack (unique)
+  { id = 37530, count = 2 },  -- Bottle of champagne x2
+  -- ... (similar ao box 39705)
+}
+```
+
+Versão premium: inclui 25 years backpack exclusivo.
+
+## Funções
+
+### rewardBox.onUse(player, item, fromPosition, itemEx, toPosition)
+
+Callback principal acionado ao usar caixa.
+
+**Parâmetros:**
+- player: Creature player
+- item: Caixa sendo usada
+- fromPosition: Posição do uso
+- itemEx: Alvo (pode ser nil)
+- toPosition: Posição destino
+
+**Fluxo:**
+
+```
+1. Lookup box em config[item:getId()]
+   ├─ Não existe? → return false
+   └─ Existe → box array
+
+2. Loop cada reward em box array
+   ├─ player:addItem(reward.id, reward.count)
+   ├─ player:getPosition():sendMagicEffect(CONST_ME_PRISMATIC_SPARK)
+   └─ Próximo item
+
+3. item:remove() (delete caixa usada)
+
+4. return true
+```
+
+**Bloco 1: Lookup**
+
+```lua
+local box = config[item:getId()]
+if not box then
+  return false
+end
+```
+
+Valida caixa existe na configuração.
+
+**Bloco 2: Distribute Rewards**
+
+```lua
+for _, reward in ipairs(box) do
+  player:addItem(reward.id, reward.count)
+  player:getPosition():sendMagicEffect(CONST_ME_PRISMATIC_SPARK)
+end
+```
+
+Adiciona todos os itens com efeito mágico.
+
+**Bloco 3: Cleanup**
+
+```lua
+item:remove()
+return true
+```
+
+Remove caixa após distribuir rewards.
+
+## Efeitos e Mensagens
+
+| Elemento | Descrição |
+|----------|-----------|
+| CONST_ME_PRISMATIC_SPARK | Efeito mágico ao receber cada item (prisma) |
+| Sem mensagem | Sem confirmação textual (apenas visual) |
+
+## Fluxo de Operação
+
+```
+[Player usa caixa de recompensa]
+    ↓
+[Caixa existe em config?]
+    ├─ NÃO → return false (silently)
+    └─ SIM → próximo
+    ↓
+[Loop reward array]
+    ├─ addItem(id, count) ×N
+    ├─ sendMagicEffect() ×N
+    └─ Próximo item
+    ↓
+[item:remove()]
+    ↓
+[Caixa desaparece, items adicionados ao inventário]
+```
+
+## Tipos de Recompensas
+
+| Categoria | Exemplos | Count |
+|-----------|----------|-------|
+| Alimentos | Birthday cake, candy floss, ice cream | 1-2 |
+| Bebidas | Champagne bottle | 1-2 |
+| Caixas Decorativas | Balloon box, carpet box, luminous box | 1-3 |
+| Efeitos Especiais | Special FX box | 1-3 |
+| Premium | 25 years backpack | 1 (big box only) |
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Configuração separada por box ID com arrays de rewards
+2. Distribuição em massa de múltiplos itens (8-13 por caixa)
+3. Efeito mágico visual para cada item adicionado
+4. Sem validações (sem nível, sem quest, sem house)
+5. Caixa é consumida após uso
+
+**Responsabilidades:**
+1. Manter config table com todos os box types
+2. Validar caixa existe antes de distribuir
+3. Iterar e adicionar todos os rewards
+4. Emitir efeito mágico prismatic spark
+5. Remover caixa após distribuição completa
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 79 linhas  
+**Funções**: 1 (onUse)  
+**Variáveis**: 1 local (config)  
+**Box Types**: 4 (small, standard, balloons, big)  
+**Total Rewards**: 8-13 itens por caixa
+</Card>
+
+<Aside type="note">
+Script de distribuição de recompensas sem validações. Requer config table com 4 box types e arrays de rewards. Suporta counts variados por item. Inclui efeito mágico prismatic spark em cada adição. Caixas se consomem após uso.
+</Aside>

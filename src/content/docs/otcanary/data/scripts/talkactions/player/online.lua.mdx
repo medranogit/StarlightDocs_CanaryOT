@@ -1,0 +1,240 @@
+---
+title: Online Status
+description: Comando PLAYER para verificar quantidade de jogadores online
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# 🛠️ Documentação: online.lua
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Arquivo** | `online.lua` |
+| **Tipo** | TalkAction (Comando de Jogador) |
+| **Acesso** | normal (PLAYER) |
+| **Comando** | `!online` |
+| **Descrição** | Listar jogadores online categorizados por status de atividade |
+| **Parâmetro** | Nenhum |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/online.lua
+```
+
+## 💡 Utilidade
+
+Este comando fornece uma visualização categorizada de jogadores online, dividindo-os em Treinamento, Inativo e Ativo. O comando respeita o modo ghost do usuário e formata a saída de forma elegante com limite de jogadores por mensagem.
+
+## 📄 Visão Geral do Código Resumo Executivo
+
+O script `online.lua` implementa um sistema de listagem de jogadores online:
+
+- **Categorização de Status**: Classifica jogadores em Training, Idle, Active
+- **Filtragem de Ghost**: Respeita modo ghost ao mostrar jogadores
+- **Formatação de Entrada**: Exibe nome, nível e abreviação de vocação
+- **Segmentação de Mensagem**: Divide lista em grupos de 10 jogadores por mensagem
+- **Contagem de Resumo**: Exibe total e contagem por categoria
+
+### Fluxo Lógico Resumido
+
+1. Recupera todos os jogadores online
+2. Verifica permissão de acesso (ghost mode)
+3. Classifica cada jogador em categoria (Training/Idle/Active)
+4. Envia resumo com totais
+5. Envia lista formatada em grupos de 10 jogadores
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variáveis Locais Globais
+
+```lua
+local maxPlayersPerMessage = 10
+local playersOnline = TalkAction("!online")
+```
+
+**Descrição:**
+- `maxPlayersPerMessage`: Limite de jugadores por mensagem (10 padrão)
+
+### Função Local: `formatOnlineEntry()`
+
+```lua
+local function formatOnlineEntry(player)
+    return ("%s [%d|%s]"):format(player:getName(), player:getLevel(), player:vocationAbbrev())
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador a formatar
+
+**Retorno:**
+- `string`: Entrada formatada (ex: "Thorgrim [150|EK]")
+
+**Lógica:**
+Formata jogador em padrão: `Nome [Nível|VocaçãoAbr]`
+
+### Função Principal: `playersOnline.onSay()`
+
+```lua
+function playersOnline.onSay(player, words, param)
+    local hasAccess = player:getGroup():getAccess()
+    local players = Game.getPlayers()
+    local onlineList = {
+        Training = {},
+        Idle = {},
+        Active = {},
+    }
+
+    for _, targetPlayer in ipairs(players) do
+        if hasAccess or not targetPlayer:isInGhostMode() then
+            if _G.OnExerciseTraining[targetPlayer:getId()] then
+                table.insert(onlineList.Training, targetPlayer)
+            elseif targetPlayer:getIdleTime() >= 5 * 60 * 1000 then
+                table.insert(onlineList.Idle, targetPlayer)
+            else
+                table.insert(onlineList.Active, targetPlayer)
+            end
+        end
+    end
+
+    local onlineCount = #onlineList.Training + #onlineList.Idle + #onlineList.Active
+    player:sendTextMessage(MESSAGE_ATTENTION, ("%d players online | Training: %d | Idle: %d | Active: %s"):format(onlineCount, #onlineList.Training, #onlineList.Idle, #onlineList.Active))
+
+    for category, list in pairs(onlineList) do
+        if #list > 0 then
+            local prefix = category .. ": "
+            while #list > 0 do
+                local msg = {}
+                for _ = 1, maxPlayersPerMessage do
+                    local targetPlayer = list[1]
+                    if targetPlayer then
+                        table.insert(msg, formatOnlineEntry(targetPlayer))
+                        table.remove(list, 1)
+                    end
+                end
+                player:sendTextMessage(MESSAGE_ATTENTION, prefix .. table.concat(msg, ", "))
+                prefix = ""
+            end
+        end
+    end
+    return true
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavra-chave do comando
+- `param` (string): Parâmetro vazio (sem uso)
+
+**Retorno:**
+- `true`: Comando executado com sucesso
+
+#### Lógica Detalhada
+
+1. **Verificação de Acesso**:
+   - `player:getGroup():getAccess()`: Obtém permissão de acesso (admin vê ghosts)
+
+2. **Inicialização de Categorias**:
+   - Cria tabela `onlineList` com 3 categorias vazias
+
+3. **Loop de Classificação**:
+   - Filtra: `hasAccess or not targetPlayer:isInGhostMode()`
+     - Admin vê todos, jogadores normais não veem ghosts
+   - Classifica por `_G.OnExerciseTraining` → Training
+   - Classifica por `getIdleTime() >= 5*60*1000 (5 min)` → Idle
+   - Resto → Active
+
+4. **Cálculo de Totais**:
+   - Soma totais de cada categoria
+
+5. **Exibição de Resumo**:
+   - Envia primeira mensagem com contagens totais
+
+6. **Iteração por Categoria**:
+   - Para cada categoria com jogadores:
+     - Extrai grupos de `maxPlayersPerMessage` (10)
+     - Formata com `formatOnlineEntry()`
+     - Concatena com ", " e envia separado
+     - Remove prefix nas mensagens subsequentes
+
+### Variáveis Globais Utilizadas
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `_G.OnExerciseTraining` | table | Tabela global com IDs de jogadores em treinamento |
+| `MESSAGE_ATTENTION` | number | Tipo de mensagem (amarelo, atenção) |
+
+### Funções Globais Utilizadas
+
+| Função | Origem | Descrição |
+|--------|--------|-----------|
+| `Game.getPlayers()` | Core do Jogo | Retorna lista de todos jogadores online |
+| `player:getGroup()` | Object Player | Retorna object Group do jogador |
+| `:getAccess()` | Object Group | Retorna nível de acesso (0=normal, 1+=admin) |
+| `targetPlayer:isInGhostMode()` | Object Player | Verifica se está em modo ghost |
+| `targetPlayer:getId()` | Object Player | Retorna ID único do jogador |
+| `targetPlayer:getIdleTime()` | Object Player | Retorna milissegundos sem atividade |
+| `player:sendTextMessage(type, text)` | Object Player | Envia mensagem de texto |
+| `player:getName()` | Object Player | Retorna nome do jogador |
+| `player:getLevel()` | Object Player | Retorna nível do jogador |
+| `player:vocationAbbrev()` | Object Player | Retorna abreviação da vocação |
+
+## 🤖 Informações da Documentação
+
+| Info | Detalhe |
+|------|---------|
+| **Versão Documentada** | Build Canary - Estrutura Completa |
+| **Tipo de Documento** | Documentação Técnica de TalkAction |
+| **Completude** | Análise Completa do Código-Fonte |
+| **Últimas Verificações** | Validação de Sintaxe Lua, Fluxo Lógico |
+
+---
+
+## 📋 Resumo de Implementação
+
+**Padrão de Registro:**
+
+```lua
+playersOnline:groupType("normal")
+playersOnline:register()
+```
+
+**Uso Prático:**
+
+Quando um jogador digita `!online`:
+
+1. Sistema recupera todos jogadores online
+2. Filtra por permissão (admin vê ghosts, jogadores não)
+3. Classifica em Training/Idle/Active
+4. Exibe resumo com contagens
+5. Lista jogadores formatados em grupos de 10
+
+**Exemplo de Saída:**
+
+```
+32 players online | Training: 5 | Idle: 8 | Active: 19
+
+Training: Trainee [1|SK], Novice [5|EK], Student [10|MS]
+
+Idle: Walker [50|EK], Mage [45|MS], Archer [48|RP]
+
+Active: Thorgrim [150|EK], Archlich [200|ED], Zaratustra [175|MS]
+        Soulmaster [160|RP], Tibia [100|EK]
+```
+
+**Categorias:**
+
+- **Training**: Jogadores em modo de treinamento (`_G.OnExerciseTraining`)
+- **Idle**: Jogadores inativos há 5+ minutos
+- **Active**: Jogadores com atividade recente
+
+---
+
+## 🔗 Relacionados
+
+- **Arquivo de Padrão**: `data/npclib/npc_system/custom_modules.lua.mdx`
+- **Sistema**: TalkActions (Comandos de Conversa)
+- **Acesso**: PLAYER (normal)
+- **Detalhe Arquitetura**: Ver `ARQUITETURA_PROJETO.mdx` para contexto completo

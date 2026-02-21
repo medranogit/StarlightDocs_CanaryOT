@@ -1,0 +1,583 @@
+---
+title: "Global Event - server_initialization.lua"
+description: "Global event de inicialização do servidor com cleanup, migração e configurações"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `server_initialization.lua` |
+| **Localização** | `data/scripts/globalevents/` |
+| **Tipo de Script** | GlobalEvent |
+| **Event Name** | `Server Initialization` |
+| **Função Registrada** | `onStartup()` |
+| **Linhas de Código** | 139 |
+| **Tipo de Execução** | Startup hook (apenas uma vez) |
+| **Complexidade** | Complexo |
+| **Status** | Complete orchestration system |
+
+**Descrição:**
+Global event de inicialização que executa na startup do servidor. Orquestra múltiplas tarefas críticas: cleanup de database (sessões expiradas, bans vencidos, ofertas de mercado), migração de dados (movê bans para histórico), importação de towns, validações de duplicatas em storage globais, sincronização com EventsScheduler, inicialização de hirelings e reset de sessões de conta.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/globalevents/server_initialization.lua
+```
+
+**Pré-requisitos:**
+- GlobalEvent API (`GlobalEvent` função global)
+- Database API: `db.query()`, `db.asyncQuery()`, `db.storeQuery()`, `Result` object
+- Game API: `getNpcCount()`, `getMonsterCount()`, `getTowns()`, `getHouses()`
+- configManager com keys relacionadas a configurações
+- EventsScheduler system com métodos: `getEventSLoot()`, `getEventSBossLoot()`, etc
+- HirelingsInit() global function
+- Constantes globais: `AUTH_TYPE`, Global storage tables (Global, GlobalStorage, Storage)
+- Logger system (`logger.debug()`, `logger.warn()`, `logger.info()`)
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Inicialização do Servidor (Server Startup Sequence)**
+
+Quando o servidor inicia, a sequência de startup executa em ordem:
+
+1. **C++ Engine Initialization** - Carrega config, cria engine
+2. **Lua Scripts Load** - Carrega scripts, registra callbacks
+3. **onStartup() Dispara** - Este GlobalEvent executa
+
+```
+Server Start
+  ├─ cleanupDatabase()
+  │  ├─ TRUNCATE players_online
+  │  ├─ DELETE expired guild_wars, deleted players
+  │  ├─ DELETE bans expirados, market offers expiradas
+  │  └─ RESET daily rewards
+  │
+  ├─ moveExpiredBansToHistory()
+  │  ├─ SELECT account_bans where expired
+  │  ├─ INSERT into account_ban_history (audit trail)
+  │  └─ DELETE from account_bans
+  │
+  ├─ storeTownsInDatabase()
+  │  ├─ TRUNCATE towns table
+  │  └─ INSERT towns from Game.getTowns()
+  │
+  ├─ checkAndLogDuplicateValues()
+  │  └─ Valida Global, GlobalStorage, Storage
+  │
+  ├─ updateEventRates()
+  │  ├─ Consulta EventsScheduler
+  │  └─ Sincroniza SCHEDULE_*_RATE globals
+  │
+  ├─ HirelingsInit()
+  │  └─ Carrega hirelings salvos
+  │
+  └─ resetAccountSessions()
+     └─ Limpa sessions expiradas/expired
+```
+
+**Por que tudo junto na startup?**
+- Estado consistente: garante DB limpo e sincronizado
+- Evita race conditions: antes de jogadores conectarem
+- Único ponto de inicialização: centralizado e rastreável
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `server_initialization.lua` orquestra a inicialização completa do servidor:
+
+- **Limpa database** de dados obsoletos/expirados
+- **Migra dados históricos** (bans para audit trail)
+- **Sincroniza persistência** (towns do jogo para DB)
+- **Valida integridade** de storage global (detecta duplicatas)
+- **Sincroniza rates** de events com EventsScheduler
+- **Inicializa subsistemas** (hirelings, sessions)
+
+### Arquitetura
+
+O script usa padrão de **startup orchestrator com tópicos isolados**:
+
+```
+GlobalEvent:onStartup()
+  ├─ cleanupDatabase() — Database cleanup
+  ├─ moveExpiredBansToHistory() — Audit trail
+  ├─ storeTownsInDatabase() — Persistent world
+  ├─ checkAndLogDuplicateValues() — Validation
+  ├─ updateEventRates() — Event sync
+  ├─ HirelingsInit() — Subsystem init
+  └─ resetAccountSessions() — Session mgmt
+```
+
+Cada função é independente e pode falhar sem afetar outras significativamente.
+
+### Fluxo Lógico Resumido
+
+| Ordem | Função | Responsabilidade |
+|-------|--------|-----------------|
+| 1 | **cleanupDatabase()** | Remove dados expirados/inválidos |
+| 2 | **moveExpiredBansToHistory()** | Migra bans vencidos para auditoria |
+| 3 | **storeTownsInDatabase()** | Sincroniza towns entre Game e DB |
+| 4 | **checkAndLogDuplicateValues()** | Valida Global storage tables |
+| 5 | **updateEventRates()** | Sincroniza rates com EventsScheduler |
+| 6 | **HirelingsInit()** | Carrega hirelings salvos |
+| 7 | **resetAccountSessions()** | Limpa sessões expiradas |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função 1: cleanupDatabase()
+
+```lua
+local function cleanupDatabase()
+	db.query("TRUNCATE TABLE `players_online`")
+
+	local currentTime = os.time()
+	db.asyncQuery("DELETE FROM `guild_wars` WHERE `status` IN (0, 2, 3) 
+		OR (`status` = 0 AND (`started` + 72 * 60 * 60) <= " .. currentTime .. ")")
+	db.asyncQuery("DELETE FROM `players` WHERE `deletion` != 0 AND `deletion` < " .. currentTime)
+	db.asyncQuery("DELETE FROM `ip_bans` WHERE `expires_at` != 0 AND `expires_at` <= " .. currentTime)
+	db.asyncQuery("DELETE FROM `market_history` WHERE `inserted` <= " .. (currentTime - configManager.getNumber(configKeys.MARKET_OFFER_DURATION)))
+	db.query("DELETE FROM `player_storage` WHERE `key` IN (" .. Global.Storage.FamiliarSummonEvent10 .. ", " .. Global.Storage.FamiliarSummonEvent60 .. ")")
+
+	db.query("UPDATE `players` SET `isreward` = " .. DAILY_REWARD_NOTCOLLECTED)
+	db.query("DELETE FROM `kv_store` WHERE `key_name` LIKE 'player%.exp-boost-count'")
+end
+```
+
+**Propósito:** Remove dados obsoletos/inválidos do database.
+
+**Operações:**
+
+| Operação | Descrição |
+|----------|-----------|
+| **TRUNCATE players_online** | Limpa lista de jogadores online (estado transiente) |
+| **DELETE guild_wars** | Remove wars com status inválido ou expiradas (72h timeout) |
+| **DELETE players** | Remove contas marcadas para deleção se prazo passed |
+| **DELETE ip_bans** | Remove banimentos de IP expirados |
+| **DELETE market_history** | Remove histórico de ofertas de mercado antigas |
+| **DELETE player_storage** | Limpa storage de Familiar summon events |
+| **UPDATE players** | Reset rewads para NOTCOLLECTED (para daily reset) |
+| **DELETE kv_store** | Remove tokens de exp boost expirados |
+
+**Timing:**
+- Algumas são `db.query()` (síncronas) - críticas
+- Outras são `db.asyncQuery()` - background cleanup
+
+---
+
+### Função 2: moveExpiredBansToHistory()
+
+```lua
+local function moveExpiredBansToHistory()
+	local resultId = db.storeQuery("SELECT * FROM `account_bans` WHERE `expires_at` != 0 AND `expires_at` <= " .. os.time())
+	if resultId then
+		repeat
+			local accountId = Result.getNumber(resultId, "account_id")
+			db.asyncQuery("INSERT INTO `account_ban_history` (`account_id`, `reason`, `banned_at`, `expired_at`, `banned_by`) VALUES (" 
+				.. accountId .. ", " .. db.escapeString(Result.getString(resultId, "reason")) .. ", " 
+				.. Result.getNumber(resultId, "banned_at") .. ", " .. Result.getNumber(resultId, "expires_at") .. ", " 
+				.. Result.getNumber(resultId, "banned_by") .. ")")
+			db.asyncQuery("DELETE FROM `account_bans` WHERE `account_id` = " .. accountId)
+		until not Result.next(resultId)
+
+		Result.free(resultId)
+	end
+end
+```
+
+**Propósito:** Migra bans vencidos para tabela de histórico (audit trail).
+
+**Fluxo:**
+
+1. **Query SELECT:** Busca bans onde `expires_at` &lt;= tempo atual (vencidos)
+2. **Se há resultados:**
+   - Loop `repeat...until` por cada resultado
+   - Para cada ban:
+     - **INSERT** para `account_ban_history` (preserva registro)
+     - **DELETE** de `account_bans` (remove ban ativo)
+   - **Result.free()** libera memória da query
+3. **Se não há resultados:** Faz nada silenciosamente
+
+**Por quê separado em tabela histórica?**
+- Auditoria: rastreia todas as punições aplicadas
+- Performance: tabela ativa mais leve (menos registros)
+- Conformidade: pode ser necessário para GDPR/logs
+
+---
+
+### Função 3: storeTownsInDatabase()
+
+```lua
+local function storeTownsInDatabase()
+	db.query("TRUNCATE TABLE `towns`")
+
+	for i, town in ipairs(Game.getTowns()) do
+		local position = town:getTemplePosition()
+		db.query("INSERT INTO `towns` (`id`, `name`, `posx`, `posy`, `posz`) VALUES (" 
+			.. town:getId() .. ", " .. db.escapeString(town:getName()) .. ", " 
+			.. position.x .. ", " .. position.y .. ", " .. position.z .. ")")
+	end
+end
+```
+
+**Propósito:** Sincroniza towns do Game (C++) para database (persistência).
+
+**Fluxo:**
+
+1. **TRUNCATE:** Limpa table de towns
+2. **Iteração:** Para cada town em `Game.getTowns()`:
+   - Obtém temple position (spawn point de resurrection)
+   - Insere: id, name, x, y, z
+3. **Resultado:** Database espelha estado atual de towns do server
+
+**Por quê sincronizar?**
+- World/towns pode ser modificada via scripts/admin
+- Database precisa estar sincronizado para queries
+- Garante consistência entre Game state e storage
+
+---
+
+### Função 4: checkAndLogDuplicateValues() & checkDuplicateStorageValues()
+
+```lua
+local seen, duplicatesValues
+
+local function checkDuplicateStorageValues(varTable)
+	for _, value in pairs(varTable) do
+		if type(value) == "table" then
+			checkDuplicateStorageValues(value)  -- Recursivo
+		elseif seen[value] then
+			table.insert(duplicatesValues, value)
+		else
+			seen[value] = true
+		end
+	end
+	return #duplicatesValues > 0 and duplicatesValues or false
+end
+
+local function checkAndLogDuplicateValues(tableNames)
+	for _, tableName in ipairs(tableNames) do
+		local varTable = _G[tableName]
+		if type(varTable) == "table" then
+			seen = {}
+			duplicatesValues = {}
+
+			local duplicates = checkDuplicateStorageValues(varTable)
+			if duplicates then
+				logger.warn("Checking {}: Duplicate values found: {}", tableName, table.concat(duplicates, ", "))
+			else
+				logger.info("Checking {}: No duplicate values found.", tableName)
+			end
+		else
+			logger.warn("{} is not a table. Unable to check for duplicate values.", varTable)
+		end
+
+		seen = nil
+		duplicatesValues = nil
+	end
+end
+```
+
+**Propósito:** Detecta valores duplicados recursivamente em storage global tables.
+
+**Algirthm Explicado:**
+
+1. **checkDuplicateStorageValues():** Recursivo que:
+   - Itera valores em table
+   - Se valor é table → recursão
+   - Se não é table → verifica se já viu antes em `seen` table
+   - Se viu → adiciona a duplicatas
+   - Senão → marca como visto
+
+2. **checkAndLogDuplicateValues():** Wrapper que:
+   - Itera lista de table names a verificar
+   - Busca em globals via `_G[tableName]`
+   - Reseta `seen` e `duplicatesValues` para cada table
+   - Log resultado (warn se duplicatas, info se clean)
+
+**Exemplo:**
+```
+Global = {
+	Storage = {
+		KEY_A = 100,
+		KEY_B = 100,  -- DUPLICATA!
+		KEY_C = { nested = 100 }  -- Recursão
+	}
+}
+```
+
+**Por quê importante?**
+- Duplicatas em storage IDs podem causar bugs sérios
+- Pode indicar erro na definição de constantes
+- Melhor detectar na startup que em produção
+
+---
+
+### Função 5: updateEventRates()
+
+```lua
+local function updateEventRates()
+	local lootRate = EventsScheduler.getEventSLoot()
+	if lootRate ~= 100 then
+		SCHEDULE_LOOT_RATE = lootRate
+	end
+
+	local bossLootRate = EventsScheduler.getEventSBossLoot()
+	if bossLootRate ~= 100 then
+		SCHEDULE_BOSS_LOOT_RATE = bossLootRate
+	end
+
+	local expRate = EventsScheduler.getEventSExp()
+	if expRate ~= 100 then
+		SCHEDULE_EXP_RATE = expRate
+	end
+
+	-- ... mais rates ...
+
+	if expRate ~= 100 or lootRate ~= 100 or spawnRate ~= 100 
+		or skillRate ~= 100 or bossLootRate ~= 100 then
+		logger.info("[Events] Exp: {}%, Loot: {}%, Spawn: {}%, Skill: {}%, Boss loot: {}%", 
+			expRate, lootRate, spawnRate, skillRate, bossLootRate)
+	end
+end
+```
+
+**Propósito:** Sincroniza rates globais com EventsScheduler (para eventos especiais).
+
+**Fluxo:**
+
+1. **Consulta EventsScheduler:** Obtém rates atuais de cada tipo
+2. **Comparação:** Se rate != 100 (normal), atualiza global correspondente
+3. **Logging:** Se algum rate modificado, loga estado
+
+**Por quê importante?**
+- EventsScheduler pode modificar rates (eventos especiais, promoções)
+- Precisa sincronizar no startup para estar correto
+- Permite evento especial sem restart
+
+**Exemplo Timeline:**
+```
+Normal: loot 100%, exp 100%
+  └─ Update: loot 200% (event), exp 200% (event)
+  └─ onStartup() sincroniza globals
+  └─ Scripts usam SCHEDULE_LOOT_RATE corretamente
+```
+
+---
+
+### Função 6: resetAccountSessions()
+
+```lua
+local function resetAccountSessions()
+	if AUTH_TYPE == "session" then
+		if configManager.getBoolean(configKeys.RESET_SESSIONS_ON_STARTUP) then
+			db.query("TRUNCATE TABLE `account_sessions`")
+		else
+			db.query("DELETE FROM `account_sessions` WHERE `expires` <= " .. os.time())
+		end
+	end
+end
+```
+
+**Propósito:** Limpa/reseta sessões de autenticação.
+
+**Fluxo:**
+
+1. **Validação:** Verifica se authentication type é "session"
+2. **Duas estratégias:**
+   - **RESET_SESSIONS_ON_STARTUP = true:** TRUNCATE toda table (força novo login)
+   - **RESET_SESSIONS_ON_STARTUP = false:** DELETE apenas sessões expiradas
+
+**Por quê importante?**
+- Sessions podem ficar órfãs se server crash
+- TRUNCATE força re-authentication (segurança)
+- DELETE expiradas (housekeeping)
+
+---
+
+### Função Principal: onStartup()
+
+```lua
+local serverInitialization = GlobalEvent("Server Initialization")
+
+function serverInitialization.onStartup()
+	logger.debug("Loaded {} npcs and spawned {} monsters", Game.getNpcCount(), Game.getMonsterCount())
+	logger.debug("Loaded {} towns with {} houses in total", #Game.getTowns(), #Game.getHouses())
+
+	cleanupDatabase()
+	moveExpiredBansToHistory()
+	storeTownsInDatabase()
+	checkAndLogDuplicateValues({ "Global", "GlobalStorage", "Storage" })
+	updateEventRates()
+	HirelingsInit()
+	resetAccountSessions()
+end
+
+serverInitialization:register()
+```
+
+**Propósito:** Entry point - orquestra todas as tarefas de startup em sequência.
+
+**Execução:**
+1. Logs debug com estatísticas do Game
+2. Chama cada função helper na sequência
+3. Retorna implicitamente (void)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Locais (Function-Level)
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `seen` | table | checkAndLogDuplicate scope | Rastreia valores já vistos |
+| `duplicatesValues` | table | checkAndLogDuplicate scope | Acumula duplicatas encontradas |
+| `serverInitialization` | GlobalEvent | Local | GlobalEvent object do startup |
+
+### Constantes Globais Utilizadas
+
+| Constante | Tipo | Descrição |
+|-----------|------|-----------|
+| `AUTH_TYPE` | string | Tipo de autenticação ("session", "token", etc) |
+| `DAILY_REWARD_NOTCOLLECTED` | number | Valor para reset de daily reward status |
+| `SCHEDULE_LOOT_RATE` | number | Taxa de loot programada (%) |
+| `SCHEDULE_EXP_RATE` | number | Taxa de exp programada (%) |
+| `SCHEDULE_SKILL_RATE` | number | Taxa de skill programada (%) |
+| `SCHEDULE_SPAWN_RATE` | number | Taxa de spawn programada (%) |
+| `SCHEDULE_BOSS_LOOT_RATE` | number | Taxa de boss loot programada (%) |
+
+### ConfigManager Keys
+
+| Config Key | Tipo | Descrição |
+|-----------|------|-----------|
+| `RESET_SESSIONS_ON_STARTUP` | boolean | Força reset de todas as sessões |
+| `TOGGLE_SAVE_INTERVAL` | boolean | Ativa saves periódicos |
+| `MARKET_OFFER_DURATION` | number | Duração de ofertas de mercado (segundos) |
+
+### Objetos Externos Referenciados
+
+| Objeto | Método | Descrição |
+|--------|--------|-----------|
+| `db` | `query()` | Executa query SQL síncrona |
+| `db` | `asyncQuery()` | Executa query SQL assíncrona |
+| `db` | `storeQuery()` | ExecutaisValid query que retorna resultset |
+| `db` | `escapeString()` | Escapa string para SQL injection prevention |
+| `Result` | `getNumber(id, col)` | Obtém número de coluna |
+| `Result` | `getString(id, col)` | Obtém string de coluna |
+| `Result` | `next(id)` | Próximo row (loop) |
+| `Result` | `free(id)` | Libera memória de resultset |
+| `Game` | `getNpcCount()` | Retorna total de NPCs carregados |
+| `Game` | `getMonsterCount()` | Retorna total de monstros spawned |
+| `Game` | `getTowns()` | Retorna lista de towns |
+| `Game` | `getHouses()` | Retorna lista de houses |
+| `EventsScheduler` | `getEventSLoot()`, `getEventSExp()`, etc | Obtém rates de eventos |
+| `HirelingsInit()` | (função global) | Carrega hirelings salvos |
+| `logger` | `debug()`, `warn()`, `info()` | Logging |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Orchestration com Isolamento de Funcionalidade
+
+**Técnica:** Quebrar inicialização em funções pequenas, cada uma com responsabilidade única.
+
+```lua
+function onStartup()
+	cleanupDatabase()          -- Cleanup
+	moveExpiredBansToHistory() -- Audit
+	storeTownsInDatabase()     -- Persistência
+	-- ... mais operações
+end
+```
+
+**Vantagem:**
+- Fácil debugar (cada função faz uma coisa)
+- Fácil testar (mocking individual)
+- Fácil customizar (disable/enable uma função)
+
+**Aplicação:** Qualquer startup complexo com múltiplos passos.
+
+---
+
+### Padrão 2: Recursive Validation (Depth-First Search)
+
+**Técnica:** Recursão para validar tables aninhadas.
+
+```lua
+local function checkDuplicateStorageValues(varTable)
+	for _, value in pairs(varTable) do
+		if type(value) == "table" then
+			checkDuplicateStorageValues(value)  -- Recursão
+		elseif seen[value] then
+			table.insert(duplicatesValues, value)
+		end
+	end
+end
+```
+
+**Vantagem:**
+- Valida any depth de aninhamento
+- Simples e elegante
+- Genérico (funciona com qualquer structure)
+
+**Aplicação:** Validação de dados aninhados (configs, storage, game objects).
+
+---
+
+### Padrón 3: Result Iteration com Cleanup
+
+**Técnica:** Iterar SQL resultset com pattern repeat...until + cleanup.
+
+```lua
+local resultId = db.storeQuery("SELECT ...")
+if resultId then
+	repeat
+		-- Process row
+		local value = Result.getNumber(resultId, "column")
+	until not Result.next(resultId)
+
+	Result.free(resultId)  -- IMPORTANTE: cleanup
+end
+```
+
+**Vantagem:**
+- Evita memory leaks (obrigatório Result.free)
+- Padrão claro para iteration
+- Manipula resultset eficientemente
+
+**Aplicação:** Qualquer operação que precisa processar múltiplos rows de query.
+
+---
+
+### Padrão 4: Conditional Rate Update
+
+**Técnica:** Atualizar global apenas se diferente do default (100%).
+
+```lua
+local lootRate = EventsScheduler.getEventSLoot()
+if lootRate ~= 100 then
+	SCHEDULE_LOOT_RATE = lootRate
+end
+```
+
+**Vantagem:**
+- Apenas modifica se necessário
+- Lazy evaluation (performance)
+- Claro intent (100% = no modification)
+
+**Aplicação:** Sincronização de configurações dinâmicas.

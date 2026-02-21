@@ -1,0 +1,349 @@
+---
+title: spellbook.lua
+description: Livro de spells dinâmico que lista todas às magias disponíveis do jogador organizadas por level e magic level com suporte à percentual de mana.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="spellbook.lua" icon="pencil">
+Sistema dinâmico de listagem de spells com 2 funções locais e suporte a múltiplos IDs de livros.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/spellbook.lua`
+
+**Linhas:** 55 | **IDs dos Items:** 19 livros diferentes | **Tipo:** Action Handler com Local Functions
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa um livro de spells dinâmico que lista todas as magias disponíveis para o jogador. Dois tipos de ordenação: por level de jogador requerido (spellsForLevel) e por magic level requerido (spellsForMagicLevel). Suporta spells com mana fixa ou percentual. Utiliza duas funções locais para ordenação e formatação. Múltiplos IDs de livros apontando para o mesmo handler.
+
+### Estrutura de Funcionalidades
+
+```
+FUNÇÕES LOCAIS:
+  ├─ sortSpellsByLevel(spellList, levelKey)
+  │   └─ table.sort() com comparator
+  │
+  └─ appendSpellsInfo(spellList, header, levelKey, manaKey)
+      └─ Formatação de texto com linhas agrupadas por nível
+
+HANDLER:
+  └─ spellbook.onUse()
+      ├─ getInstantSpells() → array de spells
+      ├─ Filtro: (level > 0 OR mlevel > 0)
+      ├─ Conversão: mana percentage para string
+      ├─ Separação: spellsForLevel vs spellsForMagicLevel
+      ├─ Ordenação: sortSpellsByLevel(list, "level"/"mlevel")
+      ├─ Formatação: appendSpellsInfo() para texto
+      └─ showTextDialog(itemId, spellText)
+
+REGISTRATION:
+  └─ 19 IDs diferentes apontam ao mesmo handler
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| spellbook | Action | Objeto handler principal |
+
+---
+
+## Funções Locais
+
+### sortSpellsByLevel(spellList, levelKey)
+
+**Descrição:** Ordena array de spells por level/mlevel em ordem crescente.
+
+**Parâmetros:**
+- `spellList` (table) - Array de spells a ordenar
+- `levelKey` (string) - Chave a comparar: "level" ou "mlevel"
+
+**Implementação:**
+```lua
+table.sort(spellList, function(a, b)
+	return a[levelKey] < b[levelKey]
+end)
+```
+
+**Comportamento:** Modifica spellList in-place, ordena crescente (menor level antes).
+
+### appendSpellsInfo(spellList, header, levelKey, manaKey)
+
+**Descrição:** Formata array de spells em texto legível com headers por nível.
+
+**Parâmetros:**
+- `spellList` (table) - Array de spells ordenados
+- `header` (string) - Prefixo do header (ex: "Spells for Level ")
+- `levelKey` (string) - Chave de level: "level" ou "mlevel"
+- `manaKey` (string) - Chave de mana: "mana"
+
+**Lógica Interna:**
+```lua
+local text = ""
+local prevLevel = -1
+
+for i, spell in ipairs(spellList) do
+	local line = ""
+	if prevLevel ~= spell[levelKey] then
+		line = (i == 1 and "" or "\n") .. header .. spell[levelKey] .. "\n"
+		prevLevel = spell[levelKey]
+	end
+	
+	text = text .. line .. "  " .. spell.words .. " - " .. 
+	       spell.name .. " : " .. spell[manaKey] .. "\n"
+end
+return text
+```
+
+**Comportamento:**
+- Agrupa spells por nível
+- Header adicionado apenas na mudança de nível
+- Primeira linha não tem quebra de linha inicial
+- Formato: "words - name : mana"
+
+---
+
+## Constantes e Parâmetros
+
+| Item | Valor | Descrição |
+|------|-------|-----------|
+| IDs do Livro | 3059, 6120, 8072-8076, 8090, 11691, 14769, 16107, 20088-20090, 21400, 22755, 25699, 29431, 34153 | 19 IDs diferentes |
+| Key Level | "level" | Chave para requirements por player level |
+| Key Magic Level | "mlevel" | Chave para requirements por magic level |
+| Key Mana | "mana" | Chave para custo de mana (fixo ou%) |
+| Mana Percentage | spell.manapercent > 0 | Se true, mana = "XX%" |
+| Title Dialog | item:getId() | Título do texto dialog |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function spellbook.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Estruturas para armazenar spells
+	local spellsForLevel = {}
+	local spellsForMagicLevel = {}
+
+	-- Obtém todas as spells
+	for _, spell in ipairs(player:getInstantSpells()) do
+		-- Filtro: tem requirements?
+		if (spell.level > 0 or spell.mlevel > 0) and spell.level + spell.mlevel > 0 then
+			-- Converte percentual para string
+			if spell.manapercent > 0 then
+				spell.mana = spell.manapercent .. "%"
+			end
+
+			-- Separa por tipo de requirement
+			if spell.level > 0 then
+				spellsForLevel[#spellsForLevel + 1] = spell
+			else
+				spellsForMagicLevel[#spellsForMagicLevel + 1] = spell
+			end
+		end
+	end
+
+	-- Ordenação
+	sortSpellsByLevel(spellsForLevel, "level")
+	sortSpellsByLevel(spellsForMagicLevel, "mlevel")
+
+	-- Formatação
+	local spellsText = appendSpellsInfo(spellsForLevel, "Spells for Level ", "level", "mana")
+	spellsText = spellsText .. "\n"
+	spellsText = spellsText .. appendSpellsInfo(spellsForMagicLevel, "Spells for Magic Level ", "mlevel", "mana")
+
+	-- Exibe dialog
+	player:showTextDialog(item:getId(), spellsText)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador abre spellbook (ID X)
+  │
+  ├─ Obter getInstantSpells() → array
+  │
+  ├─ Para cada spell:
+  │   ├─ Filtro: (level > 0 OR mlevel > 0)?
+  │   │   └─ NÃO → Skip (nenhum requirement)
+  │   │
+  │   ├─ SIM → Processar
+  │   │   ├─ manapercent > 0?
+  │   │   │   ├─ SIM → spell.mana = "XX%"
+  │   │   │   └─ NÃO → mana fica como fixo
+  │   │   │
+  │   │   ├─ level > 0?
+  │   │   │   ├─ SIM → Adicionar spellsForLevel
+  │   │   │   └─ NÃO → Adicionar spellsForMagicLevel
+  │
+  ├─ Ordenação:
+  │   ├─ sort(spellsForLevel, "level")
+  │   └─ sort(spellsForMagicLevel, "mlevel")
+  │
+  ├─ Formatação:
+  │   ├─ appendSpellsInfo(spellsForLevel, ...)
+  │   ├─ Quebra de linha
+  │   └─ appendSpellsInfo(spellsForMagicLevel, ...)
+  │
+  ├─ Exibição:
+  │   └─ showTextDialog(item:getId(), spellsText)
+  │
+  └─ return true
+```
+
+### Processamento de Spells
+
+```
+1° - Filtro
+    ├─ Spell sem requirements? Skip
+    ├─ Spell com level? Adiciona spellsForLevel
+    ├─ Spell com mlevel? Adiciona spellsForMagicLevel
+    └─ Spell com ambos? level ganha prioridade
+
+2° - Conversão de Mana
+    ├─ manapercent > 0?
+    │   ├─ SIM → spell.mana = spell.manapercent .. "%"
+    │   └─ NÃO → mana fica como número fixo
+    │
+    └─ Exemplo: manapercent=70 → spell.mana="70%"
+
+3° - Separação
+    ├─ spellsForLevel: Todas com level > 0
+    └─ spellsForMagicLevel: Todas com mlevel > 0 (e level == 0)
+
+4° - Ordenação
+    ├─ Sort crescente por "level"
+    └─ Sort crescente por "mlevel"
+
+5° - Formatação com Headers
+    ├─ Header "Spells for Level X" muda quando level diferente
+    ├─ Cada spell indentado com "  "
+    ├─ Formato: "words - name : mana"
+    └─ Quebras de linha entre diferentes níveis
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **table.sort()**: Ordena array in-place com função comparadora
+- **Função Comparadora**: `function(a, b) return a < b end` para ordem crescente
+- **Filtro Duplo**: `(level > 0 OR mlevel > 0) AND (level + mlevel > 0)`
+- **Conversão Dinâmica**: manapercent para string percentage
+- **Separação**: Spells por tipo (level vs mlevel)
+- **Header Único**: Header adicionado apenas na mudança de nível
+- **showTextDialog()**: Exibe texto customizado em dialog
+- **Multiple Registration**: 19 IDs apontam ao mesmo handler
+- **getInstantSpells()**: Retorna array de spells aprendidas
+
+### Responsabilidades do Handler
+
+1. **Obter spells**: player:getInstantSpells()
+2. **Filtrar**: Descartar spells sem requirements
+3. **Converter**: manapercent em percentual string
+4. **Separar**: spellsForLevel vs spellsForMagicLevel
+5. **Ordenar**: Sort crescente por level/mlevel
+6. **Formatar**: Headers e indentação
+7. **Concatenar**: Texto com duas seções
+8. **Exibir**: showTextDialog com texto final
+
+---
+
+## Patterns e Implementação
+
+### Padrão Dynamic Spell Listing
+
+Este script demonstra leitura de spells em runtime:
+
+```lua
+for _, spell in ipairs(player:getInstantSpells()) do
+	if (spell.level > 0 or spell.mlevel > 0) then
+		if spell.manapercent > 0 then
+			spell.mana = spell.manapercent .. "%"
+		end
+		-- Processar spell
+	end
+end
+```
+
+### Padrão Multiple Registration
+
+19 IDs diferentes apontam ao mesmo handler:
+
+```lua
+spellbook:id(3059, 6120, 8072, 8073, 8074, 8075, 8076, 8090, 11691, 
+             14769, 16107, 20088, 21400, 22755, 25699, 29431, 20089, 20090, 34153)
+spellbook:register()
+```
+
+Útil para variações visuais do mesmo item.
+
+### Comparação: Spellbook vs Party Hat
+
+| Aspecto | Spellbook | Party Hat |
+|---------|---|---|
+| Funções Locais | 2 (sort + append) | 0 |
+| Lógica | Dinâmica (runtime) | Estática (pré-compilada) |
+| Filtros | Duplos (level/mlevel) | Simples (slot) |
+| IDs Múltiplos | 19 | 1 |
+| Output | Text dialog | Effect + achievement |
+
+### Fluxo de Formatação
+
+```
+Input: [{words: "exori", name: "Ground Shaker", level: 5, mana: 100}, ...]
+  │
+  ├─ Sort by level
+  │
+  ├─ Header "Spells for Level 5"
+  ├─ "  exori - Ground Shaker : 100"
+  ├─ "  magic sword - Magic Sword : 50"
+  │
+  ├─ Header "Spells for Level 9"
+  ├─ "  energy strike - Energy Strike : 200"
+  │
+  └─ Output text para dialog
+
+Example Output:
+```
+Spells for Level 5
+  exori - Ground Shaker : 100
+  magic sword - Magic Sword : 50
+
+Spells for Level 9
+  energy strike - Energy Strike : 200
+
+Spells for Magic Level 10
+  thunderstorm - Thunderstorm : 30%
+```
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: spellbook.lua" icon="star">
+Análise completa de sistema dinâmico de listagem de spells com 2 funções locais (sort/append), filtros duplos, conversão de percentual e múltiplos IDs. Padrão text dialog customizado.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Dynamic spell listing com local functions | Complexidade: Média
+</Aside>

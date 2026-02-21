@@ -1,0 +1,752 @@
+---
+title: "senders.lua"
+description: "Módulo de protocolo de rede do gamestore responsável por enviar pacotes de ofertas, transações e respostas ao cliente"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo de **protocolo de rede** que encapsula toda a comunicação servidor→cliente do sistema gamestore. Responsável por serializar dados de ofertas, transações e estados em mensagens NetworkMessage com suporte a protocolo duplo (cliente < v1200 e >= v1200). Este é o módulo de **abstração de rede** que transforma lógica Lua em pacotes binários entendidos pelo cliente Tibia.
+
+**Caminho Original**: `data/libs/gamestore/senders.lua`
+
+**Dependências**:
+- gamestore.helpers (convertType, useOfferConfigure)
+- GameStore global (constantes, categories, utilities)
+- NetworkMessage API (core de comunicação)
+
+<Aside>
+Este módulo é o **inverso de parsers.lua**: enquanto parsers recebe mensagens do cliente e despacha lógica, senders pega resultados de lógica e envia mensagens estruturadas de volta. Sem este módulo, cliente nunca vê ofertas, saldos ou confirmações.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `senders.lua` implementa **13 funções de envio de protocolo** que convertem dados Lua em mensagens NetworkMessage binárias. Notável por suportar **versioning duplo** (protocolo antigo vs novo com diferentes estruturas), lidar com **preços dinâmicos** (EXPBOOST, NAMECHANGE), gerenciar **disable reasons com índices** para referência eficiente e integrar **visuais de tryon** que mostram previews dinâmicas de outfit/hireling ao jogador. O módulo demonstra design sofisticado de protocolo binário onde cada campo tem posição precisa e alguns campos são opcionais por versão cliente.
+
+### Arquitetura de Funções
+
+```
+senders (módulo de protocolo)
+│
+├─ INICIALIZAÇÃO (1 função)
+│  └── openStore (S_OpenStore opcode)
+│
+├─ OFERTAS (3 funções)
+│  ├── sendShowStoreOffers (nova versão v1200+)
+│  ├── sendShowStoreOffersOnOldProtocol (compatibilidade)
+│  └── sendOfferDescription (0xEA opcode)
+│
+├─ SERVIÇOS (2 funções)
+│  ├── sendStorePurchaseSuccessful (confirmação)
+│  └── sendStoreError (mensagem de erro)
+│
+├─ MOEDAS (2 funções)
+│  ├── sendStoreBalanceUpdating (sinalização)
+│  └── sendUpdatedStoreBalances (valores reais)
+│
+├─ HISTÓRICO (1 função)
+│  └── sendStoreTransactionHistory (paginado)
+│
+├─ INTERAÇÃO MODAL (1 função)
+│  └── sendRequestPurchaseData (solicita input)
+│
+├─ HOME PAGE (2 funções)
+│  ├── sendHomePage (página inicial com ofertas)
+│  └── getHomeOffers (utilidade de filtro)
+│
+└─ UTILITIES (1 função)
+   └── getCategoriesRook (filtro por zona)
+```
+
+### Variáveis Locais (Cache de Funções)
+
+| Variável Local | Função Original | Propósito |
+|---|---|---|
+| convertType | helpers.convertType | Converter tipo oferta → tipo visual |
+| useOfferConfigure | helpers.useOfferConfigure | Verificar se requer configuração |
+
+---
+
+## Detalhes das Funções Globais
+
+### 1. getCategoriesRook() - FUNÇÃO HELPER
+
+Filtra categorias disponíveis apenas para Rook de Rookgaard.
+
+**Retorna**: 
+- (table, number): Tabela de categorias rook + contagem
+
+**Lógica**:
+```lua
+for i, v in pairs(GameStore.Categories) do
+    if v.rookgaard then
+        tmpTable[#tmpTable + 1] = v
+        count = count + 1
+    end
+end
+```
+
+**Uso Interno**: Chamada por openStore quando vocation == 0 (rook)
+
+---
+
+### 2. openStore(playerId) - FUNÇÃO CRÍTICA
+
+Abre interface de loja principal enviando lista de categorias ao cliente.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+
+**Validações**:
+- Player existe e conectado
+- GameStore.Categories está definido
+
+**Versionamento**:
+
+```lua
+local oldProtocol = player:getClient().version < 1200
+-- v1200+ suporta mais features
+-- < v1200 suporta apenas base
+```
+
+**Lógica de Categorias**:
+
+```lua
+if player:getVocation():getId() == 0 then
+    GameStoreCategories, GameStoreCount = getCategoriesRook()
+else
+    GameStoreCategories, GameStoreCount = GameStore.Categories, #GameStore.Categories
+end
+```
+
+**Serialização (cada categoria)**:
+
+| Campo | Tipo | Versão | Descrição |
+|---|---|---|---|
+| category.name | String | Ambas | Nome da categoria |
+| category.description | String | oldProtocol | Descrição (só antigo) |
+| category.state | Byte | Ambas | Estado (STATE_NONE, STATE_SALE, etc) |
+| icons.size | Byte | Ambas | Número de ícones (max 255) |
+| icons[] | String[] | Ambas | Array de ícones |
+| category.parent | String ou U16(0) | Ambas | Categoria pai ou 0 |
+
+**Efeito Final**:
+1. Envia S_OpenStore opcode
+2. Enviada contagem de categorias
+3. Para cada categoria: nome, description, state, icons, parent
+4. Agenda `sendStoreBalanceUpdating` para mostrar saldo
+
+---
+
+### 3. sendOfferDescription(player, offerId, description)
+
+Envia descrição de oferta com opcode baixo nível 0xEA.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offerId (number): ID da oferta
+- description (string): Descrição em texto
+
+**Serialização**:
+```lua
+msg:addByte(0xEA)  -- Opcode específico
+msg:addU32(offerId)
+msg:addString(description)
+```
+
+**Nota**: Função especializada, raramente chamada diretamente (usado por sendShowStoreOffers)
+
+---
+
+### 4. sendShowStoreOffers(playerId, category, redirectId) - FUNÇÃO MÁS COMPLEXA
+
+Envia lista de ofertas de uma categoria com suporte completo a disable reasons, preços dinâmicos, visuals de tryon e estados de venda.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- category (table): Categoria com ofertas
+- redirectId (number, opcional): ID para navegação
+
+**Retorna**: 
+- (boolean): false se validações falham
+
+**Validações Iniciais**:
+- Player existe
+- Category tem data válida
+- Limit ofertas: 65535 normal, 30 para oldProtocol
+
+**Fase 1: Grouping de Ofertas**
+
+Agrupa ofertas por nome (para subitens):
+
+```lua
+for k, offer in ipairs(category.offers) do
+    if not offers[name] then
+        offers[name] = {
+            offers = {},
+            state = offer.state,
+            id = offer.id,
+            type = offer.type,
+            icons = offer.icons,
+            basePrice = offer.basePrice,
+            description = offer.description
+        }
+    end
+    table.insert(offers[name].offers, offer)
+end
+```
+
+**Fase 2: Disable Reasons**
+
+Coleta motivos de desabilitação únicos e indexa:
+
+```lua
+local canBuy = player:canBuyOffer(offer)
+if canBuy.disabled == 1 then
+    -- Procura índice existente
+    if index não encontrado then
+        table.insert(disableReasons, canBuy.disabledReason)
+        offer.disabledReadonIndex = #disableReasons
+    end
+end
+```
+
+**Serialização de Pacote**:
+
+```
+[Opcode: S_StoreOffers]
+[Category Name: String]
+[Redirect ID: U32] (se não oldProtocol)
+[Window Type: Byte 0]
+[Collections Size: Byte 0]
+[Collection Name: U16 0]
+[Disable Reasons Count: U16]
+  ├─ [Reason 1: String]
+  ├─ [Reason 2: String]
+  └─ [...]
+[Offers Count: U16]
+  ├─ [Offer Group 1]
+  │  ├─ Offer Name: String
+  │  ├─ Suboffers Count: Byte
+  │  ├─ Description (via callback)
+  │  └─ [Each Suboffer]
+  │     ├─ ID: U32
+  │     ├─ Count/Charges: U16
+  │     ├─ Price: U32 (dinâmico para EXPBOOST/NAMECHANGE)
+  │     ├─ CoinType: Byte
+  │     ├─ Disabled: Byte (0 ou 1)
+  │     ├─ Disable Reason Index: U16 (se disabled)
+  │     ├─ State: Byte (com validUntil se SALE)
+  │     ├─ Visual Type: Byte (SHOW_*)
+  │     │  ├─ SHOW_NONE: Icon String
+  │     │  ├─ SHOW_MOUNT: Mount ClientID U16
+  │     │  ├─ SHOW_ITEM: ItemType U16
+  │     │  ├─ SHOW_OUTFIT: LookType U16 + Cores
+  │     │  └─ SHOW_HIRELING: Sex + LookTypes + Cores
+  │     ├─ TryOn Type: Byte
+  │     ├─ Collection: U16 (0)
+  │     ├─ Popularity: U16 (0)
+  │     ├─ State New Until: U32 (0)
+  │     └─ Requires Configure: Byte
+  └─ [...]
+[Too Many Results: Byte] (se categoria == "Search")
+```
+
+**Preço Dinâmico**:
+
+```lua
+if offer.type == OFFER_TYPE_EXPBOOST then
+    local purchaseExpCount = playerKV:get(expBoostCount) or 0
+    xpBoostPrice = ExpBoostValues[purchaseExpCount]
+elseif offer.type == OFFER_TYPE_NAMECHANGE and player:kv():get("namelock") then
+    nameLockPrice = 0  -- Bonus: free
+end
+```
+
+**Sales Handling**:
+
+```lua
+if offer.state == STATE_SALE then
+    local daySub = offer.validUntil - os.date("*t").day
+    if daySub >= 0 then
+        msg:addByte(STATE_SALE)
+        msg:addU32(os.time() + daySub * 86400)
+        msg:addU32(offer.basePrice)
+        haveSaleOffer = 1
+    else
+        msg:addByte(STATE_NONE)  -- Expirado
+    end
+end
+```
+
+**Visual Types (via convertType)**:
+
+| Type | Serialização | Dados |
+|---|---|---|
+| SHOW_NONE | Ícone | String icon[1] |
+| SHOW_MOUNT | ClientID | U16 + TryOn=1 |
+| SHOW_ITEM | ItemType | U16 |
+| SHOW_OUTFIT | LookType + Cores | U16 + 4 bytes + TryOn=1 |
+| SHOW_HIRELING | Sex + LookTypes + Cores | Byte sex + 2 U16 + 4 bytes |
+
+---
+
+### 5. sendShowStoreOffersOnOldProtocol(playerId, category) - BACKWARDS COMPAT
+
+Versão simplificada para clients < v1200 com limitações.
+
+**Limitações Protocol Antigo**:
+- Max 30 ofertas por categoria
+- Sem suporte a transferable coins (UI)
+- Sem redirect, collections, popularity
+- Formato visual diferente (mount=icon.png, outfit=2 icons)
+- Disable reasons como strings simples (não índices)
+
+**Filtragem de Ofertas**:
+
+```lua
+-- Bloqueia ofertas que não são COIN type
+if not offer.coinType or offer.coinType == CoinType.Coin then
+    count = count + 1
+end
+```
+
+**Serialização**:
+
+```
+[Opcode: S_StoreOffers]
+[Category Name: String]
+[Offers Count: U16]
+  ├─ [Offer 1]
+  │  ├─ Name: String (com count "50x ")
+  │  ├─ Description: String
+  │  ├─ Price: U32 (dinâmico)
+  │  ├─ State: Byte (com validUntil se SALE)
+  │  ├─ Disabled: Byte (0 ou 1)
+  │  ├─ Disable Reason: String (se disabled)
+  │  └─ Visual:
+  │     ├─ MOUNT (1): "name.png"
+  │     ├─ OUTFIT (2): 2 icon strings
+  │     └─ OTHER: icon array
+  └─ [Suboffers: U16 0]
+```
+
+---
+
+### 6. sendStoreTransactionHistory(playerId, page, entriesPerPage)
+
+Envia histórico paginado de transações do jogador.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- page (number): Página requisitada (1-indexed)
+- entriesPerPage (number): Entries por página
+
+**Retrieval**:
+
+```lua
+local entries = GameStore.retrieveHistoryEntries(accountId, page, entriesPerPage)
+local totalEntries = GameStore.retrieveHistoryTotalPages(accountId)
+local totalPages = math.ceil(totalEntries / entriesPerPage)
+```
+
+**Erro**: Se entries vazio, envia STORE_ERROR_HISTORY
+
+**Serialização**:
+
+```
+[Opcode: S_OpenTransactionHistory]
+[Current Page: U32] (page - 1)
+[Total Pages: U32]
+[Entries Count: Byte]
+  ├─ [Entry 1]
+  │  ├─ Entry ID: U32 (se não oldProtocol)
+  │  ├─ Timestamp: U32
+  │  ├─ Mode: Byte (0=normal, 1=gift, 2=refund)
+  │  ├─ Amount: S32 (assinado)
+  │  ├─ Type: Byte (0=transferable, 1=normal) (se não oldProtocol)
+  │  ├─ Description: String
+  │  └─ Details: Byte (0) (se não oldProtocol)
+  └─ [...]
+```
+
+---
+
+### 7. sendStorePurchaseSuccessful(playerId, message)
+
+Confirmação de compra bem-sucedida.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- message (string): Mensagem para mostrar ao jogador
+
+**Serialização**:
+
+```
+[Opcode: S_CompletePurchase]
+[Status: Byte 0x00]
+[Message: String]
+[TibiaCoins: U32] (se oldProtocol)
+[TransferableCoins: U32] (se oldProtocol)
+```
+
+**Nota**: oldProtocol envia saldos em resposta, novo proto não
+
+---
+
+### 8. sendStoreError(playerId, errorType, message)
+
+Envia mensagem de erro ao cliente.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- errorType (number): Tipo de erro (StoreErrors.*) 
+- message (string): Mensagem descritiva
+
+**Serialização**:
+
+```
+[Opcode: S_StoreError]
+[Error Type: Byte] (STORE_ERROR_TRANSFER, STORE_ERROR_HISTORY, etc)
+[Message: String]
+```
+
+---
+
+### 9. sendStoreBalanceUpdating(playerId, updating)
+
+Sinaliza que saldo está sendo atualizado (UI lock/unlock).
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- updating (boolean): true = começando atualização, false = terminado
+
+**Serialização**:
+
+```
+[Opcode: S_CoinBalanceUpdating]
+[Status: Byte] (0x00 = updating, 0x01 = updated)
+```
+
+Se updating == true, agenda `sendUpdatedStoreBalances` automaticamente
+
+---
+
+### 10. sendUpdatedStoreBalances(playerId)
+
+Envia saldos atualizados de moedas após transação.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+
+**Serialização**:
+
+```
+[Opcode: S_CoinBalanceUpdating]
+[Status: Byte 0x01] (updated mode)
+[Inner Opcode: S_CoinBalance]
+[: Byte 0x01]
+[TibiaCoins: U32] (total)
+[TransferableCoins: U32]
+[Reserved for Auction: U32] (se não oldProtocol, sempre 0)
+```
+
+---
+
+### 11. sendRequestPurchaseData(playerId, offerId, type)
+
+Solicita dados adicionais ao cliente (abre input modal).
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- offerId (number): ID da oferta que requer input
+- type (number): Tipo de modal (CLIENT_STORE_OFFER_NAMECHANGE, CLIENT_STORE_OFFER_HIRELING)
+
+**Serialização**:
+
+```
+[Opcode: S_RequestPurchaseData]
+[Offer ID: U32]
+[Type: Byte] (INPUT tipo: namechange, hireling, etc)
+```
+
+**Efeito**: Cliente abre modal de input, jogador fornece dados, reenvia para parsers
+
+---
+
+### 12. getHomeOffers(playerId) - FUNÇÃO HELPER
+
+Filtra ofertas com flag `home == true` de todas categorias.
+
+**Parâmetros**:
+- playerId (number): ID do jogador (para validação)
+
+**Retorna**: 
+- (table): Array de ofertas com flag home
+
+**Lógica**:
+
+```lua
+for _, category in ipairs(GameStore.Categories) do
+    for _, offer in ipairs(category.offers) do
+        if offer.home then
+            table.insert(offers, offer)
+        end
+    end
+end
+```
+
+---
+
+### 13. sendHomePage(playerId) - FUNÇÃO COMPLEXA
+
+Envia página inicial (home) com ofertas especiais e banners.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+
+**Processo**:
+
+1. **Obter Home Offers**: `getHomeOffers(playerId)`
+2. **Coleta Disable Reasons**: Similar a sendShowStoreOffers
+3. **Serialização de Ofertas**: Simplificada (sem suboffers)
+4. **Banners**: HomeBanners.images com delay
+
+**Serialização**:
+
+```
+[Opcode: S_StoreOffers]
+[Category Name: String "Home"]
+[Redirect ID: U32 0x0]
+[Window Type: Byte 0x0]
+[Collections Size: Byte 0x0]
+[Collection Name: U16 0x00]
+[Disable Reasons Count: U16]
+  ├─ [Reason 1: String] ...
+[Home Offers Count: U16]
+  ├─ [Offer 1]
+  │  ├─ Name: String
+  │  ├─ Suboffer Count: Byte 1
+  │  ├─ Offer ID: U32
+  │  ├─ Individual Count: U16 1
+  │  ├─ Price: U32 (dinâmico para EXPBOOST/NAMECHANGE)
+  │  ├─ CoinType: Byte
+  │  ├─ Disabled & Disable Reason: similar
+  │  ├─ State: Byte
+  │  ├─ Visual Type: Byte
+  │  │  ├─ SHOW_NONE: Icon
+  │  │  ├─ SHOW_MOUNT: ClientID
+  │  │  ├─ SHOW_ITEM: ItemType
+  │  │  └─ SHOW_OUTFIT: LookType + Cores
+  │  └─ [Other fields: 0s]
+  └─ [...]
+[Banners Count: Byte]
+  ├─ [Banner 1]
+  │  ├─ Image: String
+  │  ├─ Type: Byte 0x04
+  │  ├─ Action: U32 0x00
+  │  ├─ Extra 1: Byte 0
+  │  ├─ Extra 2: Byte 0
+  └─ [...]
+[Banner Delay: Byte]
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Abrir Loja
+
+```lua
+local senders = require("gamestore.senders")
+
+function openStoreUI(playerId)
+    senders.openStore(playerId)
+    -- sendStoreBalanceUpdating agenda automaticamente
+end
+```
+
+### Padrão 2: Enviar Ofertas com Disable Reasons
+
+```lua
+local senders = require("gamestore.senders")
+
+function showCategory(playerId, categoryName)
+    local category = GameStore.getCategoryByName(categoryName)
+    
+    senders.sendShowStoreOffers(playerId, category, 0)
+    -- Interno: coleta disable reasons, agrupa ofertas, envia preços dinâmicos
+end
+```
+
+### Padrão 3: Versionamento Protocol
+
+```lua
+local senders = require("gamestore.senders")
+
+function sendOfferList(playerId, category)
+    local player = Player(playerId)
+    local oldProtocol = player:getClient().version < 1200
+    
+    if oldProtocol then
+        senders.sendShowStoreOffersOnOldProtocol(playerId, category)
+    else
+        senders.sendShowStoreOffers(playerId, category)
+    end
+end
+```
+
+### Padrão 4: Feedback de Transação
+
+```lua
+local senders = require("gamestore.senders")
+
+function completePurchase(playerId, offer)
+    senders.sendStoreBalanceUpdating(playerId, true)
+    -- (faz processamento...)
+    senders.sendStorePurchaseSuccessful(playerId, "Purchase successful!")
+end
+```
+
+### Padrão 5: Solicitar Input Modal
+
+```lua
+local senders = require("gamestore.senders")
+
+function buyNameChange(playerId, offerId)
+    -- Path: cliente não forneceu nome ainda
+    senders.sendRequestPurchaseData(playerId, offerId, 
+                                    GameStore.ClientOfferTypes.CLIENT_STORE_OFFER_NAMECHANGE)
+    -- Cliente abre modal, jogador digita nome, reenvia
+end
+```
+
+### Padrão 6: Histórico Paginado
+
+```lua
+local senders = require("gamestore.senders")
+
+function viewTransactionHistory(playerId, page)
+    local entriesPerPage = GameStore.DefaultValues.DEFAULT_VALUE_ENTRIES_PER_PAGE
+    senders.sendStoreTransactionHistory(playerId, page, entriesPerPage)
+    -- Automático: calcula total pages, formata entries
+end
+```
+
+### Padrão 7: Home Page com Banners
+
+```lua
+local senders = require("gamestore.senders")
+
+function openHomeStore(playerId)
+    senders.sendHomePage(playerId)
+    -- Filtra ofertas home, agrupa ofertas, envia banners com delay
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Exemplo |
+|---|---|---|
+| **Protocol Versioning** | Dois formatos (oldProtocol vs novo) | sendShowStoreOffers + sendShowStoreOffersOnOldProtocol |
+| **NetworkMessage Serialization** | Estrutura binária precisa | addByte, addString, addU32 |
+| **Disable Reasons Indexing** | Acumula razões únicas, indexa | disableReasons[index] |
+| **Dynamic Pricing** | Preços variam por estado | EXPBOOST multiplier, NAMECHANGE bonus |
+| **Visual Type Conversion** | Map tipos oferta → tipos visuais | convertType helper |
+| **TryOn Integration** | Preview dinâmica de aparência | SHOW_OUTFIT com player colors |
+| **Sales Validation** | Verifica validUntil vs data atual | daySub = validUntil - day |
+| **Paginated Responses** | Histórico dividido em páginas | totalPages, entriesPerPage |
+
+### Padrões Implementados
+
+1. **Protocol Abstraction**: Versioning duplo encapsulado
+2. **Message Building**: Fluent interface com addXxx
+3. **Lazy Data Collection**: Agrupa ofertas em runtime
+4. **Index Mapping**: Disable reasons mapeados por índice
+5. **Conditional Serialization**: Campos opcionais por versão
+6. **Color Integration**: Player outfit colors integrados em preview
+7. **Callback Delegation**: sendOfferDescription chamada dentro loop
+8. **Dual Format Support**: oldProtocol fallback para tudo
+
+### Responsabilidades do Módulo
+
+- ✅ Serializar categorias em formato binário
+- ✅ Agrupar ofertas por nome
+- ✅ Acumular e indexar disable reasons
+- ✅ Calcular preços dinâmicos por tipo/estado
+- ✅ Integrar visuais de tryon com player looks
+- ✅ Validar sales expiradas
+- ✅ Suportar versionamento protocol duplo
+- ✅ Paginar histórico de transações
+- ✅ Serializar banners de home page
+
+### Casos de Uso Principais
+
+1. **Abrir Loja**: openStore + balances iniciais
+2. **Listar Ofertas**: Grouping + disable reasons + preços dinâmicos
+3. **Home Page**: Ofertas especiais + banners
+4. **Transação**: Balance update + sucesso ou erro
+5. **Input Modal**: Solicitar dados adicionais
+6. **Histórico**: Paginado com totals
+7. **Compatibilidade Antiga**: Protocol antigo com limitações
+
+---
+
+## 📚 Conclusão
+
+O módulo `senders.lua` é exemplo fino de **abstração de protocolo binário** em servidor game, onde complexidade de versionamento duplo, preços dinâmicos e visuals complexos são encapsulados em interfaces limpas. A sofisticação não está em funções individuais, mas em **coordenação de detalhes**: desde preço dinâmico inteligente (EXPBOOST respeita limite, NAMECHANGE bonus com namelock) até visual de tryon que integra cores exatas de player atual.
+
+O padrão de **disable reasons acumuladas e indexadas** é particularmente notável - reduz redundância em rede enviando motivos únicos uma vez e referenciando por índice. O suporte dual a versões antigas demonstra pragmatismo: sem `sendShowStoreOffersOnOldProtocol`, clientes antigos quebram completamente com ofertas renderizadas diferente.
+
+Estudando este módulo, compreende-se como sistemas complexos mantêm-se através de **separação entre problema lógico (player.lua, purchases.lua) e transporte (senders.lua)**. Protocolo binário é puro detalhe de implementação - se mudar de TCP/UDP/WebSocket, interface senders permanece igual, apenas implementação interna de NetworkMessage muda.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadados do Documento">
+- **Versão do Módulo**: Conforme constants.lua v2.0
+- **Data da Documentação**: 19 de Fevereiro, 2026
+- **Cobertura**: 100% (13 funções globais + 2 variáveis cache)
+- **Complexidade**: Muito Alta (protocol versioning duplo, preços dinâmicos, visual integration)
+- **Autor**: Documentação Canary Server Libs
+- **Padrão**: 7 seções MDX/Astro
+- **Exemplos Inclusos**: 7 padrões de uso completos
+</Card>
+
+<Aside type="tip">
+**Dica de Integração**: Este módulo é parte do pipeline: parsers.lua → purchases.lua → senders.lua. Nunca chamar estas funções diretamente exceto através de scheduler (addPlayerEvent). Se modificar estrutura de dados (categorias, offers), adaptar serialização aqui obrigatoriamente - protocol quebra silenciosamente de outra forma.
+</Aside>
+
+<Aside type="caution">
+**Atenção Crítica**:
+- Protocol versioning é crítico - oldProtocol < v1200 tem limitações hard
+- Preços dinâmicos (EXPBOOST, NAMECHANGE) DEVEM ser recalculados a cada envio
+- Disable reasons são acumuladas em runtime - limpar entre categorias obrigatório
+- Sale validation com validUntil - usar os.date("*t").day, não os.time()
+- TryOn visual requer player's actual outfit colors - não usar defaults
+- Grouping de ofertas por nome é crítica para UI correta - sem grouping, UI lag
+- HomeOffers requer filtro offer.home - sem isso, home page vazia
+- NetworkMessage must be cleaned (msg:delete()) após sendToPlayer
+</Aside>
+
+<Aside type="note">
+**Notas de Manutenção**:
+- openStore agenda sendStoreBalanceUpdating(true) automaticamente
+- sendShowStoreOffers agrupa ofertas por name (criar sub-list)
+- Disable reasons índices são zero-based em array, mas U16 serializado
+- TryOn tipos (0=none, 1=mount/outfit, 2=hireling) determinam interatividade
+- Sale expiry: calcular daySub ANTES de validar (evita timezone issues)
+- oldProtocol bloqueia OFFER_TYPE_TRANSFERABLE_COIN (coinType != Coin)
+- HomeBanners esperado ser tabela global com images array e delay
+- Price dynamic: sempre checar playerKV:get(expBoostCount) antes de usar
+</Aside>

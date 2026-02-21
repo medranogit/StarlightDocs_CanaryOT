@@ -1,0 +1,534 @@
+---
+title: "Movement - closing_door.lua"
+description: "Sistema de controle de portas que se fecham automaticamente com validação de quest e nível"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `closing_door.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (onStepIn + onStepOut) |
+| **Event Names** | `closingDoor.onStepIn`, `closingDoor.onStepOut` |
+| **Funções Registradas** | 2 callbacks (entrada e saída) |
+| **Linhas de Código** | 133 |
+| **Complexidade** | Médium |
+| **Status** | Base implementation |
+
+**Descrição:**
+Sistema de controle de portas dinâmicas que requerem validação de quest ou nível mínimo. Ao entrar, verifica se o jogador atende aos requisitos (completou quest OU atingiu nível). Ao sair, fecha automaticamente a porta se nenhum outro jogador estiver nela.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/closing_door.lua
+```
+
+**Pré-requisitos:**
+- Tabelas globais: `QuestDoorTable`, `LevelDoorTable` (definidas em outro arquivo)
+- Sistema de Storage (para quests)
+- Sistema de Teleportação e validação de posição
+- Sistema de Tiles e detecção de criaturas
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Validação de Acesso a Portas**
+
+Este script implementa um sistema de **dois tipos de validação**:
+
+1. **Quest-Based Access:**
+   - Verifica `storage` do item (actionid)
+   - Se storage ≠ -1 → Permissão concedida
+   - Mensagem: "The door seems to be sealed against unwanted intruders."
+
+2. **Level-Based Access:**
+   - Verifica se `actionid > 1000` (marker de porta de nível)
+   - Nível requerido = `actionid - 1000`
+   - Mensagem: "Only the worthy may pass."
+
+**Fluxo de Teleportação:**
+Ao bloquear acesso, o script:
+1. Envia mensagem de erro
+2. Teleporta para posição anterior (fromPosition)
+3. Retorna false (bloqueia movimento)
+
+**Exemplo: Porta de Quest**
+```
+Jogador tenta entrar em porta com actionid 5
+├─ Script verifica storage[5]
+├─ Se -1 (não completou) → Bloqueia
+│  └─ Teleporta para trás
+└─ Se ≠ -1 (completou) → Permite
+   └─ Jogador passa
+```
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `closing_door.lua` implementa um sistema de controle de acesso a portas com dois mecanismos:
+
+- **Validação de Quest:** Usa storage do item como ID de quest concluída
+- **Validação de Nível:** Usa actionid formatado (valor - 1000 = nível requerido)
+- **Fechamento Automático:** Portas se fecham após jogador sair se vazio
+- **Prevenção de Skip:** Evita que jogadores ultrapassem a validação
+
+### Arquitetura
+
+Dois MoveEvents paralelos:
+
+```
+onStepIn (entrada)
+  ├─ Valida Quest (storage)
+  ├─ Valida Nível (actionid)
+  └─ Bloqueia/Permite entrada
+
+onStepOut (saída)
+  ├─ Verifica criaturas na linha
+  ├─ Calcula nova posição
+  └─ Move porta para posição anterior
+```
+
+### Fluxo Lógico Resumido
+
+| Evento | Validação | Resultado |
+|---|---|---|
+| **onStepIn (Quest)** | storage[actionid] ≠ -1 | Permite ✅ ou Bloqueia ❌ |
+| **onStepIn (Level)** | player:getLevel() >= actionid - 1000 | Permite ✅ ou Bloqueia ❌ |
+| **onStepOut** | Nenhuma criatura na tile | Fecha porta (transforma) |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Seção 1: Coleta de IDs de Portas (Quest + Level)
+
+```lua
+local doorIds = {}
+
+local closingDoor = MoveEvent()
+closingDoor:type("stepin")
+
+for index, value in ipairs(QuestDoorTable) do
+	if not table.contains(doorIds, value.openDoor) then
+		table.insert(doorIds, value.openDoor)
+	end
+end
+
+for index, value in ipairs(LevelDoorTable) do
+	if not table.contains(doorIds, value.openDoor) then
+		table.insert(doorIds, value.openDoor)
+	end
+end
+```
+
+**Propósito:** Coleta todos os IDs únicos de portas de ambas as tabelas (QuestDoorTable e LevelDoorTable) para registrar o evento nelas.
+
+**Comportamento:**
+- Iteração dupla: primeiro quests, depois níveis
+- Evita duplicatas com `table.contains`
+- Resultado: `doorIds` contém todos os item IDs que precisam do evento
+
+**Exemplo:**
+```
+QuestDoorTable[n].openDoor = 1001
+LevelDoorTable[n].openDoor = 1002
+doorIds = { 1001, 1002 }
+```
+
+### Seção 2: Callback onStepIn (Validação de Acesso)
+
+```lua
+function closingDoor.onStepIn(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return
+	end
+
+	for index, value in ipairs(QuestDoorTable) do
+		if value.openDoor == item.itemid then
+			if player:getStorageValue(item.actionid) ~= -1 then
+				return true
+			else
+				player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "The door seems to be sealed against unwanted intruders.")
+				player:teleportTo(fromPosition, true)
+				return false
+			end
+		end
+	end
+
+	for index, value in ipairs(LevelDoorTable) do
+		if value.openDoor == item.itemid then
+			if item.actionid > 0 and player:getLevel() >= item.actionid - 1000 then
+				return true
+			else
+				player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Only the worthy may pass.")
+				player:teleportTo(fromPosition, true)
+				return false
+			end
+		end
+	end
+	return true
+end
+```
+
+**Propósito:** Validar se o jogador tem permissão para passar pela porta.
+
+**Parâmetros:**
+- `creature` - Criatura que entrou (pode não ser jogador)
+- `item` - A porta (item.itemid = ID, item.actionid = indicador)
+- `position` - Posição atual (onde está a porta)
+- `fromPosition` - Posição anterior (de onde veio)
+
+**Fluxo:**
+
+1. **Check de Jogador:** Se não é jogador, permite passa
+2. **Validação Quest:** Itera QuestDoorTable
+   - Se porta matchear: verifica storage
+   - Storage ≠ -1 → Permite (concluiu quest)
+   - Storage = -1 → Bloqueia, teleporta atrás
+3. **Validação Nível:** Itera LevelDoorTable
+   - Se porta matchear: calcula nível necessário
+   - `actionid > 0 && level >= (actionid - 1000)` → Permite
+   - Senão → Bloqueia, teleporta atrás
+4. **Default:** Se nem quest nem nível, permite
+
+**Retorno:**
+- `true` - Permite entrada, movimento continua
+- `false` - Bloqueia entrada, jogador fica na posição anterior
+
+### Seção 3: Registro do onStepIn
+
+```lua
+for index, value in ipairs(doorIds) do
+	closingDoor:id(value)
+end
+
+closingDoor:register()
+```
+
+**Propósito:** Registra o evento onStepIn para cada ID de porta coletado.
+
+---
+
+### Seção 4: Callback onStepOut (Fechamento Automático)
+
+```lua
+function closingDoor.onStepOut(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return
+	end
+
+	local tile = Tile(position)
+
+	if tile:getCreatureCount() > 0 then
+		return true
+	end
+
+	local newPosition = { x = position.x + 1, y = position.y, z = position.z }
+	local query = Tile(newPosition):queryAdd(creature)
+
+	if query ~= RETURNVALUE_NOERROR or query == RETURNVALUE_NOTENOUGHROOM then
+		newPosition.x = newPosition.x - 1
+		newPosition.y = newPosition.y + 1
+		query = Tile(newPosition):queryAdd(creature)
+	end
+
+	if query == RETURNVALUE_NOERROR or query ~= RETURNVALUE_NOTENOUGHROOM then
+		position:relocateTo(newPosition)
+	end
+end
+```
+
+**Propósito:** Fechar a porta movendo-a para trás quando jogador sai.
+
+**Parâmetros:**
+- `creature` - Criatura que saiu
+- `item` - A porta
+- `position` - Posição atual (onde está a porta)
+- `fromPosition` - Posição anterior
+
+**Fluxo:**
+
+1. **Verifica se é Jogador:** Se não, permite saída
+2. **Verifica Criaturas na Tile:** Se houver outras criaturas, não fecha
+3. **Calcula Nova Posição:** Tenta mover a porta para:
+   - Primeiro: `x + 1` (direita)
+   - Se não couber: `y + 1` (cima)
+4. **Valida Espaço:** Verifica se a nova posição está disponível
+5. **Move a Porta:** Se espaço válido, executa relocate
+
+**Lógica de Positioning:**
+```
+Tentativa 1: newPosition = { x+1, y, z }
+  └─ query = Tile.queryAdd()
+     └─ Se não OK ou NOROOM → Tentativa 2
+
+Tentativa 2: newPosition = { x-1, y+1, z }
+  └─ query = Tile.queryAdd()
+     └─ Se OK ou não NOROOM → Executa relocate
+```
+
+-----
+
+### Seção 5: Coleta e Registro do onStepOut
+
+```lua
+local doorIds = {}
+
+local closingDoor = MoveEvent()
+closingDoor:type("stepout")
+
+-- ... coleta IDs novamente ...
+
+for index, value in ipairs(doorIds) do
+	closingDoor:id(value)
+end
+
+closingDoor:register()
+```
+
+**Nota:** Mesmo padrão do onStepIn, mas para `stepout` (saída).
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `doorIds` | table | Seção | Array de IDs de portas (coleta de QuestDoorTable e LevelDoorTable) |
+| `closingDoor` | MoveEvent | Seção | Instância do evento de movimento |
+| `player` | Player | Função | Criatura convertida para tipo Player |
+| `tile` | Tile | Função | Tile na posição atual |
+| `newPosition` | table | Função | Posição calculada para mover porta |
+| `query` | RETURNVALUE | Função | Resultado da validação de posição |
+
+**Nota:** `doorIds` e `closingDoor` são redeclarados duas vezes (uma para onStepIn, outra para onStepOut).
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Validação Aninhada em Loop
+
+```lua
+for index, value in ipairs(QuestDoorTable) do
+	if value.openDoor == item.itemid then
+		if player:getStorageValue(item.actionid) ~= -1 then
+			return true
+		else
+			-- bloqueia
+		end
+	end
+end
+```
+
+**Benefício:** Separa validação por tipo (quest vs. nível) em loops distintos.
+
+### Padrão 2: Teleportação em Caso de Falha
+
+```lua
+player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "...")
+player:teleportTo(fromPosition, true)
+return false
+```
+
+**Benefício:** Rollback imediato + mensagem de erro clara.
+
+### Padrão 3: Detecção de Espaço com Fallback
+
+```lua
+local newPosition = { x = position.x + 1, y = position.y, z = position.z }
+local query = Tile(newPosition):queryAdd(creature)
+
+if query ~= RETURNVALUE_NOERROR or query == RETURNVALUE_NOTENOUGHROOM then
+	newPosition.x = newPosition.x - 1
+	newPosition.y = newPosition.y + 1
+	query = Tile(newPosition):queryAdd(creature)
+end
+```
+
+**Benefício:** Tenta múltiplas posições antes de falhar.
+
+### Padrão 4: Deduplicação de IDs
+
+```lua
+if not table.contains(doorIds, value.openDoor) then
+	table.insert(doorIds, value.openDoor)
+end
+```
+
+**Benefício:** Evita registrar a mesma porta duas vezes.
+
+---
+
+## 🤖 Documentação das Funções
+
+### closingDoor.onStepIn(creature, item, position, fromPosition)
+
+Callback executado quando criatura entra na porta. Valida quest ou nível.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que entrou |
+| `item` | Item | A porta (tem itemid e actionid) |
+| `position` | Position | Posição da porta |
+| `fromPosition` | Position | Posição anterior da criatura |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Permite entrada |
+| `false` | Bloqueia entrada, teleporta para trás |
+| `nil` | Se não for jogador, sem ação |
+
+**Validações:**
+
+1. **Se não é jogador:** Retorna `nil` (sem validação)
+2. **Se é porta de quest:** Verifica `storage[actionid] ≠ -1`
+3. **Se é porta de nível:** Verifica `level >= (actionid - 1000)`
+4. **Senão:** Permite passagem
+
+**Exemplo:**
+
+```lua
+-- Porta de quest (actionid = 5)
+-- storage[5] = -1 (não completou)
+closingDoor.onStepIn(player, door, pos, fromPos)
+-- Retorna false
+-- Jogador recebe: "The door seems to be sealed against unwanted intruders."
+-- Teleportado para fromPosition
+
+-- Porta de nível (actionid = 1050)
+-- player.level = 55
+-- Nível requerido = 1050 - 1000 = 50
+-- 55 >= 50? Sim
+closingDoor.onStepIn(player, door, pos, fromPos)
+-- Retorna true (permite)
+```
+
+---
+
+### closingDoor.onStepOut(creature, item, position, fromPosition)
+
+Callback executado quando criatura sai da porta. Fecha a porta movendo-a para trás.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu |
+| `item` | Item | A porta (será movida) |
+| `position` | Position | Posição atual da porta |
+| `fromPosition` | Position | Posição anterior (não usado) |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Saída permitida (sempre retorna na versão) |
+| `nil` | Se não for jogador |
+
+**Lógica:**
+
+1. **Verifica se é jogador:** Se não, retorna sem ação
+2. **Conta criaturas na tile:** Se houver > 0, não fecha (outro jogador ainda ali)
+3. **Tenta posições:**
+   - Primeira: deslocar 1 tile à direita (x+1)
+   - Segunda: deslocar 1 tile acima (y+1)
+4. **Move a porta:** Se encontrou posição válida via `queryAdd()`
+
+**Exemplo:**
+
+```lua
+-- Jogador sai da porta
+-- Outras criaturas na tile? Não
+closingDoor.onStepOut(player, door, doorPos, fromPos)
+-- Tenta x+1 → Válido
+-- Executa position:relocateTo({ x+1, y, z })
+-- Porta se fechou (mudou de posição)
+
+-- Se várias criaturas na tile
+closingDoor.onStepOut(player2, door, doorPos, fromPos)
+-- tile:getCreatureCount() > 0? Sim
+-- Retorna true (não fecha)
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Porta de Quest Bloqueada
+
+```lua
+-- Tabela de configuração
+QuestDoorTable = {
+	{ openDoor = 1001, ... }  -- ID da porta
+}
+
+-- Player tenta entrar sem completar quest
+-- onStepIn detecta: storage[1001] = -1
+-- Resultado: Bloqueado, teleportado, mensagem de erro
+```
+
+### Caso 2: Porta de Nível
+
+```lua
+-- Tabela de configuração
+LevelDoorTable = {
+	{ openDoor = 1050, ... }  -- Door ID, actionid = 1050
+}
+
+-- Player level 60 tenta entrar (requer nível 50)
+-- onStepIn detecta: 60 >= 50
+-- Resultado: Permissão concedida
+```
+
+### Caso 3: Fechamento Automático
+
+```lua
+-- Primeira criatura sai
+-- tile:getCreatureCount() = 0
+-- Porta se move para x+1
+
+-- Se x+1 não serve, tenta y+1
+-- Posição encontrada → passa para relocate
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Tabelas Globais:** `QuestDoorTable`, `LevelDoorTable` (em arquivo separado)
+- **Storage System:** Sistema de persistência de quest flags
+- **MoveEvent API:** [events/movements](../movements)
+- **Constants:** MESSAGE_EVENT_ADVANCE, RETURNVALUE_*
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo de Script** | MoveEvent (onStepIn + onStepOut) |
+| **Eventos Tratados** | 2 (entrada e saída) |
+| **Validações** | Quest (storage) + Nível (actionid) |
+| **Bloqueio** | Sim, com teleportação de rollback |
+| **Fechamento Auto** | Sim, após saída com verificação de ocupação |
+| **Fallback** | Suporta múltiplas posições para movimento |
+| **Padrões** | Validação aninhada, teleportação, deduplicação |

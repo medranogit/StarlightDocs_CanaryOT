@@ -1,0 +1,235 @@
+---
+title: Swift Foot
+description: Spell de suporte para Paladins com haste agressiva, sincronização familiar e trade-off WOD bifurcado (debuff vs penalty)
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `swift_foot.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Paladin / Royal Paladin |
+| **Spell ID** | 134 |
+| **Mana Requerida** | 400 |
+| **Level Requerido** | 55 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração do Buff** | 10 segundos (10.000 ms) |
+| **Cooldown Individual** | 10 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utamo tempo san` |
+| **Efeito Visual** | `CONST_ME_MAGIC_GREEN` |
+| **Auto-Target** | Sim (Próprio + summons) |
+| **Agressividade** | Não (buff ofensivo) |
+| **Grupos** | support, focus |
+| **Haste Formula** | 1.8x velocidade, -72 offset (super agressivo) |
+| **Familiar Sync** | Sim (sincronização com 0.8 factor) |
+| **WOD Branches** | WHEEL_GRADE_NONE (3 penalties) vs WHEEL_GRADE_REGULAR (damage buff +50) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/swift_foot.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell é versão super-agressiva de haste com trade-off WOD bifurcado. A fórmula (1.8, 72) é a mais agressiva de todos os hastes. Sem Wheel (GRADE_NONE): aplica EXHAUST_COMBAT + PACIFIED (desabilita ataque) + SPELLGROUPCOOLDOWN (subid 1, cooldown de ataque). Com Wheel (GRADE_REGULAR): sem penalties, adiciona +50 damage buff ao invés. A sincronização familiar usa factor 0.8 (80% inherit vs 70% em Strong Haste), permitindo familiares quase tão rápidos quanto caster. Mana de 400 é extremamente alta para level 55.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `swift_foot.lua` implementa haste super-agressiva premium para Paladins (level 55+) com sincronização inteligente de familiares e lógica WOD bifurcada oferecendo trade-off entre penalties (sem Wheel) vs damage buff (com Wheel). É versão mais extrema de haste, com fórmula (1.8, 72) super agressiva combinada com estratégia de compensação via Wheel. O spell calcula sincronização proporcional de familiares com factor 0.8, executa combat com haste, valida sucesso, consulta Wheel, aplica ou penalties (3 conditions se GRADE_NONE) ou damage buff +50 (se GRADE_REGULAR). A implementação demonstra padrão avançado de sincronização com bifurcação WOD simétrica (dois caminhos equilibrados).
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Variável de Duração
+local spellDuration = 10000
+
+-- 2. Instância Combat com Haste
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_GREEN)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+
+-- 2.1 Condition Haste
+local condition = Condition(CONDITION_HASTE)
+condition:setParameter(CONDITION_PARAM_TICKS, spellDuration)
+condition:setFormula(1.8, 72, 1.8, 72)
+combat:addCondition(condition)
+
+-- 3. Instância do Spell
+local spell = Spell("instant")
+
+-- 4. Função de Cast Principal
+function spell.onCastSpell(creature, var)
+    -- 4.1 Sincronização de Familiares
+    -- 4.2 Execução de Combat
+    -- 4.3 Validação de Sucesso
+    -- 4.4 Consulta de Wheel
+    -- 4.5 Aplicação Condicional de Penalties (GRADE_NONE)
+    -- 4.6 Aplicação Condicional de Damage Buff (GRADE_REGULAR)
+    -- 4.7 Retorno de Status
+end
+
+-- 5. Configuração de Propriedades do Spell
+spell:name("Swift Foot")
+spell:words("utamo tempo san")
+spell:group("support", "focus")
+spell:vocation("paladin;true", "royal paladin;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_SWIFT_FOOT)
+spell:id(134)
+spell:cooldown(10 * 1000)
+spell:groupCooldown(2 * 1000, 10 * 1000)
+spell:level(55)
+spell:mana(400)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `spellDuration` | `number` | Local | Duração em ms (10000) |
+| `combat` | `Combat` | Local | Combat com condition de haste |
+| `condition` | `Condition` | Local | CONDITION_HASTE com formula (1.8, 72) |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Paladin que executa o spell |
+| `var` | `Variant` | Parâmetro | Dados variáveis (self target) |
+| `summons` | `table` | Local (onCastSpell) | Tabela de summons do caster |
+| `summon` | `Creature` | Local (loop) | Summon individual |
+| `summon_t` | `MonsterType` | Local (loop) | Tipo de creature |
+| `deltaSpeed` | `number` | Local (loop) | Diferença de velocidade |
+| `FamiliarSpeed` | `number` | Local (loop) | Velocidade proporcional do familiar |
+| `FamiliarHaste` | `Condition` | Local (loop) | Condition de haste do familiar |
+| `grade` | `number` | Local (onCastSpell) | Wheel upgrade grade |
+| `exhaust` | `Condition` | Local (onCastSpell) | CONDITION_EXHAUST_COMBAT (se GRADE_NONE) |
+| `disable` | `Condition` | Local (onCastSpell) | CONDITION_PACIFIED (se GRADE_NONE) |
+| `exhaustAttackGroup` | `Condition` | Local (onCastSpell) | CONDITION_SPELLGROUPCOOLDOWN subid 1 (se GRADE_NONE) |
+| `damageDebuff` | `Condition` | Local (onCastSpell) | CONDITION_ATTRIBUTES +50 damage (se GRADE_REGULAR) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Sincronização com Factor Alto (0.8)**
+```lua
+local deltaSpeed = math.max(creature:getBaseSpeed() - summon:getBaseSpeed(), 0)
+local FamiliarSpeed = ((summon:getBaseSpeed() + deltaSpeed) * 0.8) - 72
+```
+Factor 0.8 (80%) vs 0.7 (70%) em Strong Haste - familiares ganham mais velocidade.
+
+### 2. **Padrão de WOD Bifurcado Simétrico**
+```lua
+if grade == WHEEL_GRADE_NONE then
+    -- Aplica 3 penalties
+elseif grade == WHEEL_GRADE_REGULAR then
+    -- Aplica damage buff +50
+end
+```
+Dois caminhos equilibrados: sem Wheel = penalties, com Wheel = buff positivo.
+
+### 3. **Padrão de Três Penalties Simultâneos**
+```lua
+local exhaust = Condition(CONDITION_EXHAUST_COMBAT)
+local disable = Condition(CONDITION_PACIFIED)
+local exhaustAttackGroup = Condition(CONDITION_SPELLGROUPCOOLDOWN)
+```
+Exhaust (cooldown), pacify (sem ataque), + group cooldown attack.
+
+### 4. **Padrão de Combat Executado antes de Condições Adicionais**
+```lua
+if combat:execute(creature, var) then
+    -- Adiciona condições extras
+    return true
+end
+return false
+```
+Combat com haste primeiro, depois bifurcação WOD.
+
+### 5. **Padrão de Haste Agressiva com Offset Alto**
+```lua
+condition:setFormula(1.8, 72, 1.8, 72)
+```
+Offset 72 (vs 56 padrão, 40 em Strong Haste) - mais agressivo.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, var)`
+
+**Descrição:** Função principal de execução do spell. Sincroniza familiares, executa haste, aplica trade-off WOD bifurcado.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Paladin que executa o spell.
+- `var` (Variant): Dados variáveis (self target).
+
+**Fluxo de Execução:**
+
+1. **Sincronização de Familiares**:
+   - Obtém `summons = creature:getSummons()`
+   - Valida existência, tipo tabela, quantidade > 0
+   - Para cada summon:
+     - Valida se é familiar via `summon_t:familiar()`
+     - Calcula `deltaSpeed = math.max(creature speed - summon speed, 0)`
+     - Calcula `FamiliarSpeed = ((summon speed + deltaSpeed) * 0.8) - 72`
+     - Cria Condition CONDITION_HASTE com ticks 10000
+     - Seta parâmetro SPEED com FamiliarSpeed calculado
+     - Aplica ao summon
+
+2. **Execução de Combat**:
+   - `combat:execute(creature, var)`
+   - Aplica CONDITION_HASTE com formula (1.8, 72)
+   - Efeito visual CONST_ME_MAGIC_GREEN
+
+3. **Validação de Sucesso**:
+   - Se combat falhou: `return false`
+
+4. **Consulta de Wheel**:
+   - `grade = creature:upgradeSpellsWOD("Swift Foot")`
+
+5. **Bifurcação WOD - Caminho GRADE_NONE**:
+   - Se `grade == WHEEL_GRADE_NONE`:
+     - Cria e aplica CONDITION_EXHAUST_COMBAT (ticks 10000)
+     - Cria e aplica CONDITION_PACIFIED (ticks 10000)
+     - Cria e aplica CONDITION_SPELLGROUPCOOLDOWN subid 1 (ticks 10000)
+     - Retorna `true`
+
+6. **Bifurcação WOD - Caminho GRADE_REGULAR**:
+   - Senão se `grade == WHEEL_GRADE_REGULAR`:
+     - Cria Condition CONDITION_ATTRIBUTES
+     - Seta ticks 10000
+     - Adiciona buff damage dealt +50 (CONDITION_PARAM_BUFF_DAMAGEDEALT)
+     - Aplica ao creature
+     - Retorna `true`
+
+**Valores de Retorno:**
+- `true`: Haste aplicada com trade-off WOD, mana de 400 consumida
+- `false`: Combat falhou, mana não consumida
+
+**Lógica Detalhada:**
+
+O spell implementa haste super-agressiva (1.8x) com sistema de balanceamento via Wheel. A fórmula (1.8, 72) é a mais extrema em todo o sistema, oferecendo velocidade massiva.
+
+A sincronização com factor 0.8 (80%) permite familiares ganhar 80% da diferença de velocidade, deixando-os muito rápidos. Offset 72 é correspondente.
+
+A lógica WOD oferece trade-off interessante:
+- Sem Wheel: velocidade max (1.8x) mas com penalties (exhaust + pacify + cooldown)
+- Com Wheel: velocidade max (1.8x) + damage buff +50, sem penalties
+
+Isso incentiva investimento em Wheel: players com Wheel ganham pure offense, sem-Wheel ganham pure defense/mobility.
+
+A duração de 10 segundos combina com cooldown de 10 segundos - permite manter ativo com timing perfeito.
+
+A mana de 400 é investimento extremo para level 55, tornando spell de uso estratégico.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_SWIFT_FOOT`: Som característico
+
+## 📌 Resumo
+
+**Swift Foot** é um spell de suporte premium para Paladins (level 55+) que aplica haste super-agressiva (1.8x, -72) ao caster, sincroniza proporcional de familiares (factor 0.8), e oferece trade-off WOD bifurcado: sem Wheel aplica 3 penalties (exhaust, pacify, attack cooldown), com Wheel aplica damage buff +50. O spell requer 400 de mana e cooldown de 10 segundos (2s grupo). A duração é 10 segundos em todas as conditions. É ferramenta ofensiva extrema para Paladins, oferecendo velocidade máxima com balanceamento via Wheel investing.
+
+A implementação segue padrão avançado de sincronização multi-target com bifurcação WOD simétrica, diferenciando-se por: (1) factor sincronização alto (0.8), (2) haste agressiva (1.8x), (3) offset alto (72), (4) WOD bifurcado com penalties vs buff, (5) mana extremamente alta (400).

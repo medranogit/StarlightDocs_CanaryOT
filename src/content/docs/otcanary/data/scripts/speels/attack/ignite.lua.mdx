@@ -1,0 +1,413 @@
+---
+title: "Spell - ignite.lua"
+description: "Spell de ignição para sorcerers level 26 com condition FIRE"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `ignite.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 138 |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 26 |
+| **Mana Requerida** | 30 |
+| **Words** | utori flam |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Cooldown** | 30s |
+| **GroupCooldown** | 2s |
+| **Premium** | Não |
+| **Fórmula** | Fixed damage (25 damage + condition 3s) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_IGNITE |
+| **Condition** | CONDITION_FIRE (queimadura!) |
+| **Condition Damage** | 25 dano fixo a cada 3s |
+| **Condition Period** | -45 (oscilação!) |
+| **Requer Target** | Sim (needTarget) |
+| **Bloqueia Walls** | Sim |
+| **isAggressive** | Sim |
+| **Distance Effect** | CONST_ANI_FIRE |
+| **Linhas de Código** | 29 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de ignição para sorcerers nível 26 (early-mid). Dano fogo fixed (25) com condition FIRE (queimadura!). Sistema de condition com damage oscilante. 30 mana (baato). Range 3 (ranged). Target required. Cooldown 30s (longo!). Não-premium. Efeito FIRE. Spell condition utility!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/ignite.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(138)
+spell:name("Ignite")
+spell:words("utori flam")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_IGNITE)
+spell:level(26)
+spell:mana(30)
+spell:isAggressive(true)
+spell:range(3)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:cooldown(30 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Ignição - Fogo CC Utility Condition-Based**
+
+Este spell implementa um sistema de condition utility com queimadura:
+
+1. **Fixed Damage com Condition:**
+   - Dano fogo: 25 (fixed!)
+   - Condition FIRE (queimadura)
+   - Condition damage: 25 fixo
+   - Duration: 3 segundos
+   - Delay: CONDITION_PARAM_DELAYED
+
+2. **CC Utility Early-Mid:**
+   - Level 26 (easy-mid)
+   - 30 mana (baato!)
+   - Cooldown 30s (long duration)
+   - Não-premium advantage
+   - Para queimar targets!
+
+3. **Ranged Sorcerer:**
+   - Range 3 (ranged)
+   - needTarget: true (single)
+   - CONST_ANI_FIRE (projétil)
+   - isAggressive: true
+
+4. **Condition System:**
+   - CONDITION_FIRE (unique!)
+   - CONDITION_PARAM_DELAYED: 1 (inicio delay)
+   - addDamage(25, 3000, -45) oscilação!
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 26:
+  Impact damage: 25 (fixed)
+  
+Condition FIRE:
+  Damage tick: 25 fixo
+  Duration: 3000ms (3s)
+  PeriodChange: -45 (oscilação!)
+
+Total effect:
+  Initial: 25 dano
+  Over 3s: 25 × múltiplos ticks
+  CC: Queimadura (FIRE)!
+```
+
+**Diferencial:** Fogo CC condition-based com FIRE queimadura!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `ignite` oferece dano fogo com condition CC:
+
+- **Dano:** COMBAT_FIREDAMAGE (fixed 25)
+- **Condition:** CONDITION_FIRE (queimadura!)
+- **Mana:** 30 (baato)
+- **Level:** 26 (early-mid)
+- **Range:** 3 (ranged)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: FIREDAMAGE
+├─ Distance Effect: FIRE
+└─ Condition: FIRE
+    ├─ Damage: 25 fixo
+    ├─ Duration: 3000ms
+    └─ Period: -45 (oscilação)
+
+spell.onCastSpell(creature, var)
+└─ combat:execute(creature, var)
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_FIRE)
+```
+
+**Propósito:** Combat de dano fogo ranged.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_FIRE | Projétil fogo |
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_FIRE)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+condition:addDamage(25, 3000, -45)
+combat:addCondition(condition)
+```
+
+**Propósito:** Condition de queimadura com damage periódico.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `Type` | CONDITION_FIRE | Queimadura! |
+| `DELAYED` | 1 | Inicio com delay |
+| `Damage` | 25 | Dano fixo |
+| `Duration` | 3000ms | 3 segundos |
+| `Period` | -45 | Oscilação negativa |
+
+**Detalhes:**
+- Dano fixo 25 (não aleatório)
+- `3000`: duração 3 segundos
+- `-45`: período oscilante (efeito variável!)
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples executa combat.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Target |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Ignição lançada |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Fire damage + condition |
+| `condition` | Condition | Arquivo | FIRE queimadura |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Condition-Based Utility
+
+```lua
+local condition = Condition(CONDITION_FIRE)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+condition:addDamage(25, 3000, -45)
+combat:addCondition(condition)
+```
+
+**Benefício:** CC utility com damage over time!
+
+### Padrão 2: Fixed Damage Condition
+
+```lua
+condition:addDamage(25, 3000, -45)
+```
+
+**Benefício:** Dano fixo, período oscilante!
+
+### Padrão 3: Long Cooldown CC
+
+```lua
+spell:cooldown(30 * 1000)
+```
+
+**Benefício:** Cooldown longo = CC regulado!
+
+### Padrão 4: Cheap Mana Cost
+
+```lua
+spell:mana(30)
+```
+
+**Benefício:** 30 mana = baato utility!
+
+---
+
+## 🤖 Documentação das Funções
+
+### Condition: CONDITION_FIRE
+
+**Descrição:** Queimadura com damage periódico.
+
+**Parâmetros:**
+
+| Nome | Valor | Descrição |
+|---|---|---|
+| `Type` | FIRE | Queimadura efeito |
+| `Delayed` | 1 | Inicio com delay |
+| `Damage` | 25 | Fixo |
+| `Duration` | 3000ms | 3 segundos |
+| `Period` | -45 | Oscilação |
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Lança ignição com condition CC.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Target |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Ignição lançada |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 26+
+- 30 mana
+- Target required
+- Range 3
+- Cooldown 30s (longo!)
+
+**Efeito:**
+- Efeito fogo
+- Projétil FIRE
+- Damage initial: 25
+- Condition FIRE (queimadura!)
+- Damage over time: 3s
+- Period oscilante
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 26 vs target
+spell.onCastSpell(sorcerer, targetVariant)
+// Validações:
+//   ✓ Level 26 >= 26
+//   ✓ Mana 30 disponível
+//   ✓ Target in range 3
+// Combat executa
+// Projétil FIRE viaja
+// Impact damage: 25 fogo
+// Condition FIRE aplicada
+// Duration 3s com damage 25/tick
+// Queimadura ativa!
+// Cooldown 30s (longo!)
+// Resultado: CC utility fogo!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Early-Mid CC Utility
+
+```lua
+-- Sorcerer lvl 26+
+// Ignite = queimadura targets
+// CC utility para mages
+// Long cooldown 30s = regulated
+```
+
+### Caso 2: Range CC Training
+
+```lua
+-- Sorcerer farming queimadura
+// Ignite = condition damage
+// Range 3 = safe distance
+// 30 mana = baato
+// Cooldown 30s timer skill
+```
+
+### Caso 3: PvP Utility
+
+```lua
+-- Sorcerer PvP
+// Ignite = queimadura tática
+// FIRE condition = CC
+// Ranged safe = advantage
+// 30s CD = strategic timing
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat, Condition
+- **Damage:** COMBAT_FIREDAMAGE
+- **Condition:** CONDITION_FIRE, CONDITION_PARAM_DELAYED
+- **Effects:** CONST_ANI_FIRE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Fogo CC condition utility |
+| **Dano Type** | COMBAT_FIREDAMAGE |
+| **Dano** | Fixed 25 + condition 25/3s |
+| **Mana** | 30 (baato!) |
+| **Range** | 3 (ranged) |
+| **Level** | 26 (early-mid) |
+| **Cooldown** | 30s (longo!) |
+| **Premium** | Não |
+| **Condition** | FIRE (queimadura!) |
+| **Condition Duration** | 3 segundos |
+| **Distance Effect** | FIRE |
+| **isAggressive** | Sim |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | Condition-based + fixed damage + long cooldown CC |

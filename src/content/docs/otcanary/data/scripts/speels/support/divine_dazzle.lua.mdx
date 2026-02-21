@@ -1,0 +1,285 @@
+---
+title: Divine Dazzle
+description: Spell de cadeia para Paladins que afeta múltiplos monstros ranged, mudando sua distância de ataque
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `divine_dazzle.lua` |
+| **Tipo de Spell** | Spell chain/cascade (Support) |
+| **Vocação** | Paladin / Royal Paladin |
+| **Spell ID** | 238 |
+| **Mana Requerida** | 80 |
+| **Level Requerido** | 250 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração de Efeito** | 12 segundos (12.000 ms) |
+| **Cooldown Individual** | 16 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exana amp res` |
+| **Efeito Visual Chain** | `CONST_ME_DIVINE_DAZZLE` |
+| **Targets Padrão** | 3 monstros |
+| **Max Distância Chain** | 6 quadrados |
+| **Auto-Target** | Não (requer alvo em área) |
+| **Agressividade** | Não (suporte defensivo) |
+| **Filtro** | Exclui reward bosses |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/divine_dazzle.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell é similar a Chivalrous Challenge mas para Paladins. Ambos usam triple-callback system (chainpicker, chainvalue, targetcreature), mas Divine Dazzle afeta MENOS targets (3 vs 5) e NÃO aplica challenge (não força ataque). Em vez disso, apenas muda target distance. O cooldown individual é muito maior (16s vs 2s), indicando que Paladin spell é mais defensivo/suportivo que Knights. Integração Wheel of Destiny permite bônus dinâmicos similares.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `divine_dazzle.lua` implementa spell chain premium para Paladins (level 250+) que afeta múltiplos monstros ranged mudando sua distância de ataque para close-range. É variante Paladin-specific de Chivalrous Challenge, utilizando mesma arquitetura de triple-callback (chainpicker, chainvalue, targetcreature) mas com diferentes valores e sem challenge effect. O spell obtém spectators, valida ausência de reward boss, executa combat com chain callbacks, e aplica apenas mudança de distância em cada alvo (sem force attack). Integração com Wheel of Destiny permite bônus dinâmicos. Cooldown individual de 16 segundos indica design mais cautelo que Knights. A implementação demonstra padrão de spell variante compartilhando arquitetura mas diferenciando em parâmetros.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat com Chain Effect
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_CHAIN_EFFECT, CONST_ME_DIVINE_DAZZLE)
+
+-- 2. Callback 1: Filtro de Alvos Elegíveis
+function canChain(creature, target)
+    -- Valida se target é elegível para chain
+end
+combat:setCallback(CALLBACK_PARAM_CHAINPICKER, "canChain")
+
+-- 3. Callback 2: Definição de Quantos Targets
+function getChainValue(creature)
+    -- Retorna (targets, distância, flag)
+end
+combat:setCallback(CALLBACK_PARAM_CHAINVALUE, "getChainValue")
+
+-- 4. Callback 3: Lógica em Cada Alvo
+function onChain(creature, target)
+    -- Muda distância (sem challenge)
+end
+combat:setCallback(CALLBACK_PARAM_TARGETCREATURE, "onChain")
+
+-- 5. Instância do Spell
+local spell = Spell("instant")
+
+-- 6. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 6.1 Validação de Boss Presente
+    -- 6.2 Erro se Boss Detectado
+    -- 6.3 Execução de Combat (triggers callbacks)
+    -- 6.4 Validação de Resultado
+    -- 6.5 Retorno de Status
+end
+
+-- 7. Configuração de Propriedades do Spell
+spell:group("support")
+spell:id(238)
+spell:name("Divine Dazzle")
+spell:words("exana amp res")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_DIVINE_DAZZLE)
+spell:level(250)
+spell:mana(80)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:cooldown(16 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:vocation("paladin;true", "royal paladin;true")
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat com chain callbacks |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Paladin que conjura o spell |
+| `target` | `Creature` | Parâmetro (callbacks) | Alvo atual na cadeia |
+| `player` | `Player` | Local (callbacks) | Conversão de creature para Player (para Wheel) |
+| `targets` | `number` | Local (getChainValue) | Quantidade de targets a afetar |
+| `duration` | `number` | Local (onChain) | Duração do efeito em ms |
+| `spectators` | `table` | Local (onCastSpell) | Lista de criaturas no cenário |
+| `spectator` | `Creature` | Local (loop) | Criatura na iteração de spectators |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Triple Callback Chain (Idêntico a Chivalrous Challenge)**
+```lua
+combat:setCallback(CALLBACK_PARAM_CHAINPICKER, "canChain")
+combat:setCallback(CALLBACK_PARAM_CHAINVALUE, "getChainValue")
+combat:setCallback(CALLBACK_PARAM_TARGETCREATURE, "onChain")
+```
+Mesma arquitetura de callbacks: filtro, configuração, execução.
+
+### 2. **Padrão de Filtro Boss (Idêntico)**
+```lua
+function canChain(creature, target)
+    if target:getType():isRewardBoss() then
+        return false
+    elseif target:getMaster() == nil and target:getType():getTargetDistance() > 1 then
+        return true
+    end
+end
+```
+Mesma lógica: exclui reward bosses, summons, inclui ranged.
+
+### 3. **Padrão de Diferenciação: Menos Targets**
+```lua
+local targets = 3  -- vs 5 em Chivalrous Challenge
+```
+Divine Dazzle afeta apenas 3 targets base (vs 5 para Knights).
+
+### 4. **Padrão de Diferenciação: Sem Challenge**
+```lua
+-- Em onChain:
+target:changeTargetDistance(1, duration)
+-- NÃO executa doChallengeCreature
+```
+Diferente de Chivalrous Challenge, Divine Dazzle não força ataque - apenas muda distância.
+
+### 5. **Padrão de Cooldown Discrepante**
+```lua
+spell:cooldown(16 * 1000)      -- 16 segundos (individual)
+spell:groupCooldown(2 * 1000)  -- 2 segundos (grupo)
+```
+Cooldown individual longo (16s) vs Knights (2s), indicando design mais conservador.
+
+## 🤖 Documentação das Funções
+
+### `canChain(creature, target)` (Callback - CHAINPICKER)
+
+**Descrição:** Callback que filtra quais targets são elegíveis para serem afetados pela cadeia.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Paladin que conjura o spell.
+- `target` (Creature): Criatura candidata para ser alvo de chain.
+
+**Fluxo:**
+1. Valida se target é monstro: `if target:isMonster()`
+2. Exclui reward bosses: `if target:getType():isRewardBoss() then return false`
+3. Exclui summons (com mestre): `if target:getMaster() == nil`
+4. Inclui apenas ranged: `target:getType():getTargetDistance() > 1`
+
+**Retorno:**
+- `true`: Target é elegível para chain
+- `false`: Target deve ser ignorado
+
+---
+
+### `getChainValue(creature)` (Callback - CHAINVALUE)
+
+**Descrição:** Callback que retorna quantos targets serão afetados e configuração de distância.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Paladin que conjura o spell.
+
+**Fluxo:**
+1. Define `targets = 3` (base) - DIFERENTE de Chivalrous Challenge (5)
+2. Obtém conversão: `player = creature:getPlayer()`
+3. Se player válido: adiciona bonus do Wheel: `targets = targets + player:getWheelSpellAdditionalTarget("Divine Dazzle")`
+4. Retorna tupla: `(targets, 6, false)` onde 6 é max distância em quadrados
+
+**Retorno:**
+- Tupla: `(numTargets, maxDistance, flag)`
+- Exemplo: `(3, 6, false)` = até 3 targets, distância máxima 6 quadrados
+- Nota: Menos targets que Chivalrous Challenge (3 vs 5)
+
+---
+
+### `onChain(creature, target)` (Callback - TARGETCREATURE)
+
+**Descrição:** Callback executado para cada target na cadeia. Muda apenas distância de ataque.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Paladin que conjura o spell.
+- `target` (Creature): Alvo atual da cadeia.
+
+**Fluxo:**
+1. Define `duration = 12000` ms (base)
+2. Obtém player: `player = creature:getPlayer()`
+3. Se player válido: adiciona bonus de duração do Wheel: `duration = duration + (player:getWheelSpellAdditionalDuration("Divine Dazzle") * 1000)`
+4. Se target é monstro:
+   - Muda distância: `target:changeTargetDistance(1, duration)` - traz para perto
+   - NÃO executa `doChallengeCreature` (diferente de Chivalrous Challenge)
+
+**Retorno:**
+- `true`: Processamento bem-sucedido
+
+**Diferença de Chivalrous Challenge:**
+- Aqui: apenas `changeTargetDistance(1, duration)` 
+- Na Challenge: `doChallengeCreature(...)` + `changeTargetDistance(...)`
+
+---
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Valida environment e executa chain.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Paladin que executa o spell.
+- `variant` (Variant): Dados variáveis (não utilizados).
+
+**Fluxo de Execução:**
+
+1. **Obtenção de Spectators**:
+   - Chama `Game.getSpectators(creature:getPosition(), false, false)`
+   - Obtém lista de criaturas em posição do Paladin
+
+2. **Validação Pre-Execution de Boss**:
+   - Loop através de spectators
+   - Se algum é monstro reward boss:
+     - Envia mensagem `"You can't use this spell if there's a boss."`
+     - Aplica efeito visual erro `CONST_ME_POFF`
+     - Retorna `false` (cancela spell)
+
+3. **Execução de Combat com Chain**:
+   - Chama `combat:execute(creature, variant)`
+   - Combat dispara callbacks:
+     - `canChain` para cada criatura potencial
+     - `getChainValue` para determinar scope (3 targets max)
+     - `onChain` para cada alvo válido (aplica distance change)
+
+4. **Validação de Resultado**:
+   - Se combat retorna `false` (nenhum alvo encontrado):
+     - Envia mensagem `"There are no ranged monsters."`
+     - Aplica efeito visual erro `CONST_ME_POFF`
+     - Retorna `false`
+
+5. **Sucesso**:
+   - Se execução bem-sucedida: retorna `true`
+
+**Valores de Retorno:**
+- `true`: Spell executado, mana de 80 consumida, targets afetados
+- `false`: Validação falhou (boss presente ou nenhum alvo ranged)
+
+**Lógica Detalhada:**
+
+O spell implementa versão Paladin-specific de Chivalrous Challenge com design mais conservador. Afeta menos targets (3 vs 5) e não força ataque (apenas distância). Isso refleita diferenciais de vocação: Knights focam em threat/control via challenge, Paladins focam em suporte via distância apenas.
+
+O cooldown individual longo (16s) vs cooldown de grupo curto (2s) cria dinâmica interessante: um Paladin não pode recast rapidamente, mas em grupo de Paladins cada um espera 2s antes de próximo cast. Isto força planejamento em raid vs spam em grupo casual.
+
+Validação de boss antes de cast previne execução parcial. Filtro de ranged-only garante que spell afeta apenas inimigos que atacam à distância, não melee que já estão perto.
+
+O `changeTargetDistance(1)` traz monstro para 1 quadrado, força close-range. Duração de 12 segundos é padrão para grupo de spells de changed distance.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_DIVINE_DAZZLE`: Som característico de dazzle
+
+**Mensagens ao Jogador:**
+- Sucesso: Nenhuma (apenas efeito visual)
+- Falha (boss): `"You can't use this spell if there's a boss."`
+- Falha (nenhum ranged): `"There are no ranged monsters."`
+
+## 📌 Resumo
+
+**Divine Dazzle** é um spell chain premium exclusivo para Paladins (level 250+) que afeta até 3 monstros ranged, movendo-os para close-range distance por até 12 segundos. O spell requer 80 de mana, cooldown individual de 16 segundos (vs 2s de grupo), e integração com Wheel of Destiny permite bônus dinâmicos de targets e duração. É versão Paladin-specific de Chivalrous Challenge, compartilhando arquitetura triple-callback mas diferenciando-se por: (1) afeta menos targets (3 vs 5), (2) não aplica challenge/force attack, (3) cooldown individual maior (16s vs 2s). Validação pre-execution de boss garante segurança. É spell defensivo essencial para support role em grupos, permitindo Paladins controlar enxame ranged através de tática de distância sem force attack.
+
+A implementação segue padrão chain variant (similar a Chivalrous Challenge mas parametrizado), diferenciando-se por: (1) fewer targets (3), (2) sem challenge aplicado, (3) cooldown individual longo (16s), (4) versão vocação-specific com design mais conservador.

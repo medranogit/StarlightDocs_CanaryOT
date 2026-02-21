@@ -1,0 +1,485 @@
+---
+title: "Spell - fierce_berserk.lua"
+description: "Spell de berserk feroz para knights level 90 com fórmula skill complexa"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `fierce_berserk.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 105 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Knight, Elite Knight |
+| **Level Requerido** | 90 |
+| **Mana Requerida** | 340 |
+| **Words** | exori gran |
+| **Alcance** | 0 (melee/self) |
+| **Área** | SQUARE1X1 (self/pequena) |
+| **Cooldown** | 6s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Skill-based complexa ((skill + 2*attack)*1.1 × 3, × 1.1 final) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_FIERCE_BERSERK |
+| **BLOCKARMOR** | 1 (ignora armadura!) |
+| **USECHARGES** | 1 (NEW!) |
+| **Requer Weapon** | Sim (needWeapon) |
+| **Bloqueia Walls** | Não especificado |
+| **TODO** | Use New Real Formula instead of an % |
+| **Linhas de Código** | 40 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Spell de berserk feroz para knights nível 90 (late-game). Dano físico skill-based com fórmula MUITO complexa ((skill+2*attack)*1.1 escalável, depois ×3 max, depois ambos ×1.1). BLOCKARMOR ignora armadura. USECHARGES: 1 (novo parâmetro!). Area SQUARE1X1 (self). Requer weapon. 340 mana (custoso). Cooldown 6s. TODO comment in code!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/fierce_berserk.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(105)
+spell:name("Fierce Berserk")
+spell:words("exori gran")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_FIERCE_BERSERK)
+spell:level(90)
+spell:mana(340)
+spell:isPremium(true)
+spell:needWeapon(true)
+spell:cooldown(6 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("knight;true", "elite knight;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Berserk Feroz - Skill-Based Physical Melee**
+
+Este spell implementa um **sistema de melee skill-based com fórmula MUITO complexa**:
+
+1. **Fórmula MUITO Complexa:**
+   - min = (level/5) + (skill + 2*attack)*1.1
+   - max = (level/5) + (skill + 2*attack)*3
+   - final = ambos × 1.1 (multiplicador!)
+   - TODO: Use New Real Formula (INDICAÇÃO!)
+
+2. **Late-Game Knight:**
+   - Level 90 (late!)
+   - 340 mana (CUSTOSO!)
+   - Premium only
+   - Cooldown 6s (moderado)
+
+3. **Skill-Based Physical:**
+   - Skill dominant formula
+   - BLOCKARMOR: 1 (ignora defesa)
+   - USECHARGES: 1 (NEW parameter!)
+   - needWeapon: true (required)
+
+4. **Melee Area:**
+   - SQUARE1X1 (self/small)
+   - Spell melee-based
+   - Range 0 (self)
+   - Weapon uses
+
+**Fórmula Visual:**
+```
+Knight lvl 90, skill 100, attack 50:
+  min = 18 + (100 + 100)*1.1 = 18 + 220 = 238
+  max = 18 + (100 + 100)*3 = 18 + 600 = 618
+  final_min = 238 * 1.1 = 261.8
+  final_max = 618 * 1.1 = 679.8
+
+Knight lvl 90, skill 150, attack 75:
+  min = 18 + (150 + 150)*1.1 = 18 + 330 = 348
+  max = 18 + (150 + 150)*3 = 18 + 900 = 918
+  final_min = 348 * 1.1 = 382.8
+  final_max = 918 * 1.1 = 1009.8
+```
+
+**Diferencial:** Melee skill-based MUITO complexa com TODO!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `fierce_berserk` oferece dano físico melee SKILL-BASED:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE (melee)
+- **Fórmula:** Skill-based MUITO complexa × 1.1 × 1.1 (final multiplicado!)
+- **Mana:** 340 (custoso)
+- **Level:** 90 (late-game)
+- **Área:** SQUARE1X1 (self)
+
+### Arquitetura
+
+Combat com callback skill complexo:
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ Effect: HITAREA
+├─ BLOCKARMOR: 1
+├─ USECHARGES: 1 (NEW!)
+├─ Area: SQUARE1X1
+└─ Callback: onGetFormulaValues (SKILLVALUE!)
+
+onGetFormulaValues(player, skill, attack, factor)
+└─ min/max skill-based MUITO complexo
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITAREA)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+combat:setArea(createCombatArea(AREA_SQUARE1X1))
+```
+
+**Propósito:** Combat de dano físico melee com múltiplos features.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITAREA | Efeito impacto área |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Ignora armadura! |
+| `COMBAT_PARAM_USECHARGES` | 1 | Weapon charges! |
+| `Area` | AREA_SQUARE1X1 | Square 1x1 (self) |
+
+---
+
+### Função Global: onGetFormulaValues (MUITO COMPLEXA!)
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local level = player:getLevel()
+
+	local min = (level / 5) + (skill + 2 * attack) * 1.1
+	local max = (level / 5) + (skill + 2 * attack) * 3
+
+	return -min * 1.1, -max * 1.1 -- TODO : Use New Real Formula instead of an %
+end
+```
+
+**Propósito:** Calcula dano físico melee MUITO complexo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Attack power weapon |
+| `factor` | number | Factor (não usado) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min * 1.1` | number | Dano mínimo × 1.1! |
+| `-max * 1.1` | number | Dano máximo × 1.1! |
+
+**Fórmula (MUITO Complexa!):**
+```
+level = player:getLevel()
+
+min = (level / 5) + (skill + 2 * attack) * 1.1
+max = (level / 5) + (skill + 2 * attack) * 3
+
+final_min = min * 1.1  (multiplicador!)
+final_max = max * 1.1  (multiplicador!)
+```
+
+**Pesos MUITO Complexos:**
+- Level: 0.2 por ponto
+- Skill base: 1
+- Attack mult: 2 (MUITO ALTO!)
+- Min escalador: 1.1 (min boost)
+- Max escalador: 3 (MUITO HIGH!)
+- Multiplicador final: 1.1 (28% boost!)
+
+**Exemplos:**
+
+| Level | Skill | Attack | Min | Max |
+|---|---|---|---|
+| 90 | 100 | 50 | 261 | 679 |
+| 90 | 150 | 75 | 382 | 1009 |
+| 120 | 200 | 100 | 540 | 1452 |
+
+**TODO Comment:**
+```lua
+-- TODO : Use New Real Formula instead of an %
+```
+(Indicação que fórmula será revisada!)
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Berserk ativado |
+| `false` | Validação falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callbacks skill |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `level` | number | Level jogador |
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Skill-Based Melee Complexo
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local skillTotal = (skill + 2 * attack) * 1.1
+	local max = (skill + 2 * attack) * 3
+	return -min * 1.1, -max * 1.1
+end
+```
+
+**Benefício:** Skill + attack com multiplicadores!
+
+### Padrão 2: BLOCKARMOR Bypass
+
+```lua
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+```
+
+**Benefício:** Dano ignora armadura target.
+
+### Padrão 3: USECHARGES (NEW!)
+
+```lua
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+```
+
+**Benefício:** Weapon charges management!
+
+### Padrão 4: SQUARE1X1 Melee Area
+
+```lua
+combat:setArea(createCombatArea(AREA_SQUARE1X1))
+```
+
+**Benefício:** Self/small melee area.
+
+### Padrão 5: TODO Comment
+
+```lua
+-- TODO : Use New Real Formula instead of an %
+```
+
+**Indicação:** Fórmula será revisada (não final!).
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, skill, attack, factor)
+
+**Descrição:** Calcula dano melee skill-based MUITO complexo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Attack power |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min * 1.1` | number | Dano mínimo |
+| `-max * 1.1` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(knight, 100, 50, 0)
+// level = 90
+// min = 18 + (100+100)*1.1 = 18 + 220 = 238
+// max = 18 + (100+100)*3 = 18 + 600 = 618
+// final = min*1.1 = 261.8, max*1.1 = 679.8
+// Retorna: -261, -679
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Lança berserk feroz melee.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight |
+| `var` | Variant | (melee, no target needed) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Berserk ativado |
+| `false` | Validação falhou |
+
+**Requisitos:**
+- Level 90+
+- 340 mana
+- Weapon equipped
+- Premium account
+- Cooldown 6s
+
+**Efeito:**
+- Efeito impacto melee
+- Area SQUARE1X1 (self)
+- Dano skill-based escalável
+- Ignora armadura (BLOCKARMOR)
+- Weapon charges used (USECHARGES)
+
+**Exemplo:**
+
+```lua
+-- Knight lvl 90, skill 100, attack 50
+spell.onCastSpell(knight, selfVariant)
+// Validações:
+//   ✓ Level 90 >= 90
+//   ✓ Mana 340 disponível
+//   ✓ Weapon equipped
+//   ✓ Premium account
+// Combat executa
+// Area SQUARE1X1 melee
+// Dano: -261 a -679
+// Ignora armadura target
+// Weapon charges consumido
+// Cooldown 6s
+// Resultado: Berserk feroz!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Late-Game Knight
+
+```lua
+-- Knight lvl 90+
+// Fierce Berserk = melee power spell
+// Skill-based damage
+// BLOCKARMOR penetration
+```
+
+### Caso 2: Weapon Escalation
+
+```lua
+-- Knight com weapon forte
+// Berserk = melee burst
+// Attack power critical
+// Dano escalável weapon attack
+```
+
+### Caso 3: Melee Strategy
+
+```lua
+-- Knight tank/damage
+// Berserk = melee special
+// 6s cooldown = timing
+// USECHARGES weapon system
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callback:** CALLBACK_PARAM_SKILLVALUE
+- **Parameters:** BLOCKARMOR, USECHARGES
+- **Areas:** AREA_SQUARE1X1
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Berserk melee skill-based |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | Complexa: (skill+2*attack)*1.1 / *3, ×1.1 final |
+| **Mana** | 340 |
+| **Area** | SQUARE1X1 (self melee) |
+| **Level** | 90 (late) |
+| **Cooldown** | 6s |
+| **Premium** | Sim |
+| **BLOCKARMOR** | 1 |
+| **USECHARGES** | 1 |
+| **Weapon Required** | Sim |
+| **Vocações** | Knight, Elite Knight |
+| **Padrão** | Skill-based melee + BLOCKARMOR + USECHARGES + TODO formula |

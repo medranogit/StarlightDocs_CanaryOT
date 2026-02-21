@@ -1,0 +1,192 @@
+---
+title: check_bless.lua
+description: Sistema de checagem de bênçãos com delegação para módulo externo
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="check_bless.lua" icon="star">
+Script de ação Lua que implementa verificação de status de bênçãos, delegando para sistema externo.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/check_bless.lua`
+
+Wrapper minimalista (7 linhas) que carrega blessing system e delega verificação para Blessings.checkBless(). Registra 2 item IDs (6561, 11468).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `check_bless.lua` é wrapper extremamente simples que atua como passthrough para sistema de bênçãos externo. Carrega módulo blessing.lua do core directory e delega toda lógica de verificação para Blessings.checkBless(). Suporta 2 item IDs diferentes com mesmo comportamento.
+
+**Estrutura de Funcionalidades**
+
+```
+[Carrega external: blessing.lua]
+    ↓
+[Create checkBless Action]
+    ↓
+[onUse function]
+    └─ return Blessings.checkBless(player)
+    ↓
+[Register Action on 2 item IDs]
+    ├─ 6561 (verificação tipo 1)
+    └─ 11468 (verificação tipo 2)
+```
+
+## Variáveis Globais
+
+### Blessings (external module)
+
+```lua
+dofile(CORE_DIRECTORY .. "/libs/systems/blessing.lua")
+```
+
+Carrega módulo externo de bênçãos.
+
+**Localização**: `CORE_DIRECTORY/libs/systems/blessing.lua`
+
+**Namespace Fornecido**: Blessings global com funções relacionadas a bênçãos.
+
+**Função Utilizada**: `Blessings.checkBless(player, [item])`
+
+## Funções
+
+### checkBless.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que delega verificação para módulo externo.
+
+**Parâmetros:**
+- player: Creature player
+- item: Item sendo usado para checar bênçãos
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Implementação:**
+
+```lua
+function checkBless.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	return Blessings.checkBless(player)
+end
+```
+
+Passthrough direto sem lógica local.
+
+**Return Value:**
+
+Retorna resultado de Blessings.checkBless(player):
+- true: Operação bem-sucedida (verificação realizada)
+- false: Operação falhou
+- Possível nil: Sem feedback requerido
+
+## Item IDs Registrados
+
+| ID | Descrição |
+|----|-----------|
+| 6561 | Checker de bênçãos tipo 1 |
+| 11468 | Checker de bênçãos tipo 2 |
+
+Ambos mapeiam para mesma ação.
+
+## Fluxo de Operação
+
+```
+[Player usa verificador (6561 ou 11468)]
+    ↓
+[Script checked against 2 registered IDs]
+    ├─ ID match? → onUse triggered
+    └─ ID not in list? → no handler
+    ↓
+[checkBless.onUse called]
+    ↓
+[Blessings.checkBless(player)]
+    ↓
+[External module checks blessing status]
+    ├─ Acessa bênçãos ativas do player
+    ├─ Verifica status
+    ├─ Envia feedback ao player
+    │   (lista bênçãos, duração, etc)
+    └─ Retorna sucesso/falha
+    ↓
+[return true/false]
+```
+
+## Arquitetura de Módulo
+
+**Padrão": Wrapper com Delegação
+
+```
+check_bless.lua (wrapper, 7 linhas)
+    ↓ delegates to
+CORE_DIRECTORY/libs/systems/blessing.lua
+    └─ Blessings.checkBless(player)
+```
+
+### Vantagens dessa Arquitetura
+
+1. **Separação de Concerns**: Lógica centralizada em blessing.lua
+2. **Reutilização**: Múltiplos scripts podem usar Blessings
+3. **Manutenibilidade**: Alterações em blessing.lua afetam todos
+4. **Escalabilidade**: Novos item IDs podem ser adicionados sem alterar lógica
+5. **Legibilidade**: Wrapper claramente indica delegação
+
+## Comparação com Sistemas Similares
+
+| Script | Itens | Função | Padrão |
+|--------|-------|--------|--------|
+| blessing_charms.lua | 7 IDs | Blessings.useCharm() | Aplicar |
+| check_bless.lua | 2 IDs | Blessings.checkBless() | Verificar |
+
+Ambos delegam para blessing.lua mas com operações diferentes.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Wrapper pattern para delegação de operações
+2. dofile() para carregamento de módulos core
+3. Blessings como namespace global compartilhado
+4. Múltiplos item IDs mapeando mesma ação
+5. Passthrough simples sem lógica local
+
+**Responsabilidades:**
+1. Carregar módulo blessing.lua
+2. Registrar múltiplos item IDs
+3. Delegar para Blessings.checkBless()
+4. Retornar resultado da função externa
+
+## Relação com blessing_charms.lua
+
+Ambos são wrappers de blessing system:
+
+**blessing_charms.lua**:
+- Usa Blessings.useCharm()
+- Aplica/ativa nova bênção
+- 7 item IDs diferentes
+
+**check_bless.lua**:
+- Usa Blessings.checkBless()
+- Verifica bênçãos existentes
+- 2 item IDs diferentes
+
+Complementares na funcionalidade.
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Wrapper)  
+**Tamanho**: 7 linhas  
+**Função**: 1 (onUse - passthrough)  
+**Item IDs**: 2 checkers  
+**Módulo Externo**: CORE_DIRECTORY/libs/systems/blessing.lua  
+**Padrão**: Wrapper
+</Card>
+
+<Aside type="note">
+Wrapper minimalista que verifica status de bênçãos via módulo externo. Junto com blessing_charms.lua forma sistema completo de bênçãos (aplicar e verificar). Delegação pura sem lógica local.
+</Aside>

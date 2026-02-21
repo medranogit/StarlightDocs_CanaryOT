@@ -1,0 +1,458 @@
+---
+title: "Spell - ethereal_spear.lua"
+description: "Spell de lança etérea para paladins level 23 baseado em skill (não magic level)"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `ethereal_spear.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 111 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Paladin, Royal Paladin |
+| **Level Requerido** | 23 |
+| **Mana Requerida** | 25 |
+| **Words** | exori con |
+| **Alcance** | 7 (MUITO LONGE!) |
+| **Área** | Single target |
+| **Cooldown** | 2s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Skill-based (não magic level!) - RARO! |
+| **Callback Type** | CALLBACK_PARAM_SKILLVALUE (não LEVELMAGIC!) |
+| **BLOCKARMOR** | 1 (ignora armadura!) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_ETHEREAL_SPEAR |
+| **Requer Target** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 35 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell muito RARO de lança física para paladins nível 23 (early). Dano FÍSICO escalável (RARO! skill-based, não magic-level!). BLOCKARMOR: 1 (ignora armadura!). Range 7 (MUITO longe!). Callback SKILLVALUE (não LEVELMAGICVALUE!). 25 mana (baato). Premium only. Cooldown rápido 2s. Muito único!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/ethereal_spear.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(111)
+spell:name("Ethereal Spear")
+spell:words("exori con")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_ETHEREAL_SPEAR)
+spell:level(23)
+spell:mana(25)
+spell:isPremium(true)
+spell:range(7)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("paladin;true", "royal paladin;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Lança Etérea - Skill-Based Physical (RARO!)**
+
+Este spell implementa um **sistema MUITO RARO de spell físico escalável por skill (não magic level!)**:
+
+1. **Skill-Based (MUITO RARO!):**
+   - Usa CALLBACK_PARAM_SKILLVALUE
+   - Escalado por skill, NÃO magic level!
+   - Muito raro em sistema magic spells
+   - Typical weapons use skill
+
+2. **Fórmula Skill-Based:**
+   - min = (level/5) + (skill + 25) / 3
+   - max = (level/5) + skill + 25
+   - Escalabilidade skill-based (único!)
+   - Sem magic level!
+
+3. **BLOCKARMOR - Ignora Armadura!**
+   - BLOCKARMOR: 1 (ignora armadura!)
+   - Dano penetra defesa
+   - Muito tático!
+
+4. **Very Early Premium:**
+   - Level 23 (early!)
+   - 25 mana (baato)
+   - Premium only
+   - Cooldown 2s (rápido)
+   - Range 7 (MUITO longe!)
+
+**Fórmula Visual:**
+```
+Paladin lvl 23, skill 30:
+  min = 4.6 + 55/3 = 4.6 + 18.3 = 22.9
+  max = 4.6 + 30 + 25 = 59.6
+
+Paladin lvl 60, skill 100:
+  min = 12 + 125/3 = 12 + 41.7 = 53.7
+  max = 12 + 100 + 25 = 137
+```
+
+**Diferencial:** Spell FÍSICO skill-based com BLOCKARMOR!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `ethereal_spear` oferece dano físico SKILL-BASED:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE (RARO!)
+- **Fórmula:** (level/5) + ((skill+25)/3 ou skill+25) (SKILL-BASED!)
+- **Mana:** 25 (baato)
+- **Level:** 23 (early)
+- **Range:** 7 (MUITO longe!)
+
+### Arquitetura
+
+Combat com callback skill:
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ Effect: HITAREA
+├─ Distance: ETHEREALSPEAR
+├─ BLOCKARMOR: 1 (ignora armadura!)
+└─ Callback: onGetFormulaValues (SKILLVALUE!)
+
+onGetFormulaValues(player, skill, attack, factor)
+└─ min/max skill-based
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ETHEREALSPEAR)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+```
+
+**Propósito:** Combat de dano físico com armor bypass.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITAREA | Efeito impacto |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ETHEREALSPEAR | Projétil lança |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Ignora armadura! |
+
+---
+
+### Função Global: onGetFormulaValues (SKILL-BASED!)
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local level = player:getLevel()
+
+	local min = (level / 5) + (skill + 25) / 3
+	local max = (level / 5) + skill + 25
+
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano físico escalável por SKILL.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `skill` | number | Skill value (não magic level!) |
+| `attack` | number | Attack power (não usado) |
+| `factor` | number | Factor (não usado) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+level = player:getLevel()
+min = (level / 5) + (skill + 25) / 3
+max = (level / 5) + skill + 25
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Skill min: (skill+25)/3 = escalabilidade skill
+- Skill max: (skill+25) = escalabilidade skill forte
+- Sem bônus fixo
+
+**Exemplos:**
+
+| Level | Skill | Min | Max |
+|---|---|---|---|
+| 23 | 30 | 22 | 59 |
+| 50 | 60 | 22 | 110 |
+| 80 | 100 | 32 | 150 |
+| 100 | 120 | 40 | 170 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+**Nota:** CALLBACK_PARAM_SKILLVALUE (não LEVELMAGICVALUE!) - MUITO RARO!
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Ethereal spear ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback skill |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `level` | number | Level jogador |
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Skill-Based Callback (MUITO RARO!)
+
+```lua
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+**Benefício:** Spell escalado por SKILL (não magic level!) - ÚNICO!
+
+### Padrão 2: BLOCKARMOR Bypass
+
+```lua
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+```
+
+**Benefício:** Dano ignora armadura do target.
+
+### Padrão 3: Physical Damage (RARO para Spell!)
+
+```lua
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+```
+
+**Benefício:** Dano físico spell (típico weapons).
+
+### Padrão 4: Long Range (7 tiles)
+
+```lua
+spell:range(7)
+```
+
+**Benefício:** Range MUITO longo para early level.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, skill, attack, factor)
+
+**Descrição:** Calcula dano lança skill-based.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `skill` | number | Skill value jogador |
+| `attack` | number | Attack power (unused) |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(paladin, 80, 0, 0)
+// level = 50
+// min = 10 + (80+25)/3 = 10 + 35 = 45
+// max = 10 + 80 + 25 = 115
+// Retorna: -45, -115
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura lança etérea em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Paladin conjurador |
+| `var` | Variant | Target (obrigatório) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Lança ativada |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 23+
+- 25 mana
+- Target próximo (range 7 - MUITO longe!)
+- Premium account
+- Cooldown 2s
+
+**Efeito:**
+- Efeito impacto
+- Projétil lança etérea
+- Dano físico skill-based
+- Ignora armadura (BLOCKARMOR)
+- Range 7 tiles (MUITO longe!)
+
+**Exemplo:**
+
+```lua
+-- Paladin lvl 50, skill 80
+spell.onCastSpell(paladin, targetVariant)
+// Validações:
+//   ✓ Level 50 >= 23
+//   ✓ Mana 25 disponível
+//   ✓ Target range 7 (MUITO longe!)
+//   ✓ Premium account
+// Combat executa
+// Projétil lança viaja
+// Impacto hit area
+// Dano: -45 a -115
+// Ignora armadura target
+// Range 7 tiles (EXTREMO)
+// Cooldown 2s
+// Resultado: Lança etérea precisão!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Physical Spell Early
+
+```lua
+-- Paladin lvl 23+ premium
+// Ethereal Spear = primeiro physical spell
+// Skill-based (RARO!)
+// Range 7 = distância
+```
+
+### Caso 2: Armor Penetration
+
+```lua
+-- Paladin vs armored target
+// BLOCKARMOR = ignora defesa
+// Dano seguro penetra
+// Tactical advantage
+```
+
+### Caso 3: Skill Training
+
+```lua
+-- Paladin farm leveling skill
+// Ethereal Spear = physical damage
+// Escalabilidade skill (crescente)
+// Dano aumenta com skill progress
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callback:** CALLBACK_PARAM_SKILLVALUE (RARO!)
+- **Effects:** CONST_ME_HITAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Lança física skill-based |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | min=(lvl/5)+((skill+25)/3), max=(lvl/5)+(skill+25) |
+| **Callback** | CALLBACK_PARAM_SKILLVALUE (MUITO RARO!) |
+| **BLOCKARMOR** | 1 (ignora armadura!) |
+| **Mana** | 25 |
+| **Range** | 7 (MUITO longe!) |
+| **Level** | 23 (early) |
+| **Cooldown** | 2s (rápido) |
+| **Premium** | Sim |
+| **Vocações** | Paladin, Royal Paladin |
+| **Padrão** | Skill-based physical + BLOCKARMOR + long range |

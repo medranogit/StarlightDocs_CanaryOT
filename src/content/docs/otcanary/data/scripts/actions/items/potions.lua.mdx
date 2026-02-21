@@ -1,0 +1,316 @@
+---
+title: potions.lua
+description: Sistema complexo de poções com 22+ configurações, condições pré-compiladas, combate curativo e validações de nível e vocação.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="potions.lua" icon="pencil">
+Sistema complexo de poções com 22+ configurações, condições pré-compiladas, combate curativo e validações de nível/vocação.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/potions.lua`
+
+**Linhas:** 160 | **IDs dos Items:** 236-49271 | **Tipo:** Action Handler com Config Table
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa um sistema robusto de poções com três categorias: poções curativas simples (health/mana), poções com condições de buff (berserk, mastermind, etc.), e poções especiais (antídoto, magic shield). Cada poção tem validações de nível e vocação, com suporte a transformações e combate configurável.
+
+### Estrutura de Funcionalidades
+
+```
+CONDIÇÕES PRÉ-COMPILADAS:
+  ├─ berserk (CONDITION_ATTRIBUTES) → Melee +5, Shield -10
+  ├─ mastermind → Magic Level +3
+  ├─ transcendence → Fist +4
+  ├─ bullseye → Distance +5, Shield -10
+  ├─ antidote (COMBAT_HEALING) → Aliviar poison
+  └─ exhaust → Controle de cooldown
+
+LOCAL FUNCTIONS:
+  └─ magicshield(player) → Condition MANASHIELD dinâmica
+
+POTIONS TABLE (22+ entries):
+  ├─ [236-268] → Health/Mana básicas
+  ├─ [6558] → Transform para 236/237
+  ├─ [7439-7443] → Buffs vocação-exclusiva
+  ├─ [7642-7876] → Health/Mana avançadas
+  ├─ [23373-35563] → Poções level 130-200
+  └─ [49271] → Condition transcendence (monk)
+
+ACTION HANDLER:
+  └─ flaskPotion.onUse() → Lógica validação + aplicação
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| berserk | Condition | CONDITION_ATTRIBUTES: Melee +5 |
+| mastermind | Condition | CONDITION_ATTRIBUTES: Magic Level +3 |
+| transcendence | Condition | CONDITION_ATTRIBUTES: Fist +4 |
+| bullseye | Condition | CONDITION_ATTRIBUTES: Distance +5 |
+| antidote | Combat | COMBAT_HEALING com DISPEL_POISON |
+| exhaust | Condition | CONDITION_EXHAUST_HEAL para cooldown |
+| potions | table | 22+ poções configuradas |
+| flaskPotion | Action | Objeto handler principal |
+
+---
+
+## Funções Locais
+
+```lua
+magicshield(player)
+```
+
+**Descrição:** Cria condition MANASHIELD dinâmica basada em stats do jogador
+
+**Parâmetros:**
+- `player` (Player) - alvo para aplicar condição
+
+**Lógica Interna:**
+```lua
+local condition = Condition(CONDITION_MANASHIELD)
+condition:setParameter(CONDITION_PARAM_TICKS, 60000) -- 1 minuto
+-- Shield = min(MaxMana, 300 + 7.6*Level + 7*MagicLevel)
+condition:setParameter(CONDITION_PARAM_MANASHIELD, 
+  math.min(player:getMaxMana(), 300 + 7.6 * player:getLevel() + 7 * player:getMagicLevel()))
+exhaust:setParameter(CONDITION_PARAM_TICKS, 500)
+player:addCondition(condition)
+```
+
+**Exemplo Cálculo:**
+- Level 50, Magic 20, MaxMana 500:
+  - Shield = min(500, 300 + 380 + 140) = min(500, 820) = 500
+
+---
+
+## Constantes e Parâmetros
+
+### Poções Curativas Simples
+
+| ID | Tipo | Health | Mana | Level | Vocações | Flask |
+|---|---|---|---|---|---|---|
+| 236 | Health | 250-350 | - | 50 | Knight, Paladin, Monk | 283 |
+| 237 | Mana | - | 115-185 | 50 | Todas | 283 |
+| 238 | Mana | - | 150-250 | 80 | Sorcerer, Druid, Paladin, Monk | 284 |
+| 239 | Health | 425-575 | - | 80 | Knight | 284 |
+| 266 | Health | 125-175 | - | - | Todas | 285 |
+| 268 | Mana | - | 75-125 | - | Todas | 285 |
+
+### Poções com Conditions
+
+| ID | Tipo | Condition | Effect | Vocação | Achievement |
+|---|---|---|---|---|---|
+| 7439 | Buff | berserk | MAGIC_RED | Knight | Berserker |
+| 7440 | Buff | mastermind | MAGIC_BLUE | Sorcerer, Druid | Mastermind |
+| 7443 | Buff | bullseye | MAGIC_GREEN | Paladin | Sharpshooter |
+| 49271 | Buff | transcendence | MAGIC_GREEN | Monk | - |
+
+### Poções Especiais
+
+| ID | Tipo | Efeito | Descrição |
+|---|---|---|---|
+| 6558 | Transform | DRAWBLOOD | Transforma para 236 ou 237 |
+| 7644 | Combat | Antidote | Remove poison + healing |
+| 35563 | Special | magicshield | Mana shield dinâmica |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function flaskPotion.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validation: target existe e é jogador (ou ninguém)
+	if not target or type(target) == "userdata" and not target:isPlayer() then
+		return false
+	end
+
+	-- Carrega configuração da poção
+	local potion = potions[item:getId()]
+	
+	-- Validação de Level + Vocação (se não é admin)
+	if not player:getGroup():getAccess() and 
+	   (potion.level and player:getLevel() < potion.level or 
+	    potion.vocations and not table.contains(potion.vocations, player:getVocation():getBaseId())) then
+		player:say(potion.description, MESSAGE_POTION)
+		return true  -- return true mas não consome
+	end
+
+	-- Aplicar healing/condition/combat
+	if potion.health or potion.mana or potion.combat then
+		if potion.health then
+			doTargetCombatHealth(player, target, COMBAT_HEALING, 
+			  potion.health[1], potion.health[2], CONST_ME_MAGIC_BLUE)
+		end
+		if potion.mana then
+			doTargetCombatMana(0, target, potion.mana[1], potion.mana[2], CONST_ME_MAGIC_BLUE)
+		end
+		if potion.combat then
+			potion.combat:execute(target, Variant(target:getId()))
+		end
+		-- Mais código... (conditions, transforms, etc)
+	end
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa poção (ID X)
+  │
+  ├─ Target válido?
+  │   └─ NÃO → return false (operação cancelada)
+  │
+  ├─ Poção configurada em table?
+  │   └─ NÃO → return false
+  │
+  ├─ Validação Level/Vocação (se não admin)
+  │   ├─ Level < requerido? → Say description, return true (sem consumir)
+  │   ├─ Vocação inválida? → Say description, return true (sem consumir)
+  │   └─ OK → Continua...
+  │
+  ├─ Adicionar efetos:
+  │   ├─ health? → doTargetCombatHealth
+  │   ├─ mana? → doTargetCombatMana
+  │   ├─ combat? → potion.combat:execute (ex: antidote)
+  │   ├─ condition? → target:addCondition + addAchievement
+  │   ├─ text? → player:sendTextMessage (buff notify)
+  │   ├─ effect? → sendMagicEffect
+  │   └─ transform? → item:transform
+  │
+  ├─ Exhaust aplicado
+  └─ return true (sucesso)
+```
+
+### Validação de Nível e Vocação
+
+```lua
+-- Estrutura de validação
+if not player:getGroup():getAccess() then  -- Se não é admin
+	-- Validação 1: Nível insuficiente
+	if potion.level and player:getLevel() < potion.level then
+		player:say(potion.description, MESSAGE_POTION)
+		return true  -- Rejeita sem consumir
+	end
+	
+	-- Validação 2: Vocação inválida
+	if potion.vocations and not table.contains(potion.vocations, player:getVocation():getBaseId()) then
+		player:say(potion.description, MESSAGE_POTION)
+		return true  -- Rejeita sem consumir
+	end
+end
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Conditions Pré-compiladas**: Berserk, mastermind, bullseye, transcendence em nível global
+- **Config Table Pattern**: 22+ poções com propriedades variadas armazenadas em table
+- **Validação Dupla**: Nível E vocação devem passar para autorizar uso
+- **Admin Override**: `player:getGroup():getAccess()` ignora todas as validações
+- **Return True Sem Consumir**: Quando rejeita per validação, return true é necessário
+- **Magic Shield Dinâmica**: `magicshield()` calcula shield baseado em stats
+- **Combate Curativo**: `doTargetCombatHealth` e `doTargetCombatMana` para healing
+- **Exhaust Control**: `CONDITION_EXHAUST_HEAL` gerencia cooldown de uso
+
+### Responsabilidades do Handler
+
+1. **Validar target**: Verificar se target existe e é jogador
+2. **Carregar config**: Obter potion config da table por ID
+3. **Verificar level**: Se level < potion.level, rejeitar
+4. **Verificar vocação**: Se vocações e base não match, rejeitar
+5. **Aplicar healing**: health e mana via combate
+6. **Aplicar conditions**: Buffs com ticks e parâmetros
+7. **Executar combates**: Antídoto ou outros combates configurados
+8. **Registrar achievements**: Se poção tem achievement
+9. **Efetuar transformações**: Se poção muda de ID
+10. **Controlar exhaustion**: Cooldown de reuso
+
+---
+
+## Patterns e Implementação
+
+### Padrão Config Table para Dynamic Handlers
+
+Este script usa padrão robusto de table-driven design:
+
+```lua
+local potions = {
+	[itemId] = {
+		health = {min, max},
+		mana = {min, max},
+		level = requiredLevel,
+		vocations = {VOCATION1, VOCATION2},
+		condition = conditionObject,
+		effect = CONST_ME_XXX,
+		text = "feedback message",
+		achievement = "achievementName",
+		flask = containerItemId
+	}
+}
+```
+
+### Comparação: Construtor Condição Estática vs Dinâmica
+
+| Aspecto | Estática (berserk, mastermind) | Dinâmica (magicshield) |
+|---------|---|---|
+| Criação | Global pré-compilada | Runtime por jogador |
+| Parâmetros | Fixos | Baseados em stats |
+| Performance | Melhor (reuse) | Menor (create per use) |
+| Flexibilidade | Limitada | Total |
+| Exemplo | Melee +5 sempre | Shield = formula(Level, Magic) |
+
+### Fluxo de Múltiplos Tipos
+
+```
+Poção Simples (236):
+  ├─ health: {250, 350}
+  └─ No other configs
+  
+Poção com Buff (7439 - Berserk):
+  ├─ condition: berserk
+  ├─ effect: MAGIC_RED
+  ├─ vocations: {KNIGHT}
+  └─ achievement: "Berserker"
+
+Poção Especial (35563 - Magic Shield):
+  ├─ func: magicshield (called dynamically)
+  ├─ level: 14
+  ├─ vocations: {SORCERER, DRUID}
+  └─ effect: ENERGYAREA
+
+Poção Curativa (7644 - Antidote):
+  ├─ combat: antidote (DISPEL_POISON)
+  └─ flask: 285
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: potions.lua" icon="star">
+Análise completa do sistema avançado de poções com config table, condições dinâmicas, validações multi-level e padrão table-driven para handlers complexos. Cobre 22+ configurações e combate curativo.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Config table + handler dinâmico | Complexidade: Alta
+</Aside>

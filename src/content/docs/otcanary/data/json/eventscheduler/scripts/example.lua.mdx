@@ -1,0 +1,229 @@
+---
+title: example.lua
+description: Script de exemplo para executar durante evento agendado
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="example.lua" icon="star">
+Script Lua de exemplo que demonstra como criar um GlobalEvent para executar durante evento agendado.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/json/eventscheduler/scripts/example.lua`
+
+Arquivo mínimal que registra um GlobalEvent para ser acionado no startup do servidor.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O arquivo `example.lua` é um template mínimal demonstrando como criar um script Lua que se integra com o sistema de Event Scheduler. Quando um evento no `events.json` referenciar este script, ele será carregado e executado pelo servidor. O exemplo atual apenas registra um GlobalEvent vazio, servindo como prototipo para lógica customizada.
+
+**Estrutura Fundamental**
+
+```
+[GlobalEvent Registration]
+    ↓
+[Create "EventScheduleExample" event]
+    ↓
+[Define onStartup callback (empty)]
+    ↓
+[Register event in server]
+    ↓
+[Execute when event is active]
+```
+
+## Código Fonte
+
+```lua
+local globalEvent = GlobalEvent("EventScheduleExample")
+function globalEvent.onStartup() end
+
+globalEvent:register()
+```
+
+### Componentes
+
+#### 1. GlobalEvent Creation
+
+```lua
+local globalEvent = GlobalEvent("EventScheduleExample")
+```
+
+- Cria novo GlobalEvent com nome identificador "EventScheduleExample"
+- Nome deve ser único no servidor
+- Instância armazenada em variável local
+
+#### 2. Event Callback
+
+```lua
+function globalEvent.onStartup() end
+```
+
+- Callback vazio executado no startup do servidor
+- Ponto de entrada para lógica customizada
+- Podem ser adicionadas ações aqui durante ativação de evento
+
+#### 3. Event Registration
+
+```lua
+globalEvent:register()
+```
+
+- Registra o evento no sistema
+- Permite ao servidor reconhecer e executar o evento
+- Deve ser chamado ao final do script
+
+## Estrutura de Funcionalidades
+
+### Callbacks Disponíveis
+
+GlobalEvent suporta múltiplos callbacks (exemplo atual usa apenas onStartup):
+
+| Callback | Trigger | Parâmetros | Uso |
+|----------|---------|-----------|-----|
+| onStartup | Server startup | none | Inicialização de evento |
+| onShutdown | Server shutdown | none | Cleanup de recurso |
+| onTimer | Intervalo periódico | interval | Ações repetidas |
+
+### Expandindo o Script
+
+Para adicionar lógica customizada, preencher callback:
+
+```lua
+function globalEvent.onStartup()
+  -- Código executado quando evento ativa
+  print("Event 'EventScheduleExample' activated!")
+  
+  -- Exemplo: Broadcast para jogadores
+  broadcastMessage(TALKTYPE_ORANGE_2, "Special event is now ACTIVE!")
+  
+  -- Exemplo: Modificar spawn rate dinamicamente
+  Game.setSpawnRate(150)
+  
+  -- Exemplo: Agendar tarefa timed
+  addEvent(function()
+    print("Event running for 1 hour...")
+  end, 3600000) -- 1 hora em ms
+end
+```
+
+## Padrões de Implementação
+
+### Pattern 1: Broadcast Message
+
+```lua
+function globalEvent.onStartup()
+  broadcastMessage(TALKTYPE_ORANGE_2, "Double XP event started!")
+end
+```
+
+Notifica todos os jogadores online sobre ativação de evento.
+
+### Pattern 2: Spawn Rate Modification
+
+```lua
+function globalEvent.onStartup()
+  Game.setSpawnRate(200) -- 2x velocidade
+  print("Spawn rate set to 200%")
+end
+```
+
+Modifica taxas de spawn durante evento (complementa JSON multipliers).
+
+### Pattern 3: Timed Actions
+
+```lua
+function globalEvent.onStartup()
+  local eventDuration = 7200000 -- 2 horas em ms
+  
+  addEvent(function()
+    broadcastMessage(TALKTYPE_ORANGE_2, "Event ending soon!")
+  end, eventDuration)
+end
+```
+
+Executa ações agendadas durante duração do evento.
+
+### Pattern 4: Quest/NPC Spawn
+
+```lua
+function globalEvent.onStartup()
+  -- Spawn NPC ou quest durante evento
+  local npc = Game.createNpc("special_event_npc", {x=100, y=100, z=7})
+  print("Event NPC spawned!")
+end
+```
+
+Ativa NPCs ou quests especiais apenas durante evento.
+
+## Ciclo de Vida do Evento
+
+```
+events.json define evento
+    ↓
+Server startup
+    ↓
+Verifica data: startdate <= hoje <= enddate?
+    ↓ SIM
+Carrega example.lua
+    ↓
+Executa globalEvent.onStartup()
+    ↓
+Evento ativo (multipliers aplicados)
+    ↓
+Fim da data (enddate alcançado)
+    ↓
+Evento desativado
+```
+
+## Relação com events.json
+
+No `events.json`, referenciar script:
+
+```json
+{
+  "name": "Event Name",
+  "startdate": "11/12/2024",
+  "enddate": "11/17/2024",
+  "script": "example.lua",
+  "ingame": { "exprate": 200 }
+}
+```
+
+Campo "script" aponta para arquivo Lua em `scripts/` directory. Se vazio, nenhum script é executado (apenas multipliers JSON aplicados).
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. GlobalEvent é classe para criar eventos globais do servidor
+2. onStartup callback executa quando evento ativa
+3. register() necessário para ativar evento no sistema
+4. Script Lua é opcional - evento funciona só com JSON
+5. Callbacks podem trigger broadcast, modificar taxas, agendar ações
+
+**Responsabilidades:**
+1. Registrar GlobalEvent com nome único
+2. Implementar lógica de evento em callbacks
+3. Sincronizar com datas em events.json
+4. Broadcast notificações aos jogadores
+5. Cleanup de recursos quando necessário
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (GlobalEvent)  
+**Tamanho**: 3 linhas (template mínimal)  
+**Callbacks**: 1 (onStartup)  
+**Dependências**: Server API GlobalEvent
+</Card>
+
+<Aside type="note">
+Script de exemplo mantém estrutura mínimal de template. Para implementar lógica de evento real, expandir função onStartup() com código customizado conforme padrões demonstrados nesta documentação.
+
+Exemplo usado em conjunto com events.json para criar eventos agendados com comportamento customizado via Lua.
+</Aside>

@@ -1,0 +1,228 @@
+---
+title: Concoctions
+description: Sistema de concoctions (poções de buff global) com 21+ IDs parametrizáveis via storage global e callbacks personalizados
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `concoctions.lua` |
+| **Tipo de Sistema** | Poções globais persistentes (TibiaDrome) |
+| **Total de Concoctions** | 21+ (via Concoction.Ids) |
+| **Estrutura Principal** | Tabela `configs` com índices por Concoction.Ids |
+| **Persistência** | Via Global.Storage.TibiaDrome |
+| **Storage Fields** | TimeLeft, LastActivatedAt |
+| **Integração** | Sistema de login (CreatureEvent) |
+| **Override Support** | durationOverride, cooldownOverride, tickTypeOverride |
+| **Callback Types** | Custom function, Condition aplicação, Condition removal |
+
+## 📍 Caminho Original
+
+```
+data/scripts/systems/concoctions.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este arquivo configura concoctions globais que são registradas no startup e aplicadas em login. Cada concoction tem storage persistente (TimeLeft, LastActivatedAt) que persiste entre logins. O arquivo define configs customizadas por Concoction ID - se não existe config, usa tabela vazia (padrão). Suporta 3 tipos de aplicação: (1) Custom callback (e.g., StaminaExtension adiciona 60 min stamina), (2) Condition com parametro único (e.g., CONDITION_PARAM_SKILL_CRITICAL_HIT_CHANCE = 500), (3) Rate/multiplier (e.g., WealthDuplex rate=100). Em login, Concoction.initAll(player, true) inicializa todas as concoctions registradas para o player.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `concoctions.lua` implementa sistema configurável de 21+ concoctions globais (poções/buffs permanentes) com persistência storage, callbacks customizados e suporte a override de duração/cooldown. É arquivo de configuração + registro que integra-se com sistema de login TibiaDrome. O arquivo define campo `configs` com 21+ entradas por Concoction.Ids, cada uma com tipo de aplicação: custom callback (StaminaExtension +60 minutos), condition simples (CONDITION_PARAM_SKILL_CRITICAL_HIT_CHANCE +500), absorb percent (8% fire/ice/earth/energy/holy/death/physical), amplification percent (8% damage boost), rate bypass (WealthDuplex=100), multiplier (BestiaryBetterment=2.0x). A implementação utiliza Concoction.new() factory para registrar cada concoction com storage, depois Concoction.initAll() em login. Padrão de configuração + factory.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Tabela de Configurações
+local configs = {
+    -- Formato por Concoction ID:
+    [Concoction.Ids.ConcoID] = {
+        -- Tipo 1: Custom callback
+        callback = function(player, config)
+            -- Lógica customizada
+        end,
+        
+        -- Tipo 2: Condition com parametro simples
+        condition = { CONDITION_PARAM_NAME, value },
+        
+        -- Tipo 3: Rate/Multiplier
+        rate = 100,
+        multiplier = 2.0,
+        
+        -- Tipo 4: Absortion/Amplification
+        amount = 60, -- para stamina, etc
+        
+        -- Overrides (opcionais)
+        durationOverride = 30, -- segundos
+        cooldownOverride = 60,
+        tickTypeOverride = ConcoctionTickType.Experience,
+    },
+}
+
+-- 2. Registro de Concoctions
+for concoctionKey, concoctionId in pairs(Concoction.Ids) do
+    Concoction.new({
+        id = concoctionId,
+        timeLeftStorage = Global.Storage.TibiaDrome[concoctionKey].TimeLeft,
+        lastActivatedAtStorage = Global.Storage.TibiaDrome[concoctionKey].LastActivatedAt,
+        config = configs[concoctionId] or {},
+    }):register()
+end
+
+-- 3. CreatureEvent de Login
+local concoctionsOnLogin = CreatureEvent("ConcoctionsOnLogin")
+
+function concoctionsOnLogin.onLogin(player)
+    Concoction.initAll(player, true)
+    return true
+end
+
+concoctionsOnLogin:register()
+```
+
+## 📊 Catálogo de Concoctions
+
+| ID (Concoction.Ids) | Nome | Tipo | Aplicação | Valor |
+|---|---|---|---|---|
+| StaminaExtension | Stamina Extension | Buffer | Callback custom | +60 minutos stamina |
+| KooldownAid | Kooldown Aid | Buff utility | Callback custom | Clear all spell cooldowns |
+| StrikeEnhancement | Strike Enhancement | Buff ofensivo | Condition | SKILL_CRITICAL_HIT_CHANCE +500 |
+| CharmUpgrade | Charm Upgrade | Buff especial | Condition | CHARM_CHANCE_MODIFIER +5 |
+| WealthDuplex | Wealth Duplex | Buff economia | Rate | rate = 100 |
+| BestiaryBetterment | Bestiary Betterment | Buff bestiary | Multiplier | multiplier = 2.0 |
+| FireResilience | Fire Resilience | Resistência | Condition | ABSORB_FIREPERCENT +8 |
+| IceResilience | Ice Resilience | Resistência | Condition | ABSORB_ICEPERCENT +8 |
+| EarthResilience | Earth Resilience | Resistência | Condition | ABSORB_EARTHPERCENT +8 |
+| EnergyResilience | Energy Resilience | Resistência | Condition | ABSORB_ENERGYPERCENT +8 |
+| HolyResilience | Holy Resilience | Resistência | Condition | ABSORB_HOLYPERCENT +8 |
+| DeathResilience | Death Resilience | Resistência | Condition | ABSORB_DEATHPERCENT +8 |
+| PhysicalResilience | Physical Resilience | Resistência | Condition | ABSORB_PHYSICALPERCENT +8 |
+| FireAmplification | Fire Amplification | Amplificação | Condition | INCREASE_FIREPERCENT +8 |
+| IceAmplification | Ice Amplification | Amplificação | Condition | INCREASE_ICEPERCENT +8 |
+| EarthAmplification | Earth Amplification | Amplificação | Condition | INCREASE_EARTHPERCENT +8 |
+| EnergyAmplification | Energy Amplification | Amplificação | Condition | INCREASE_ENERGYPERCENT +8 |
+| HolyAmplification | Holy Amplification | Amplificação | Condition | INCREASE_HOLYPERCENT +8 |
+| DeathAmplification | Death Amplification | Amplificação | Condition | INCREASE_DEATHPERCENT +8 |
+| PhysicalAmplification | Physical Amplification | Amplificação | Condition | INCREASE_PHYSICALPERCENT +8 |
+
+## 🎯 Padrões de Configuração
+
+### 1. **Padrão Custom Callback**
+
+```lua
+[Concoction.Ids.StaminaExtension] = {
+    amount = 60,
+    callback = function(player, config)
+        player:setStamina(player:getStamina() + config.amount)
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            "You have been granted " .. config.amount .. " minutes of stamina.")
+    end,
+},
+```
+
+**Uso:** Para lógica complexa customizada per-concoction
+**Parâmetro:** config.amount (ou qualquer campo customizado)
+**Exemplo**: StaminaExtension (+60 min stamina), KooldownAid (clear cooldowns)
+
+### 2. **Padrão Condition Simples**
+
+```lua
+[Concoction.Ids.StrikeEnhancement] = {
+    condition = { CONDITION_PARAM_SKILL_CRITICAL_HIT_CHANCE, 500 }
+},
+```
+
+**Uso:** Para aplicar um CONDITION_PARAM com valor específico
+**Tupla:** `{ paramName, value }`
+**Exemplos**: 
+- Critical hit chance +500
+- Charm chance modifier +5
+- Absorb percent +8% (múltiplos tipos)
+- Amplification percent +8% (múltiplos tipos)
+
+### 3. **Padrão Rate Bypass**
+
+```lua
+[Concoction.Ids.WealthDuplex] = {
+    rate = 100
+},
+```
+
+**Uso:** Para modificar economia/loot rate
+**Valor:** rate = 100 (interpretar como multiplier ou bypass)
+
+### 4. **Padrão Multiplier**
+
+```lua
+[Concoction.Ids.BestiaryBetterment] = {
+    multiplier = 2.0
+},
+```
+
+**Uso:** Para pontos bestiary 2x
+**Valor:** multiplier = 2.0 (dobra pontos ganhos)
+
+## 🤖 Documentação das Funções
+
+### **Concoction.new(table) Factory**
+
+**Descrição:** Factory que cria nova instância de concoction com configuração.
+
+**Parâmetros:**
+```lua
+Concoction.new({
+    id = concoctionId,
+    timeLeftStorage = Global.Storage.TibiaDrome[key].TimeLeft,
+    lastActivatedAtStorage = Global.Storage.TibiaDrome[key].LastActivatedAt,
+    config = configs[concoctionId] or {},
+}):register()
+```
+
+- `id` (number): ID único da concoction
+- `timeLeftStorage` (table path): Storage para TimeLeft persistente
+- `lastActivatedAtStorage` (table path): Storage para LastActivatedAt
+- `config` (table): Configuração customizada ou {}
+
+**Retorno:** Instância de Concoction registrada
+
+---
+
+### **Concoction.initAll(player, reload)**
+
+**Descrição:** Inicializa todas as concoctions registradas para player em login.
+
+**Parâmetros:**
+- `player` (Player): Player que fez login
+- `reload` (boolean): Se reloader concoctions existentes (true em login)
+
+**Fluxo:**
+1. Itera todas concoctions registradas
+2. Verifica storage de TimeLeft
+3. Reaplica condition se ainda ativa
+4. Ressimelhai timing
+
+**Chamado em:** CreatureEvent "ConcoctionsOnLogin" (função onLogin)
+
+---
+
+### **concoctionsOnLogin.onLogin(player)**
+
+**Descrição:** Event handler de login que inicializa concoctions.
+
+**Parâmetros:**
+- `player` (Player): Player que fez login
+
+**Fluxo:**
+1. `Concoction.initAll(player, true)` - Inicializa todas
+2. Retorna `true` (login prossegue)
+
+**Registered Event:** "ConcoctionsOnLogin"
+
+## 📌 Resumo
+
+**Concoctions** é sistema de poções globais persistentes com 21+ buffs configuráveis (Stamina Extension +60 min, Kooldown Aid clear cooldowns, Strike Enhancement +500 crit, Fire/Ice/Earth/Energy/Holy/Death/Physical Resilience/Amplification ±8%, Charm Upgrade +5, Wealth Duplex rate=100, Bestiary Betterment 2.0x). Cada concoction tem storage persistente (TimeLeft, LastActivatedAt) global em TibiaDrome que persiste entre logins. Suporta 4 tipos de aplicação: custom callbacks, conditions simples, rate bypasses, multipliers. Framework Concoction.new() + factory registration + Concoction.initAll() em login garante persistência. Override support para duration, cooldown, tickType avançado.
+
+A implementação segue padrão de factory registration, diferenciando-se por: (1) 21+ concoctions pré-configuradas, (2) persistência global storage, (3) suporte a 4 tipos de aplicação, (4) override avançado de timing, (5) login integration automática, (6) 7 resistências + 7 amplificações.

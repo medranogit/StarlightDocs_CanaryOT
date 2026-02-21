@@ -1,0 +1,200 @@
+---
+title: Burst Arrow
+description: Arma de projétil tipo flecha com dano físico explosivo em AoE 3x3, validação skull black e distância
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `burst_arrow.lua` |
+| **Tipo de Arma** | Ammo (flecha de projétil) |
+| **ID do Item** | 3449 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Efeito Visual** | CONST_ME_EXPLOSIONAREA (explosão) |
+| **Efeito Distância** | CONST_ANI_BURSTARROW |
+| **Área de Efeito** | 3x3 grid (cenrado) |
+| **Ataque Base** | 27 |
+| **Chance de Acerto** | 100% |
+| **Ação** | removecount (consome ammo) |
+| **Som Cast** | SOUND_EFFECT_TYPE_DIST_ATK_BOW |
+| **Som Impacto** | SOUND_EFFECT_TYPE_BURST_ARROW_EFFECT |
+| **Validação** | Rejeita skull black |
+
+## 📍 Caminho Original
+
+```
+data/scripts/weapons/scripts/burst_arrow.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Burst Arrow é flecha explosiva que causa dano físico em área 3x3 centrada no alvo. O weapon rejeita players com skull black (PK protection check). A fórmula de dano usa skill-based formula (1.0 factor). Distância usa animação de flecha e som de arco. AoE permite hit múltiplos inimigos em padrão de cruz. Ótimo para crowd control com projeto de projétil de rápido alcance.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `burst_arrow.lua` implementa weapon de projétil tipo flecha burst com dano físico explosivo em área 3x3. Script define Combat com formula skill-based, área custom em padrão cruz (9 tiles), efeito explosão com animação burst arrow e som de impacto próprio. Weapon registra como WEAPON_AMMO com ID 3449, ataque 27, 100% hit chance, ação removecount (consome munição). Implementação inclui validação explícita que rejeita players com skull black (proteção contra PKs). Padrão straightforward de weapon ranged com AoE e validação de estado.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Área de Efeito (3x3)
+local area = createCombatArea({
+	{ 1, 1, 1 },
+	{ 1, 3, 1 },  -- 3 = centro
+	{ 1, 1, 1 },
+})
+
+-- 2. Configuração de Combat
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_EXPLOSIONAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_BURSTARROW)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, true)  -- Bloqueia armor
+combat:setFormula(COMBAT_FORMULA_SKILL, 0, 0, 1, 0)  -- Skill-based
+combat:setParameter(COMBAT_PARAM_IMPACTSOUND, SOUND_EFFECT_TYPE_BURST_ARROW_EFFECT)
+combat:setParameter(COMBAT_PARAM_CASTSOUND, SOUND_EFFECT_TYPE_DIST_ATK_BOW)
+combat:setArea(area)
+
+-- 3. Instância de Weapon
+local burstArrow = Weapon(WEAPON_AMMO)
+
+-- 4. Handler de Uso
+burstArrow.onUseWeapon = function(player, variant)
+	-- Validação skull black
+	if player:getSkull() == SKULL_BLACK then
+		return false
+	end
+	-- Executa combat
+	return combat:execute(player, variant)
+end
+
+-- 5. Configuração do Item
+burstArrow:id(3449)
+burstArrow:attack(27)
+burstArrow:action("removecount")
+burstArrow:ammoType("arrow")
+burstArrow:shootType(CONST_ANI_BURSTARROW)
+burstArrow:maxHitChance(100)
+burstArrow:register()
+```
+
+## 📊 Parâmetros de Combat
+
+| Parâmetro | Valor | Descrição |
+|---|---|---|
+| COMBAT_PARAM_TYPE | COMBAT_PHYSICALDAMAGE | Tipo de dano (físico) |
+| COMBAT_PARAM_EFFECT | CONST_ME_EXPLOSIONAREA | Visual explosão ao impacto |
+| COMBAT_PARAM_DISTANCEEFFECT | CONST_ANI_BURSTARROW | Animação da flecha em voo |
+| COMBAT_PARAM_BLOCKARMOR | true | Armor reduz dano |
+| COMBAT_FORMULA_SKILL | 0, 0, 1, 0 | Formula skill-based puro |
+| COMBAT_PARAM_IMPACTSOUND | SOUND_EFFECT_TYPE_BURST_ARROW_EFFECT | Som ao atingir |
+| COMBAT_PARAM_CASTSOUND | SOUND_EFFECT_TYPE_DIST_ATK_BOW | Som ao disparar |
+
+## 🎯 Padrões de Implementação
+
+### 1. **Padrão de Área 3x3 em Cruz**
+
+```lua
+local area = createCombatArea({
+	{ 1, 1, 1 },
+	{ 1, 3, 1 },
+	{ 1, 1, 1 },
+})
+```
+
+Grid 3x3 onde valor 1 = hit, 3 = centro. Padrão explosão simetricamente.
+
+### 2. **Padrão de Validação Skull Black**
+
+```lua
+if player:getSkull() == SKULL_BLACK then
+	return false
+end
+```
+
+Rejeita players PKs em skull black. PK protection pattern.
+
+### 3. **Padrão de Weapon Ammo com RemoveCount**
+
+```lua
+burstArrow:action("removecount")
+burstArrow:ammoType("arrow")
+```
+
+Remove uma unidade de ammo por uso. Padrão munição consumível.
+
+### 4. **Padrão de Skill-Based Formula**
+
+```lua
+combat:setFormula(COMBAT_FORMULA_SKILL, 0, 0, 1, 0)
+```
+
+Dano baseado em distance skill do player. Formula pura (factor 1.0).
+
+## 🤖 Documentação de Funções
+
+### **burstarrow.onUseWeapon(player, variant)**
+
+**Descrição:** Handler chamado quando player usa burst arrow.
+
+**Parâmetros:**
+- `player` (Player): Player disparando a flecha
+- `variant` (Variant): Target/tile onde atirar
+
+**Lógica:**
+1. Verifica se player tem skull black
+2. Se skull black: retorna false (rejeita ação)
+3. Senão: executa combat:execute(player, variant)
+
+**Retorno:**
+- `boolean`: true (sucesso) ou false (skull black)
+
+**Exemplo de Uso:**
+```lua
+-- Player sem skull dispara burst arrow
+-- burstarrow.onUseWeapon(player, variant)
+-- Combat executa com 3x3 AoE, 27 ataque
+```
+
+---
+
+### **Combat:setArea(area)**
+
+**Descrição:** Define área de efeito para combat.
+
+**Parâmetro:**
+- `area` (CombatArea): Grid de tiles a atingir
+
+**Configuração Burst Arrow:**
+- 3x3 grid em padrão explosão
+- Centro (3) é epicentro
+- 8 tiles adjacentes atingidos
+
+---
+
+### **Combat:setFormula(type, minA, minB, maxA, maxB)**
+
+**Descrição:** Define fórmula de dano.
+
+**Parâmetros Burst Arrow:**
+- `COMBAT_FORMULA_SKILL` = skill-based
+- `0, 0, 1, 0` = factor 1.0 (dano = skill base)
+
+---
+
+### **Weapon:action(action)**
+
+**Descrição:** Define ação ao usar item.
+
+**Valor Burst Arrow:** `"removecount"`
+- Remove 1 unidade de inventário por uso
+- Padrão para munição consumível
+
+## 📌 Resumo
+
+**Burst Arrow** é weapon ammo type com dano físico explosivo em AoE 3x3 centrado. Implementação combina Combat skill-based formula com efeito explosão visual, animação burst arrow e som próprio. Padrão de flecha consumível (removecount) com validação skull black (proteção anti-PK). Grid 3x3 em padrão simetricamente permite atingir 9 tiles. Ataque 27 com 100% hit chance mantém consistência com munição tier baixo. Sistem straightforward de projétil AoE para combat range.
+
+Diferencia-se por: (1) validação skull black, (2) AoE 3x3, (3) formula skill-based puro, (4) efeito explosão visual, (5) som impacto específico, (6) removecount ação.

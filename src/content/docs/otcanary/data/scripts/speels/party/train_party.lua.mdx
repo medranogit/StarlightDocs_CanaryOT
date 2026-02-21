@@ -1,0 +1,474 @@
+---
+title: "Spell - train_party.lua"
+description: "Spell de aumento de skills ofensivos para party knight exclusive"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `train_party.lua` |
+| **Localização** | `data/scripts/spells/party/` |
+| **Tipo de Script** | Spell (Instant) |
+| **Tipo** | Party Support (Combat Skills Boost) |
+| **Alvo** | Party Members (Area CIRCLE 5x5) |
+| **Mana Requerida** | 60 Base (Dinâmico) |
+| **Words** | utito mas sio |
+| **Spell ID** | 126 |
+| **Cooldown** | 2s Individual |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Agressivo** | Não |
+| **Self Target** | Sim |
+| **Grupo** | support |
+| **Vocações** | Knight, Elite Knight |
+| **Level** | 32 |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Som de Casting** | `SOUND_EFFECT_TYPE_SPELL_TRAIN_PARTY` |
+| **Linhas de Código** | 90 |
+| **Complexidade** | Intermediária |
+
+**Descrição:**
+Spell de treinamento party combat skills. Aumenta melee skill e distance skill de membros da party em +3 cada. Condition `CONDITION_ATTRIBUTES` por 2 minutos. Area `CIRCLE5X5`. Mana dinâmica baseada em quantidade: `0.9^(n-1)*60*n`. Distance check `<= 36`. Validação party + members. Range distance 36 squares. Knight exclusive premium level 32. Words: `utito mas sio`. Spell train party knight combat boost!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/party/train_party.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:name("Train Party")
+spell:words("utito mas sio")
+spell:group("support")
+spell:vocation("knight;true", "elite knight;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_TRAIN_PARTY)
+spell:id(126)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(32)
+spell:mana(60)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Train Party - Knight Combat Skills Boost**
+
+Este spell oferece aumento de skills ofensivos para toda party:
+
+1. **Combat Skills Boost:**
+   - Condition `CONDITION_ATTRIBUTES`
+   - `CONDITION_PARAM_SKILL_MELEE`: +3
+   - `CONDITION_PARAM_SKILL_DISTANCE`: +3
+   - Duração: 2 minutos (120 segundos)
+   - Boost de ambos os skills ofensivos!
+
+2. **Mana Dinâmica Escalável (Mais Econômica):**
+   - Base: 60 mana (MAIS BAIXA DE TODAS!)
+   - Cálculo: `0.9^(members-1) * 60 * members`
+   - Exemplo: 2 members = 60 * 2 = 120 total
+   - Exemplo: 3 members = 0.9 * 60 * 3 = 162 total
+   - Escalagem super econômica!
+
+3. **Area Party CIRCLE 5x5:**
+   - Raio: aproximadamente 5-6 squares
+   - Só afeta membros dentro da distance
+   - Range check `<= 36` squares!
+
+4. **Party Logic Robusta:**
+   - Validação: `party:getMembers()`
+   - Inclui leader (membros + 1)
+   - Distance check por membro
+   - Mínimo 2 afetados!
+
+**Uso Típico:**
+```
+Knight lvl 32+ (Premium)
+// Cast "utito mas sio"
+// Sistema obtém party + members
+// Valida distance <= 36
+// Calcula mana dinâmica
+// Aplica +3 melee + distance skills
+// Duração 2 minutos
+// Spell train party combat boost!
+```
+
+**Diferencial:** Knight exclusive premium party combat skills boost com mana dinâmica mais econômica (60) e duplo skill boost (melee + distance)!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `train_party` oferece aumento de skills ofensivos (melee + distance) para membros da party com mana muito econômica:
+
+- **Tipo:** Party Support (Combat Skills)
+- **Spell ID:** 126
+- **Vocações:** Knight, Elite Knight
+- **Level:** 32 (premium!)
+- **Efeito:** Boost melee skill +3 e distance skill +3 por 2 minutos
+- **Area:** `CIRCLE5X5` (raio ~5-6 squares)
+- **Mana Base:** 60 (MAIS ECONÔMICO!)
+- **Mana Dinâmica:** `0.9^(members-1) * 60 * members`
+- **Distance Check:** `<= 36` squares
+- **Cooldown:** 2s (rápido!)
+- **Mínimo Afetados:** 2 membros
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ setArea(AREA_CIRCLE5X5)
+├─ setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+├─ setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+└─ execute(creature, var)
+
+local condition = Condition(CONDITION_ATTRIBUTES)
+├─ CONDITION_PARAM_SUBID: 1
+├─ CONDITION_PARAM_BUFF_SPELL: 1
+├─ CONDITION_PARAM_TICKS: 120000 (2 min)
+├─ CONDITION_PARAM_SKILL_MELEE: +3
+└─ CONDITION_PARAM_SKILL_DISTANCE: +3
+
+local baseMana = 60
+
+local spell = Spell("instant")
+├─ onCastSpell(creature, var)
+│  ├─ Obter party + members
+│  ├─ Distance check <= 36
+│  ├─ Calcular mana dinâmico
+│  ├─ Validar mana suficiente
+│  ├─ Execute combat
+│  └─ Adicionar condition a cada membro
+└─ Configuração spell
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+```
+
+**Propósito:** Instância Combat para área party com efeito.
+
+**Tipo:** Combat
+
+**Parâmetros Configurados:**
+- Area: `AREA_CIRCLE5X5`
+- Effect: `CONST_ME_MAGIC_BLUE`
+- Aggressive: 0 (não-agressivo)
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_ATTRIBUTES)
+```
+
+**Propósito:** Condition para boost de skills ofensivos.
+
+**Tipo:** Condition (`CONDITION_ATTRIBUTES`)
+
+**Parâmetros Configurados:**
+- SUBID: 1
+- BUFF_SPELL: 1 (é buff)
+- TICKS: 120000 (2 minutos)
+- SKILL_MELEE: +3
+- SKILL_DISTANCE: +3
+
+---
+
+### Variável Global: baseMana
+
+```lua
+local baseMana = 60
+```
+
+**Propósito:** Mana base para cálculo dinâmico.
+
+**Tipo:** Integer
+
+**Valor:** 60
+
+---
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell.
+
+**Tipo:** Instant
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	local position = creature:getPosition()
+	local party = creature:getParty()
+	if not party then
+		creature:sendCancelMessage("No party members in range.")
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local membersList = party:getMembers()
+	membersList[#membersList + 1] = party:getLeader()
+	if membersList == nil or type(membersList) ~= "table" or #membersList <= 1 then
+		creature:sendCancelMessage("No party members in range.")
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local affectedList = {}
+	for _, targetPlayer in ipairs(membersList) do
+		if targetPlayer:getPosition():getDistance(position) <= 36 then
+			affectedList[#affectedList + 1] = targetPlayer
+		end
+	end
+
+	local tmp = #affectedList
+	if tmp <= 1 then
+		creature:sendCancelMessage("No party members in range.")
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local mana = math.ceil((0.9 ^ (tmp - 1) * baseMana) * tmp)
+	if creature:getMana() < mana then
+		creature:sendCancelMessage(RETURNVALUE_NOTENOUGHMANA)
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	if not combat:execute(creature, var) then
+		creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	creature:addMana(-(mana - baseMana), false)
+	creature:addManaSpent((mana - baseMana))
+
+	for _, targetPlayer in ipairs(affectedList) do
+		targetPlayer:addCondition(condition)
+	end
+
+	return true
+end
+```
+
+**Propósito:** Treina/aumenta skills combate de party members.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (knight) |
+| `var` | Variant | Variant (self) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Treinamento aplicado |
+| `false` | Erro (sem party, sem mana, etc) |
+
+**Lógica Detalhada:**
+
+1. **Validação Party:**
+   - `getParty()` do creature
+   - Se não existe: erro
+
+2. **Obtenção Members:**
+   - `getMembers()` da party
+   - Adiciona leader: `membersList[#membersList + 1] = party:getLeader()`
+   - Validação: nil check, table type, `> 1` elementos
+
+3. **Distance Check:**
+   - ITera cada member
+   - Valida distance `<= 36` squares
+   - Cria affectedList
+
+4. **Mínimo Afetados:**
+   - Valida tmp (affected count) `> 1`
+   - Se `<= 1`: erro
+
+5. **Cálculo Mana Dinâmica:**
+   - `mana = math.ceil((0.9 ^ (tmp - 1) * baseMana) * tmp)`
+   - Base 60 (MAIS ECONÔMICO!)
+
+6. **Validação Mana:**
+   - Verifica `creature:getMana() >= mana`
+   - Se insuficiente: erro
+
+7. **Execute Combat:**
+   - Execute area combat
+   - Se falha: erro
+
+8. **Mana Gasto:**
+   - Subtrai `(mana - baseMana)` como custo extra
+   - Registra gasto
+
+9. **Aplicar Condition:**
+   - ITera cada member afetado
+   - Adiciona condition ATTRIBUTES +3 melee e +3 distance
+   - Duração 2 minutos
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância Combat area |
+| `condition` | Condition | Arquivo | Instância condition attributes |
+| `baseMana` | Integer | Arquivo | Base mana 60 |
+| `spell` | Spell | Arquivo | Instância spell |
+
+### Variáveis Locais (onCastSpell)
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `position` | Position | Posição do caster |
+| `party` | Party | Party do caster |
+| `membersList` | Table | Membros + leader |
+| `affectedList` | Table | Membros dentro de range |
+| `tmp` | Integer | Quantidade afetada |
+| `mana` | Integer | Mana total requerida |
+| `targetPlayer` | Player | Iteração members |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Party Validation Completa
+
+```lua
+local party = creature:getParty()
+if not party then
+	-- erro
+end
+
+local membersList = party:getMembers()
+membersList[#membersList + 1] = party:getLeader()
+if membersList == nil or type(membersList) ~= "table" or #membersList <= 1 then
+	-- erro
+end
+```
+
+**Benefício:** Validação completa existência + tipo + quantidade com fallback leader!
+
+### Padrão 2: Distance Filtering Loop
+
+```lua
+for _, targetPlayer in ipairs(membersList) do
+	if targetPlayer:getPosition():getDistance(position) <= 36 then
+		affectedList[#affectedList + 1] = targetPlayer
+	end
+end
+```
+
+**Benefício:** Filtra por distance máximo 36 squares!
+
+### Padrão 3: Mana Dinâmica com Base Mais Baixa
+
+```lua
+local mana = math.ceil((0.9 ^ (tmp - 1) * baseMana) * tmp)
+```
+
+**Benefício:** Calcula mana com base MAIS BAIXA (60) para máxima economia!
+
+### Padrão 4: Duplo Skill Boost na Condition
+
+```lua
+condition:setParameter(CONDITION_PARAM_SKILL_MELEE, 3)
+condition:setParameter(CONDITION_PARAM_SKILL_DISTANCE, 3)
+```
+
+**Benefício:** Aplica dois boosts de skills diferentes simultaneamente!
+
+---
+
+## 🤖 Documentação das Funções
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Aumenta melee e distance skills (+3 cada) de party members em range por 2 minutos.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (knight lvl 32+) |
+| `var` | Variant | Variant (self) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Treinamento aplicado a party |
+| `false` | Erro (sem party/mana/range) |
+
+**Requisitos:**
+- Ter party (mínimo 2 membros)
+- Members dentro de 36 squares
+- Mana suficiente (dinâmica)
+- Knight ou Elite Knight
+- Level 32+
+- Premium account
+
+**Mana Calculation (Base 60 - MAIS ECONÔMICO):**
+
+| Members | Multiplicador | Exemplo Mana |
+|---|---|---|
+| 2 | 1.0 | 60 * 2 = 120 |
+| 3 | 0.9 | 0.9 * 60 * 3 = 162 |
+| 4 | 0.81 | 0.81 * 60 * 4 = 194.4 ≈ 195 |
+| 5 | 0.729 | 0.729 * 60 * 5 = 218.7 ≈ 219 |
+
+**Exemplo de Uso:**
+```lua
+-- Knight lvl 32+, in party com 2 membros
+-- Cast "utito mas sio"
+-- Sistema obtém party + members
+-- Filtra por distance <= 36
+-- Calcula mana: ceil(0.9^1 * 60 * 2) = 120
+// Se tem mana: apply condition +3 melee + distance
+// Duração 2 minutos para cada membro
+// Efeito CONST_ME_MAGIC_BLUE
+// Cooldown 2s (rápido!)
+// Spell train party combat boost!
+```
+
+---
+
+## 📌 Resumo
+
+**Train Party** é um spell knight exclusive premium que oferece aumento de skills ofensivos (melee + distance) para membros da party. Com condition `CONDITION_ATTRIBUTES` (+3 melee e +3 distance por 2 minutos), área `CIRCLE5X5`, distance check 36 squares, mana dinâmica `0.9^(n-1)*60*n` escalável com base MAIS ECONÔMICA (60), validação party completa, mínimo 2 afetados, spell ID 126, palabras `utito mas sio`, som `SOUND_EFFECT_TYPE_SPELL_TRAIN_PARTY`, level 32, cooldown 2s (rápido!), groupCooldown 2s, isSelfTarget true, isAggressive false, isPremium true. Spell train party knight duplo combat skills boost!

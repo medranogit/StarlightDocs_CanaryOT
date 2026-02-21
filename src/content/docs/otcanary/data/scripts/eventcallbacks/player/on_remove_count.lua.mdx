@@ -1,0 +1,270 @@
+---
+title: "Player - on_remove_count.lua"
+description: "Callback de notificação de desperdício quando item é removido"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `on_remove_count.lua` |
+| **Localização** | `data/scripts/eventcallbacks/player/` |
+| **Tipo de Script** | EventCallback |
+| **Callback Principal** | `PlayerOnRemoveCountBaseEvent` |
+| **Função Registrada** | `playerOnRemoveCount(player, item)` |
+| **Linhas de Código** | 6 |
+| **Complexidade** | Trivial |
+| **Status** | Base implementation |
+
+**Descrição:**
+Callback responsável por processar eventos quando um item é removido do inventário do jogador. Envia notificação de "waste" (desperdício/descarte) para rastrear itens descartados.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/eventcallbacks/player/on_remove_count.lua
+```
+
+**Pré-requisitos:**
+- EventCallback API (`EventCallback` função global)
+- Player waste tracking system
+- Item object
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Remoção de Item (Remove Count)**
+
+Quando um item é removido do inventário:
+
+1. **Trigger:** playerOnRemoveCount é disparado automaticamente
+2. **Processamento:** Recupera ID do item
+3. **Ação:** Chama player:sendWaste() para rastrear descarte
+
+**Exemplo de Cenários:**
+```
+Jogador descarta poção → Item ID 7854 removido → sendWaste(7854)
+Jogador vende item → sendWaste() notifica venda
+Jogador morre e perde loot → sendWaste() rastreia perda
+```
+
+**Diferença vs Loot Tracking:**
+- `on_remove_count.lua` → Notificação de DESPERDÍCIO pessoal
+- Loot tracking → Sistema global de estatísticas
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `on_remove_count.lua` implementa o callback de rastreamento de remoção. Quando um item é removido do inventário:
+
+- **Captura evento de remoção** automaticamente
+- **Extrai ID do item** para identificação
+- **Notifica sistema de waste** para estatísticas
+
+### Arquitetura
+
+O script usa um padrão simples de **event propagation**:
+
+```
+playerOnRemoveCount (entrada)
+  ├─ item:getId()
+  └─ player:sendWaste(itemId)
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Processamento | Saída |
+|---------|---------------|-------|
+| `player, item` | Extrai item ID | Notifica waste system |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (Callback)
+
+#### **playerOnRemoveCount(player, item)**
+
+```lua
+function callback.playerOnRemoveCount(player, item)
+	player:sendWaste(item:getId())
+end
+```
+
+**Propósito:** Entry point do callback. Notifica jogador e sistema quando item é removido.
+
+**Fluxo de Execução:**
+
+1. **Trigger:** Evento disparado quando item é removido
+2. **Extração:** Obtém ID do item via `item:getId()`
+3. **Notificação:** Chama `player:sendWaste(itemId)` para rastrear
+
+**Parâmetros:**
+- `player` - Player proprietário do item
+- `item` - Item object sendo removido
+
+**Sem retorno** - Callback é void (apenas notifica)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Não há variáveis locais declaradas
+
+### Item Methods Utilizados
+
+| Método | Descrição |
+|--------|-----------|
+| `item:getId()` | Retorna ID numérico do item |
+
+### Player Methods Utilizados
+
+| Método | Descrição |
+|--------|-----------|
+| `player:sendWaste(itemId)` | Notifica sistema de waste com ID do item |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Event Propagation
+
+**Técnica:** Propagate eventos simples para subsistemas superiores.
+
+```lua
+function callback.playerOnRemoveCount(player, item)
+	player:sendWaste(item:getId())  -- Simples propagação
+end
+```
+
+**Vantagem:** Desacoplado. Sistema de waste é independente. Fácil adicionar handlers.
+
+**Aplicação:** Qualquer evento que necessite notificação a subsistemas.
+
+---
+
+### Padrão 2: ID-Based Tracking
+
+**Técnica:** Usar item ID para rastreamento invés de objeto inteiro.
+
+```lua
+player:sendWaste(item:getId())  -- ID é identificador único e estável
+```
+
+**Vantagem:** IDs são simples, estáveis, e permitem lookup em qualquer contexto.
+
+**Aplicação:** Rastreamento de itens para estatísticas, logging.
+
+---
+
+### Padrão 3: Callback Delegation
+
+**Técnica:** Delegar responsabilidade de processamento para método de jogador.
+
+```lua
+-- on_remove_count.lua - apenas notifica
+player:sendWaste(item:getId())
+
+-- Player:sendWaste() - lida com lógica complexa
+-- Pode implementar: logging, statistics, auction house cleanup, etc
+```
+
+**Vantagem:** Desacoplamento. Lógica de waste focalizada em um lugar.
+
+**Aplicação:** Arch pattern quando múltiplos callbacks precisam notificar.
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Jogador descarta poção do inventário
+
+```
+playerOnRemoveCount(player, healthPotion)
+  ├─ healthPotion:getId() → 7854
+  ├─ player:sendWaste(7854)
+  └─ [Player:sendWaste internals]
+     ├─ Log descarte
+     ├─ Atualizar estatísticas
+     └─ Possível notificação visual
+```
+
+**Resultado:** Sistema rastreia que jogador descartou poção ID 7854
+
+---
+
+### Cenário 2: Jogador vende item via NPC
+
+```
+playerOnRemoveCount(player, swordAdvanced)
+  ├─ swordAdvanced:getId() → 3456
+  ├─ player:sendWaste(3456)
+  └─ [Statistics updated]
+```
+
+**Resultado:** Sistema registra venda de espada ID 3456
+
+---
+
+### Cenário 3: Jogador morre em PvP, perde loot
+
+```
+playerOnRemoveCount(player, goldenAmulet)
+  ├─ goldenAmulet:getId() → 2340
+  ├─ player:sendWaste(2340)
+  └─ [Death statistics, loss tracking]
+```
+
+**Resultado:** Sistema rastreia perda de amuleto dourado em morte
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial |
+| **Estimativa de Aprendizado** | 5 minutos |
+| **Tópicos Principais** | Event propagation, ID-based tracking, Callback delegation |
+| **Padrões Documentados** | 3 padrões |
+| **Cenários Documentados** | 3 cenários (discard, sell, death loss) |
+| **Funções** | 1 (playerOnRemoveCount - callback entry) |
+| **Callbacks Registrados** | PlayerOnRemoveCountBaseEvent |
+| **Dependencies** | Player:sendWaste() system |
+
+### Curva de Aprendizado
+
+**Trivial:** Uma linha de lógica. Padrão é reutilizável em muitos callbacks.
+
+### Casos de Uso
+
+| Caso | Aplicação |
+|------|-----------|
+| **Descarte Manual** | Jogador remove item do inventário propositalmente |
+| **Venda NPC** | Item é vendido para NPC |
+| **Morte/Loot Loss** | Item é perdido em morte em PvP |
+| **Trade Finalization** | Item sai do inventário após trade |
+| **Quest Completion** | Item é "usado"/consumido ao completar quest |
+
+### Melhorias Potenciais
+
+- [ ] Adicionar logging persistente de waste (database)
+- [ ] Implementar undo system para descarte acidental
+- [ ] Rastrear estatísticas por tipo de item
+- [ ] Notificação visual ao jogador (opcional)
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Simple event propagation implementation

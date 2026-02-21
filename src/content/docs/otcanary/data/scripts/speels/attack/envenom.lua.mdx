@@ -1,0 +1,370 @@
+---
+title: "Spell - envenom.lua"
+description: "Spell de envenenamento com condition poison para druids level 50"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `envenom.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 142 |
+| **Tipo de Dano** | COMBAT_EARTHDAMAGE |
+| **Vocações** | Druid, Elder Druid |
+| **Level Requerido** | 50 |
+| **Mana Requerida** | 30 |
+| **Words** | utori pox |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Condition** | CONDITION_POISON com DoT fixo |
+| **Cooldown** | 40s (LONGO!) |
+| **GroupCooldown** | 2s |
+| **Premium** | Não |
+| **Dano** | Fixed 25 damage @ 3000ms (DELAYED) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_ENVENOM |
+| **Agressividade** | Sim (isAggressive) |
+| **Requer Target** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 31 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de envenenamento com condition poison para druids nível 50 (mid-late). CONDITION_POISON com DOT fixo (25 dano @ 3000ms delayed). Cooldown muito longo 40s (tático). Range 3, needTarget obrigatório. Tipo terra. Não premium. Agressivo marcado. Efeito SMALLPLANTS.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/envenom.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(142)
+spell:name("Envenom")
+spell:words("utori pox")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_ENVENOM)
+spell:level(50)
+spell:mana(30)
+spell:range(3)
+spell:isAggressive(true)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:cooldown(40 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("druid;true", "elder druid;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Envenenamento - Fixed Poison DoT**
+
+Este spell implementa um **sistema de condition poison com dano fixo atrasado**:
+
+1. **Condition Poison Simples:**
+   - CONDITION_POISON (tipo)
+   - 25 dano fixo (não escalável!)
+   - 3000ms interval (3 segundos)
+   - DELAYED: 1 (começa com delay)
+
+2. **Cooldown Muito Longo:**
+   - 40s cooldown (TÁTICO!)
+   - Reflete potência condition
+   - Spell poderoso = espera longa
+
+3. **Mid-Game Druid:**
+   - Level 50 (mid-game)
+   - 30 mana (baato)
+   - Non-premium (gratuito!)
+   - Single target (não AOE)
+
+4. **Tipo Earth:**
+   - COMBAT_EARTHDAMAGE
+   - Efeito SMALLPLANTS
+   - Range 3 (ranged)
+   - Agressivo True
+
+**Situação Condition:**
+```
+- CONDITION_POISON aplicada
+- DELAYED: 1 (wait antes começo)
+- addDamage(25, 3000, -45)
+  └─ 25 dano @ 3000ms interval
+  └─ -45 = ticks (45 ticks = 3s×45 ticks)
+- Fixed dano (sem escalabilidade!)
+```
+
+**Diferencial:** Fixed poison DoT tactical com 40s CD!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `envenom` oferece condition poison persistente:
+
+- **Dano:** COMBAT_EARTHDAMAGE + condition-based
+- **Condition:** CONDITION_POISON (fixed 25 dano)
+- **Level:** 50 (mid-game)
+- **Cooldown:** 40s (longo/tático)
+
+### Arquitetura
+
+Combat com condition:
+
+```
+local combat = Combat()
+├─ Type: EARTHDAMAGE
+├─ Effect: SMALLPLANTS
+├─ Condition: CONDITION_POISON
+│  └─ Delayed: 1
+│  └─ addDamage(25, 3000, -45)
+└─ Distance: EARTH
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_SMALLPLANTS)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_EARTH)
+```
+
+**Propósito:** Combat de dano terra.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_EARTHDAMAGE | Dano terra |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_SMALLPLANTS | Efeito plantas |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_EARTH | Projétil terra |
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_POISON)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+condition:addDamage(25, 3000, -45)
+combat:addCondition(condition)
+```
+
+**Propósito:** Condition poison com DoT fixo.
+
+**Configuração:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `Type` | CONDITION_POISON | Tipo condition |
+| `DELAYED` | 1 | Começa com delay |
+| `addDamage` | 25, 3000, -45 | 25 dano @ 3s, 45 ticks |
+
+**DOT Estrutura:**
+- Dano: 25 (fixo)
+- Interval: 3000ms (3 segundos)
+- Ticks: 45 (-45)
+- Total duração: ~45 × 3s = 135 segundos (~2min15s!)
+- Total damage: 25 × múltiplo ticks
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Envenom ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com condition poison |
+| `condition` | Condition | Arquivo | POISON avec DoT |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Fixed Poison Condition
+
+```lua
+local condition = Condition(CONDITION_POISON)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+condition:addDamage(25, 3000, -45)
+combat:addCondition(condition)
+```
+
+**Benefício:** Dano fixo (não escalável) com DoT persistente.
+
+### Padrão 2: Long Cooldown Tactical
+
+```lua
+spell:cooldown(40 * 1000)
+```
+
+**Benefício:** 40s = spell poderoso tático.
+
+### Padrão 3: Single Target Debuff
+
+```lua
+spell:needTarget(true)
+spell:range(3)
+```
+
+**Benefício:** Target específico, não AOE.
+
+---
+
+## 🤖 Documentação das Funções
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura envenenamento em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druid conjurador |
+| `var` | Variant | Target (obrigatório) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Envenom ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 50+
+- 30 mana
+- Target próximo (range 3)
+- Cooldown 40s (LONGO!)
+
+**Efeito:**
+- Efeito plantas
+- Projétil terra
+- CONDITION_POISON aplicada
+- DoT fixo: 25 dano @ 3000ms
+- ~45 ticks (2min15s duração!)
+
+**Exemplo:**
+
+```lua
+-- Druid lvl 50
+spell.onCastSpell(druid, targetVariant)
+// Validações:
+//   ✓ Level 50 >= 50
+//   ✓ Mana 30 disponível
+//   ✓ Target range 3
+// Combat executa
+// Projétil terra viaja
+// Impacto SMALLPLANTS
+// Condition POISON aplicada
+// DoT começa com delay
+// 25 dano @ 3000ms intervals
+// ~135 segundos duração total
+// 40s cooldown antes próximo cast
+// Resultado: Envenenamento persistente!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Single Target Debuff
+
+```lua
+-- Druid vs boss/strong target
+// Envenom = debuffer tactical
+// 25 dano @ 3s = constante
+// 40s CD = timing crítico
+```
+
+### Caso 2: PvP Control
+
+```lua
+-- Duelo druid
+// Envenenamento = debuff control
+// 25 dano persistent
+// Tactical cooldown
+```
+
+### Caso 3: Training Dungeon
+
+```lua
+-- Farmando elite mob
+// Single target poison DoT
+// Fixed 25 dano por tick
+// Long duration = total dano significante
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat Condition
+- **Damage:** COMBAT_EARTHDAMAGE
+- **Condition:** CONDITION_POISON
+- **Effects:** CONST_ME_SMALLPLANTS
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Envenenamento DoT terra |
+| **Dano Type** | COMBAT_EARTHDAMAGE |
+| **Condition** | CONDITION_POISON |
+| **Dano Fixo** | 25 @ 3000ms (não escalável) |
+| **Duração** | ~135 segundos (45 ticks) |
+| **Mana** | 30 |
+| **Range** | 3 |
+| **Level** | 50 (mid) |
+| **Cooldown** | 40s (longo!) |
+| **Premium** | Não |
+| **Vocações** | Druid, Elder Druid |
+| **Padrão** | Fixed condition DoT + delayed start + long cooldown |

@@ -1,0 +1,488 @@
+---
+title: "Spell - ice_burst.lua"
+description: "Spell de explosão de gelo para druids level 300 com WOD Twin Burst grade check"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `ice_burst.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant - COMPLEXA) |
+| **ID do Spell** | 262 |
+| **Tipo de Dano** | COMBAT_ICEDAMAGE |
+| **Vocações** | Druid, Elder Druid |
+| **Level Requerido** | 300 (MÁXIMO!) |
+| **Mana Requerida** | 230 |
+| **Words** | exevo ulus frigo |
+| **Alcance** | 0 (self-target) |
+| **Área** | RING1_BURST3 (anel burst!) |
+| **Cooldown** | 22s |
+| **GroupCooldown** | 2s + 22s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level alta (7-10.5 coef) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_ETERNAL_WINTER |
+| **isSelfTarget** | Sim |
+| **WOD System** | revelationStageWOD("Twin Burst") grade check (0 = reject) |
+| **Requer Learn** | Sim (needLearn - RARO!) |
+| **Bloqueia Walls** | Não especificado |
+| **Grupos** | "attack", "burstsofnature" |
+| **Linhas de Código** | 31 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Spell de explosão gelo para druids nível 300 (MÁXIMO!). Self-target AOE RING1_BURST3 (anel burst!). Magic-level escalável alto (7-10.5 coef). WOD Twin Burst grade check (0 = rejeita). needLearn: true (RARO!). 230 mana. Cooldown 22s. Premium only. Efeito ICEATTACK. Endgame druid burst!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/ice_burst.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack", "burstsofnature")
+spell:id(262)
+spell:name("Ice Burst")
+spell:words("exevo ulus frigo")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_ETERNAL_WINTER)
+spell:level(300)
+spell:mana(230)
+spell:isPremium(true)
+spell:isSelfTarget(true)
+spell:cooldown(22 * 1000)
+spell:groupCooldown(2 * 1000, 22 * 1000)
+spell:needLearn(true)
+spell:vocation("druid;true", "elder druid;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Explosão de Gelo - WOD Twin Burst Self-Target Endgame**
+
+Este spell implementa um sistema COMPLEXA de burst gelo com WOD grade check:
+
+1. **Level 300 Absolute Endgame:**
+   - MÁXIMO level possível!
+   - needLearn: true (RARO!)
+   - Druid exclusive
+   - Spell puro endgame
+
+2. **WOD Twin Burst Grade:**
+   - revelationStageWOD("Twin Burst")
+   - Grade 0: REJEITA! (fail + message)
+   - Grade >= 1: permite burst
+   - Validação obrigatória
+
+3. **Magic-Level Alto:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 7)
+   - max = (level/5) + (maglevel × 10.5)
+   - Coef alto (7-10.5)
+
+4. **Self-Target Burst:**
+   - isSelfTarget: true
+   - RING1_BURST3 (anel ring!)
+   - Não precisa target
+   - Efeito ICEATTACK
+   - Grupo "burstsofnature"
+
+**Fórmula Visual:**
+```
+Druid lvl 300, mlvl 50, grade >= 1:
+  min = 60 + 350 = 410
+  max = 60 + 525 = 585
+
+Druid lvl 300, mlvl 60, grade >= 1:
+  min = 60 + 420 = 480
+  max = 60 + 630 = 690
+```
+
+**Diferencial:** Gelo endgame self-target WOD twin burst!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `ice_burst` oferece dano gelo self-target com WOD validation:
+
+- **Dano:** COMBAT_ICEDAMAGE magic-level
+- **Fórmula:** (level/5) + (mlvl × 7/10.5) (ALTA!)
+- **Mana:** 230
+- **Level:** 300 (MÁXIMO!)
+- **Área:** RING1_BURST3 (anel!)
+
+### Arquitetura (COMPLEXA!)
+
+```
+local combat = Combat()
+├─ Type: ICEDAMAGE
+├─ Effect: ICEATTACK
+├─ Area: RING1_BURST3
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max magic-level alta
+
+spell.onCastSpell(creature, var)
+├─ revelationStageWOD("Twin Burst") check
+├─ Grade 0: reject + message + POFF
+└─ Grade >= 1: combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ICEDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ICEATTACK)
+combat:setArea(createCombatArea(AREA_RING1_BURST3))
+```
+
+**Propósito:** Combat de dano gelo self-target burst.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ICEDAMAGE | Dano gelo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ICEATTACK | Efeito gelo ataque |
+| `Area` | RING1_BURST3 | Anel ring burst! |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 7)
+	local max = (level / 5) + (maglevel * 10.5)
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano gelo magic-level escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Druid |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 7)
+max = (level / 5) + (maglevel * 10.5)
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 7 (alto!)
+- Maglevel max: 10.5 (muito alto!)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 300 | 40 | 340 | 480 |
+| 300 | 50 | 410 | 585 |
+| 300 | 60 | 480 | 690 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell (COMPLEXA!)
+
+```lua
+function spell.onCastSpell(creature, var)
+	local grade = creature:revelationStageWOD("Twin Burst")
+	if grade == 0 then
+		creature:sendCancelMessage("You need to learn this spell first")
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler complexo com WOD grade validation.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druid |
+| `var` | Variant | (self-target, não usado) |
+
+**Lógica:**
+1. Fetch revelationStageWOD("Twin Burst")
+2. Se grade == 0: reject
+   - Send cancel message
+   - POFF effect
+   - Return false
+3. Senão (grade >= 1): execute combat
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Burst lançado |
+| `false` | Grade falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callbacks magic |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em spell.onCastSpell):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `grade` | number | WOD Twin Burst grade |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: WOD Grade Check Validation
+
+```lua
+local grade = creature:revelationStageWOD("Twin Burst")
+if grade == 0 then
+	creature:sendCancelMessage("You need to learn this spell first")
+	creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+	return false
+end
+```
+
+**Benefício:** Validação obrigatória WOD!
+
+### Padrão 2: Magic-Level Alto
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 7)
+	local max = (level / 5) + (maglevel * 10.5)
+	return -min, -max
+end
+```
+
+**Benefício:** Escalável alto magic-level!
+
+### Padrão 3: Self-Target Ring Burst
+
+```lua
+spell:isSelfTarget(true)
+combat:setArea(createCombatArea(AREA_RING1_BURST3))
+```
+
+**Benefício:** Self-target AOE ring!
+
+### Padrão 4: needLearn + Burstsofnature
+
+```lua
+spell:needLearn(true)
+spell:group("attack", "burstsofnature")
+```
+
+**Benefício:** Aprendizado obrigatório, grupo special!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano gelo self-target magic-level.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Druid |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(druid, 300, 50)
+// min = 60 + 350 = 410
+// max = 60 + 525 = 585
+// Retorna: -410, -585
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Lança burst gelo com WOD Twin Burst check.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druid |
+| `var` | Variant | (self-target, não usado) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Burst lançado |
+| `false` | Grade falhou |
+
+**Requisitos:**
+- Level 300
+- 230 mana
+- Self-target (automático)
+- WOD Twin Burst >= 1 (grade 0 rejeita!)
+- needLearn: true
+- Premium account
+- Cooldown 22s
+
+**Efeito:**
+- Efeito ICEATTACK
+- RING1_BURST3 anel!
+- Dano magic-level alto
+- Self-target automation
+- Grupo "burstsofnature"
+
+**Exemplo:**
+
+```lua
+-- Druid lvl 300, MLvl 50, Twin Burst grade 2
+spell.onCastSpell(druid, selfVariant)
+// revelationStageWOD("Twin Burst") = 2
+// Grade != 0: permite
+// Combat executa
+// Area RING1_BURST3 anel ring
+// Dano: -410 a -585
+// Efeito gelo impacto
+// Targets em ring: destruídos!
+// Cooldown 22s
+// Resultado: Burst gelo endgame!
+
+-- Druid lvl 300, MLvl 50, Twin Burst grade 0
+spell.onCastSpell(druid, selfVariant)
+// revelationStageWOD("Twin Burst") = 0
+// Grade == 0: rejeita!
+// Send message: "You need to learn this spell first"
+// POFF effect visual
+// Return false
+// Resultado: Spell bloqueado!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Endgame Druid
+
+```lua
+-- Druid lvl 300
+// Ice Burst = ultimate endgame
+// WOD Twin Burst required
+// Self-target automation
+// Grupo "burstsofnature"
+```
+
+### Caso 2: WOD Progression
+
+```lua
+-- Druid grinding Twin Burst
+// Grade 0: spell bloqueado
+// Grade >= 1: blast disponível
+// Magic escalação endgame
+// 22s cooldown = balanced
+```
+
+### Caso 3: Premium Burst Training
+
+```lua
+-- Premium Druid farming
+// Ice Burst = magic boost
+// 230 mana = custoso
+// RING1_BURST3 área útil
+// Endgame damage output
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_ICEDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **WOD:** revelationStageWOD("Twin Burst")
+- **Areas:** AREA_RING1_BURST3
+- **Effects:** CONST_ME_ICEATTACK
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant - Complexa) |
+| **Função** | Burst gelo self-target WOD |
+| **Dano Type** | COMBAT_ICEDAMAGE |
+| **Fórmula** | (lvl/5) + (mlvl × 7/10.5) |
+| **Mana** | 230 |
+| **Area** | RING1_BURST3 (anel!) |
+| **Level** | 300 (MÁXIMO!) |
+| **Cooldown** | 22s |
+| **Premium** | Sim |
+| **Magic-Level** | Alta (7-10.5 coef) |
+| **WOD** | revelationStageWOD("Twin Burst") |
+| **Learn Required** | Sim (RARO!) |
+| **Self-Target** | Sim |
+| **Grupos** | "attack", "burstsofnature" |
+| **Vocações** | Druid, Elder Druid |
+| **Padrão** | Self-target AOE + WOD grade check + needLearn + burstsofnature |

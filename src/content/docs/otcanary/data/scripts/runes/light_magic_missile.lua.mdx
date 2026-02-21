@@ -1,0 +1,394 @@
+---
+title: "Spell/Rune - light_magic_missile.lua"
+description: "Runa de míssil mágico leve com dano energético e múltiplas cargas"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `light_magic_missile.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 7 |
+| **ID do Item (runeId)** | 3174 |
+| **Level Requerido** | 15 |
+| **Magic Level Requerido** | 0 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Área** | Single target (sem area) |
+| **Cooldown** | 2s |
+| **Cargas** | 10 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Agressividade** | Sim |
+| **Requer Target** | Sim |
+| **Bloqueio** | Sim (isBlocking: true) |
+| **PZ Locked** | Não |
+| **Linhas de Código** | 36 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa ofensiva que lança míssil mágico leve com dano energético escalável. Permite uso a distancia (allowFarUse). Múltiplas cargas (10) facilitam uso frequente. Escalabilidade muito baixa (0.4/0.81 MLvl) tornando-a ideal para treino inicial. Magic Level 0 = acessível desde level 15 sem investimento em MLvl.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/light_magic_missile.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(7)
+rune:runeId(3174)
+rune:level(15)
+rune:magicLevel(0)
+rune:group("attack")
+rune:allowFarUse(true)
+rune:needTarget(true)
+rune:charges(10)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Míssil Leve para Treinamento**
+
+Esta runa implementa um **sistema de dano muito baixo e escalável para treino**:
+
+1. **Fórmula Econômica Extrema:**
+   - min = (level/5) + (maglevel*0.4) + 2
+   - max = (level/5) + (maglevel*0.81) + 4
+   - Escalabilidade muito BAIXA
+
+2. **MLvl 0:** Sem requisito de magia (acessível imediato!)
+3. **Múltiplas Cargas:** 10 uses (sessão longa!)
+4. **Distância:** allowFarUse = true
+
+**Fórmula Visual:**
+```
+level 15, mlvl 0:
+  min = 3 + 0 + 2 = 5
+  max = 3 + 0 + 4 = 7
+
+level 40, mlvl 10:
+  min = 8 + 4 + 2 = 14
+  max = 8 + 8.1 + 4 = 20.1
+```
+
+**Diferencial:** Primeira runa real após pratica - escalabilidade minimalista!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `light_magic_missile` oferece míssil econômico early game:
+
+- **Dano:** COMBAT_ENERGYDAMAGE escalável muito baixo
+- **Fórmula:** (level/5) + (maglevel*0.4/0.81) + bônus
+- **Área:** Single target
+- **Distancia:** Permitida
+- **Cargas:** 10 (treino profundo)
+
+### Arquitetura
+
+Combat com fórmula callback minimalista:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_ENERGYDAMAGE
+├─ Effect: ENERGYAREA
+├─ Distance: ENERGY
+└─ Callback: onGetFormulaValues
+
+onGetFormulaValues()
+└─ min/max muito baixo
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
+```
+
+**Propósito:** Instância de Combat para míssil leve.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ENERGYDAMAGE | Dano energia |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ENERGYAREA | Efeito explosão |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ENERGY | Projétil energia |
+
+**Características:**
+- Sem `combat:setArea()` = single target
+- Callback para fórmula muito escalável
+- Sem armor bypass
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 0.4) + 2
+	local max = (level / 5) + (maglevel * 0.81) + 4
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano muito baixo para treino.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level total |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 0.4) + 2
+max = (level / 5) + (maglevel * 0.81) + 4
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 0.4
+- Maglevel max: 0.81
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 15 | 0 | 5 | 7 |
+| 30 | 5 | 10 | 13 |
+| 50 | 15 | 18 | 28 |
+| 80 | 30 | 30 | 47 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler da runa.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Míssil lançado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Fórmula Treino
+
+```lua
+local min = (level / 5) + (maglevel * 0.4) + 2
+local max = (level / 5) + (maglevel * 0.81) + 4
+```
+
+**Benefício:** Dano muito baixo = sem punição de treino.
+
+### Padrão 2: MLvl 0
+
+```lua
+rune:magicLevel(0)
+```
+
+**Benefício:** Acessível imediato, sem investimento MLvl.
+
+### Padrão 3: Muitas Cargas
+
+```lua
+rune:charges(10)
+```
+
+**Benefício:** 10 uses = sessão longa de treino.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano muito baixo de light magic missile.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(player, 30, 5)
+// min = 6 + 2 + 2 = 10
+// max = 6 + 4.05 + 4 = 14.05
+// Retorna: -10, -14.05
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Lança míssil leve a distancia.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Target (obrigatório) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Míssil lançado |
+| `false` | Target falhou |
+
+**Efeito:**
+- Projétil energia viaja
+- Som customizado de cast + impacto
+- Impacto ENERGYAREA
+- Dano muito baixo
+- Single target
+
+**Exemplo:**
+
+```lua
+-- Mago nível 30, MLvl 5
+rune.onCastSpell(mago, targetVariant, false)
+// Projétil energia viaja
+// Impacto: -10 a -14 dano
+// Resultado: Training eficiente
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Primeira Runa Real
+
+```lua
+-- Mago nível 15 progride de lightest
+-- Quer escalar de dano
+// Light magic missile = opção seguinte
+// Escalabilidade baixa ainda
+```
+
+### Caso 2: Treino Econômico
+
+```lua
+-- 10 cargas = sessão longa
+// MLvl 0 = sem investimento
+// Acessível puro
+```
+
+### Caso 3: Ataque Distancia
+
+```lua
+-- allowFarUse = ataque longe
+// Segurança ranged
+// Inicial no jogo
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage Type:** COMBAT_ENERGYDAMAGE
+- **Effects:** CONST_ME_ENERGYAREA, CONST_ANI_ENERGY
+- **Sounds:** SOUND_EFFECT_TYPE_SPELL_OR_RUNE, SOUND_EFFECT_TYPE_SPELL_LIGHT_MAGIC_MISSILE_RUNE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Míssil energia treino |
+| **Dano Type** | COMBAT_ENERGYDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*0.4)+2, max=(lvl/5)+(mlvl*0.81)+4 |
+| **Area** | Single target |
+| **Cargas** | 10 (treino) |
+| **Distancia** | Sim (allowFarUse) |
+| **Target** | Requerido |
+| **Level** | 15 (early) |
+| **MLvl** | 0 (nenhum!) |
+| **Padrão** | Callback treino + sem bloqueio MLvl |

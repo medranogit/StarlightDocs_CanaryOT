@@ -1,0 +1,116 @@
+---
+title: Tables - Bootstrap Loader
+description: Documentação técnica do arquivo load.lua, que funciona como bootstrap carregando os módulos teleport_item_destinations.lua e town.lua da pasta lib/tables/.
+sidebar:
+  order: 1
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **load.lua** é um **arquivo loader (bootstrap)** que centraliza o carregamento dos dois módulos principais de configuração da pasta `lib/tables/`.
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/tables/load.lua`
+</Card>
+
+<Aside type="tip">
+**Tipo**: Bootstrap/Loader  
+**Padrão**: Central dofile() hub  
+**Total de Arquivos Carregados**: 2  
+**Propósito**: Inicializar todo o subsystem de tables
+</Aside>
+
+## 📄 Visão Geral
+
+Arquivo **mínimo** contendo apenas 2 linhas de `dofile()`:
+
+```lua
+dofile(DATA_DIRECTORY .. "/lib/tables/teleport_item_destinations.lua")
+dofile(DATA_DIRECTORY .. "/lib/tables/town.lua")
+```
+
+## 🗂️ Arquivos Carregados
+
+| # | Arquivo | Descrição |
+|---|---------|-----------|
+| 1 | teleport_item_destinations.lua | Mapeamento de items teleport → destinos |
+| 2 | town.lua | Constantes de cidades (26 cidades) |
+
+## 🔄 Fluxo de Carregamento
+
+```
+[Server Bootstrap]
+  ↓
+[load.lua carregado]
+  ↓
+dofile(teleport_item_destinations.lua) → ItemTeleports table criado
+  ├─ 4 teleport items definidos
+  ├─ Cada com destination Position e effect
+  └─ Suporta Rookgaard, tutorial e premium paths
+  ↓
+dofile(town.lua) → TOWNS_LIST constants criados
+  ├─ 26 cidades nomeadas
+  ├─ 1 valley especial (BLUE_VALLEY)
+  ├─ IDs de 1 a 26 + 33
+  └─ ReferFncias para npclib, spawns, etc
+  ↓
+[Todos globals disponíveis para scripts]
+```
+
+## 💡 Padrão: Centralized Bootstrap
+
+Como em `quests/quest.lua` e `others/load.lua`, este arquivo segue **padrão de hub centralizador**.
+
+**Vantagem**: 
+- Single entry point para tables system
+- Fácil adicionar/remover módulos
+- Order of loading é explícito
+- Evita circular dependencies
+
+## 🎯 Padrão de Extensão
+
+Para **adicionar nova tabela** em `lib/tables/`:
+
+```lua
+-- Adicionar nova linha:
+dofile(DATA_DIRECTORY .. "/lib/tables/my_new_table.lua")
+```
+
+Para **remover tabela**:
+
+```lua
+-- Comentar/deletar linha:
+-- dofile(DATA_DIRECTORY .. "/lib/tables/town.lua")
+```
+
+## 📊 Análise de Globals Criados
+
+Após este arquivo carregar, os seguintes globals existem:
+
+```lua
+-- teleport_item_destinations.lua
+ItemTeleports {
+  [5629] = { destination, effect },
+  [5630] = { destination, effect },
+  [50240] = { destination, effect },
+  [50241] = { destination, effect },
+}
+
+-- town.lua
+TOWNS_LIST {
+  DAWNPORT_TUTORIAL = 1,
+  DAWNPORT = 2,
+  ROOKGAARD = 3,
+  -- ... (26 cities total) ...
+  BLUE_VALLEY = 33,
+}
+```
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Completo  
+**Tipo**: Bootstrap/Loader

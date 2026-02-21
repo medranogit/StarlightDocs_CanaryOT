@@ -1,0 +1,226 @@
+---
+title: Tutor Management
+description: Comando GOD para promover/despromoção de tutores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | manage_tutor.lua |
+| **Tipo de Sistema** | Account Type Management (GOD) |
+| **Funcionalidade Principal** | Promover/despromoção de tutores |
+| **Comandos** | /addtutor, /removetutor |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Tipos de Conta** | ACCOUNT_TYPE_NORMAL, ACCOUNT_TYPE_TUTOR |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/manage_tutor.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /addtutor: valida player online, getAccountType() == NORMAL, setAccountType(TUTOR). /removetutor: valida getAccountType() == TUTOR, setAccountType(NORMAL). Ambos com logging (logger.error), feedback ao target, validações de tipo de conta antes de permitir change.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo manage_tutor.lua implementa 2 comandos de account type management. Dispõe de promoter (NORMAL -> TUTOR), demoter (TUTOR -> NORMAL), validações de tipo de conta, logging automático, feedback personalizado. Ferramenta de account role management.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **TalkAction /addtutor**
+
+```lua
+local addTutor = TalkAction("/addtutor")
+
+function addTutor.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	-- Validação: parâmetro vazio
+	if param == "" then
+		player:sendCancelMessage("Player name param required")
+		logger.error("[addTutor.onSay] - Player name param not found")
+		return true
+	end
+	
+	local split = param:split(",")
+	local name = split[1]
+	
+	-- Buscar jogador
+	local targetPlayer = Player(name)
+	if not targetPlayer then
+		player:sendCancelMessage("Player " .. string.titleCase(name) .. " is not online.")
+		logger.error("[addTutor.onSay] - Player {} is not online", string.titleCase(name))
+		return true
+	end
+	
+	-- Validação: só pode promover NORMAL para TUTOR
+	if targetPlayer:getAccountType() ~= ACCOUNT_TYPE_NORMAL then
+		player:sendCancelMessage("You can only promote a normal player to a tutor.")
+		return true
+	end
+	
+	-- Promover
+	targetPlayer:setAccountType(ACCOUNT_TYPE_TUTOR)
+	targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have been promoted to a tutor by " .. player:getName() .. ".")
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have promoted " .. targetPlayer:getName() .. " to a tutor.")
+	return true
+end
+
+addTutor:separator(" ")
+addTutor:groupType("god")
+addTutor:register()
+```
+
+**Comando:** `/addtutor PlayerName`
+
+**Fluxo:**
+1. Valida param não vazio
+2. Parse nome
+3. Busca player online
+4. Valida que é NORMAL (não já tutor)
+5. setAccountType(ACCOUNT_TYPE_TUTOR)
+6. Feedback duplo
+
+**Validações:**
+- Player online
+- Account type == NORMAL
+
+---
+
+### **TalkAction /removetutor**
+
+```lua
+local removeTutor = TalkAction("/removetutor")
+
+function removeTutor.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	-- Validação: parâmetro vazio
+	if param == "" then
+		player:sendCancelMessage("Player name param required")
+		logger.error("[removeTutor.onSay] - Player name param not found")
+		return true
+	end
+	
+	local split = param:split(",")
+	local name = split[1]
+	
+	-- Buscar jogador
+	local targetPlayer = Player(name)
+	if not targetPlayer then
+		player:sendCancelMessage("Player " .. string.titleCase(name) .. " is not online.")
+		logger.error("[removeTutor.onSay] - Player {} is not online", string.titleCase(name))
+		return true
+	end
+	
+	-- Validação: só pode despromoer TUTOR para NORMAL
+	if targetPlayer:getAccountType() ~= ACCOUNT_TYPE_TUTOR then
+		player:sendCancelMessage("You can only demote a tutor to a normal player")
+		return true
+	end
+	
+	-- Despromoer
+	targetPlayer:setAccountType(ACCOUNT_TYPE_NORMAL)
+	-- Comentado: targetPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have been demoted to a normal player by " .. player:getName() .. ".")
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have demoted " .. targetPlayer:getName() .. " to a normal player.")
+	return true
+end
+
+removeTutor:separator(" ")
+removeTutor:groupType("god")
+removeTutor:register()
+```
+
+**Comando:** `/removetutor PlayerName`
+
+**Fluxo:**
+1. Valida param não vazio
+2. Parse nome
+3. Busca player online
+4. Valida que é TUTOR
+5. setAccountType(ACCOUNT_TYPE_NORMAL)
+6. Feedback só para executor
+
+**Validações:**
+- Player online
+- Account type == TUTOR
+
+---
+
+**Tipos de Conta**
+
+```lua
+ACCOUNT_TYPE_NORMAL = 1
+ACCOUNT_TYPE_TUTOR = 2
+ACCOUNT_TYPE_GAMEMASTER = 3
+ACCOUNT_TYPE_GOD = 4
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /addtutor TestPlayer
+
+Fluxo:
+1. Busca TestPlayer online
+2. getAccountType() == 1 (NORMAL)?
+3. Sim: setAccountType(2) = TUTOR
+4. Feedback: "You have promoted TestPlayer to a tutor."
+5. TestPlayer recebe: "You have been promoted to a tutor by AdminName."
+
+Resultado:
+- TestPlayer agora é tutor
+- Tem permissões de tutor
+
+---
+
+GM: /removetutor TestPlayer
+
+Fluxo:
+1. Busca TestPlayer online
+2. getAccountType() == 2 (TUTOR)?
+3. Sim: setAccountType(1) = NORMAL
+4. Feedback: "You have demoted TestPlayer to a normal player."
+5. TestPlayer NÃO recebe mensagem (comentada)
+
+Resultado:
+- TestPlayer voltar a normal
+- Perde permissões de tutor
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `string.titleCase(str)` | Capitaliza string |
+| `Player(name)` | Busca player online |
+| `player:getAccountType()` | Obtém tipo de conta |
+| `player:setAccountType(type)` | Seta tipo de conta |
+| `player:getName()` | Obtém nome |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+| `logger.error(fmt, ...)` | Log erro |
+
+**Constantes:**
+- `ACCOUNT_TYPE_NORMAL`
+- `ACCOUNT_TYPE_TUTOR`
+- `MESSAGE_EVENT_ADVANCE`
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo manage_tutor.lua é ferramenta de account type management. Implementação com validações de tipo de conta, promocão/despromação, logging automático, feedback diferenciado. Essencial para GMs gerenciar role de tutores. Design simples com validações rigorosas.

@@ -1,0 +1,294 @@
+---
+title: "on_area_combat.lua"
+description: "Event callback base para combate em área, retorna RETURNVALUE_NOERROR sem implementação de lógica"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Event callback **stub/placeholder** que implementa hook `creatureOnAreaCombat` disparado quando uma criatura executa ataque em área. Arquivo serve como **template extensível** onde sistemas que usam combate em área podem injetar lógica (efeitos visuais, cooldowns, validações). Atualmente não faz nada além de retornar `RETURNVALUE_NOERROR`, permitindo que ataque prossiga normalmente.
+
+**Caminho Original**: `data/scripts/eventcallbacks/creature/on_area_combat.lua`
+
+**Tipo**: EventCallback (creatureOnAreaCombat trigger)
+
+**Dependências**:
+- EventCallback API (engine C++)
+- Creature object (userdata)
+- Tile object (userdata)
+- Constants: `RETURNVALUE_NOERROR`
+
+<Aside>
+Este arquivo é um **hook vazio** pronto para extensão. Quando adicionarem lógica de cooldown, efeitos ou validações de area combat, será neste arquivo que irá. Atualmente apenas "passthrough" sem interferências.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `on_area_combat.lua` implementa **event callback stub** que intercepta todos os `creatureOnAreaCombat` disparados quando uma criatura (jogador ou monster) executa um ataque em área. Retorna `RETURNVALUE_NOERROR` permitindo que ataque prossiga sem interferência, sem implementar nenhuma lógica customizada. Arquivo serve como **ponto de injeção** para sistemas que precisem validar, limitar ou modificar comportamento de area combat (cooldowns, skill requirements, efeitos especiais).
+
+### Arquitetura de Componentes
+
+```
+Area Combat Handler (Vazio)
+│
+├─ EVENT REGISTRATION (1 função)
+│  └── callback:register() (registra handler na engine)
+│
+└─ AREA COMBAT RECEIVER (1 função)
+   └── creatureOnAreaCombat(creature, tile, isAggressive)
+      └── return RETURNVALUE_NOERROR (sempre sucesso)
+```
+
+### Diagrama de Fluxo
+
+```
+Creature (Player ou Monster) tenta executar Area Combat
+    │
+    ├─ Engine dispara EventCallback "CreatureOnAreaCombatBaseEvent"
+    │  └─ params: creature (source), tile (alvo), isAggressive
+    │
+    ▼
+creatureOnAreaCombat(creature, tile, isAggressive)
+    │
+    ├─ [NÃO FAZ NADA]
+    │
+    └─ return RETURNVALUE_NOERROR (sucesso)
+        │
+        └─ Engine continua normal: ataque em área ocorre
+```
+
+---
+
+## Detalhes da Função Global
+
+### `callback.creatureOnAreaCombat(creature, tile, isAggressive)`
+
+**Tipo**: EventCallback hook
+
+**Descrição**: Função disparada pela engine quando uma criatura tenta executar um ataque em área. Atua como **ponto de injeção** vazio onde lógica de validação ou modificação pode ser adicionada no futuro.
+
+**Parâmetros**:
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `creature` | userdata | Criatura que está tentando atacar |
+| `tile` | userdata | Tile alvo do ataque em área |
+| `isAggressive` | boolean | true = ataque agressivo, false = non-damaging effect |
+
+**Retorna**: 
+- `RETURNVALUE_NOERROR` (sempre, permitindo a ação)
+- Pode retornar outros valores para bloquear: `RETURNVALUE_YOUARENOTABLE`, `RETURNVALUE_NOTPOSSIBLE`, etc.
+
+**Comportamento Atual**:
+```lua
+function callback.creatureOnAreaCombat(creature, tile, isAggressive)
+    -- Sem lógica implementada
+    return RETURNVALUE_NOERROR  -- Sempre permite
+end
+```
+
+**Código Comentado de Extensão**:
+```lua
+-- Exemplo: Bloquear se criatura em cooldown
+-- if creature:isInCombatExhaustion() then
+--     return RETURNVALUE_NOTPOSSIBLE
+-- end
+
+-- Exemplo: Logging de area combats
+-- logger.info("{} used area combat at {}", creature:getName(), tile:getPosition())
+
+-- Exemplo: Modificar comportamento por tipo
+-- if isAggressive then
+--     -- Lógica para ataques agressivos
+-- else
+--     -- Lógica para efeitos sem dano
+-- end
+```
+
+**Características Principais**:
+
+| Característica | Valor | Notas |
+|---|---|---|
+| Implementação | Stub/Placeholder | Sem lógica real |
+| Retorno Default | RETURNVALUE_NOERROR | Sempre permite |
+| Bloqueabilidade | Sim (retornar erro) | Pode negar ação |
+| Logger Integration | Não | Poderia adicionar logs |
+| Async Operations | Não | Síncrono apenas |
+
+---
+
+## Padrões & Implementação
+
+### 1. Padrão de Hook/Callback Extensível
+
+Arquivo que serve apenas como **ponto de injeção** sem lógica própria:
+
+```lua
+-- Padrão A: Hook vazio (como está)
+function callback.eventHook(param1, param2)
+    return RETURNVALUE_NOERROR
+end
+
+-- Padrão B: Hook com logging
+function callback.eventHook(param1, param2)
+    logger.info("Event triggered: {} at {}", param1, param2)
+    return RETURNVALUE_NOERROR
+end
+
+-- Padrão C: Hook com early guard
+function callback.eventHook(param1, param2)
+    if not isValid(param1) then
+        return RETURNVALUE_NOTPOSSIBLE
+    end
+    return RETURNVALUE_NOERROR
+end
+```
+
+**Vantagens**:
+- Desvínculo completo (não quebra ao não ter lógica)
+- Pronto para injetar complexidade quando necessário
+- Sem overhead (return imediato)
+
+**Onde Usar**:
+- Pre-hooks (antes de ação ocorrer)
+- Validação de pre-condições
+- Logging/telemetria
+- Feature flags que podem ativar/desativar
+
+### 2. Padrão de Return Code (RETURNVALUE_*)
+
+Sistema de códigos de retorno para sinalizar sucesso/falha:
+
+```lua
+-- Sucesso (permite ação)
+return RETURNVALUE_NOERROR
+
+-- Falhas bloqueáveis
+return RETURNVALUE_NOTPOSSIBLE       -- Genericamente não possível
+return RETURNVALUE_YOUARENOTABLE     -- Criatura não pode fazer
+return RETURNVALUE_NEEDLEVELONEHVL   -- Falta habilidade
+return RETURNVALUE_NEEDPROFESSIONVL  -- Falta profissão
+```
+
+**Convenção na Engine**:
+- Retorno `nil` ou sem return → interpretado como falha
+- Retorno `true` → siglas para `RETURNVALUE_NOERROR`
+- Retorno falsy (`false`, `0`) → falha
+
+**Prática Recomendada**:
+```lua
+-- ✅ Correto: usar constante
+return RETURNVALUE_NOERROR
+
+-- ⚠️ Ambíguo: usar boolean
+return true  -- Funciona mas menos claro
+
+-- ❌ Errado: sem return
+-- Engine interpreta como falha
+```
+
+---
+
+## Fluxo de Operação
+
+### Timeline de Execução
+
+```
+[Area Combat Attempt]
+    │
+    ├─ 1. Creature tenta usar spell/skill com area effect
+    ├─ 2. Engine valida pre-condições básicas (mana, cooldown, etc)
+    │
+    ├─ ▶️ EventCallback "CreatureOnAreaCombatBaseEvent" ativado
+    │    │
+    │    ├─ creatureOnAreaCombat(creature, tile, isAggressive)
+    │    │  └─ [Sem implementação: return RETURNVALUE_NOERROR]
+    │    │
+    │    └─ Engine recebe RETURNVALUE_NOERROR (sucesso)
+    │
+    ├─ 3. Engine processa ataque em área
+    ├─ 4. Damage/effects aplicados a creatures no tile
+    │
+    └─ [Area Combat Complete]
+```
+
+### Casos de Uso Potencial
+
+**Caso 1: Area Combat Bloqueado**
+```lua
+if creature:isInCombatExhaustion() then
+    return RETURNVALUE_YOUARENOTABLE  -- Nega ação
+end
+return RETURNVALUE_NOERROR  -- Permite normal
+```
+
+**Caso 2: Area Combat com Feedback**
+```lua
+logger.info("{} used area combat at position {}", 
+    creature:getName(), 
+    tile:getPosition():toString())
+return RETURNVALUE_NOERROR
+```
+
+**Caso 3: Area Combat diferenciado por tipo**
+```lua
+if isAggressive then
+    -- Validações específicas para ataques agressivos
+    if doCostlyCheckAggressiveAreaCombat(creature) then
+        return RETURNVALUE_NOTPOSSIBLE
+    end
+end
+return RETURNVALUE_NOERROR
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+**Versão da Documentação**: 1.0
+
+**Última Atualização**: 2026-02-19
+
+**Tipo de Complexidade**: ⚪ **Trivial**
+- Arquivo com 16 linhas de código
+- 1 função callback
+- 0 variáveis locais
+- Lógica: return code simples, nenhuma implementação
+- Tempo estimado de aprendizado: 5 minutos
+
+**Cobertura de Tópicos**:
+- ✅ Função global
+- ✅ Padrões de implementação
+- ✅ Fluxo de operação
+- ✅ Casos de uso potencial
+
+**Referências Relacionadas**:
+- [ARQUITETURA_PROJETO.mdx](../../../ARQUITETURA_PROJETO.mdx) - Visão geral de event callbacks
+- EventCallback API (engine C++)
+- Combat system documentation
+
+**Status de Implementação**: ⚠️ **Stub/Placeholder**
+- Hook criado e registrado
+- Sem lógica implementada (intencional)
+- Pronto para injeção de features
+
+**Notas para Futuros Desenvolvedores**:
+1. Este arquivo é **intencionalmente vazio** - serve como template
+2. Para adicionar lógica: descomentar/implementar no body da função
+3. Sempre retornar um código de retorno válido (não deixar `nil`)
+4. Pode bloquear ações retornando `RETURNVALUE_NOTPOSSIBLE` ou similar
+5. Logging pode ser adicionado para telemetria de combate
+
+**Potencial de Extensão**:
+- ✅ Cooldown validation
+- ✅ Exhaustion checks
+- ✅ Requirement validation (level, skill, profession)
+- ✅ Effect/damage modification
+- ✅ Party/Guild-specific rules
+- ✅ Event logging/analytics
+

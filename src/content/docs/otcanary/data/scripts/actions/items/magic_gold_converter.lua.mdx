@@ -1,0 +1,284 @@
+---
+title: magic_gold_converter.lua
+description: Conversor automático de moedas com evento recursivo
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="magic_gold_converter.lua" icon="star">
+Script de ação Lua que implementa conversor mágico automático de moedas com loop de eventos.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/magic_gold_converter.lua`
+
+Conversor (IDs 28525/28526 dual-state) que alterna entre dois estados ao usar. Estado ativo inicia evento recursivo (300ms loop) que busca containers para converter moedas: 100 Gold → 1 Platinum, 100 Platinum → 1 Crystal. Busca recursiva em containers aninhados. Charges consumível. Remove ao expirar charges.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `magic_gold_converter.lua` implementa conversor mágico automático com dois estados (ative/inactive). Ao usar, transforma entre IDs 28525↔28526 e inicia evento recursivo. Evento loop busca em containers (Storage/inbox) moedas válidas (100 count), converte automaticamente via findAndConvertCoins tabela recursiva. Charges decrementam a cada conversão. Recurse para sub-containers via Container().
+
+**Estrutura de Funcionalidades**
+
+```
+[Define data table]
+    ├─ converterIds: {28525 ↔ 28526}
+    └─ coins: {Gold → Platinum, Platinum → Crystal}
+
+[Define findAndConvertCoins(player, container, converter)]
+    ├─ For item in container
+    │   ├─ If isContainer recursivo (findAndConvertCoins)
+    │   ├─ Else if count==100 and in coins map
+    │   │   ├─ Remove moeda
+    │   │   ├─ Add moeda convertida
+    │   │   ├─ Decrementa charges
+    │   │   └─ return true (stop loop)
+    │   └─ Continue
+    └─ return false
+
+[Define startConverter(playerId, converterItemId)]
+    ├─ Get player
+    ├─ Get converter item
+    ├─ If charges >= 1
+    │   ├─ If inventory has 100+ coins
+    │   │   └─ Call findAndConvertCoins
+    │   ├─ addEvent reschedule (300ms)
+    │   └─ Continue
+    └─ Else charges == 0
+        └─ Remove converter
+
+[Create magicGoldConverter Action]
+    ↓
+[onUse function]
+    ├─ Transform item state (28525 ↔ 28526)
+    ├─ Add decay timer
+    ├─ startConverter(playerId, itemId)
+    └─ return true
+    ↓
+[Register on IDs 28525, 28526]
+```
+
+## Variáveis Globais
+
+### data (local table)
+
+```lua
+local data = {
+	converterIds = {
+		[28525] = 28526,
+		[28526] = 28525,
+	},
+
+	coins = {
+		[ITEM_GOLD_COIN] = ITEM_PLATINUM_COIN,
+		[ITEM_PLATINUM_COIN] = ITEM_CRYSTAL_COIN,
+	},
+}
+```
+
+Configuração centralizada.
+
+## Funções Locais
+
+### findAndConvertCoins(player, container, converter)
+
+Busca recursiva por moedas em containers.
+
+**Responsabilidades:**
+1. Iterar items em container
+2. Se é container: recurse
+3. Se moeda (100 count): converter
+4. Stop ao converter (return true)
+
+**Parâmetros:**
+- player: Creature player (para addItem)
+- container: Container atual
+- converter: Item conversor (para decrementar charges)
+
+**Fluxo:**
+
+```lua
+for i = 0, container:getSize() - 1 do
+	local item = container:getItem(i)
+	if item:isContainer() then
+		findAndConvertCoins(player, Container(item.uid), converter) -- Recurse
+	else
+		for fromId, toId in pairs(data.coins) do
+			if item:getId() == fromId and item:getCount() == 100 then
+				item:remove()
+				if not (container:addItem(toId, 1)) then
+					player:addItem(toId, 1) -- Fallback inventory
+				end
+				converter:setAttribute(ITEM_ATTRIBUTE_CHARGES, charges - 1)
+				return true -- Stop searching
+			end
+		end
+	end
+end
+return false
+```
+
+### startConverter(playerId, converterItemId)
+
+Event loop que inicia conversão automática.
+
+**Fluxo:**
+
+```lua
+function startConverter(playerId, converterItemId)
+	local player = Player(playerId)
+	if player then
+		local converter = player:getItemById(converterItemId, true)
+		if converter and converter:hasAttribute(ITEM_ATTRIBUTE_CHARGES) then
+			local charges = converter:getAttribute(ITEM_ATTRIBUTE_CHARGES)
+			if charges >= 1 then
+				if player:getItemCount(ITEM_GOLD_COIN) >= 100 or 
+				   player:getItemCount(ITEM_PLATINUM_COIN) >= 100 then
+					findAndConvertCoins(player, player:getStoreInbox(), converter)
+				end
+				addEvent(startConverter, 300, playerId, converterItemId)
+			else
+				converter:remove(1)
+			end
+		end
+	end
+end
+```
+
+**Event Loop**:
+- 300ms interval
+- Check player exists
+- Get converter item
+- If charges >= 1: convert coins, reschedule
+- If charges == 0: remove converter
+
+## Funções
+
+### magicGoldConverter.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que ativa/desativa conversor.
+
+**Parâmetros:**
+- player: Creature player
+- item: Conversor state atual
+- fromPosition: Posição original
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. item:transform(data.converterIds[item.itemid])
+   └─ Alterna entre 28525 ↔ 28526
+
+2. item:decay()
+   └─ Decay timer iniciado
+
+3. startConverter(player:getId(), 28526)
+   └─ Event loop inicia
+
+4. return true
+```
+
+**Implementação:**
+
+```lua
+function magicGoldConverter.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	item:transform(data.converterIds[item.itemid])
+	item:decay()
+	startConverter(player:getId(), 28526)
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| 28525 | ID | Offline state |
+| 28526 | ID | Online state |
+| 300 | integer | Event interval (ms) |
+| ITEM_GOLD_COIN | constant | Gold ID |
+| ITEM_PLATINUM_COIN | constant | Platinum ID |
+| ITEM_CRYSTAL_COIN | constant | Crystal ID |
+| ITEM_ATTRIBUTE_CHARGES | param | Charges attr |
+
+## Fluxo de Operação
+
+```
+[Player usa conversor]
+    ↓
+[item:transform(alternate state)]
+    ↓
+[item:decay()] [inicia timer]
+    ↓
+[startConverter(playerId, itemId)]
+    └─ Event 300ms loop inicia
+    ↓
+[Event loop]
+    ├─ Get player
+    ├─ Get converter item
+    ├─ If charges >= 1
+    │   ├─ If tem 100+ coins
+    │   │   └─ findAndConvertCoins (busca recursiva)
+    │   │       └─ Convert: remove oldCoin, add newCoin, charges-1
+    │   └─ Reschedule 300ms
+    └─ Else (charges 0)
+        └─ Remove conversor
+```
+
+## Busca Recursiva em Containers
+
+```
+Container (Storage/Inbox)
+    ├─ Item 1: Gold Coin (100) → Convert Platinum +1, charges-1
+    ├─ Container sub
+    │   ├─ Item 1: Platinum (100) → Convert Crystal +1, charges-1
+    │   └─ Item 2: Other
+    └─ Item 3: Other
+```
+
+Busca em profundidade até encontrar moeda conversível.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Recursão em containers nested
+2. Event loop com reschedule
+3. Busca simples (return true ao encontrar)
+4. Conversor stateful (dual ID)
+5. Charges como consumível
+6. Fallback para inventory (if container full)
+7. Decay timer para desativar
+
+**Responsabilidades:**
+1. Tranformar state conversor
+2. Iniciar decay timer
+3. Iniciar event loop
+4. Buscar recursivamente containers
+5. Converter moedas automaticamente
+6. Decrementar charges
+7. Remover ao expirar
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler - complexo)  
+**Tamanho**: 68 linhas  
+**Funções**: 3 (onUse, findAndConvertCoins recursiva, startConverter event)  
+**Item IDs**: 2 (28525, 28526 dual-state)  
+**Conversões**: 2 (Gold→Plat, Plat→Crystal)  
+**Event Interval**: 300ms  
+**Busca**: Recursiva em containers nested  
+**Consumível**: Charges
+</Card>
+
+<Aside type="note">
+Conversor automático com busca recursiva 300ms loop. Alterna states (28525↔28526). Converte moedas automaticamente: 100 Gold→1 Platinum, 100 Platinum→1 Crystal. Charges consumível, remove ao expirar.
+</Aside>

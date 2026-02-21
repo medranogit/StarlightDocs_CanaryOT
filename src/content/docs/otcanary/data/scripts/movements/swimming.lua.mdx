@@ -1,0 +1,450 @@
+---
+title: "Movement - swimming.lua"
+description: "Sistema de natação com remoção de conditions e aplicação de outfit especial"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `swimming.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (stepin + stepout) |
+| **Event Names** | `swimming.onStepIn`, `swimming.onStepOut` |
+| **Funções Registradas** | 2 callbacks |
+| **Linhas de Código** | 52 |
+| **Complexidade** | Médium |
+| **Status** | Base implementation |
+
+**Descrição:**
+Sistema de natação que aplica outfit especial ao entrar em água, removendo todas as debuffs (poison, fire, paralyze, etc). Ao sair, remove o outfit de natação.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/swimming.lua
+```
+
+**Requisitos:**
+- Condition de outfit pré-criada
+- Array de conditions a remover (10 tipos)
+- Tabela global `swimmingTiles` com IDs de água
+- Sistema de Condition (OUTFIT + POISON/FIRE/etc)
+- Validação de jogador
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Natação com Limpeza de Debuffs**
+
+Este script implementa um **sistema de piscina mágica curativa**:
+
+**Ao Entrar em Água:**
+1. Remove 10 tipos de debuffs:
+   - Poison, Fire, Energy, Paralyze, Drunk
+   - Drown, Freezing, Dazzled, Cursed, Bleeding
+2. Aplica outfit único (lookType 267)
+3. Outfit é permanente (ticks -1)
+
+**Diferencial:** Água não apenas muda aparência - cura todos os efeitos ruins!
+
+**Fluxo:**
+```
+Jogador pisa em água
+├─ Remove poison
+├─ Remove fire
+├─ Remove paralyze
+├─ ... (10 condições)
+└─ Aplica outfit natação
+
+Jogador sai de água
+└─ Remove outfit
+   (Debuffs já foram removidos, não voltam)
+```
+
+**Casos de Uso:**
+- Piscinas curativas em town
+- Áreas de reset antes de boss
+- Mecânica de safe zone com theme
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `swimming.lua` implementa um sistema integrado de natação com benefícios:
+
+- **Remoção de Debuffs:** 10 tipos de conditions removidas
+- **Outfit Especial:** Aparência de nadador (lookType 267)
+- **Permanência:** Outfit dura até sair da água
+- **Cobertura:** Múltiplas tiles de água via `swimmingTiles`
+
+### Arquitetura
+
+Condition pré-criada + loop de remoção + dois callbacks:
+
+```
+local condition = Condition(OUTFIT)
+├─ lookType = 267 (aparência)
+└─ ticks = -1 (permanente)
+
+local conditions = { 10 condition types }
+
+onStepIn:
+  ├─ Remove todas 10 conditions
+  ├─ Aplica outfit
+  └─ Retorna true
+
+onStepOut:
+  ├─ Remove outfit
+  └─ Retorna true
+```
+
+### Fluxo Lógico Resumido
+
+| Evento | Ação | Resultado |
+|---|---|---|
+| **onStepIn** | Remove debuffs + aplica outfit | Jogador nadador, curado |
+| **onStepOut** | Remove outfit | Volta visual normal |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Condition Pré-Criada
+
+```lua
+local condition = Condition(CONDITION_OUTFIT)
+condition:setOutfit({ lookType = 267 })
+condition:setTicks(-1)
+```
+
+**Propósito:** Reutilizável condition de outfit.
+
+**Propriedades:**
+- Tipo: `CONDITION_OUTFIT` (transformação visual)
+- Aparência: `lookType = 267` (modelo de cor de natação)
+- Duração: `-1` (permanente até explícita remoção)
+
+---
+
+### Array de Conditions a Remover
+
+```lua
+local conditions = {
+	CONDITION_POISON,
+	CONDITION_FIRE,
+	CONDITION_ENERGY,
+	CONDITION_PARALYZE,
+	CONDITION_DRUNK,
+	CONDITION_DROWN,
+	CONDITION_FREEZING,
+	CONDITION_DAZZLED,
+	CONDITION_CURSED,
+	CONDITION_BLEEDING,
+}
+```
+
+**Propósito:** Lista de todos os debuffs a remover ao nadar.
+
+| Index | Condition | Tipo |
+|---|---|---|
+| 1 | POISON | Dano periódico |
+| 2 | FIRE | Dano periódico |
+| 3 | ENERGY | Dano periódico |
+| 4 | PARALYZE | Velocidade |
+| 5 | DRUNK | Visão |
+| 6 | DROWN | Água |
+| 7 | FREEZING | Congelamento |
+| 8 | DAZZLED | Stun visual |
+| 9 | CURSED | Maldição |
+| 10 | BLEEDING | Sangramento |
+
+---
+
+### Callback onStepIn
+
+```lua
+function swimming.onStepIn(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return false
+	end
+
+	for i = 1, #conditions do
+		player:removeCondition(conditions[i])
+	end
+
+	player:addCondition(condition)
+	return true
+end
+```
+
+**Propósito:** Ao entrar em água, cura debuffs e aplica outfit.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que entrou |
+| `item` | Item | A água (tile) |
+| `position` | Position | Posição da água |
+| `fromPosition` | Position | Posição anterior |
+
+**Fluxo Lógico:**
+
+1. **Validação:** Se não é jogador, retorna false
+2. **Loop de Remoção:** Itera por 10 conditions
+   - Chama `player:removeCondition(conditions[i])` para cada
+   - Nenhum erro se não possui (removeCondition é seguro)
+3. **Aplica Outfit:** `player:addCondition(condition)` (lookType 267)
+4. **Retorna:** true
+
+---
+
+### Registração do onStepIn
+
+```lua
+swimming:type("stepin")
+swimming:id(unpack(swimmingTiles))
+swimming:register()
+```
+
+| Método | Valor | Significado |
+|---|---|---|
+| `:type("stepin")` | stepin | Dispara ao entrar |
+| `:id(unpack(swimmingTiles))` | IDs | Todas as tiles de água |
+| `:register()` | - | Registra evento |
+
+**Nota:** `unpack(swimmingTiles)` expande array global como múltiplos argumentos.
+
+---
+
+### Callback onStepOut
+
+```lua
+function swimming.onStepOut(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return false
+	end
+
+	player:removeCondition(CONDITION_OUTFIT)
+	return true
+end
+```
+
+**Propósito:** Ao sair, remove outfit de natação.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu |
+| `item` | Item | A água |
+| `position` | Position | Posição |
+| `fromPosition` | Position | Para onde vai |
+
+**Fluxo:**
+
+1. **Validação:** Se não é jogador, retorna false
+2. **Remove Outfit:** `player:removeCondition(CONDITION_OUTFIT)`
+3. **Retorna:** true
+
+---
+
+### Registração do onStepOut
+
+```lua
+swimming:type("stepout")
+swimming:id(unpack(swimmingTiles))
+swimming:register()
+```
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `condition` | Condition | Arquivo | Outfit pré-criada |
+| `conditions` | table | Arquivo | Array de 10 debuffs |
+| `swimming` | MoveEvent | Arquivo | Instância do evento |
+| `player` | Player | Função | Criatura convertida a jogador |
+| `i` | number | Função | Índice do loop |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Condition Pré-Criada
+
+```lua
+local condition = Condition(CONDITION_OUTFIT)
+condition:setOutfit({ lookType = 267 })
+condition:setTicks(-1)
+
+-- Reutilizada depois
+player:addCondition(condition)
+```
+
+**Benefício:** Condition criada uma vez, aplicada múltiplas vezes.
+
+### Padrão 2: Loop de Remoção
+
+```lua
+for i = 1, #conditions do
+	player:removeCondition(conditions[i])
+end
+```
+
+**Benefício:** Genérico: remove conhecidas conditions sem hardcoding.
+
+### Padrão 3: Unpack para IDs Dinâmicos
+
+```lua
+swimming:id(unpack(swimmingTiles))
+```
+
+**Benefício:** Expande array global em múltiplos argumentos sem código fixo.
+
+### Padrão 4: Validação Simétrica
+
+```lua
+-- onStepIn
+player:addCondition(condition)
+
+-- onStepOut
+player:removeCondition(CONDITION_OUTFIT)
+```
+
+**Benefício:** onStepOut é espelho de onStepIn.
+
+---
+
+## 🤖 Documentação das Funções
+
+### swimming.onStepIn(creature, item, position, fromPosition)
+
+Ao entrar em água, remove debuffs e aplica outfit de natação.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que entrou |
+| `item` | Item | A água |
+| `position` | Position | Posição |
+| `fromPosition` | Position | De onde veio |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Movimento permitido, efeitos aplicados |
+| `false` | Não é jogador |
+
+**Exemplo:**
+
+```lua
+-- Jogador poisonado entra em água
+swimming.onStepIn(player, water, pos, fromPos)
+-- Remove: poison, fire, energy, paralyze, drunk...
+-- Aplica: outfit natação (lookType 267)
+-- Resultado: Jogador curado e com visual de nadador
+```
+
+---
+
+### swimming.onStepOut(creature, item, position, fromPosition)
+
+Ao sair de água, remove outfit de natação.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu |
+| `item` | Item | A água |
+| `position` | Position | Posição |
+| `fromPosition` | Position | Para onde vai |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Movimento permitido |
+| `false` | Não é jogador |
+
+**Exemplo:**
+
+```lua
+-- Jogador sai de água
+swimming.onStepOut(player, water, pos, fromPos)
+-- Remove outfit (volta visual original)
+-- Debuffs já foram removidos permanentemente
+// Resultado: Jogador com aparência normal, sem debuffs
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Piscina de Cura em Town
+
+```lua
+-- Piscina de town com water tiles
+-- Jogador vem do dungeon, envenenado
+-- Pisa em água
+-- Poison removido, outfit aplicado
+// Sai da água
+- Volta visual normal, poison não volta
+```
+
+### Caso 2: Reset antes de Boss
+
+```lua
+-- Sala antes de boss final tem água
+-- Jogador entra: remove paralysis, cursed, drown
+-- Aplica outfit
+// Pronto para boss com slate limpo
+```
+
+### Caso 3: NPC Tenta Entrar
+
+```lua
+// NPC tenta pisar em água
+// creature:getPlayer() = nil
+// Retorna false (sem ação)
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Swiming Tiles:** Global `swimmingTiles` (array de IDs)
+- **Condition OUTFIT:** lookType 267
+- **Conditions Removidas:** 10 tipos
+- **MoveEvent API:** [events/movements](../movements)
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | MoveEvent (stepin + stepout) |
+| **Callbacks** | 2 (entrada e saída) |
+| **Outfit** | lookType 267 |
+| **Debuffs Removidos** | 10 tipos |
+| **Duração** | -1 (permanente) |
+| **Cobertura** | Múltiplas tiles via global |
+| **Padrão** | Condition pré-criada + loop de remoção |

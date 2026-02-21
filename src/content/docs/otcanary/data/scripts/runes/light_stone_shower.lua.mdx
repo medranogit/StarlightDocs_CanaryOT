@@ -1,0 +1,425 @@
+---
+title: "Spell/Rune - light_stone_shower.lua"
+description: "Runa de chuva de pedras com level/maglevel cappe e dano terra muito baixo"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `light_stone_shower.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 116 |
+| **ID do Item (runeId)** | 21351 |
+| **Level Requerido** | 1 |
+| **Magic Level Requerido** | 0 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_EARTHDAMAGE |
+| **Área** | 1x1 Circle (single) |
+| **Cooldown** | 2s |
+| **Cargas** | 4 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Agressividade** | Sim |
+| **Requer Target** | Não |
+| **Validação Especial** | Level/MLvl cappado em 20 |
+| **PZ Locked** | Não |
+| **Linhas de Código** | 38 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa muito early que causa dano terra com chuva de pedras. Acesso extremo (level 1, MLvl 0). Implementa cap especial: level e maglevel são limitados a máximo 20 na fórmula, evitando escalabilidade demais. Sem needTarget permite auto-cast. Dano extremamente baixo mesmo com cap (0.3/0.45 MLvl).
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/light_stone_shower.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(116)
+rune:runeId(21351)
+rune:level(1)
+rune:magicLevel(0)
+rune:group("attack")
+rune:allowFarUse(true)
+rune:charges(4)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Chuva de Pedras com Cap de Escalabilidade**
+
+Esta runa implementa um **sistema de dano terra com validação de cap**:
+
+1. **Level/MLvl Cappado:**
+   - `level = math.min(level, 20)` = máx 20!
+   - `maglevel = math.min(maglevel, 20)` = máx 20!
+   - Evita escalabilidade infinita
+
+2. **Acesso Extremo:**
+   - Level 1 (primeira runa!)
+   - MLvl 0 (nada!)
+
+3. **Fórmula Muito Baixa:**
+   - min = (level/5) + (maglevel*0.3) + 2
+   - max = (level/5) + (maglevel*0.45) + 3
+   - Earth damage (tipo raro!)
+
+4. **Sem Target:** Pode auto-cast
+
+**Fórmula Visual (com cap):**
+```
+level 1, mlvl 0:
+  level capped = 1, mlvl capped = 0
+  min = 0.2 + 0 + 2 = 2.2
+  max = 0.2 + 0 + 3 = 3.2
+
+level 50, mlvl 30:
+  level capped = 20, mlvl capped = 20
+  min = 4 + 6 + 2 = 12 (CAPPED!)
+  max = 4 + 9 + 3 = 16 (CAPPED!)
+```
+
+**Diferencial:** Primeira runa pure + cap protection!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `light_stone_shower` oferece primeira runa com proteção:
+
+- **Dano:** COMBAT_EARTHDAMAGE ultra-baixo
+- **Fórmula:** (level/5) + (maglevel*0.3/0.45) + bônus
+- **Cap:** Level/MLvl máximo 20
+- **Área:** 1x1 (single)
+- **Distancia:** Permitida
+- **Cargas:** 4 (poucas)
+
+### Arquitetura
+
+Combat com fórmula callback + cap:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_EARTHDAMAGE
+├─ Effect: STONES
+├─ Distance: EARTH
+├─ Area: 1x1 Circle
+└─ Callback: onGetFormulaValues (com cap!)
+
+onGetFormulaValues()
+├─ Cap: level = math.min(level, 20)
+├─ Cap: maglevel = math.min(maglevel, 20)
+└─ min/max muito baixo
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_STONES)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_EARTH)
+combat:setArea(createCombatArea(AREA_CIRCLE1X1))
+```
+
+**Propósito:** Instância de Combat para chuva de pedras.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_EARTHDAMAGE | Dano terra |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_STONES | Efeito pedras |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_EARTH | Projétil terra |
+| `Area` | AREA_CIRCLE1X1 | 1x1 (single) |
+
+**Características:**
+- Área 1x1 = single tile
+- Callback para fórmula cappada
+- Sem armor bypass
+- Sem needTarget (auto-cast ok)
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	level = math.min(level, 20)
+	maglevel = math.min(maglevel, 20)
+	local min = (level / 5) + (maglevel * 0.3) + 2
+	local max = (level / 5) + (maglevel * 0.45) + 3
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano com cap de escalabilidade.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level (será cappado!) |
+| `maglevel` | number | Magic level (será cappado!) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula com Cap:**
+```
+level = math.min(level, 20)        -- Máximo 20 levels!
+maglevel = math.min(maglevel, 20)  -- Máximo 20 MLvl!
+min = (level / 5) + (maglevel * 0.3) + 2
+max = (level / 5) + (maglevel * 0.45) + 3
+```
+
+**Pesos (após cap):**
+- Level: 0.2 por ponto (max 4 dos 20)
+- Maglevel min: 0.3 (max 6 dos 20)
+- Maglevel max: 0.45 (max 9 dos 20)
+
+**Exemplos:**
+
+| Level | MLvl | Level Capped | MLvl Capped | Min | Max |
+|---|---|---|---|---|---|
+| 1 | 0 | 1 | 0 | 2 | 3 |
+| 20 | 10 | 20 | 10 | 7 | 10 |
+| 100 | 50 | 20 | 20 | 12 | 16 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler da runa.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Chuva de pedras ativada |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `level` | number | Level cappado (máx 20) |
+| `maglevel` | number | MLvl cappado (máx 20) |
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Cap de Escalabilidade
+
+```lua
+level = math.min(level, 20)
+maglevel = math.min(maglevel, 20)
+```
+
+**Benefício:** Evita escalabilidade infinita no jogo.
+
+### Padrão 2: Dano Earth Raro
+
+```lua
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+```
+
+**Benefício:** Tipo de dano pouco comum em runes.
+
+### Padrão 3: Acesso Level 1
+
+```lua
+rune:level(1)
+rune:magicLevel(0)
+```
+
+**Benefício:** Primeira runa absoluta no jogo!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano de chuva de pedras com cap.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level (será cappado em 20) |
+| `maglevel` | number | Magic level (será cappado em 20) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(newbie, 100, 50)
+// Caps aplicados:
+// level = math.min(100, 20) = 20
+// maglevel = math.min(50, 20) = 20
+// min = 4 + 6 + 2 = 12
+// max = 4 + 9 + 3 = 16
+// Retorna: -12, -16 (cappado!)
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Lança chuva de pedras com cap de escalabilidade.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Position alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Pedras caíram |
+| `false` | Position falhou |
+
+**Efeito:**
+- Projétil terra viaja
+- Som customizado
+- Impacto STONES em 1x1
+- Dano muito baixo
+- Capped mesmo em high level
+
+**Exemplo:**
+
+```lua
+-- Newbie nível 1, MLvl 0
+rune.onCastSpell(newbie, positionVariant, false)
+// Level/MLvl: 1, 0 (sem cap)
+// Dano: -2 a -3
+// Resultado: Primeiros passos!
+
+-- Mago veteran nível 100, MLvl 50
+rune.onCastSpell(veteran, positionVariant, false)
+// Level/MLvl capped: 20, 20
+// Dano: -12 a -16 (capped!)
+// Resultado: Mesma runa útil no high level!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Primeira Runa Absoluta
+
+```lua
+-- Newbie nível 1 toca no jogo
+-- Stone shower = única runa
+// Level 1 access
+// Sem MLvl necessário
+```
+
+### Caso 2: Protection Against Inflation
+
+```lua
+-- Veteran nível 100, MLvl 50
+// Cap em 20/20 previne OP
+// Balanço: runa útil sempre
+```
+
+### Caso 3: Auto-Cast Safe
+
+```lua
+-- Sem needTarget
+// Pode usar em automação
+// Seguro sem target select
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage Type:** COMBAT_EARTHDAMAGE
+- **Areas:** AREA_CIRCLE1X1
+- **Effects:** CONST_ME_STONES, CONST_ANI_EARTH
+- **Sounds:** SOUND_EFFECT_TYPE_SPELL_OR_RUNE, SOUND_EFFECT_TYPE_SPELL_LIGHT_STONE_SHOWER_RUNE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Chuva de pedras cappada |
+| **Dano Type** | COMBAT_EARTHDAMAGE |
+| **Fórmula** | min/max com cap em level/mlvl 20 |
+| **Area** | 1x1 Circle |
+| **Cargas** | 4 (poucas) |
+| **Distancia** | Sim (allowFarUse) |
+| **Target** | Não requerido |
+| **Level** | 1 (PRIMEIRA!) |
+| **MLvl** | 0 (nenhum!) |
+| **Padrão** | Cap de escalabilidade + earth damage |

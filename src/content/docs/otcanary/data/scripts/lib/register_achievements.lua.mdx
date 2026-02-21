@@ -1,0 +1,412 @@
+---
+title: "Script Lib - register_achievements.lua"
+description: "Banco de dados de conquistas (achievements) do servidor com definições completas"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `register_achievements.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Data/Configuration |
+| **Responsabilidade** | Definição de achievements do servidor |
+| **Linhas de Código** | 696 |
+| **Total de Achievements** | 199 |
+| **Complexidade** | Trivial (apenas data) |
+| **Status** | Complete achievement database |
+
+**Descrição:**
+Arquivo de configuração que contém a tabela global ACHIEVEMENTS com definição completa de todas as 199 conquistas do servidor. Cada achievement possui metadata: id, nome, grau de dificuldade, pontos, flag de segredo, e descrição narrativa. Serve como fonte de verdade centralizada para o sistema de achievements, usado por player.lua para rastrear progresso e desbloquear títulos.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/register_achievements.lua
+```
+
+**Tipo de Carregamento:** Importado globalmente durante boot (antes que jogadores conectem)
+
+**Contexto de Uso:** Achievement system - consulta para validação, UI display, reward distribution
+
+**Pré-requisitos:**
+- Tabela global ACHIEVEMENTS (criada neste arquivo)
+- Player sistema com support para achievement tracking
+- Storage system para persistência
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de Achievement Database (Gamification System)**
+
+Achievements são componentes centrais de gamification:
+
+**O que cada achievement tem:**
+- **id** - Identificador único (1-199)
+- **name** - Nome do achievement
+- **grade** - Dificuldade (1=trivial, 2=médium, 3=difícil)
+- **points** - Pontos ganhos ao desbloquear
+- **secret** - Se é hidden (não aparece até desbloquear)
+- **description** - Narrativa/dica para jogador
+
+**Exemplo: Achievement Castlemania**
+```lua
+[1] = {
+	name = "Castlemania",
+	grade = 2,           -- Médium difficulty
+	points = 5,          -- 5 points
+	secret = true,       -- Hidden até desbloquear
+	description = "Você tem um olho para lugares suspeitos..."
+}
+```
+
+**Fluxo de Unlock:**
+```
+Jogador executa ação
+  ├─ Sistema detecta (ex: entra em castelo)
+  ├─ Lookup em ACHIEVEMENTS
+  ├─ player:addAchievementProgress()
+  ├─ Progresso atualizado em storage
+  └─ Se completo → Unlock + notify + points
+```
+
+**Benefício:** Centralizado = fácil: adicionar, modificar, manter
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `register_achievements.lua` fornece **banco de dados centralizado** de achievements:
+
+- **Define 199 achievements** com metadata completa
+- **Suporta dificuldades variadas** (grade 1-3)
+- **Oferece sistema de segredo** (hidden achievements)
+- **Atribui pontos de recompensa** por desbloquear
+- **Fornece narrativas** para cada conquista
+
+### Arquitetura
+
+Script usa padrão de **static data table**:
+
+```lua
+ACHIEVEMENTS = {
+	[1] = { name = "...", grade = 1, points = 2, ... },
+	[2] = { name = "...", grade = 1, points = 1, ... },
+	-- ... 199 achievements total
+}
+```
+
+Tabela global acessível por qualquer script da aplicação.
+
+### Fluxo Lógico Resumido
+
+| Evento | Busca | Retorno |
+|--------|-------|---------|
+| **Jogador avança em quest** | `ACHIEVEMENTS[id]` | Metadata do achievement |
+| **Check progresso** | `achievement.points`, `achievement.grade` | Valida valores |
+| **Display no UI** | `achievement.name`, `achievement.description` | Renderiza para jogador |
+| **Unlock check** | `achievement.secret` | Mostra se hidden ou não |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Estrutura de Achievement Entry
+
+```lua
+ACHIEVEMENTS = {
+	[id] = {
+		name = "Achievement Name",
+		grade = number,           -- 1, 2, ou 3
+		points = number,          -- Pontos ganhos
+		secret = boolean,         -- true se hidden (opcional)
+		description = "string"    -- Narrativa
+	}
+}
+```
+
+**Exemplo Real:**
+
+```lua
+[1] = {
+	name = "Castlemania",
+	grade = 2,
+	points = 5,
+	secret = true,
+	description = "You have an eye for suspicious places..."
+}
+```
+
+---
+
+### Campo: id (number)
+
+```lua
+[1] = { ... }
+[2] = { ... }
+```
+
+**Descrição:** Identificador único do achievement.
+
+**Range:** 1-199 (sem gaps esperado)
+
+**Uso:** Referência primary key para lookups
+
+---
+
+### Campo: name (string)
+
+```lua
+name = "Castlemania"
+```
+
+**Descrição:** Nome exibido do achievement.
+
+**Comprimento:** Tipicamente 2-30 caracteres
+
+**Usado em:** UI, logs, displays
+
+---
+
+### Campo: grade (number)
+
+```lua
+grade = 1  -- Trivial
+grade = 2  -- Médium
+grade = 3  -- Complexo/Difícil
+```
+
+**Descrição:** Nível de dificuldade/raridade.
+
+**Valores:**
+| Grade | Significado | Exemplo |
+|-------|-------------|---------|
+| `1` | Trivial/Comum | "Chorister" (1 point) |
+| `2` | Médium/Raro | "Castlemania" (5 points) |
+| `3` | Complexo/Muito Raro | "Dread Lord" (8 points) |
+
+**Impacto:** UI pode usar para filtros, recomendações, badges
+
+---
+
+### Campo: points (number)
+
+```lua
+points = 1   -- Mínimo
+points = 5   -- Típico médium
+points = 8   -- Máximo (rare)
+```
+
+**Descrição:** Pontos ganhos ao desbloquear.
+
+**Range:** 1-8 observado
+
+**Correlação:** Tipicamente `points = grade * expansion_bonus`
+
+**Usado em:** Leaderboards, challenges, system rewards
+
+---
+
+### Campo: secret (boolean, optional)
+
+```lua
+secret = true   -- Hidden achievement
+-- Omitido = false (visível)
+```
+
+**Descrição:** Se verdadeiro, achievement não aparece na lista até desbloquear.
+
+**Comportamento:**
+```lua
+if achievement.secret then
+	-- Não mostrar na UI até unlock
+	-- Mostrar dica vaga
+else
+	-- Mostrar nome e descrição
+end
+```
+
+**Estratégia de Design:** Alguns achievements são surpresa para manter gameplay interessante
+
+**Exemplos Secret:**
+- [6] = "Shell Seeker" (secret=true)
+- [27] = "Poet Laureate" (secret=true)
+- [119] = "Cursed!" (secret=true)
+
+---
+
+### Campo: description (string)
+
+```lua
+description = "You've proven yourself as a worthy member of the 'family'..."
+```
+
+**Descrição:** Narrativa/hint para o achievement.
+
+**Comprimento:** 50-300 caracteres típico
+
+**Estilo:** Narrativo e imersivo (matching Tibia lore)
+
+**Função:** 
+- Jogadores descobrem como desbloquear
+- UI exibe como flavor text
+- Mostra narrativa do mundo
+
+**Exemplos:**
+```lua
+"You're a talented merchant who's able to handle wares with care..."
+"You love the winter. Fully equipped with scarf and gloves..."
+"You feel at home under the hot desert sun with sand between your toes..."
+```
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variável Global Definida
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `ACHIEVEMENTS` | table | Global | Banco de dados de todos os 199 achievements |
+
+### Estrutura da Tabela
+
+| Campo | Tipo | Obrigatório | Descrição |
+|-------|------|------------|-----------|
+| `name` | string | Sim | Nome do achievement |
+| `grade` | number | Sim | Dificuldade (1-3) |
+| `points` | number | Sim | Pontos de recompensa |
+| `secret` | boolean | Não | Se hidden até unlock |
+| `description` | string | Sim | Narrativa/hint |
+
+### Distribuição por Grade
+
+| Grade | Quantidade | Exemplos |
+|-------|-----------|----------|
+| **1** | ~100 | "Chorister" (1pt), "The Milkman" (2pt) |
+| **2** | ~85 | "Castlemania" (5pt), "Elite Hunter" (5pt) |
+| **3** | ~14 | "Dread Lord" (8pt), "Godslayer" (4pt) |
+
+### Distribuição de Pontos
+
+| Pontos | Contagem | Grade Típica |
+|--------|----------|------------|
+| `1` | ~40 | Grade 1 |
+| `2` | ~45 | Grade 1 |
+| `3` | ~35 | Grade 1-2 |
+| `4` | ~25 | Grade 2 |
+| `5` | ~30 | Grade 2 |
+| `6` | ~18 | Grade 2-3 |
+| `7` | ~3 | Grade 3 |
+| `8` | ~3 | Grade 3 |
+
+### Achievements com Secret Flag
+
+**Total com secret=true:** ~60-70 (approx)
+
+**Padrão:** Achievement notável ou com elemento surpresa recebe secret flag
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Static Data Table
+
+**Técnica:** Definir dados completos numa tabela Lua global editável.
+
+```lua
+ACHIEVEMENTS = {
+	[1] = { ... },
+	[2] = { ... },
+	-- ...
+}
+```
+
+**Vantagem:**
+- Simples e direto: sem queries DB desnecessárias
+- Hot-reload possível (via admin script)
+- Fácil busca: `ACHIEVEMENTS[id]`
+
+**Aplicação:** Dados estáticos que mudam raramente (achievements, items base, monsters).
+
+---
+
+### Padrón 2: Numeric Keying para Efficient Lookup
+
+**Técnica:** Usar índices numéricos [1-199] em vez de string keys.
+
+```lua
+-- Eficiente:
+ACHIEVEMENTS[1]     -- O(1) lookup direto
+
+-- Ineficiente (não usado):
+ACHIEVEMENTS["castlemania"]  -- String lookup
+```
+
+**Vantagem:**
+- Muito rápido em Lua (direct table indexing)
+- Sem colisões de hash
+- Natural para IDs
+
+**Aplicação:** Coleções indexadas por ID.
+
+---
+
+### Padrón 3: Optional Fields (secret)
+
+**Técnica:** Alguns campos podem estar omitidos (defaults a false).
+
+```lua
+secret = true       -- Explícitamente hidden
+-- secret omitido = implicitamente false (visível)
+```
+
+**Vantagem:**
+- Comprime ligeiramente dados (menos chaves)
+- Clareza: campos omitidos são "default no layout"
+
+**Aplicação:** Booleanos opcionais com padrão sensato.
+
+---
+
+## 📈 Performance & Escalabilidade
+
+### Data Size
+- **199 achievements × ~100 bytes avg = ~20KB** em memória
+
+### Lookup Performance
+- **Direct index access:** O(1)
+- **Linear scan (raro):** O(n) onde n=199
+
+### Hot Reload
+- Script pode ser reloadado sem reiniciar servidor
+- Necessário sincronizar com players_achievements table se conteúdo muda
+
+### Extensibilidade
+- Fácil adicionar novo achievement (append [200], [201], etc)
+- IDs não mudam (backwards compatibility crítica)
+
+---
+
+## 📝 Categorização Observada
+
+Achievements cobrem vários tópicos imersivos:
+
+| Categoria | Exemplos | Count |
+|-----------|----------|-------|
+| **Combat/Boss** | "Warlord of Svargrond", "Godslayer" | ~20 |
+| **Quests** | "Elite Hunter", "Follower of Azerus" | ~30 |
+| **Exploration** | "Explorer", "Sea Scout", "Territorial" | ~25 |
+| **Roleplay/Lifestyle** | "Great Archer", "Happy Farmer", "Interior Decorator" | ~40 |
+| **Special Events** | "Santa's Li'l Helper", "Mutated Presents" | ~15 |
+| **Collections/Items** | "Shell Seeker", "Potion Addict", "Lucky Devil" | ~30 |
+| **Social/Misc** | "Allow Cookies?", "Perfect Fool", "Matchmaker" | ~39 |

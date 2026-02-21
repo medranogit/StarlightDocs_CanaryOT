@@ -1,0 +1,566 @@
+---
+title: "Script Lib - register_lever_tables.lua"
+description: "Configuração de tables de boss e lever para quests/raids"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `register_lever_tables.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Configuration/Setup |
+| **Responsabilidade** | Definição de configurações de boss e levers |
+| **Linhas de Código** | ~30+ (estrutura multiobjetiva) |
+| **Configurações de Boss** | 1+ (exemplo: AscendingFerumbrasConfig) |
+| **Complexidade** | Trivial (apenas tabelas de config) |
+| **Status** | Bootstrap configuration |
+
+**Descrição:**
+Arquivo de configuração que define tabelas de setup para bosses, quests, e levers com posições, comportamento, timeout, e spawn configuration. Cada boss configuration é uma tabela global contendo metadata como nome, posições de lever/boss/sala, exit point, dias disponíveis, range, tempo de timeout, e creature summon settings. Serve como centralized configuration point para dungeon/raid orchestration.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/register_lever_tables.lua
+```
+
+**Tipo de Carregamento:** Import global durante boot para disponibilizar configs
+
+**Contexto de Uso:** Boss/Raid sistema - usado por lever scripts, creature scripts, tile handlers
+
+**Pré-requisitos:**
+- Função Position() global (x, y, z coordinates)
+- Sistema de boss/raid orquestration
+- Creature spawn system
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de Lever Tables (Centralized Configuration)**
+
+Bosses precisam de múltiplas positions e settings:
+
+**Sem config centralizada:**
+```lua
+-- data/scripts/actions/ascendingFerumbras_lever.lua
+local bossX = 33392
+local bossY = 31473
+local bossZ = 14
+local leverX = 33270
+local leverY = 31477
+local leverZ = 14
+-- Disperso, hard-coded
+```
+
+**Com config centralizada:**
+```lua
+-- data/scripts/lib/register_lever_tables.lua
+AscendingFerumbrasConfig = {
+	bossPos = Position(33392, 31473, 14),
+	leverPos = Position(33270, 31477, 14),
+	-- ... tudo junto
+}
+
+-- Usado em qualquer lugar:
+-- require("lib.register_lever_tables")
+-- local pos = AscendingFerumbrasConfig.bossPos
+```
+
+**Benefício:**
+- Single source of truth
+- Fácil rebalancear (change 1 place)
+- Reutilizável em múltiplos scripts
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `register_lever_tables.lua` fornece **boss/lever configuration tables**:
+
+- **Define posições críticas** (lever, boss, sala, exit)
+- **Configura spawn behavior** (summons, maxSummon, range)
+- **Define timing** (disponibilidade, timeout)
+- **Fornece reference points** para scripts
+- **Centraliza dungeon orchestration**
+
+### Arquitetura
+
+Script usa padrão de **namespace configuration**:
+
+```lua
+AscendingFerumbrasConfig = {
+	bossName = "string",
+	summonName = "string",
+	maxSummon = number,
+	leverPos = Position(...),
+	bossPos = Position(...),
+	-- ... mais settings
+}
+```
+
+Tabelas globais nomeadas por boss, acessíveis via `require("lib.register_lever_tables")`.
+
+### Fluxo Lógico Resumido
+
+| Uso | Acesso | Valor |
+|-----|--------|-------|
+| **Lever script** | `AscendingFerumbrasConfig.leverPos` | Position para colocar lever |
+| **Boss entry** | `AscendingFerumbrasConfig.newPos` | Position para teleportar player |
+| **Boss spawn** | `AscendingFerumbrasConfig.bossPos` | Position para summoner boss |
+| **Exit point** | `AscendingFerumbrasConfig.exitPosition` | Position para sair da raid |
+| **Spawn control** | `AscendingFerumbrasConfig.maxSummon` | Limite de summons simultâneos |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Exemplo: AscendingFerumbrasConfig
+
+```lua
+AscendingFerumbrasConfig = {
+	bossName = "Ascending Ferumbras",
+	summonName = "Rift Invader",
+	maxSummon = 15,
+	leverPos = Position(33270, 31477, 14),
+	bossPos = Position(33392, 31473, 14),
+	centerRoom = Position(33392, 31473, 14),
+	exitPosition = Position(33266, 31479, 14),
+	newPos = Position(33392, 31479, 14),
+	days = 5,
+	range = 20,
+	time = 60,
+	vortex = 20121,
+}
+```
+
+---
+
+### Campo: bossName (string)
+
+```lua
+bossName = "Ascending Ferumbras"
+```
+
+**Descrição:** Nome do boss (exibição/referência).
+
+**Uso:** Logs, messages, UI
+
+**Imutável:** Recomenda-se deixar igual ao nome da criatura C++
+
+---
+
+### Campo: summonName (string)
+
+```lua
+summonName = "Rift Invader"
+```
+
+**Descrição:** Nome da criatura que boss summona.
+
+**Uso:** Respawn control, creature identification
+
+**Controle:** Combinado com `maxSummon` para limitar quantidade
+
+---
+
+### Campo: maxSummon (number)
+
+```lua
+maxSummon = 15
+```
+
+**Descrição:** Máximo de summons do boss simultaneamente.
+
+**Uso:** Spawn control logic
+
+**Típico:** 10-20 para bosses grandes, 2-5 para pequenos
+
+**Implementação:** Boss script verifica antes de summona
+```lua
+if #getCreaturesByName(summonName) < maxSummon then
+	summona()
+end
+```
+
+---
+
+### Campo: leverPos (Position)
+
+```lua
+leverPos = Position(33270, 31477, 14)
+```
+
+**Descrição:** Coordenada onde lever é colocado.
+
+**Tipo:** Position table `{x, y, z}`
+
+**Uso:** Lever script para saber onde contar clicks/colocar
+
+**Exemplo Lever Script:**
+```lua
+Lever(1000):onUse(function(player, item, topos)
+	if topos == AscendingFerumbrasConfig.leverPos then
+		-- Teleporta para arena
+		player:teleportTo(AscendingFerumbrasConfig.newPos)
+	end
+end)
+```
+
+---
+
+### Campo: bossPos (Position)
+
+```lua
+bossPos = Position(33392, 31473, 14)
+```
+
+**Descrição:** Posição onde boss aparece/é spawnado.
+
+**Tipo:** Position table
+
+**Uso:** Spawn/respawn location
+
+**Diferença de centerRoom:** Pode ser ligeramente diferente se sala é grande
+
+---
+
+### Campo: centerRoom (Position)
+
+```lua
+centerRoom = Position(33392, 31473, 14)
+```
+
+**Descrição:** Centro da sala do boss (para área detection).
+
+**Tipo:** Position table
+
+**Uso:** Area checks, distance calculations, particle effects
+
+**Exemplo:**
+```lua
+local distance = math:getDistance(player:getPosition(), centerRoom)
+if distance > range then
+	player:teleportTo(exitPosition)
+end
+```
+
+---
+
+### Campo: exitPosition (Position)
+
+```lua
+exitPosition = Position(33266, 31479, 14)
+```
+
+**Descrição:** Posição onde jogador é ejetado ao sair/morrer.
+
+**Tipo:** Position table
+
+**Uso:** Teleport de saída, reset de raid
+
+**Importância:** Critical para evitar jogadores ficar presos
+
+---
+
+### Campo: newPos (Position)
+
+```lua
+newPos = Position(33392, 31479, 14)
+```
+
+**Descrição:** Posição inicial para novo jogador entrando.
+
+**Tipo:** Position table
+
+**Diferença de bossPos:** Pode estar longe do boss inicialmente
+
+**Uso:** Teleportar jogador quando lever é ativado
+
+**Timing:** Jogador aparece em newPos, então a luta começa
+
+---
+
+### Campo: days (number)
+
+```lua
+days = 5
+```
+
+**Descrição:** Quantos dias a raid está disponível por semana.
+
+**Valor Original:** Provavelmente 5 = segunda a sexta (hipótese)
+
+**Uso:** Spawner validation
+```lua
+function isRaidAvailable()
+	local today = os.date("*t")
+	return today.wday <= AscendingFerumbrasConfig.days
+end
+```
+
+**Alternativa:** Poderia ser bitmask ou array de days
+
+---
+
+### Campo: range (number)
+
+```lua
+range = 20
+```
+
+**Descrição:** Range/distância máxima do center que jogador pode ficar.
+
+**Unidade:** Tibia tiles (1 tile = 1 bloco)
+
+**Uso:** Area checking
+```lua
+if getDistance(player, centerRoom) > range then
+	player:teleportTo(exitPosition)  -- Pulou muito longe
+end
+```
+
+**Pena:** Player é teleportado para fora se exceder
+
+---
+
+### Campo: time (number)
+
+```lua
+time = 60
+```
+
+**Descrição:** Tempo máximo permitido na arena.
+
+**Unidade:** Minutos (provavelmente)
+
+**Uso:** Timeout logic
+```lua
+addEvent(function()
+	if playerStillInside() then
+		player:teleportTo(exitPosition)
+	end
+end, time * 60 * 1000)  -- Converte para ms
+```
+
+**Pena:** Timeout = ejeção automática
+
+---
+
+### Campo: vortex (number)
+
+```lua
+vortex = 20121
+```
+
+**Descrição:** Item ID do vortex/portal usado em raid.
+
+**Tipo:** Number (item ID)
+
+**Uso:** Item manipulation, cleanup
+```lua
+local item = Item(AscendingFerumbrasConfig.vortex)
+if item then
+	item:remove()
+end
+```
+
+**Alternativa:** Poderia ser floor/creature ID
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Globais Criadas
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `AscendingFerumbrasConfig` | table | Global | Configuração completa de boss |
+
+### Estrutura de Boss Config
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `bossName` | string | Nome do boss |
+| `summonName` | string | Nome de summons |
+| `maxSummon` | number | Limite de summons |
+| `leverPos` | Position | Coordenada do lever |
+| `bossPos` | Position | Coordenada do boss |
+| `centerRoom` | Position | Centro da sala |
+| `exitPosition` | Position | Saída/ejeção |
+| `newPos` | Position | Entrada/spawn |
+| `days` | number | Dias disponível |
+| `range` | number | Range máximo (tiles) |
+| `time` | number | Timeout (minutos) |
+| `vortex` | number | Item ID do vortex |
+
+### Position Object
+
+```lua
+Position(x, y, z)
+```
+
+**Campos:**
+- `x` - Coordenada X (oeste-leste)
+- `y` - Coordenada Y (norte-sul)
+- `z` - Coordenada Z (andar/altura)
+
+**Suporte:** Comparação, distância, teleporte
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrón 1: Centralized Configuration
+
+**Técnica:** Colocar todos settings de um boss em uma table nomeada.
+
+```lua
+BossConfig = {
+	bossName = "...",
+	pos = Position(...),
+	-- ... tudo junto
+}
+
+-- Acesso
+BossConfig.pos
+BossConfig.bossName
+```
+
+**Vantagem:**
+- Single source of truth
+- Fácil rebalancear/mudar
+- Reutilizável em múltiplos scripts
+
+**Aplicação:** Multi-parameter configurations.
+
+---
+
+### Padrón 2: Position Hierarchy
+
+**Técnica:** Múltiplas positions para diferentes purposes.
+
+```lua
+leverPos = Position(...)       -- Onde lever está
+bossPos = Position(...)        -- Onde boss spawna
+newPos = Position(...)         -- Onde player entra
+centerRoom = Position(...)     -- Referência de centro
+exitPosition = Position(...)   -- Saída
+```
+
+**Vantagem:**
+- Claro: cada position tem propósito
+- Flexível: permite arenas complexas
+- Testável: fácil validar boundaries
+
+**Aplicação:** Complex dungeon layouts.
+
+---
+
+### Padrón 3: Constraint Configuration
+
+**Técnica:** Definir limites (range, time, maxSummon) como config.
+
+```lua
+range = 20       -- Max distance
+time = 60        -- Max time em minutos
+maxSummon = 15   -- Limite de criaturas
+```
+
+**Vantagem:**
+- Balanceável: mudar 1 number rebalanceia
+- Scriptable: scripts usam config não hardcode
+- Maintainable: mudanças centralizadas
+
+**Aplicação:** Difficulty scaling, balancing.
+
+---
+
+## 📈 Extensibilidade
+
+### Padrão de Novo Boss
+
+Para adicionar novo boss:
+
+```lua
+NewBossConfig = {
+	bossName = "New Boss Name",
+	summonName = "New Minion",
+	maxSummon = 10,
+	leverPos = Position(X, Y, Z),
+	bossPos = Position(X, Y, Z),
+	centerRoom = Position(X, Y, Z),
+	exitPosition = Position(X, Y, Z),
+	newPos = Position(X, Y, Z),
+	days = 5,
+	range = 20,
+	time = 60,
+	vortex = 12345,
+}
+```
+
+Nenhuma mudança necessária em scripts (já referencias config).
+
+### Campos Adicionais Possíveis
+
+```lua
+-- Podia-se adicionar:
+difficulty = "hard",              -- String difficulty
+minPlayers = 1,                   -- Mínimo de players
+maxPlayers = 10,                  -- Máximo de players
+rewards = { item = 123, exp = 1000000 },  -- Loot
+raidTime = 3600,                  -- Duração típica em segundos
+requiresQuest = "boss_quest_123", -- Quest prerequisites
+```
+
+---
+
+## 🐛 Possíveis Issues/Improvements
+
+### Position Redundancy
+
+```lua
+bossPos = Position(33392, 31473, 14),
+centerRoom = Position(33392, 31473, 14),  -- Idêntico em exemplo
+```
+
+**Questão:** São sempre iguais? Ou pode variar?
+
+**Recomendação:** Se sempre igual, pode consolidar; se variar, comentar diferença
+
+### Days Interpretation
+
+```lua
+days = 5
+```
+
+**Ambigüidade:** Significa "segunda a sexta" (weekday-based) ou "cada 5 dias"?
+
+**Recomendação:** Clarificar documentação ou usar enum
+```lua
+days = {monday, tuesday, wednesday, thursday, friday},
+-- ou
+daysOfWeek = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"},
+```
+
+### Time Units
+
+```lua
+time = 60
+```
+
+**Ambigüidade:** 60 minutos? Segundos?
+
+**Recomendação:** Comentar claramente
+```lua
+time = 60,  -- Timeout em minutos
+```

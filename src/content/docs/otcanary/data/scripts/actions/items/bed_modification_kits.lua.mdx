@@ -1,0 +1,317 @@
+---
+title: bed_modification_kits.lua
+description: Sistema de modificação de camas com transformação de mobiliário
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="bed_modification_kits.lua" icon="star">
+Script de ação Lua que implementa sistema de kits de modificação de camas com 5 tipos de transformações (cores e canopy).
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/bed_modification_kits.lua`
+
+Script que permite customizar aparência de camas em casas. Requer validação de house e item target específico.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `bed_modification_kits.lua` implementa sistema de modificação bidirecional de camas. Cada kit (green, yellow, red, removal, canopy) tem dois pares de transformação para os dois lados da cama. Uso requer: estar em house válida, ter cama como target, cama estar em estado base. Remove o kit após usar e emite efeitos POFF.
+
+**Estrutura Fundamental**
+
+```
+[Load setting table]
+    ↓
+[5 kit types with transformation pairs]
+    ├── Green kit (734↔735, 736↔737)
+    ├── Yellow kit (742↔743, 744↔745)
+    ├── Red kit (738↔739, 740↔741)
+    ├── Removal kit (2487↔2488, 2493↔2494)
+    └── Canopy kit (custom IDs)
+    ↓
+[Local function: internalBedTransform]
+    ├─ Transform target item
+    ├─ Emit POFF effect
+    ├─ Get paired bed item
+    ├─ Transform paired item
+    ├─ Emit second POFF
+    └─ Remove kit
+    ↓
+[Create bedModificationKits Action]
+    ↓
+[onUse function]
+    ├─ Validate target exists and is item
+    ├─ Lookup kit in setting
+    ├─ Validate house
+    ├─ Check if already modified
+    ├─ Search for bed pair
+    └─ Call internalBedTransform
+    ↓
+[Register Action on 5 kit IDs]
+```
+
+## Variáveis Globais
+
+### setting (local table)
+
+```lua
+local setting = {
+  [831] = { { 734, 735 }, { 736, 737 } },      -- green kit
+  [832] = { { 742, 743 }, { 744, 745 } },      -- yellow kit
+  [833] = { { 738, 739 }, { 740, 741 } },      -- red kit
+  [834] = { { 2487, 2488 }, { 2493, 2494 } },  -- removal kit
+  [17972] = { { 17917, 17918 }, { 17919, 17920 } }, -- canopy kit
+}
+```
+
+Tabela contendo configurações de kits.
+
+**Estrutura:**
+- Chave: Kit item ID
+- Valor: Array com 2 pares (front pair, side pair)
+- Cada par: [estado atual, estado transformado]
+
+## Funções Locais
+
+### internalBedTransform(item, targetItem, toPosition, itemArray)
+
+Função local que executa transformação efetiva.
+
+**Parâmetros:**
+- item: Kit sendo usado
+- targetItem: Cama sendo modificada
+- toPosition: Posição do target
+- itemArray: Par de transformação `{ atual, novo }`
+
+**Fluxo:**
+
+```
+1. targetItem:transform(itemArray[1])
+   ├─ Transforma cama clicada
+   └─ POFF effect
+
+2. Tile(toPosition):getItemByType(ITEM_TYPE_BED)
+   ├─ Find paired bed item
+   ├─ transform(itemArray[2])
+   └─ POFF effect
+
+3. item:remove()
+   └─ Delete kit
+```
+
+**Implementação:**
+
+```lua
+local function internalBedTransform(item, targetItem, toPosition, itemArray)
+  targetItem:transform(itemArray[1])
+  targetItem:getPosition():sendMagicEffect(CONST_ME_POFF)
+
+  Tile(toPosition):getItemByType(ITEM_TYPE_BED):transform(itemArray[2])
+  toPosition:sendMagicEffect(CONST_ME_POFF)
+
+  item:remove()
+end
+```
+
+Transforma ambas as camas (front e side) com efeitos POFF.
+
+## Funções Callbacks
+
+### bedModificationKits.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback principal acionado ao usar kit.
+
+**Parâmetros:**
+- player: Creature player
+- item: Kit sendo usado
+- fromPosition: Posição do kit
+- target: Cama alvo
+- toPosition: Posição da cama
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```
+1. Target validation
+   ├─ Not exists? → return false
+   ├─ Not userdata? → return false
+   ├─ Not isItem? → return false
+   └─ Valid → continuar
+
+2. Lookup kit em setting[item:getId()]
+   ├─ Não existe? → return false
+   └─ Existe → newBed array
+
+3. House validation
+   ├─ Tile not exists? → return false
+   ├─ Tile not in house? → return false
+   └─ Valid → continuar
+
+4. Already modified check
+   ├─ target é newBed[1][1] or newBed[2][1]?
+   │   ├─ SIM → "You already have this value modification."
+   │   └─ NÃO → continuar
+   └─ return true
+
+5. Search floor pairs
+   ├─ target matches value[1][1] or hardcoded floor IDs?
+   │   ├─ SIM → Call internalBedTransform(itemArray[1])
+   │   └─ NÃO → next
+   ├─ target matches value[2][1] or hardcoded side IDs?
+   │   ├─ SIM → Call internalBedTransform(itemArray[2])
+   │   └─ NÃO → continue
+   └─ return true
+```
+
+**Bloco 1: Target Validation**
+
+```lua
+if not target or type(target) ~= "userdata" or not target:isItem() then
+  return false
+end
+```
+
+Valida target é item válido.
+
+**Bloco 2: Kit Lookup**
+
+```lua
+local newBed = setting[item:getId()]
+if not newBed then
+  return false
+end
+```
+
+Verifica kit existe na configuração.
+
+**Bloco 3: House Validation**
+
+```lua
+local tile = Tile(toPosition)
+if not tile or not tile:getHouse() then
+  return false
+end
+```
+
+Requer estar em house de ownership.
+
+**Bloco 4: Already Modified Check**
+
+```lua
+local targetItemId = target:getId()
+if targetItemId == newBed[1][1] or targetItemId == newBed[2][1] then
+  player:sendTextMessage(MESSAGE_FAILURE, "You already have this value modification.")
+  return true
+end
+```
+
+Previne aplicar mesmo kit duas vezes.
+
+**Bloco 5: Floor/Side Pair Search**
+
+```lua
+for _, value in pairs(setting) do
+  if value[1][1] == targetItemId or table.contains({ 2491, 5501, 15506 }, targetItemId) then
+    toPosition:sendMagicEffect(CONST_ME_POFF)
+    toPosition.y = toPosition.y + 1
+    internalBedTransform(item, target, toPosition, newBed[1])
+    break
+  elseif value[2][1] == targetItemId or table.contains({ 2489, 5499, 15508 }, targetItemId) then
+    toPosition:sendMagicEffect(CONST_ME_POFF)
+    toPosition.x = toPosition.x + 1
+    internalBedTransform(item, target, toPosition, newBed[2])
+    break
+  end
+end
+```
+
+Procura caixa correspondente:
+- Floor pair: ajusta Y+1
+- Side pair: ajusta X+1
+
+## Estrutura de Kits
+
+| Kit | ID | Floor Pair | Side Pair | Uso |
+|-----|----|-----------|----------|-----|
+| Green | 831 | 734↔735 | 736↔737 | Cor verde |
+| Yellow | 832 | 742↔743 | 744↔745 | Cor amarela |
+| Red | 833 | 738↔739 | 740↔741 | Cor vermelha |
+| Removal | 834 | 2487↔2488 | 2493↔2494 | Remove modificação |
+| Canopy | 17972 | 17917↔17918 | 17919↔17920 | Toldo |
+
+## Hardcoded Bed IDs
+
+| Tipo | IDs | Descrição |
+|------|-----|-----------|
+| Floor base | 2491, 5501, 15506 | Ids base de cama floor |
+| Side base | 2489, 5499, 15508 | Ids base de cama side |
+
+Estes IDs permitem começar modificação de cama desinformada (base).
+
+## Fluxo de Operação
+
+```
+[Player usa kit em cama]
+    ↓
+[Validações]
+    ├─ Target exists e is item?
+    ├─ Kit existe em setting?
+    ├─ Em house válida?
+    └─ Cama não já modificada?
+    ↓
+[Buscar par correspondente da cama]
+    ├─ É floor pair? → ajusta Y
+    └─ É side pair? → ajusta X
+    ↓
+[internalBedTransform]
+    ├─ Transform target bed
+    ├─ Transform paired bed
+    ├─ POFF effects (2x)
+    └─ Remove kit
+```
+
+## Efeitos e Mensagens
+
+| Elemento | Tipo | Descrição |
+|----------|------|-----------|
+| CONST_ME_POFF | Efeito | Efeito cinzento de desaparecimento |
+| MESSAGE_FAILURE | Mensagem | Mensagem de erro em vermelha |
+| Already modified | Msg | "You already have this value modification." |
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Kits transformam par de camas (floor + side)
+2. Dois pares por kit para opcionalidade
+3. Validação de house obrigatória
+4. Previne aplicar mesmo kit duas vezes
+5. Busca de par via position adjustment (Y para floor, X para side)
+
+**Responsabilidades:**
+1. Validar target é item válido
+2. Verificar kit existe em setting
+3. Confirmar em house de ownership
+4. Checar se cama já foi modificada
+5. Buscar e transformar par correspondente
+6. Remover kit após uso
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 63 linhas  
+**Funções**: 1 callback (onUse) + 1 local (internalBedTransform)  
+**Variáveis**: 1 local (setting)  
+**Kit Types**: 5 (green, yellow, red, removal, canopy)  
+**Transformação**: Pares bidirecionais (2 per kit)
+</Card>
+
+<Aside type="note">
+Script complexo de transformação de mobiliário com house validation. Requer target item e lookup em setting. Suporta kits com múltiplos pares. Busca pair via position adjustment Y para floor e X para side.
+</Aside>

@@ -1,0 +1,474 @@
+---
+title: "Movement - bath_tub.lua"
+description: "Sistema de transformação de outfit ao entrar/sair de uma banheira mágica"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `bath_tub.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (stepin + stepout) |
+| **Event Names** | `bathtubEnter.onStepIn`, `bathtubExit.onStepOut` |
+| **Funções Registradas** | 2 callbacks (entrada e saída) |
+| **Linhas de Código** | 38 |
+| **Complexidade** | Médium |
+| **Status** | Base implementation |
+
+**Descrição:**
+Sistema de banheira mágica que altera a aparência (outfit) do jogador ao entrar. Ao sair, remove a transformação de outlook. A banheira também muda de estado visual (transform) quando ocupada/vazia.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/bath_tub.lua
+```
+
+**Requisitos:**
+- Constantes globais: `BATHTUB_FILLED`, `BATHTUB_FILLED_NOTMOVABLE`
+- Sistema de Conditions (CONDITION_OUTFIT)
+- Sistema de Outfit (lookTypeEx)
+- ID de outfit especial: `26087`
+- Sistema de Tiles e Magic Effects
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Banheira Mágica com Transformação**
+
+Este script implementa um **mecanismo de área de efeito com estado**:
+
+**Ao Entrar (onStepIn):**
+1. Jogador entra na banheira
+2. Condition de outfit é aplicada (lockado)
+3. Aparência muda para outfit visual (ID 26087)
+4. Efeito de splash de água
+5. Banheira se torna "não-movível" (transform)
+
+**Ao Sair (onStepOut):**
+1. Jogador sai da banheira
+2. Condition de outfit é removida
+3. Aparência volta ao normal
+4. Banheira volta ao estado original (transform)
+
+**Diferencial:**
+- Banheira **trocaestado** ao ocupar (FILLED → FILLED_NOTMOVABLE)
+- Previne movimento óbvio (não desliza com jogador dentro)
+- Condition com ticks `-1` = permanente (até remover)
+
+**Cenários:**
+- Transformação visual sem affetar stats
+- Zone comportamental (área mágica)
+- Feedback imediato (outfit + efeito)
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `bath_tub.lua` implementa um sistema de transformação de outfit combinado com mudança de estado de tile:
+
+- **Transformação de Outfit:** Altera aparência visual do jogador
+- **Mudança de Estado:** Banheira muda de ID quando ocupada
+- **Efeito Visual:** Emite splash de água
+- **Remoção de Efeito:** Restaura tudo ao sair
+
+### Arquitetura
+
+Dois MoveEvents paralelos com estado compartilhado:
+
+```
+Jogador entra na banheira
+  └─ onStepIn
+     ├─ if player exists
+     │  ├─ Cria Condition OUTFIT
+     │  ├─ addCondition(condition)
+     │  ├─ transform(NOTMOVABLE)
+     │  ├─ sendMagicEffect(SPLASH)
+     │  └─ return true
+     └─ return true
+
+Jogador sai da banheira
+  └─ onStepOut
+     ├─ if player exists
+     │  ├─ removeCondition(OUTFIT)
+     │  ├─ transform(FILLED)
+     │  └─ return true
+     └─ return true
+```
+
+### Fluxo Lógico Resumido
+
+| Evento | Ação | Resultado |
+|---|---|---|
+| **onStepIn** | Aplica condition + transforma tile | Jogador com novo outfit, banheira locked |
+| **onStepOut** | Remove condition + volta tile | Jogador com outfit original, banheira livre |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Seção 1: Entrada na Banheira (onStepIn)
+
+#### Instanciação
+
+```lua
+local bathtubEnter = MoveEvent()
+```
+
+**Propósito:** Cria nova instância de MoveEvent para entrada.
+
+---
+
+#### Callback onStepIn
+
+```lua
+function bathtubEnter.onStepIn(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return true
+	end
+
+	local condition = Condition(CONDITION_OUTFIT)
+	condition:setOutfit({ lookTypeEx = 26087 })
+	condition:setTicks(-1)
+
+	position:sendMagicEffect(CONST_ME_WATERSPLASH)
+	item:transform(BATHTUB_FILLED_NOTMOVABLE)
+	player:addCondition(condition)
+	return true
+end
+```
+
+**Propósito:** Executado quando jogador entra na banheira. Aplica outfit e muda estado.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que entrou (pode não ser jogador) |
+| `item` | Item | A banheira |
+| `position` | Position | Posição da banheira |
+| `fromPosition` | Position | Posição anterior (não usado) |
+
+**Fluxo Lógico:**
+
+1. **Valida se é Jogador:** Se não, retorna true (ignorado)
+2. **Cria Condition de Outfit:**
+   - Tipo: `CONDITION_OUTFIT` (transformação visual)
+   - Data: `{ lookTypeEx = 26087 }` (ID do novo visual)
+   - Duração: `-1` (permanente até remover)
+3. **Envia Efeito Visual:** `CONST_ME_WATERSPLASH` na posição
+4. **Transforma Banheira:** Muda de `FILLED` para `FILLED_NOTMOVABLE`
+   - Impede movimento (locked visual)
+5. **Aplica Condition:** Jogador agora tem novo outfit
+6. **Retorna:** true (sempre sucesso)
+
+---
+
+#### Registração do onStepIn
+
+```lua
+bathtubEnter:type("stepin")
+bathtubEnter:id(BATHTUB_FILLED)
+bathtubEnter:register()
+```
+
+| Método | Valor | Significado |
+|---|---|---|
+| `:type("stepin")` | stepin | Dispara ao entrar na tile |
+| `:id(BATHTUB_FILLED)` | BATHTUB_FILLED | ID da banheira vazia/ocupável |
+| `:register()` | - | Registra o evento |
+
+---
+
+### Seção 2: Saída da Banheira (onStepOut)
+
+#### Instanciação
+
+```lua
+local bathtubExit = MoveEvent()
+```
+
+**Propósito:** Cria nova instância de MoveEvent para saída.
+
+---
+
+#### Callback onStepOut
+
+```lua
+function bathtubExit.onStepOut(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return true
+	end
+
+	item:transform(BATHTUB_FILLED)
+	player:removeCondition(CONDITION_OUTFIT)
+	return true
+end
+```
+
+**Propósito:** Executado quando jogador sai da banheira. Remove outfit e restaura estado.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu |
+| `item` | Item | A banheira (agora locked) |
+| `position` | Position | Posição da banheira |
+| `fromPosition` | Position | Posição para onde foi |
+
+**Fluxo Lógico:**
+
+1. **Valida se é Jogador:** Se não, retorna true
+2. **Transforma Banheira:** Volta de `NOTMOVABLE` para `FILLED`
+   - Permite movimento novamente
+3. **Remove Condition:** Retira condition de outfit
+   - Jogador volta ao visual original
+4. **Retorna:** true (sucesso)
+
+---
+
+#### Registração do onStepOut
+
+```lua
+bathtubExit:type("stepout")
+bathtubExit:id(BATHTUB_FILLED_NOTMOVABLE)
+bathtubExit:register()
+```
+
+| Método | Valor | Significado |
+|---|---|---|
+| `:type("stepout")` | stepout | Dispara ao sair da tile |
+| `:id(BATHTUB_FILLED_NOTMOVABLE)` | BATHTUB_FILLED_NOTMOVABLE | ID da banheira ocupada/locked |
+| `:register()` | - | Registra o evento |
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `bathtubEnter` | MoveEvent | Seção 1 | Instância para entrada |
+| `bathtubExit` | MoveEvent | Seção 2 | Instância para saída |
+| `player` | Player | Função | Criatura convertida para jogador |
+| `condition` | Condition | Função (onStepIn) | Objeto de condition de outfit |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Validação de Jogador
+
+```lua
+local player = creature:getPlayer()
+if not player then
+	return true
+end
+```
+
+**Benefício:** Apenas jogadores recebem efeitos, NPCs/monstros são ignorados.
+
+### Padrão 2: Condition com Ticks Permanentes
+
+```lua
+local condition = Condition(CONDITION_OUTFIT)
+condition:setTicks(-1)  -- Permanente
+```
+
+**Benefício:** Condition dura até explicit removal, não expira sozinha.
+
+### Padrão 3: Transformação Bidirecional
+
+```lua
+-- Entrada
+item:transform(BATHTUB_FILLED_NOTMOVABLE)
+
+-- Saída
+item:transform(BATHTUB_FILLED)
+```
+
+**Benefício:** Estado é sincronizado com presença de jogador.
+
+### Padrão 4: Operações Reverse no Exit
+
+```lua
+-- onStepIn
+condition:setOutfit(...)
+player:addCondition(condition)
+item:transform(...NOTMOVABLE)
+
+-- onStepOut
+player:removeCondition(CONDITION_OUTFIT)
+item:transform(...FILLED)
+```
+
+**Benefício:** Cada ação de entrada tem reverso na saída.
+
+---
+
+## 🤖 Documentação das Funções
+
+### bathtubEnter.onStepIn(creature, item, position, fromPosition)
+
+Callback executado quando jogador entra na banheira. Aplica transformation de outfit e altera estado da banheira.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que entrou |
+| `item` | Item | A banheira (se for FILLED) |
+| `position` | Position | Posição da banheira |
+| `fromPosition` | Position | Posição anterior |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre retorna true (sucesso ou ignorado) |
+
+**Execução:**
+
+1. **Validação:** Se não é jogador, retorna true
+2. **Cria Condition:** CONDITION_OUTFIT com lookTypeEx=26087
+3. **Define Duração:** `-1` (permanente)
+4. **Efeito Visual:** WATERSPLASH na position
+5. **Transforma Banheira:** BATHTUB_FILLED → BATHTUB_FILLED_NOTMOVABLE
+6. **Aplica Condition:** Jogador recebe novo outfit
+
+**Exemplo:**
+
+```lua
+-- Jogador entra na banheira
+bathtubEnter.onStepIn(jogador, banheira, pos, fromPos)
+
+-- Ações:
+-- 1. condition = Condition(OUTFIT)
+-- 2. condition:setOutfit({ lookTypeEx = 26087 })
+-- 3. condition:setTicks(-1)
+-- 4. position:sendMagicEffect(WATERSPLASH)
+-- 5. banheira:transform(NOTMOVABLE)
+-- 6. jogador:addCondition(condition)
+
+-- Resultado: Jogador com novo visual, banheira locked
+```
+
+---
+
+### bathtubExit.onStepOut(creature, item, position, fromPosition)
+
+Callback executado quando jogador sai da banheira. Remove outfit e volta estado da banheira ao normal.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu |
+| `item` | Item | A banheira (agora NOTMOVABLE) |
+| `position` | Position | Posição da banheira |
+| `fromPosition` | Position | Posição para onde foi |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre retorna true (sucesso) |
+
+**Execução:**
+
+1. **Validação:** Se não é jogador, retorna true
+2. **Transforma Banheira:** BATHTUB_FILLED_NOTMOVABLE → BATHTUB_FILLED
+3. **Remove Condition:** Retira CONDITION_OUTFIT do jogador
+4. **Retorna:** true
+
+**Exemplo:**
+
+```lua
+-- Jogador sai da banheira
+bathtubExit.onStepOut(jogador, banheira, pos, fromPos)
+
+-- Ações:
+-- 1. banheira:transform(BATHTUB_FILLED)
+-- 2. jogador:removeCondition(CONDITION_OUTFIT)
+-- Retorna true
+
+-- Resultado: Jogador com outfit original, banheira disponível
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Entrada Completa
+
+```lua
+-- Jogador level 8 entra na banheira
+-- Banheira tem ID BATHTUB_FILLED
+-- onStepIn é acionado
+
+-- Resultado:
+-- - Outfit altera para 26087
+-- - Banheira vai para NOTMOVABLE (visual locked)
+-- - Efeito splash visível para todos
+```
+
+### Caso 2: Saída Completa
+
+```lua
+-- Mesmo jogador sai da banheira
+-- Banheira tem ID BATHTUB_FILLED_NOTMOVABLE
+-- onStepOut é acionado
+
+-- Resultado:
+-- - Outfit volta ao original
+-- - Banheira volta para FILLED
+-- - Outro jogador pode entrar
+```
+
+### Caso 3: NPC/Monstro Entra
+
+```lua
+-- NPC tenta entrar na banheira
+-- creature.getPlayer() = nil
+-- onStepIn retorna true sem ação
+
+-- Resultado: Sem efeito, NPC passa normalmente
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Constantes Globais:**
+  - `BATHTUB_FILLED` (banheira vazia/disponível)
+  - `BATHTUB_FILLED_NOTMOVABLE` (banheira ocupada/locked)
+  - `CONST_ME_WATERSPLASH` (efeito visual)
+- **Condition API:** `CONDITION_OUTFIT`, `setOutfit()`, `setTicks()`
+- **MoveEvent API:** [events/movements](../movements)
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | MoveEvent (stepin + stepout) |
+| **Eventos** | 2 (entrada e saída) |
+| **Transformação Outfit** | lookTypeEx = 26087 |
+| **Duração** | -1 (permanente até remover) |
+| **Estado de Tile** | FILLED ↔ NOTMOVABLE |
+| **Efeito Visual** | CONST_ME_WATERSPLASH |
+| **Validação** | Apenas jogadores (creature:getPlayer()) |
+| **Padrão** | Validação + operações bidirecionais |

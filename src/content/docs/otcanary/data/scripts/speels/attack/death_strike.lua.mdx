@@ -1,0 +1,427 @@
+---
+title: "Spell - death_strike.lua"
+description: "Spell de golpe morte para sorcerers level 16 com dano escalável"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `death_strike.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 87 |
+| **Tipo de Dano** | COMBAT_DEATHDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 16 |
+| **Mana Requerida** | 20 |
+| **Words** | exori mort |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Cooldown** | 2s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level based (1.403-2.203 MLvl) - ALTO! |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_DEATH_STRIKE |
+| **Requer Caster/Target/Direction** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 39 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de golpe morte para sorcerers nível 16 (cedo). Dano morte com escalabilidade MUITO ALTA em MLvl (1.403-2.203). Fórmula potente com bônus fixos. 20 mana (baato). Alcance 3. Requer target ou direção. Premium only. Cooldown rápido 2s. Efeito MORTAREA.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/death_strike.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(87)
+spell:name("Death Strike")
+spell:words("exori mort")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_DEATH_STRIKE)
+spell:level(16)
+spell:mana(20)
+spell:isPremium(true)
+spell:range(3)
+spell:needCasterTargetOrDirection(true)
+spell:blockWalls(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Golpe da Morte - Escalabilidade Extrema**
+
+Este spell implementa um **sistema de dano morte com coeficiente MLvl muito alto**:
+
+1. **Escalabilidade Extrema:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 1.403) + 8
+   - max = (level/5) + (maglevel × 2.203) + 13
+   - Coef MLvl MUITO ALTOS (1.4-2.2!)
+
+2. **Mid-Early Premium:**
+   - Level 16 (cedo!)
+   - 20 mana (baato)
+   - Premium only
+   - Cooldown 2s (rápido)
+
+3. **Tipo Morte:**
+   - COMBAT_DEATHDAMAGE (raro)
+   - Efeito MORTAREA
+   - Range 3 (ranged)
+   - Distância death
+
+4. **Targeting Flexível:**
+   - needCasterTargetOrDirection
+   - Target ou direction
+   - Flexible usage
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 16, mlvl 5:
+  min = 3.2 + 7.015 + 8 = 18.2
+  max = 3.2 + 11.015 + 13 = 27.2
+
+Sorcerer lvl 60, mlvl 20:
+  min = 12 + 28.06 + 8 = 48.06
+  max = 12 + 44.06 + 13 = 69.06
+```
+
+**Diferencial:** Escalabilidade morte extrema early!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `death_strike` oferece dano morte escalável:
+
+- **Dano:** COMBAT_DEATHDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*1.403/2.203) + bônus (EXTREMA!)
+- **Mana:** 20 (baato)
+- **Level:** 16 (cedo)
+- **Range:** 3 (ranged)
+
+### Arquitetura
+
+Combat com callback magic-level:
+
+```
+local combat = Combat()
+├─ Type: DEATHDAMAGE
+├─ Effect: MORTAREA
+├─ Distance: DEATH
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max escalável extremo
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_DEATHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MORTAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_DEATH)
+```
+
+**Propósito:** Combat de dano morte.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_DEATHDAMAGE | Dano morte |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_MORTAREA | Efeito morte área |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_DEATH | Projétil morte |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.403) + 8
+	local max = (level / 5) + (maglevel * 2.203) + 13
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano morte escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 1.403) + 8
+max = (level / 5) + (maglevel * 2.203) + 13
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 1.403 (MUITO ALTO!)
+- Maglevel max: 2.203 (MUITO ALTO!)
+- Bônus: 8/13 (significativo)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 16 | 5 | 18 | 27 |
+| 40 | 12 | 32 | 48 |
+| 60 | 20 | 48 | 69 |
+| 100 | 35 | 68 | 98 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Death strike ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback magic |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Escalabilidade MLvl Extrema
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.403) + 8
+	local max = (level / 5) + (maglevel * 2.203) + 13
+	return -min, -max
+end
+```
+
+**Benefício:** Dano escala muito com magic level.
+
+### Padrão 2: Premium Early Access
+
+```lua
+spell:isPremium(true)
+spell:level(16)
+```
+
+**Benefício:** Acesso cedo com premium.
+
+### Padrão 3: Targeting Flexível
+
+```lua
+spell:needCasterTargetOrDirection(true)
+```
+
+**Benefício:** Target ou direction = flexível.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano morte escalável extremo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(sorcerer, 40, 12)
+// min = 8 + 16.836 + 8 = 32.836
+// max = 8 + 26.436 + 13 = 47.436
+// Retorna: -32, -47
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura death strike em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Target ou direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Death strike ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 16+
+- 20 mana
+- Target ou direction
+- Premium account
+- Cooldown 2s
+
+**Efeito:**
+- Efeito morte área
+- Projétil morte
+- Dano magic-level escalável
+- Range 3 tiles
+- Bloqueia walls
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 40, MLvl 12
+spell.onCastSpell(sorcerer, targetVariant)
+// Validações:
+//   ✓ Level 40 >= 16
+//   ✓ Mana 20 disponível
+//   ✓ Target ou direction
+//   ✓ Premium account
+// Combat executa
+// Projétil morte viaja
+// Impacto MORTAREA
+// Dano: -32 a -47
+// Range 3 tiles
+// Cooldown 2s
+// Resultado: Golpe morte cedo!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Early Death Damage
+
+```lua
+-- Sorcerer lvl 16+ premium
+// Death Strike = primeiro morte
+// Escalabilidade extrema MLvl
+// Cedo mid-game
+```
+
+### Caso 2: Premium Advantage
+
+```lua
+-- Premium sorcerer
+// Acesso nível 16
+// Escalabilidade forte
+// Dano crescente
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_DEATHDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Effects:** CONST_ME_MORTAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Golpe morte escalável |
+| **Dano Type** | COMBAT_DEATHDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*1.403)+8, max=(lvl/5)+(mlvl*2.203)+13 |
+| **Mana** | 20 |
+| **Range** | 3 |
+| **Level** | 16 (early) |
+| **Cooldown** | 2s (rápido) |
+| **Premium** | Sim |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | Magic-level extrema escalável + premium early |

@@ -1,0 +1,477 @@
+---
+title: "modal_window_helper.lua"
+description: "Sistema de callbacks para modal windows com suporte a botões, escolhas e callbacks padrão, gerenciando ciclo de vida de janelas por jogador"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo de **dispatcher de modal windows** que implementa sistema de callbacks para janelas de diálogo modais do cliente Tibia. Gerencia estrutura global `ModalWindows[playerId][windowId]` contendo metadados de cada janela (buttons com callbacks, choices, callback padrão e contador de uso). Quando jogador interage com modal (clica botão ou faz escolha), router correlaciona com callbacks pré-registrados e executa a lógica apropriada. Padrão **Observer/Callback** para desacoplamento entre criadores de janelas e consumidores de eventos.
+
+**Caminho Original**: `data/scripts/creaturescripts/others/modal_window_helper.lua`
+
+**Tipo**: CreatureEvent (onModalWindow trigger)
+
+**Dependências**:
+- CreatureEvent API (engine C++)
+- Player object (userdata)
+- Global table `ModalWindows` (deve ser pré-inicializado em global.lua)
+
+<Aside>
+Este evento é **pré-requisito** para sistemas que usam modal windows. O helper não cria janelas; apenas roteia as respostas. Janelas devem ser criadas via `player:showModalWindow()` em creaturescripts/spells/actions/talkactions que pre-registram callbacks na tabela global.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `modal_window_helper.lua` implementa **centro de roteamento de callbacks** para janelas modais através de um CreatureEvent que intercepta todos os `onModalWindow` disparados quando jogador interage com uma modal (clica em botão ou faz escolha). Gerencia tabela global `ModalWindows[playerId][windowId]` contendo callbacks para botões (`buttons[buttonId].callback`), escolhas (`choices[choiceId].callback`), e fallback padrão (`defaultCallback`). Implementa **padrão Observer** onde callbacks opcionais são executados em cascata: botão > escolha > padrão, com limpeza automática quando contador de uso atinge zero.
+
+### Arquitetura de Componentes
+
+```
+Modal Window Helper
+│
+├─ GLOBAL STATE (1 tabela)
+│  └── ModalWindows[playerId]
+│      └── [modalWindowId]
+│          ├── buttons[buttonId].callback(player, button, choice)
+│          ├── choices[choiceId].callback(player, button, choice)
+│          ├── defaultCallback(player, button, choice)
+│          └── using (counter de referências ativas)
+│
+├─ EVENT REGISTRATION (1 função)
+│  └── creatureEvent:register() (registra handler na engine)
+│
+└─ CALLBACK ROUTER (1 função)
+   └── onModalWindow(player, modalWindowId, buttonId, choiceId)
+      ├── Validação: ModalWindows[playerId][modalWindowId] existe?
+      ├── Lookup: button[buttonId] ou choice[choiceId]
+      ├── Cascade: executa primeiro callback encontrado
+      ├── Decrement: using counter
+      └── Cleanup: remove window se using == 0
+```
+
+### Subrotinas Internas
+
+**Validação de Window**:
+```lua
+local modalWindows = ModalWindows[playerId]
+    -> nil: return true (erro silencioso, window expirada)
+
+local modalWindow = modalWindows[modalWindowId]
+    -> nil: return true (erro silencioso, window id inválido)
+```
+
+**Lookup de Callback (Cascata)**:
+```lua
+if button.callback then
+    -- 1º Prioridade: callback específico do botão
+elseif choice.callback then
+    -- 2º Prioridade: callback específico da escolha
+elseif modalWindow.defaultCallback then
+    -- 3º Prioridade: callback padrão da window
+end
+-- Sem callback: silenciosamente ignored
+```
+
+**Limpeza de State**:
+```lua
+modalWindow.using = modalWindow.using - 1
+if modalWindow.using == 0 then
+    modalWindows[modalWindowId] = nil
+    -- Se vazio, remove jogador também
+    if not next(modalWindows) then
+        ModalWindows[playerId] = nil
+    end
+end
+```
+
+### Diagrama de Fluxo
+
+```
+Cliente Tibia
+    │
+    ├─ User clica botão em modal
+    │  └─ Envia: playerId, windowId, buttonId, choiceId
+    │
+    ▼
+Engine C++ (recepciona)
+    │
+    ├─ Dispara CreatureEvent "ModalWindowHelper"
+    │
+    ▼
+onModalWindow(player, windowId, buttonId, choiceId)
+    │
+    ├─ Lookup ModalWindows[playerId][windowId]
+    │  └─ Não existe? Return true (erro silencioso)
+    │
+    ├─ Lookup button/choice com fallback padrão
+    │
+    ├─ if callback found:
+    │  └─ callback(player, button, choice)
+    │     └─ (callback executa lógica: quest, loja, etc)
+    │
+    ├─ Decrement: window.using--
+    │
+    └─ if using == 0:
+       └─ Remove window (cleanup)
+```
+
+---
+
+## Detalhes da Função Global
+
+### `creatureEvent.onModalWindow(player, modalWindowId, buttonId, choiceId)`
+
+**Tipo**: CreatureEvent callback
+
+**Descrição**: Função disparada pela engine quando um jogador interage com uma janela modal (clica em botão ou faz uma escolha). Roteia a interação para callbacks pré-registrados na tabela global `ModalWindows` e gerencia limpeza automática de state.
+
+**Parâmetros**:
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `player` | userdata | Referência ao jogador que interagiu |
+| `modalWindowId` | number | ID único da janela modal |
+| `buttonId` | number | ID do botão clicado (1-indexed) |
+| `choiceId` | number | ID da escolha clicada (1-indexed), pode ser 0 se sem escolha |
+
+**Retorna**: 
+- `true` (sempre, protocolo completa com sucesso)
+- Erro se callbacks crasharem
+
+**Algoritmo**:
+
+```lua
+function creatureEvent.onModalWindow(player, modalWindowId, buttonId, choiceId)
+    -- PASSO 1: Validação de existência
+    local playerId = player:getId()
+    local modalWindows = ModalWindows[playerId]
+    if not modalWindows then
+        return true  -- Erro silencioso (player não tem windows abertas)
+    end
+
+    local modalWindow = modalWindows[modalWindowId]
+    if not modalWindow then
+        return true  -- Erro silencioso (window id inválido ou expirado)
+    end
+
+    -- PASSO 2: Lookup de button/choice (com defaults)
+    local button = modalWindow.buttons[buttonId] or {}
+    local choice = modalWindow.choices[choiceId] or {}
+    
+    -- PASSO 3: Cascata de callbacks
+    if button.callback then
+        button.callback(player, button, choice)
+    elseif choice.callback then
+        choice.callback(player, button, choice)
+    elseif modalWindow.defaultCallback then
+        modalWindow.defaultCallback(player, button, choice)
+    end
+    -- Se nenhum callback: silenciosamente ignored
+
+    -- PASSO 4: Gerenciar lifecycle
+    modalWindow.using = modalWindow.using - 1
+    if modalWindow.using == 0 then
+        -- Window não mais referenciada
+        modalWindows[modalWindowId] = nil
+        
+        -- Se player não tem mais windows, limpar table vazia
+        if not next(modalWindows) then
+            ModalWindows[playerId] = nil
+        end
+    end
+    
+    return true
+end
+```
+
+**Características Principais**:
+
+| Característica | Valor | Notas |
+|---|---|---|
+| Validação Dupla | window → modal | Falha silenciosa em ambas |
+| Cascata de Callbacks | button → choice → default | Prioridade clara |
+| Cleanup Automático | using counter | Referência counting |
+| Handle Multiplewindows | ModalWindows[playerId] | N windows simultâneas por player |
+| Exceções | Não tratadas | Callbacks podem crash |
+
+---
+
+## Detalhes da Variável Global
+
+### `ModalWindows` (Global Table)
+
+**Tipo**: `table<number, table<number, ModalWindowEntry>>`
+
+**Escopo**: Global (deve ser inicializado em global.lua antes deste arquivo ser carregado)
+
+**Estrutura**:
+```lua
+ModalWindows = {
+    [playerId] = {
+        [windowId] = {
+            buttons = {
+                [buttonId] = {
+                    callback = function(player, button, choice) --[[...]] end
+                }
+            },
+            choices = {
+                [choiceId] = {
+                    callback = function(player, button, choice) --[[...]] end
+                }
+            },
+            defaultCallback = function(player, button, choice) --[[...]] end,
+            using = 1  -- Contador de referências ativas
+        }
+    }
+}
+```
+
+**Limpeza**:
+- Entrada `[playerId]` removida quando player sem windows abertas
+- Entrada `[windowId]` removida quando `using == 0`
+- Nunca cresce indefinidamente (garbage collection natural)
+
+**Uso Típico de Criador de Window**:
+```lua
+local windowId = 1
+ModalWindows[playerId] = ModalWindows[playerId] or {}
+ModalWindows[playerId][windowId] = {
+    buttons = {
+        [1] = {
+            callback = function(player, button, choice)
+                -- Lógica ao clicar botão 1
+            end
+        }
+    },
+    choices = { --[[ ... ]] },
+    defaultCallback = function(player, button, choice) --[[ fallback ]] end,
+    using = 1
+}
+player:showModalWindow(windowId)
+```
+
+---
+
+## Padrões & Implementação
+
+### 1. Padrão Observer com Cascata de Callbacks
+
+Implementação de **multi-handler** com prioridade:
+
+```lua
+-- Estrutura
+local callbacks = {
+    primary = callback1,    -- Prioridade 1
+    secondary = callback2,  -- Prioridade 2
+    default = callback3     -- Prioridade 3 (fallback)
+}
+
+-- Execução
+if callbacks.primary then
+    callbacks.primary()
+elseif callbacks.secondary then
+    callbacks.secondary()
+elseif callbacks.default then
+    callbacks.default()
+end
+```
+
+**Aplicação no Modal Window**:
+```lua
+if button.callback then        -- Específico do botão
+    button.callback()
+elseif choice.callback then    -- Específico da escolha
+    choice.callback()
+elseif modalWindow.defaultCallback then  -- Fallback geral
+    modalWindow.defaultCallback()
+end
+```
+
+**Vantagens**:
+- Flexibilidade: cada nível pode ter ou não callback
+- Legibilidade: ordem de prioridade clara
+- Composição: fallback absorve casos simples
+
+**Onde Usar**:
+- Event handling com múltiplos handlers
+- Configurações opcionais
+- Fallback patterns
+
+### 2. Padrão de Reference Counting para Lifecycle
+
+Gerenciamento de **múltiplas referências** com contador:
+
+```lua
+-- Criar
+window.using = 1  -- 1 referência (a window aberta)
+
+-- Usar (pode ser chamada múltiplas vezes)
+if callback_A_refers then ... end
+if callback_B_refers then ... end
+
+-- Decrementar
+window.using = window.using - 1
+if window.using == 0 then
+    -- Ninguém mais precisa, limpar
+    window = nil
+end
+```
+
+**Segurança**:
+- Não limpa enquanto em uso
+- Múltiplos "donos" podem rastrear a window
+- Falha segura: sem cleanup prematura
+
+**Exemplo Avançado** (múltiplas referências):
+```lua
+-- Janela com N+1 referências
+local window = {..., using = 5}
+for i = 1, 5 do
+    setTimeout(function()
+        window.using = window.using - 1
+        if window.using == 0 then cleanup() end
+    end, i * 1000)
+end
+```
+
+### 3. Padrão de Tabela Aninhada com Garantia de Existência
+
+Validação defensiva com `or {}`**:
+
+```lua
+local button = modalWindow.buttons[buttonId] or {}
+local choice = modalWindow.choices[choiceId] or {}
+
+-- Depois acessar sem fear de nil
+if button.callback then ... end  -- callback pode não existir
+```
+
+**Segurança**:
+- `table or {}` retorna empty table se `nil`
+- `empty.callback` retorna `nil` (não crash)
+- Evita `table is nil` errors
+
+**Alternativa (Sem OU)**:
+```lua
+local button = modalWindow.buttons[buttonId]
+if button and button.callback then
+    button.callback()
+end
+```
+
+---
+
+## Fluxo de Operação
+
+### 1️⃣ Inicialização (em global.lua)
+
+```lua
+ModalWindows = {}  -- Global table pré-criada
+-- Aguardando primeiro onModalWindow
+```
+
+### 2️⃣ Criação de Janela (em actions/spells/talkactions)
+
+```lua
+local creatureEvent = player:registerEvent("ModalWindowHelper")
+local windowId = 1
+
+ModalWindows[playerId] = ModalWindows[playerId] or {}
+ModalWindows[playerId][windowId] = {
+    buttons = {
+        [1] = {callback = handleButtonOne},
+        [2] = {callback = handleButtonTwo}
+    },
+    choices = {
+        [1] = {callback = handleChoice},
+    },
+    defaultCallback = handleDefault,
+    using = 1
+}
+
+player:showModalWindow(windowId)
+```
+
+### 3️⃣ Interação (Cliente -> Servidor)
+
+```
+Cliente clica botão 1 na modal
+    │
+    ├─ Envia: windowId=1, buttonId=1, choiceId=0
+    │
+    ▼
+Server chama onModalWindow(player, 1, 1, 0)
+    │
+    ├─ button = buttons[1] {callback = handleButtonOne}
+    ├─ choice = choices[0] or {} -> empty
+    │
+    ├─ if button.callback → executa handleButtonOne
+    │  └─ handleButtonOne faz lógica (compra, quest, etc)
+    │
+    └─ modalWindow.using = 0 → Remove ModalWindows[playerId][1]
+```
+
+### 4️⃣ Cleanup
+
+```lua
+-- Após última interação (using == 0)
+modalWindows[windowId] = nil
+if not next(modalWindows) then
+    ModalWindows[playerId] = nil  -- Remove jogador se vazio
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+**Versão da Documentação**: 1.0
+
+**Última Atualização**: 2026-02-19
+
+**Tipo de Complexidade**: 🟡 **Trivial-Média**
+- Arquivo com 31 linhas de código
+- 1 função callback
+- 1 variável global (external)
+- Lógica: cascata de callbacks + reference counting
+- Padrões: Observer, callback-table, lifecycle management
+- Tempo estimado de aprendizado: 15-20 minutos
+
+**Cobertura de Tópicos**:
+- ✅ Função global
+- ✅ Variável global
+- ✅ Padrões de implementação
+- ✅ Fluxo de operação
+- ✅ Lifecycle management
+
+**Referências Relacionadas**:
+- [ARQUITETURA_PROJETO.mdx](../../../ARQUITETURA_PROJETO.mdx) - Visão geral de creaturescripts
+- CreatureEvent API (engine C++) - onModalWindow trigger
+- Modal Window API (engine C++)
+- Talkactions que usam modals: `data/scripts/talkactions/`
+
+**Status de Implementação**: ✅ **Completamente Implementado**
+- Handler funcional e robusto
+- Cascata de callbacks operacional
+- Cleanup automático verificado
+
+**Padrões Principais Implementados**:
+1. ✅ Observer/Callback pattern
+2. ✅ Reference counting (lifecycle)
+3. ✅ Cascata de prioridades
+4. ✅ Validação defensiva
+5. ✅ Cleanup automático
+
+**Notas para Futuros Desenvolvedores**:
+1. Sempre inicializar `ModalWindows = {}` em global.lua **antes** deste arquivo
+2. Sempre definir `using = 1` ao criar window
+3. Callbacks recebem params: `(player, button, choice)` mesmo se não usarem todos
+4. Window ID deve ser único por player (usar incrementing counter ou timestamp)
+5. Para debugar window hangs, logar `print(#ModalWindows[playerId])` para contar windows abertas
+

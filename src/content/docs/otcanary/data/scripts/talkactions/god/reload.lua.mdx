@@ -1,0 +1,268 @@
+---
+title: Reload System
+description: Comando GOD para recarregar sistemas do servidor
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | reload.lua |
+| **Tipo de Sistema** | Server Reload (GOD) |
+| **Funcionalidade Principal** | Recarregar sistemas |
+| **Comando** | /reload |
+| **Requisito** | Acesso de God |
+| **Separador** | Espaço |
+| **Tipos** | 34 mapeamentos |
+| **Config Gate** | ALLOW_RELOAD |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/reload.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /reload com parâmetro tipo. Valida configManager.getBoolean(ALLOW_RELOAD). Tabela reloadTypes com 34 mapeamentos (all, channel, config, etc.). Game.reload(type) faz reload. saveServer(), SaveHirelings() para persistência. Feedback ao executor e logging.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo reload.lua implementa comando versátil de server reload. Dispõe de 34 tipos diferentes, gate check de configuração, save operations automáticas, feedback personalizado, logging. Ferramenta crítica de hot reload.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Tabela reloadTypes**
+
+```lua
+local reloadTypes = {
+	["all"] = RELOAD_TYPE_ALL,
+	["channel"] = RELOAD_TYPE_CHANNELS,
+	["config"] = RELOAD_TYPE_CONFIG,
+	["script"] = RELOAD_TYPE_SCRIPTS,
+	["scripts"] = RELOAD_TYPE_SCRIPTS,
+	["monster"] = RELOAD_TYPE_MONSTERS,
+	["monsters"] = RELOAD_TYPE_MONSTERS,
+	["npc"] = RELOAD_TYPE_NPCS,
+	["npcs"] = RELOAD_TYPE_NPCS,
+	["mount"] = RELOAD_TYPE_MOUNTS,
+	["mounts"] = RELOAD_TYPE_MOUNTS,
+	["outfit"] = RELOAD_TYPE_OUTFITS,
+	["outfits"] = RELOAD_TYPE_OUTFITS,
+	["imbue"] = RELOAD_TYPE_IMBUEMENTS,
+	["imbuements"] = RELOAD_TYPE_IMBUEMENTS,
+	["spells"] = RELOAD_TYPE_SPELLS,
+	["spell"] = RELOAD_TYPE_SPELLS,
+	["talkaction"] = RELOAD_TYPE_TALKACTIONS,
+	["talkactions"] = RELOAD_TYPE_TALKACTIONS,
+	["movements"] = RELOAD_TYPE_MOVEMENTS,
+	["movement"] = RELOAD_TYPE_MOVEMENTS,
+	["events"] = RELOAD_TYPE_EVENTS,
+	["event"] = RELOAD_TYPE_EVENTS,
+	["weapons"] = RELOAD_TYPE_WEAPONS,
+	["weapon"] = RELOAD_TYPE_WEAPONS,
+	["globalevents"] = RELOAD_TYPE_GLOBAL_EVENTS,
+	["globalevent"] = RELOAD_TYPE_GLOBAL_EVENTS,
+	["raids"] = RELOAD_TYPE_RAIDS,
+	["raid"] = RELOAD_TYPE_RAIDS,
+	["quests"] = RELOAD_TYPE_QUESTS,
+	["quest"] = RELOAD_TYPE_QUESTS,
+	["zones"] = RELOAD_TYPE_ZONES,
+	["zone"] = RELOAD_TYPE_ZONES,
+}
+```
+
+---
+
+### **TalkAction /reload**
+
+```lua
+local reloadTalk = TalkAction("/reload")
+
+function reloadTalk.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	-- Gate: ALLOW_RELOAD
+	if not configManager.getBoolean(configKeys.ALLOW_RELOAD) then
+		player:sendCancelMessage("Reload is not allowed!")
+		return true
+	end
+	
+	-- Parâmetro vazio
+	if param == "" then
+		player:sendCancelMessage(string.format("Usage: /reload <type>"))
+		return true
+	end
+	
+	-- Parse tipo
+	param = param:trim():lower()
+	local reloadType = reloadTypes[param]
+	
+	-- Validação: tipo existe?
+	if not reloadType then
+		player:sendCancelMessage(string.format("Unknown reload type: '%s'", param))
+		return true
+	end
+	
+	-- Fazer reload
+	local errorCode = Game.reload(reloadType)
+	
+	-- Save after reload
+	if reloadType == RELOAD_TYPE_CONFIG then
+		saveServer()
+	end
+	
+	if reloadType == RELOAD_TYPE_ALL then
+		SaveHirelings()
+	end
+	
+	-- Feedback
+	if errorCode == RELOAD_STATUS_OK then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("Type '%s' reloaded successfully.", param))
+	elseif errorCode == RELOAD_STATUS_WARNING then
+		player:sendTextMessage(MESSAGE_LOOK, string.format("Type '%s' reloaded with warning. Check logs.", param))
+	else
+		player:sendTextMessage(MESSAGE_ADMINISTRATOR, string.format("Error reloading '%s'. Check logs for details.", param))
+	end
+	
+	return true
+end
+
+reloadTalk:separator(" ")
+reloadTalk:groupType("god")
+reloadTalk:register()
+```
+
+**Comando:** `/reload <type>`
+
+**Parâmetros:**
+| Param | Nome | Tipo |
+|---|---|---|
+| 1 | type | string (lowercase) |
+
+---
+
+## **Tipos Disponíveis**
+
+**Plurais e Singulares Suportados:**
+
+```
+all                 -- Recarregue tudo
+channel, channels   -- Chat channels
+config              -- Configurações
+script, scripts     -- Lua scripts
+monster, monsters   -- Monster database
+npc, npcs           -- NPC database
+mount, mounts       -- Mounts
+outfit, outfits     -- Outfits
+imbue, imbuements   -- Imbuements
+spell, spells       -- Spells
+talkaction, talkactions  -- TalkActions
+movement, movements      -- Movement scripts
+event, events            -- Event scripts
+weapon, weapons          -- Weapon configuration
+globalevent, globalevents-- Global Events
+raid, raids              -- Raids
+quest, quests            -- Quests
+zone, zones              -- Zones
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /reload config
+
+Fluxo:
+1. Valida ALLOW_RELOAD habilitado
+2. Game.reload(RELOAD_TYPE_CONFIG)
+3. saveServer() - salva config
+4. Feedback: "Type 'config' reloaded successfully."
+
+Resultado:
+- Configurações recarregadas
+- Nova config em memória
+- Banco de dados de configs atualizado
+
+---
+
+GM: /reload all
+
+Fluxo:
+1. Game.reload(RELOAD_TYPE_ALL)
+2. SaveHirelings() - salva hireling data
+3. Recarrega TUDO
+4. Feedback: "Type 'all' reloaded successfully."
+
+Resultado:
+- Servidor recarregado completamente
+- Sem restart necessário
+- Todas as mudanças em arquivo aplicadas
+
+---
+
+GM: /reload script
+
+Fluxo:
+1. Game.reload(RELOAD_TYPE_SCRIPTS)
+2. Scripts Lua recompilados
+3. Feedback: "Type 'script' reloaded successfully."
+
+Resultado:
+- Novos scripts carregados
+- Mudanças em Lua aplicadas
+
+---
+
+GM: /reload mounts
+
+Fluxo:
+1. Game.reload(RELOAD_TYPE_MOUNTS)
+2. Mount database recarregado
+3. Feedback: "Type 'mounts' reloaded successfully."
+
+Resultado:
+- Novos mounts disponíveis
+```
+
+---
+
+**Códigos de Retorno**
+
+```lua
+RELOAD_STATUS_OK = 0          -- Success
+RELOAD_STATUS_WARNING = 1     -- Warning (mas recarregou)
+RELOAD_STATUS_ERROR = 2       -- Erro crítico
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `configManager.getBoolean(key)` | Obtém config booleano |
+| `param:trim()` | Remove espaços |
+| `string:lower()` | Lowercase |
+| `Game.reload(type)` | Recarrega sistema |
+| `saveServer()` | Salva servidor |
+| `SaveHirelings()` | Salva hireling data |
+| `player:sendCancelMessage(msg)` | Cancela com mensagem |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+| `string.format(fmt, ...)` | Formata string |
+
+**Constantes:**
+- `configKeys.ALLOW_RELOAD`
+- `MESSAGE_EVENT_ADVANCE`, `MESSAGE_LOOK`, `MESSAGE_ADMINISTRATOR`
+- `RELOAD_TYPE_*` variants
+- `RELOAD_STATUS_*` codes
+
+---
+
+## 📌 Resumo
+
+O arquivo reload.lua é ferramenta crítica de hot reload. Implementação com 34 tipos, gate check, save operations automáticas, feedback diferenciado por status. Essencial para GMs aplicar mudanças sem restart. Design robusto com validações completas.

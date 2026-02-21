@@ -1,0 +1,379 @@
+---
+title: "Spell - curse.lua"
+description: "Spell de maldição com DOT persistente para sorcerers level 75"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `curse.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 139 |
+| **Tipo de Dano** | COMBAT_DEATHDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 75 |
+| **Mana Requerida** | 30 |
+| **Words** | utori mort |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Condition** | CONDITION_CURSED com DOT complexo |
+| **Cooldown** | 40s (LONGO!) |
+| **GroupCooldown** | 2s |
+| **Agressividade** | Sim |
+| **Requer Target** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_CURSE |
+| **Linhas de Código** | 58 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Spell de maldição com condition DOT muito complexa para sorcerers nível 75. CONDITION_CURSED com 17 ticks de dano distinto. Damage escalável de 1-10 aos 3s intervals. Cooldown longo 40s (tático). Range 3. Requer target. Tipo morte. Efeito SMALLCLOUDS.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/curse.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(139)
+spell:name("Curse")
+spell:words("utori mort")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_CURSE)
+spell:level(75)
+spell:mana(30)
+spell:isAggressive(true)
+spell:range(3)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:cooldown(40 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Maldição de Morte - DOT 17 Ticks**
+
+Este spell implementa um **sistema de condition DOT muito escalado**:
+
+1. **Condition CURSED Complexa:**
+   - 17 ticks separados de dano
+   - Cada tick custom damage + interval
+   - Delayed: 1 (começa com delay)
+
+2. **Dano Escalonado:**
+   - Ticks 1-2: 1 dano @ 45-40 ticks
+   - Ticks 3-8: 2-4 dano escalando
+   - Ticks 9-17: 5-10 dano final
+   - Total: ~51 dano em 10+ minutos
+
+3. **Mid-High Level:**
+   - Level 75 (mid-high)
+   - 30 mana (moderado)
+   - Premium (não especificado)
+   - Cooldown 40s (longo!)
+
+4. **Tactical Curse:**
+   - Range 3 (ranged)
+   - Target obrigatório
+   - Agressivo marcado
+   - Requerido learn: false
+
+**DOT Timeline:**
+```
+Total duração: ~51 segundos (17 ticks × 3s)
+Damage distribution:
+  Ticks 1-2: 1 dano (low)
+  Ticks 3-8: 2-4 dano (escalonado)
+  Ticks 9-17: 5-10 dano (HIGH!)
+Total damage: ~51
+```
+
+**Diferencial:** 17-tick curse ultra-customizado!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `curse` oferece maldição com DOT persistente:
+
+- **Dano:** COMBAT_DEATHDAMAGE condition-based
+- **Condition:** CONDITION_CURSED com 17 ticks
+- **DOT:** Escalonado custom (1-10 dano por tick)
+- **Level:** 75 (mid-high)
+- **Cooldown:** 40s (tático)
+
+### Arquitetura
+
+Combat com condition customizada:
+
+```
+local combat = Combat()
+├─ Type: DEATHDAMAGE
+├─ Effect: SMALLCLOUDS
+├─ Distance: DEATH
+└─ Condition: CURSED
+   └─ 17 ticks de dano
+
+    condition:setParameter(DELAYED, 1)
+    condition:addDamage(1, 3000, -45)
+    condition:addDamage(1, 3000, -40)
+    ... (17 total)
+    condition:addDamage(10, 3000, -5)
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_DEATHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_SMALLCLOUDS)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_DEATH)
+```
+
+**Propósito:** Combat de maldição morte.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_DEATHDAMAGE | Dano morte |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_SMALLCLOUDS | Efeito nuvens |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_DEATH | Projétil morte |
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_CURSED)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+
+condition:addDamage(1, 3000, -45)
+condition:addDamage(1, 3000, -40)
+condition:addDamage(1, 3000, -35)
+condition:addDamage(1, 3000, -34)
+condition:addDamage(2, 3000, -33)
+condition:addDamage(2, 3000, -32)
+condition:addDamage(2, 3000, -31)
+condition:addDamage(2, 3000, -30)
+condition:addDamage(3, 3000, -29)
+condition:addDamage(3, 3000, -25)
+condition:addDamage(3, 3000, -24)
+condition:addDamage(4, 3000, -23)
+condition:addDamage(4, 3000, -20)
+condition:addDamage(5, 3000, -19)
+condition:addDamage(5, 3000, -15)
+condition:addDamage(6, 3000, -10)
+condition:addDamage(10, 3000, -5)
+combat:addCondition(condition)
+```
+
+**Propósito:** Condition CURSED com 17 ticks customizados.
+
+**Estrutura addDamage:**
+
+| Tick | Dano | Interval | Ticks |
+|---|---|---|---|
+| 1-2 | 1 | 3000ms | 45-40 |
+| 3-4 | 1 | 3000ms | 35-34 |
+| 5-8 | 2-4 | 3000ms | 33-30 |
+| 9-11 | 3 | 3000ms | 29/25/24 |
+| 12-13 | 4 | 3000ms | 23/20 |
+| 14-15 | 5 | 3000ms | 19/15 |
+| 16 | 6 | 3000ms | 10 |
+| 17 | 10 | 3000ms | 5 |
+
+**Total:** ~51 dano over 51 segundos (17 × 3s)
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Curse ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com condition curse |
+| `condition` | Condition | Arquivo | CURSED 17-tick |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Condition Customizada Multi-Tick
+
+```lua
+local condition = Condition(CONDITION_CURSED)
+condition:addDamage(damage, 3000, -ticks)
+-- 17 vezes!
+```
+
+**Benefício:** Maldição ultra-persiste com dano escalonado.
+
+### Padrão 2: Delayed Condition
+
+```lua
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+```
+
+**Benefício:** Starts após delay (não imediato).
+
+### Padrão 3: Cooldown Longo Tactical
+
+```lua
+spell:cooldown(40 * 1000)
+```
+
+**Benefício:** 40s cooldown = spell poderoso = espera longa.
+
+---
+
+## 🤖 Documentação das Funções
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura maldição em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Target (obrigatório) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Curse ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 75+
+- 30 mana
+- Target próximo (range 3)
+- Cooldown 40s
+
+**Efeito:**
+- Efeito SMALLCLOUDS
+- Projétil morte
+- Condition CURSED aplicada
+- 17 ticks DOT (51 dano total)
+- Delayed start
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 75
+spell.onCastSpell(sorcerer, targetVariant)
+// Validações:
+//   ✓ Level 75 >= 75
+//   ✓ Mana 30 disponível
+//   ✓ Target range 3
+// Combat executa
+// Projétil morte viaja
+// Impacto: SMALLCLOUDS
+// Condition CURSED aplicada
+// DOT começa com delay
+// 17 ticks @ 3s = ~51s duração
+// Dano total: ~51
+// 40s cooldown antes próximo cast
+// Resultado: Maldição persistente!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Boss Tactical
+
+```lua
+-- Sorcerer vs boss long fight
+// Curse = DOT persistente
+// 40s cooldown = timing
+// 17 ticks = dano prolongado
+```
+
+### Caso 2: PvP Control
+
+```lua
+-- Duelo sorcerer strategy
+// Maldição = debuff control
+// 51 dano acumulado
+// Tactical timing crítico
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat Condition
+- **Damage:** COMBAT_DEATHDAMAGE
+- **Condition:** CONDITION_CURSED
+- **Effects:** CONST_ME_SMALLCLOUDS
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Maldição DOT 17-tick |
+| **Dano Type** | COMBAT_DEATHDAMAGE |
+| **Condition** | CONDITION_CURSED |
+| **Ticks** | 17 (dano escalonado 1-10) |
+| **Duração** | ~51 segundos |
+| **Mana** | 30 |
+| **Range** | 3 |
+| **Level** | 75 (mid-high) |
+| **Cooldown** | 40s (longo!) |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | Multi-tick condition + delayed + escalado |

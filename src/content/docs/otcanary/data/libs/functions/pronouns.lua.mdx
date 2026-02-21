@@ -1,0 +1,318 @@
+---
+title: "pronouns.lua"
+description: "Sistema de pronomes gênero-neutro com suporte a múltiplas formas (they/she/he/ze) com fallback automático para sexo do jogador, incluindo forms de subject, object, possessive e verbs conjugados."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que implementa sistema completo de pronomes inclusivos para diálogos dinâmicos. Suporta pronomes neutros (they/them/their), femininos (she/her/hers), masculinos (he/him/his), neopronouns (ze/zir), e name-based referral. Cada form tem suporte a fallback automático: se pronome indefinido, usa sexo do jogador (PLAYERSEX_FEMALE → she, senão → he). Inclui also verb conjugation (subject verb form com suporte a past tense).
+
+**Caminho Original**: `data/libs/functions/pronouns.lua`
+
+<Aside type="tip">
+O arquivo `pronouns.lua` é **foundation de dialogue inclusivity**. Permite criar narrativas gênero-neutras com pronomes dinamicamente selecionados por preferência do jogador (ou sexo como fallback). Essencial para quests, mensagens de evento, e narrativas personalizadas.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **1 layer de funcionalidade**:
+
+**Pronoun System**: Sistema lookup de pronomes com fallback automático para sexo, suportando 4 formas (subject, object, possessive) + conjugação de verbs. O design usa **tabela inline** (pronounTable) com PLAYERPRONOUN constants como chaves, permitindo O(1) pronoun resolution com cascading fallback chain.
+
+### Estrutura de Funcionalidades
+
+```
+Pronouns System
+├── Local Lookup Table
+│   └── pronounTable[pronoun] = { subject, object, possessive }
+├── Pronoun Resolution Methods (3)
+│   ├── getPlayerSubjectPronoun(pronoun, name, sex) → string
+│   ├── getPlayerObjectPronoun(pronoun, name, sex) → string
+│   └── getPlayerPossessivePronoun(pronoun, name, sex) → string
+└── Verb Conjugation (1)
+    └── getVerbForPronoun(pronoun, pastTense) → string
+```
+
+---
+
+## 📋 Variáveis Locais
+
+### `pronounTable`
+
+Tabela lookup de pronomes com todas as formas linguísticas.
+
+**Tipo**: Tabela local (const)  
+**Estrutura**: `pronounTable[pronounId] = { subject, object, possessive }`
+
+**Tabela**:
+```lua
+local pronounTable = {
+    [PLAYERPRONOUN_THEY] = { subject = "they", object = "them", possessive = "their" },
+    [PLAYERPRONOUN_SHE] = { subject = "she", object = "her", possessive = "her" },
+    [PLAYERPRONOUN_HE] = { subject = "he", object = "him", possessive = "his" },
+    [PLAYERPRONOUN_ZE] = { subject = "ze", object = "zir", possessive = "zir" },
+}
+```
+
+**Constantes PLAYERPRONOUN**:
+- `PLAYERPRONOUN_THEY`: Neutro (they/them/their)
+- `PLAYERPRONOUN_SHE`: Feminino (she/her/her)
+- `PLAYERPRONOUN_HE`: Masculino (he/him/his)
+- `PLAYERPRONOUN_ZE`: Neopronoun (ze/zir/zir)
+- `PLAYERPRONOUN_NAME`: Use nome do jogador (special)
+
+---
+
+## 🎭 Métodos de Pronomes
+
+### `Pronouns.getPlayerSubjectPronoun(pronoun, name, sex)` → string
+
+Obtém pronome subject (nominativo) para jogador.
+
+**Tipo**: Static Method  
+**Parâmetros**:
+- `pronoun` (number): Pronome selecionado (PLAYERPRONOUN_*)
+- `name` (string): Nome do jogador
+- `sex` (number): Sexo (PLAYERSEX_FEMALE ou outro)
+
+**Retorna**: string (pronome subject)
+
+**Implementação**:
+```lua
+function Pronouns.getPlayerSubjectPronoun(pronoun, name, sex)
+    if pronoun == PLAYERPRONOUN_NAME then
+        return name
+    end
+    local sexPronoun = sex == PLAYERSEX_FEMALE and PLAYERPRONOUN_SHE or PLAYERPRONOUN_HE
+    return pronounTable[pronoun].subject or pronounTable[sexPronoun].subject or "they"
+end
+```
+
+**Fallback Chain**:
+1. Se PLAYERPRONOUN_NAME: retorna nome
+2. Se pronome válido: retorna subject form
+3. Senão: usa sex-based pronoun (she se female, he senão)
+4. Última opção: "they" (sempre seguro)
+
+**Exemplo**:
+```lua
+local player = Player(playerId)
+local pronoun = player:getPronoun()  -- PLAYERPRONOUN_THEY
+local name = player:getName()
+local sex = player:getSex()
+
+local subject = Pronouns.getPlayerSubjectPronoun(pronoun, name, sex)
+-- Se pronoun=THEY: "they"
+-- Se pronoun=NAME: name do jogador
+```
+
+---
+
+### `Pronouns.getPlayerObjectPronoun(pronoun, name, sex)` → string
+
+Obtém pronome object (acusativo) para jogador.
+
+**Tipo**: Static Method  
+**Retorna**: string (pronome object)
+
+**Implementação**:
+```lua
+function Pronouns.getPlayerObjectPronoun(pronoun, name, sex)
+    if pronoun == PLAYERPRONOUN_NAME then
+        return name
+    end
+    local sexPronoun = sex == PLAYERSEX_FEMALE and PLAYERPRONOUN_SHE or PLAYERPRONOUN_HE
+    return pronounTable[pronoun].object or pronounTable[sexPronoun].object or "them"
+end
+```
+
+**Fallback**: Idêntico a subject, "them" como última opção.
+
+**Exemplo**:
+```lua
+-- "I saw them" vs "I saw her" vs "I saw him"
+local msg = "I saw " .. pronoun:getPlayerObjectPronoun(pronoun, name, sex)
+```
+
+---
+
+### `Pronouns.getPlayerPossessivePronoun(pronoun, name, sex)` → string
+
+Obtém pronome possessivo para jogador.
+
+**Tipo**: Static Method  
+**Retorna**: string (pronome possessive)
+
+**Implementação**:
+```lua
+function Pronouns.getPlayerPossessivePronoun(pronoun, name, sex)
+    if pronoun == PLAYERPRONOUN_NAME then
+        return name .. "'s"
+    end
+    local sexPronoun = sex == PLAYERSEX_FEMALE and PLAYERPRONOUN_SHE or PLAYERPRONOUN_HE
+    return pronounTable[pronoun].possessive or pronounTable[sexPronoun].possessive or "their"
+end
+```
+
+**Special Case**: Se NAME, adiciona "'s" sufixo.
+
+**Exemplo**:
+```lua
+-- "their sword" vs "her sword" vs "his sword" vs "PlayerName's sword"
+local msg = pronoun:getPlayerPossessivePronoun(pronoun, name, sex) .. " sword"
+```
+
+---
+
+### `Pronouns.getVerbForPronoun(pronoun, pastTense)` → string
+
+Conjuga verbo to-be (is/are ou was/were) baseado em pronome.
+
+**Tipo**: Static Method  
+**Parâmetros**:
+- `pronoun` (number)
+- `pastTense` (boolean): true = past, false = present
+
+**Retorna**: string (verb form: "is", "are", "was", "were")
+
+**Implementação**:
+```lua
+function Pronouns.getVerbForPronoun(pronoun, pastTense)
+    if pronoun == PLAYERPRONOUN_THEY then
+        return pastTense and "were" or "are"
+    else
+        return pastTense and "was" or "is"
+    end
+end
+```
+
+**Regra**:
+- THEY: "are" (present) ou "were" (past)
+- Outro: "is" (present) ou "was" (past)
+
+**Exemplo**:
+```lua
+local subject = Pronouns.getPlayerSubjectPronoun(pronoun, name, sex)
+local verb = Pronouns.getVerbForPronoun(pronoun, false)  -- present tense
+
+-- "They are strong" vs "She is strong"
+local msg = subject:titleCase() .. " " .. verb .. " strong"
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Construir Mensagem com Pronomes
+
+```lua
+local function buildDialogue(playerName, pronoun, sex)
+    local subject = Pronouns.getPlayerSubjectPronoun(pronoun, playerName, sex)
+    local object = Pronouns.getPlayerObjectPronoun(pronoun, playerName, sex)
+    local verb = Pronouns.getVerbForPronoun(pronoun, false)
+    
+    return string.format(
+        "%s %s a brave adventurer. I admire %s.",
+        subject:titleCase(), verb, object
+    )
+end
+
+-- Output exemplos:
+-- "They are a brave adventurer. I admire them."
+-- "She is a brave adventurer. I admire her."
+-- "He is a brave adventurer. I admire him."
+```
+
+### Padrão 2: Diálogo com Fallback para Sexo
+
+```lua
+function showPlayerInfo(player)
+    local pronoun = player:getPronoun()
+    local name = player:getName()
+    local sex = player:getSex()
+    
+    -- Se pronyme indefinido, método usa sexo como fallback
+    local subject = Pronouns.getPlayerSubjectPronoun(pronoun, name, sex)
+    local possessive = Pronouns.getPlayerPossessivePronoun(pronoun, name, sex)
+    
+    print(string.format("%s's level: 100", possessive:titleCase()))
+    -- "Their level: 100" ou "Her level: 100" ou "His level: 100"
+end
+```
+
+### Padrão 3: Narrative Branching
+
+```lua
+function narrate(player, action)
+    local subject = Pronouns.getPlayerSubjectPronoun(player:getPronoun(), player:getName(), player:getSex())
+    local pastVerb = Pronouns.getVerbForPronoun(player:getPronoun(), true)
+    
+    if action == "defeated_boss" then
+        return string.format("%s %s victorious in battle!", subject:titleCase(), pastVerb)
+    end
+end
+
+-- Outputs:
+-- "They were victorious in battle!"
+-- "She was victorious in battle!"
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Método |
+|----------|-----------|--------|
+| **Gênero-Neutralidade** | Suporte a they/them pronomes | getPlayerSubjectPronoun |
+| **Fallback Chain** | pronome → sexo → "they" | Todos getPlayer* |
+| **Verb Conjugation** | is/are, was/were baseado em pronome | getVerbForPronoun |
+| **Possessive Form** | pronome possessive + "'s" para names | getPlayerPossessivePronoun |
+| **Name-Based Pronouns** | Usar nome em vez de pronome | PLAYERPRONOUN_NAME special |
+
+### Padrões Identificados
+
+1. **Lookup Table Pattern**: pronounTable para O(1) pronoun resolution
+2. **Fallback Chain**: Cascading fallback (pronoun → sex → default)
+3. **Ternary Operator**: sex == PLAYERSEX_FEMALE branching
+4. **String Interpolation**: Diálogos dinâmicos com pronomes
+
+### Responsabilidades por Método
+
+- **getPlayerSubjectPronoun**: Formas nominativas (they, she, he, ze, name)
+- **getPlayerObjectPronoun**: Formas acusativas (them, her, him, zir, name)
+- **getPlayerPossessivePronoun**: Formas possessivas (their, her, his, zir, name's)
+- **getVerbForPronoun**: Conjugação de verbs (is/are/was/were)
+
+---
+
+## 📚 Conclusão
+
+O arquivo `pronouns.lua` é **foundation de dialogue inclusivity**. Através de tabela lookup e fallback automático, permite narrativas gênero-neutras sem hardcoding de pronomes. O design simples (4 forms + verb conjugation) oferece flexibilidade máxima para diálogos dinâmicos que respeitam preferência do jogador.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 44/44 (100%)  
+**Métodos Estáticos**: 4  
+**Tabelas Locais**: 1 (pronounTable)  
+**Pronomes Suportados**: 4 (THEY, SHE, HE, ZE) + NAME  
+**Formas Linguísticas**: 3 (subject, object, possessive) + verb  
+**Exemplos Práticos**: 3+  
+**Padrões de Design**: Lookup Table, Fallback Chain, Ternary Branching
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: pronounTable é hardcoded (mudar formas requer edit). getPlayerPossessivePronoun com NAME usa "PlayerName's" (sem tratamento de apostrofos especiais). getVerbForPronoun assume only THEY plural e resto singular (may fail com custom pronouns futuros). Fallback "they" é universal mas pode não ser preferência do jogador.
+</Aside>

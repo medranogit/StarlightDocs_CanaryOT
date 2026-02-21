@@ -1,0 +1,242 @@
+---
+title: hireling_foods.lua
+description: Pratos gourmet para hireling com múltiplos buffs
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="hireling_foods.lua" icon="star">
+Script de ação Lua que implementa sistema de comidas especializadas para hireling.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/hireling_foods.lua`
+
+Sistema de 9 pratos gourmet para hireling (IDs 29408-29416) com 6 tipos de buffs: shield skill, distance skill, magic points, melee skill, haste, fishing skill, ou healing/mana restore. Cada prato pré-compilado com condition 1 hora. Cooldown compartilhado special-foods (10 min).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `hireling_foods.lua` implementa sistema de pratos gourmet especializados com 6 conditions pré-compiladas (HASTE, FISHING, MAGIC_POINTS, MELEE, SHIELD, DISTANCE) cada com 1 hora duração e valor específico. 9 dishes mapeados (IDs 29408-29416) combinam conditions ou ações diretas (healing 30% HP, restore 30% mana). Cooldown compartilhado special-foods (10 min). Registração dinâmica via loop.
+
+**Estrutura de Funcionalidades**
+
+```
+[Pré-compile 6 conditions com 1h duração]
+    ├─ hasteCondition: HASTE, speed 80
+    ├─ fishingCondition: FISHING skill +30
+    ├─ magicPointsCondition: MAGIC_POINTS +3
+    ├─ meleeCondition: MELEE skill +3
+    ├─ shieldCondition: SHIELD skill +7
+    └─ distanceCondition: DISTANCE skill +7
+
+[Define gourmetDishes table com 9 pratos]
+    ├─ 29408: shield condition
+    ├─ 29409: distance condition
+    ├─ 29410: magic points condition
+    ├─ 29411: melee condition
+    ├─ 29412: haste condition
+    ├─ 29413: fishing condition
+    ├─ 29414: healing 30% max HP
+    ├─ 29415: mana restore 30% max mana
+    └─ 29416: message only (no effect)
+
+[Create hirelingFoods Action]
+    ↓
+[onUse function]
+    ├─ dish = gourmetDishes[item.itemid]
+    ├─ Not found? return true
+    ├─ If special-foods-cooldown active
+    │   └─ "You're still too full..." (return)
+    ├─ If dish.condition
+    │   └─ addCondition(dish.condition)
+    ├─ Elseif dish.healing
+    │   └─ addHealth(getMaxHealth() * 0.3)
+    ├─ Elseif dish.manaRestore
+    │   └─ addMana(getMaxMana() * 0.3)
+    ├─ player:say(dish.message)
+    ├─ setExhaustion("special-foods-cooldown", 10min)
+    ├─ item:remove(1)
+    └─ return true
+    ↓
+[Register all 9 items via loop]
+```
+
+## Variáveis Globais
+
+### Pré-compiladas Conditions
+
+```lua
+local hasteCondition = Condition(CONDITION_HASTE)
+hasteCondition:setParameter(CONDITION_PARAM_TICKS, 3600000) -- 1h
+hasteCondition:setParameter(CONDITION_PARAM_SPEED, 80)
+
+local fishingCondition = Condition(CONDITION_ATTRIBUTES)
+fishingCondition:setParameter(CONDITION_PARAM_TICKS, 3600000)
+fishingCondition:setParameter(CONDITION_PARAM_SKILL_FISHING, 30)
+
+-- ... mais 4 conditions similares
+```
+
+Conditions reutilizáveis pré-compiladas para performance.
+
+### gourmetDishes (local table - 9 pratos)
+
+Mapeamento de dish ID para efeito/ação.
+
+**Estrutura**:
+```lua
+[dishId] = {
+  condition = conditionObj (optional),
+  healing = true (optional),
+  manaRestore = true (optional),
+  message = "emote"
+}
+```
+
+## Pratos e Efeitos
+
+| ID | Efeito | Tipo | Valor | Duração | Emote |
+|----|--------|------|-------|---------|-------|
+| 29408 | Shield Skill | Skill | +7 | 1h | Chomp. |
+| 29409 | Distance Skill | Skill | +7 | 1h | Yummm. |
+| 29410 | Magic Points | Stat | +3 | 1h | Munch. |
+| 29411 | Melee Skill | Skill | +3 | 1h | Munch. |
+| 29412 | Haste | Speed | +80 | 1h | Yummm. |
+| 29413 | Fishing Skill | Skill | +30 | 1h | Mmmmm. |
+| 29414 | Healing | Direct | 30% max HP | Instant | Munch. |
+| 29415 | Mana Restore | Direct | 30% max mana | Instant | Chomp. |
+| 29416 | Message Only | Flavor | - | - | Blurg. |
+
+## Funções
+
+### hirelingFoods.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que aplica prato.
+
+**Parâmetros:**
+- player: Creature player (hireling eater)
+- item: Prato sendo consumido
+- fromPosition: Posição original
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. dish = gourmetDishes[item.itemid]
+   ├─ Não existe? return true
+   └─ Existe? continuar
+
+2. If hasExhaustion("special-foods-cooldown")
+   ├─ "You're still too full to eat any gourmet dishes..."
+   └─ return true
+
+3. If dish.condition
+   └─ addCondition(dish.condition)
+
+4. Elseif dish.healing
+   └─ addHealth(getMaxHealth() * 0.3)
+
+5. Elseif dish.manaRestore
+   └─ addMana(getMaxMana() * 0.3)
+
+6. player:say(dish.message, TALKTYPE_MONSTER_SAY)
+
+7. setExhaustion("special-foods-cooldown", 600s)
+
+8. item:remove(1) + return true
+```
+
+**Implementação:**
+
+```lua
+function hirelingFoods.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local dish = gourmetDishes[item.itemid]
+	if not dish then
+		return true
+	end
+
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendCancelMessage("You're still too full to eat any gourmet dishes for a while.")
+		return true
+	end
+
+	if dish.condition then
+		player:addCondition(dish.condition)
+	elseif dish.healing then
+		player:addHealth(player:getMaxHealth() * 0.3)
+	elseif dish.manaRestore then
+		player:addMana(player:getMaxMana() * 0.3)
+	end
+
+	player:say(dish.message, TALKTYPE_MONSTER_SAY)
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+
+	item:remove(1)
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| CONDITION_HASTE | constant | Tipo haste |
+| CONDITION_ATTRIBUTES | constant | Tipo skill/stat |
+| CONDITION_PARAM_TICKS | param | 3600000ms (1h) |
+| CONDITION_PARAM_SPEED | param | 80 (haste) |
+| CONDITION_PARAM_SKILL_* | param | Skill +N |
+| CONDITION_PARAM_STAT_MAGICPOINTS | param | Magic +3 |
+| special-foods-cooldown | string | Cooldown key |
+
+## Healing/Mana Calculations
+
+**Healing**: `getMaxHealth() * 0.3` → 30% do HP máximo
+
+**Mana Restore**: `getMaxMana() * 0.3` → 30% da mana máxima
+
+Exemplos:
+- 1000 max HP → heal 300 HP
+- 500 max mana → restore 150 mana
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Conditions pré-compiladas para performance
+2. 3 tipos de efeito (condition, healing, mana)
+3. Cooldown compartilhado entre special foods
+4. Percentual para HP/mana
+5. Skill incrementos simples
+6. Registração dinâmica loop
+7. Validação cooldown antes de efeito
+
+**Responsabilidades:**
+1. Validar prato existe
+2. Verificar cooldown
+3. Aplicar condition/healing/mana
+4. Emitir emote
+5. Setar cooldown 10 min
+6. Consumir prato
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 62 linhas  
+**Função**: 1 (onUse)  
+**Pratos**: 9 IDs (29408-29416)  
+**Conditions**: 6 pré-compiladas  
+**Duração**: 1 hora  
+**Cooldown**: special-foods shared (10 min)  
+**Ações**: Condition / Healing 30% / Mana 30% / Flavor
+</Card>
+
+<Aside type="note">
+Sistema de 9 pratos para hireling com 6 buffs skill/stat, 2 healing diretos, 1 flavor. Conditions 1 hora. Cooldown shared 10 min. Pré-compiladas para performance.
+</Aside>

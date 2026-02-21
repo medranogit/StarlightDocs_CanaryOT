@@ -1,0 +1,190 @@
+---
+title: Avatar of Light
+description: Transformação visual premium Paladin que ativa aparência de Avatar de Luz por 15 segundos com verificação de Revelation WOD
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `avatar_of_light.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Paladin / Royal Paladin |
+| **Spell ID** | 265 |
+| **Mana Requerida** | 1500 |
+| **Level Requerido** | 300 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração do Avatar** | 15 segundos (15.000 ms) |
+| **Cooldown Individual** | 2 horas (2 * 60 * 60 * 1000 ms) |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `uteta res sac` |
+| **Efeito Visual** | `CONST_ME_AVATAR_APPEAR` |
+| **LookType do Avatar** | 1594 |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/avatar_of_light.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell requer que o jogador tenha completado pelo menos o stage 1 da Revelation WOD para Palladin. O sistema verifica `revelationStageWOD("Avatar of Light")` antes de permitir o cast. Se a verificação falhar, o jogador recebe mensagem `"You cannot cast this spell"` e efeito de erro `CONST_ME_POFF`.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `avatar_of_light.lua` implementa uma transformação visual premium exclusiva para Palladin e Royal Paladin. É um dos quatro spells de Avatar (Light, Nature, Steel, Storm) que seguem o mesmo padrão estrutural. O spell verifica se o jogador possui a Revelation WOD necessária, aplica uma condição de outfit que muda a aparência visual do jogador para o Avatar (lookType 1594), e programa um evento automático de recarregamento de dados após 15 segundos de duração. O sistema utiliza callbacks de avatar timer e reloadData para garantir sincronização visual entre cliente e servidor.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Criação da Condição de Outfit
+local condition = Condition(CONDITION_OUTFIT)
+condition:setOutfit({ lookType = 1594 })
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 3.1 Validação de Creature
+    -- 3.2 Verificação de Revelation WOD
+    -- 3.3 Configuração de Duration
+    -- 3.4 Aplicação de Outfit Condition
+    -- 3.5 Efeito Visual e Avatar Timer
+    -- 3.6 Evento Agendado de ReloadDataEvent
+    -- 3.7 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:group("support")
+spell:id(265)
+spell:name("Avatar of Light")
+spell:words("uteta res sac")
+spell:level(300)
+spell:mana(1500)
+spell:isPremium(true)
+spell:cooldown(2 * 60 * 60 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:vocation("paladin;true", "royal paladin;true")
+spell:hasParams(true)
+spell:isAggressive(false)
+spell:needLearn(true)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `condition` | `Condition` | Local | Objeto que encapsula a transformação visual do outfit (lookType 1594) |
+| `spell` | `Spell` | Local | Instância do spell instantâneo que define comportamento e propriedades |
+| `creature` | `Creature/Player` | Parâmetro | Entidade que executa o cast (validada como Player) |
+| `variant` | `Variant` | Parâmetro | Parametrização do spell (não utilizada neste caso) |
+| `grade` | `Number` | Local | Resultado da verificação `revelationStageWOD("Avatar of Light")`, onde 0 = sem acesso |
+| `duration` | `Number` | Local | Duração fixa de 15.000 ms (15 segundos) da transformação |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Verificação de Revelation WOD**
+```lua
+local grade = creature:revelationStageWOD("Avatar of Light")
+if grade == 0 then
+    creature:sendCancelMessage("You cannot cast this spell")
+    creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+    return false
+end
+```
+Sistema de gate que verifica se o jogador completou os requisitos de Revelation necesários para usar o Avatar.
+
+### 2. **Padrão de Condition de Outfit**
+```lua
+local condition = Condition(CONDITION_OUTFIT)
+condition:setOutfit({ lookType = 1594 })
+condition:setTicks(duration)
+creature:addCondition(condition)
+```
+Aplicação de outfit visual que persiste por `duration` millisegundos com auto-remoção ao expirar.
+
+### 3. **Padrão de Avatar Timer e Recarregamento**
+```lua
+creature:avatarTimer((os.time() * 1000) + duration)
+creature:reloadData()
+addEvent(ReloadDataEvent, duration, creature:getId())
+```
+Sincronização temporal entre servidor e cliente com evento agendado de recarregamento ao final da duração.
+
+### 4. **Padrão de Configuração de Spell**
+Todos os 4 spells de Avatar (Light, Nature, Steel, Storm) compartilham:
+- Grupo: `"support"`
+- Level: 300
+- Premium exclusive: `true`
+- Cooldown individual: 2 horas (2 * 60 * 60 * 1000 ms)
+- Cooldown de grupo: 2 segundos
+- `needLearn(true)`: Requer aprendizado explícito
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Realiza validações, aplica a condição de outfit visual e agenda o evento de recarga.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Criatura que executa o spell. DEVE ser um Player válido.
+- `variant` (Variant): Dados variáveis do spell (não utilizados neste spell).
+
+**Fluxo de Execução:**
+
+1. **Validação de Criatura** (`if not creature or not creature:isPlayer()`):
+   - Verifica se `creature` existe e é um Player
+   - Retorna `false` se validação falhar
+
+2. **Verificação de Revelation WOD** (`creature:revelationStageWOD("Avatar of Light")`):
+   - Consulta o stage de Revelation WOD do jogador para "Avatar of Light"
+   - Se `grade == 0` (sem acesso):
+     - Envia mensagem `"You cannot cast this spell"`
+     - Aplica efeito visual de erro `CONST_ME_POFF`
+     - Retorna `false`
+
+3. **Configuração de Duration**:
+   - Define `duration` como 15.000 ms (15 segundos)
+   - Aplica duração à condition com `condition:setTicks(duration)`
+
+4. **Aplicação de Efeitos**:
+   - Envia efeito visual `CONST_ME_AVATAR_APPEAR` na posição do jogador
+   - Adiciona condition de outfit ao jogador
+
+5. **Avatar Timer e Recarregamento**:
+   - Executa `creature:avatarTimer()` com timestamp futuro (agora + duration em ms)
+   - Executa `creature:reloadData()` para sincronização imediata
+   - Agenda `ReloadDataEvent` para executar após `duration` ms com ID do jogador
+
+6. **Retorno**:
+   - Retorna `true` (cast bem-sucedido)
+
+**Valores de Retorno:**
+- `true`: Spell executado com sucesso, mana consumida
+- `false`: Spell cancelado (falha de validação ou Revelation WOD insuficiente)
+
+**Lógica Detalhada:**
+
+O spell cria uma condition com `CONDITION_OUTFIT` que aplica uma transformação visual temporária. A verificação de `revelationStageWOD` garante que apenas jogadores que completaram o requisito de Revelation possam usar o spell. A duração é fixada em 15 segundos para todos os 4 avatars, criando consistência entre Light, Nature, Steel e Storm.
+
+O `avatarTimer()` é utilizado para rastrear no servidor quando o avatar expirará, permitindo que o sistema realize limpeza ou auditorias. O `reloadData()` força sincronização imediata do cliente com estado do servidor. O `addEvent(ReloadDataEvent)` agenda uma segunda recarregamento ao final para garantir que o outfit retorne ao normal após expiração natural da condition.
+
+Mana de 1500 é moderada para level 300, alinhada com o custo de transformação visual premium. O cooldown de 2 horas entre usos força planejamento estratégico.
+
+**Efeitos Visuais:**
+- Sucesso: `CONST_ME_AVATAR_APPEAR` (aparição de avatar)
+- Falha: `CONST_ME_POFF` (efeito de cancelamento)
+
+**Mensagens ao Jogador:**
+- Se sem Revelation WOD: `"You cannot cast this spell"`
+
+## 📌 Resumo
+
+**Avatar of Light** é um spell de suporte premium exclusivo para Paladin (level 300+) que transforma visualmente o jogador em um Avatar de Luz (lookType 1594) por 15 segundos. A transformação requer Revelation WOD completada e consome 1500 de mana. Com cooldown de 2 horas entre usos, o spell incentiva decisões estratégicas sobre quando utilizar a transformação. O sistema sincroniza título de avatar com eventos de recarregamento de dados para garantir consistência visual entre cliente e servidor durante toda a duração de 15 segundos.
+
+A implementação segue o padrão consolidado dos 4 spells de Avatar, diferenciando-se primarily no voceiro (Paladin vs Druid/Knight/Sorcerer), mana requerida (1500), lookType visual (1594) e palavras de ativação (`uteta res sac`).

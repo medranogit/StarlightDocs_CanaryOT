@@ -1,0 +1,422 @@
+---
+title: offline_training.lua
+description: CreatureEvent "OfflineTraining" que processa tempo offline para treinamento com cálculo de tries por skill.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="offline_training.lua" icon="pencil">
+Listener de login que calcula offline training com tries.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/player/offline_training.lua`
+
+**Linhas:** 89 | **Event:** CreatureEvent "OfflineTraining" | **Tipo:** onLogin Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener que processa tempo offline para treinamento. Obtém lastLogout, calcula offlineTime (máx 21 dias), valida offlineTrainingSkill. Se nenhum skill selecionado: adiciona tempo ao pool geral (return). Se skill selecionado: limpa selection, valida mínimo 10 minutos, calcula trainingTime (máx 12 horas), compensa remainder. Calcula tries por skill (weapon baseAttackSpeed vs magic manaGainTicks), aplica rate config, adiciona shield training automático (25% do trainamento). Padrão de offline skill training com cálculos complexos.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT: "OfflineTraining"
+  └─ onLogin(player)
+      ├─ lastLogout = player:getLastLogout()
+      ├─ offlineTime = min(now - lastLogout, 21 dias) ou 0
+      ├─ offlineTrainingSkill = player:getOfflineTrainingSkill()
+      │
+      ├─ Caso 1: Sem skill selecionado
+      │   └─ addOfflineTrainingTime(offlineTime * 1000)
+      │
+      ├─ Caso 2: Skill selecionado
+      │   │
+      │   ├─ setOfflineTrainingSkill(SKILL_NONE)
+      │   │   └─ Limpa seleção
+      │   │
+      │   ├─ offlineTime < 600s (10 min)?
+      │   │   └─ SIM → return (aviso, sem processamento)
+      │   │
+      │   ├─ trainingTime = min(offlineTime, 12h, pool/1000)
+      │   │   └─ Máximo 12 horas
+      │   │
+      │   ├─ remainder = offlineTime - trainingTime
+      │   │   └─ Remanescente vai para pool
+      │   │
+      │   ├─ if trainingTime < 60s: return (muito pouco)
+      │   │
+      │   ├─ Gera mensagem formatada:
+      │   │   └─ "During absence you trained for X hours Y minutes"
+      │   │
+      │   ├─ Calcula tries por skill:
+      │   │   ├─ WEAPON (CLUB, SWORD, AXE, DISTANCE):
+      │   │   │   ├─ modifier = baseAttackSpeed / 1000
+      │   │   │   └─ tries = trainingTime / modifier / (2 ou 4)
+      │   │   │
+      │   │   └─ MAGLEVEL:
+      │   │       ├─ gainTicks = manaGainTicks / 1000 (min 1)
+      │   │       └─ tries = trainTime * (manaGainAmount / gainTicks)
+      │   │
+      │   ├─ addOfflineTrainingTries(skill, tries * rateConfig)
+      │   │   └─ Aplica rate global
+      │   │
+      │   └─ if updateSkills: addOfflineTrainingTries(SHIELD, time/4)
+      │       └─ Shield training = 25% do tempo
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| offlineTraining | CreatureEvent | Listener de login |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| configManager | módulo | Configuration access |
+| configKeys.RATE_OFFLINE_TRAINING_SPEED | key | Multiplicador de rate |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Player fazendo login |
+
+### Skill Constants
+
+| Constante | Descrição |
+|-----------|-----------|
+| SKILL_NONE | Sem skill selecionado |
+| SKILL_CLUB | Weapon skill |
+| SKILL_SWORD | Weapon skill |
+| SKILL_AXE | Weapon skill |
+| SKILL_DISTANCE | Weapon skill (ranged) |
+| SKILL_MAGLEVEL | Magic skill |
+| SKILL_SHIELD | Shield skill |
+
+### Timing Constants
+
+| Constante | Valor | Descrição |
+|-----------|-------|-----------|
+| Max offline time | 21 dias | Máximo offline contado |
+| Min training time | 600s (10 min) | Mínimo para processar |
+| Max training time | 43200s (12h) | Máximo por sessão |
+| Normal stamina regen | 180s | Ticks de regen normal |
+| Shield training ratio | 1/4 | 25% do training |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local offlineTraining = CreatureEvent("OfflineTraining")
+
+function offlineTraining.onLogin(player)
+	-- Cálculos básicos
+	local lastLogout = player:getLastLogout()
+	local offlineTime = lastLogout ~= 0 and 
+		math.min(os.time() - lastLogout, 86400 * 21) or 0
+	local offlineTrainingSkill = player:getOfflineTrainingSkill()
+	
+	-- Caso 1: Sem skill selecionado
+	if offlineTrainingSkill == SKILL_NONE then
+		player:addOfflineTrainingTime(offlineTime * 1000)
+		return true
+	end
+
+	-- Caso 2: Skill selecionado - limpar
+	player:setOfflineTrainingSkill(SKILL_NONE)
+
+	-- Validação: mínimo 10 minutos
+	if offlineTime < 600 then
+		player:sendTextMessage(MESSAGE_OFFLINE_TRAINING, 
+			"You must be logged out for more than 10 minutes to start offline training.")
+		return true
+	end
+
+	-- Calcular time de treinamento (máx 12h)
+	local trainingTime = math.max(0, 
+		math.min(offlineTime, 
+			math.min(43200, player:getOfflineTrainingTime() / 1000)))
+	player:removeOfflineTrainingTime(trainingTime * 1000)
+
+	-- Guardar remainder para próxima sessão
+	local remainder = offlineTime - trainingTime
+	if remainder > 0 then
+		player:addOfflineTrainingTime(remainder * 1000)
+	end
+
+	-- Validação: mínimo 60 segundos de train
+	if trainingTime < 60 then
+		return true
+	end
+
+	-- Gerar mensagem formatada
+	local text = "During your absence you trained for"
+	local hours = math.floor(trainingTime / 3600)
+	if hours > 1 then
+		text = string.format("%s %d hours", text, hours)
+	elseif hours == 1 then
+		text = string.format("%s 1 hour", text)
+	end
+
+	local minutes = math.floor((trainingTime % 3600) / 60)
+	if minutes ~= 0 then
+		if hours ~= 0 then
+			text = string.format("%s and", text)
+		end
+		if minutes > 1 then
+			text = string.format("%s %d minutes", text, minutes)
+		else
+			text = string.format("%s 1 minute", text)
+		end
+	end
+
+	text = string.format("%s.", text)
+	player:sendTextMessage(MESSAGE_OFFLINE_TRAINING, text)
+
+	-- Calcular tries por skill
+	local vocation = player:getVocation()
+	local promotion = vocation:getPromotion()
+	local topVocation = not promotion and vocation or promotion
+
+	local tries = nil
+	if table.contains({ SKILL_CLUB, SKILL_SWORD, SKILL_AXE, SKILL_DISTANCE }, 
+		offlineTrainingSkill) then
+		-- Weapon skills: baseado em attack speed
+		local modifier = topVocation:getBaseAttackSpeed() / 1000
+		tries = (trainingTime / modifier) / 
+			(offlineTrainingSkill == SKILL_DISTANCE and 4 or 2)
+	elseif offlineTrainingSkill == SKILL_MAGLEVEL then
+		-- Magic: baseado em mana gain
+		local gainTicks = topVocation:getManaGainTicks() / 1000
+		if gainTicks == 0 then
+			gainTicks = 1
+		end
+		tries = trainingTime * (vocation:getManaGainAmount() / gainTicks)
+	end
+
+	-- Aplicar tries
+	local updateSkills = false
+	if tries then
+		updateSkills = player:addOfflineTrainingTries(offlineTrainingSkill, 
+			tries * configManager.getFloat(configKeys.RATE_OFFLINE_TRAINING_SPEED))
+	end
+
+	-- Shield training automático (25%)
+	if updateSkills then
+		player:addOfflineTrainingTries(SKILL_SHIELD, trainingTime / 4)
+	end
+	return true
+end
+
+offlineTraining:register()
+```
+
+### Árvore de Decisão
+
+```
+Player faz login
+  │
+  ├─ lastLogout = getLastLogout()
+  ├─ offlineTime = min(now - lastLogout, 21 dias)
+  ├─ offlineTrainingSkill = getOfflineTrainingSkill()
+  │
+  ├─ offlineTrainingSkill == SKILL_NONE?
+  │   │
+  │   ├─ SIM (sem skill):
+  │   │   └─ addOfflineTrainingTime(offlineTime * 1000)
+  │   │       (adiciona ao pool geral, return)
+  │   │
+  │   └─ NÃO (skill selecionado):
+  │       │
+  │       ├─ setOfflineTrainingSkill(SKILL_NONE)
+  │       │   └─ Limpa seleção
+  │       │
+  │       ├─ offlineTime < 600s (10 min)?
+  │       │   ├─ SIM → sendTextMessage + return
+  │       │   │         (não processa, period muito curto)
+  │       │   └─ NÃO → Continua
+  │       │
+  │       ├─ CÁLCULO DE TRAINING TIME:
+  │       │   └─ trainingTime = max(0, min(offlineTime, min(12h, pool/1000)))
+  │       │       (máximo 12 horas, respeitando pool)
+  │       │
+  │       ├─ removeOfflineTrainingTime(trainingTime * 1000)
+  │       │   └─ Consome do pool
+  │       │
+  │       ├─ remainder = offlineTime - trainingTime
+  │       │   └─ Se > 0: volta pro pool
+  │       │
+  │       ├─ trainingTime < 60s?
+  │       │   ├─ SIM → return (muito pouco)
+  │       │   └─ NÃO → Continua (processa)
+  │       │
+  │       ├─ MENSAGEM FORMATADA:
+  │       │   ├─ "During absence you trained for"
+  │       │   ├─ hours > 1 ? "X hours" : hours == 1 ? "1 hour"
+  │       │   ├─ minutes != 0 ? "and X minute(s)"
+  │       │   └─ sendTextMessage()
+  │       │
+  │       ├─ topVocation = hasPromotion ? promotion : vocation
+  │       │   └─ Usa promoted vocation se existe
+  │       │
+  │       ├─ CÁLCULO DE TRIES:
+  │       │   │
+  │       │   ├─ if skill in {CLUB, SWORD, AXE, DISTANCE}:
+  │       │   │   ├─ modifier = baseAttackSpeed / 1000
+  │       │   │   ├─ divisor = DISTANCE ? 4 : 2
+  │       │   │   └─ tries = (trainingTime / modifier) / divisor
+  │       │   │
+  │       │   └─ elseif MAGLEVEL:
+  │       │       ├─ gainTicks = manaGainTicks / 1000 (min 1)
+  │       │       └─ tries = trainTime * (gainAmount / gainTicks)
+  │       │
+  │       ├─ updateSkills = addOfflineTrainingTries(
+  │       │   skill, tries * RATE_OFFLINE_TRAINING_SPEED)
+  │       │   └─ Aplica config rate
+  │       │
+  │       └─ if updateSkills:
+  │           └─ addOfflineTrainingTries(SHIELD, trainingTime / 4)
+  │               (Shield = 25% do training automático)
+  │
+  └─ return true
+```
+
+### Weapon vs Magic Calculation Example
+
+```lua
+-- WEAPON EXAMPLE (Sword skill, Knight promoted):
+-- baseAttackSpeed = 2000ms → modifier = 2
+-- trainingTime = 3600s (1 hora)
+-- tries = (3600 / 2) / 2 = 900 tries
+
+-- DISTANCE EXAMPLE (Distance, Paladin promoted):
+-- baseAttackSpeed = 1500ms → modifier = 1.5
+-- trainingTime = 3600s
+-- tries = (3600 / 1.5) / 4 = 600 tries (menos porque é ranged)
+
+-- MAGIC EXAMPLE (Magic, Sorcerer promoted):
+-- manaGainTicks = 6000ms → gainTicks = 6
+-- manaGainAmount = 50
+-- trainingTime = 3600s
+-- tries = 3600 * (50 / 6) = 30000 tries
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onLogin**: Callback disparado ao fazer login
+- **Offline Time Calculation**: math.min com cap de 21 dias
+- **Offline Training Pool**: Sistema de saldo acumulado
+- **Skill Selection**: getOfflineTrainingSkill() + set SKILL_NONE
+- **Training Time**: Máximo 12 horas por sessão
+- **Weapon Tries**: baseAttackSpeed / 1000 com divisor (2 ou 4)
+- **Magic Tries**: manaGainTicks + manaGainAmount calculation
+- **Promoted Vocation**: Uses promotion se existe para stats
+- **Shield Training**: Automático com 25% do tempo
+- **Rate Config**: RATE_OFFLINE_TRAINING_SPEED application
+- **Message Formatting**: Hours/minutes com pluralization
+- **Remainder Logic**: Overflow volta ao pool
+
+### Responsabilidades do Handler
+
+1. **Get**: lastLogout + offlineTime (max 21 dias)
+2. **Validate**: offlineTrainingSkill selection
+3. **Pool Case**: Sem skill → add time ao pool
+4. **Skill Case**: 
+   - Clear selection
+   - Validate mínimo 10 minutos
+   - Calculate training time (max 12h)
+   - Compensate remainder
+5. **Message**: Formatado com hours/minutes
+6. **Tries**: Calcular por skill (weapon vs magic)
+7. **Apply**: addOfflineTrainingTries com rate
+8. **Shield**: Automático training
+9. **Return**: true (sucesso)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Offline Time Calculation
+
+Calcular tempo com cap:
+
+```lua
+local offlineTime = lastLogout ~= 0 and 
+	math.min(os.time() - lastLogout, 86400 * 21) or 0
+```
+
+### Padrão Training Pool
+
+Gerenciar pool de tempo:
+
+```lua
+if offlineTrainingSkill == SKILL_NONE then
+	player:addOfflineTrainingTime(offlineTime * 1000)
+	return true
+end
+```
+
+### Padrão Weapon Tries Calculation
+
+Weapon bases em attack speed:
+
+```lua
+local modifier = topVocation:getBaseAttackSpeed() / 1000
+tries = (trainingTime / modifier) / 
+	(offlineTrainingSkill == SKILL_DISTANCE and 4 or 2)
+```
+
+### Padrão Magic Tries Calculation
+
+Magic based em mana gain:
+
+```lua
+local gainTicks = topVocation:getManaGainTicks() / 1000
+if gainTicks == 0 then gainTicks = 1 end
+tries = trainingTime * (vocation:getManaGainAmount() / gainTicks)
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: offline_training.lua" icon="star">
+Análise de listener de offline training. Demonstra pool system, weapon vs magic tries calculation e promoted vocation handling.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Offline training with tries calculation | Complexidade: Alta
+</Aside>

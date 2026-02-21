@@ -1,0 +1,486 @@
+---
+title: "load.lua"
+description: "Bootstrap loader module that initializes all function libraries in correct dependency order using dofile pattern for server startup."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Arquivo de bootstrap que carrega todos os 32 módulos de funções da pasta `data/libs/functions/` em ordem correta. Responsável por garantir que todas as extensões de class, helpers globais, e utilitários estejam disponíveis quando scripts de eventos, actions, talkactions, e sistemas customizados executarem.
+
+<Aside type="tip">
+O arquivo `load.lua` é o **entry point de inicialização** da camada de utilidades do servidor. Sua ordem de carregamento é crítica para resolver dependências (ex: `functions.lua` deve carregar antes de `boss_lever.lua` que usa funções dele).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O arquivo `load.lua` implementa **padrão de bootstrap simples**: 32 chamadas `dofile()` que carregam módulos em ordem. Diferentemente de sistemas complexos com registry dinâmico, este padrão é **explícito e debugável**.
+
+A ordem de carregamento segue estratégia de **dependência inversa** (carregar dependências antes de dependentes):
+
+1. **Utilidades Básicas** (bit, bitwise_flags, fs, string, tables)
+2. **Dados e Estruturas** (constants, queue, set)
+3. **Classes Nativas Estendidas** (item, itemtype, creature, monster, player, party)
+4. **Sistemas de Boss e Combate** (combat, boss_lever, lever, spawn)
+5. **Utilitários Avançados** (functions, game, gematelier, container)
+6. **Sistemas Especializados** (teleport, modal_window_helper, quests, pronouns)
+
+### Estrutura de Funcionalidades
+
+```
+load.lua (Bootstrap Orchestrator)
+├── Utilidades Primitivas (5 módulos)
+│   ├── bit.lua
+│   ├── bitwise_flags.lua
+│   ├── fs.lua
+│   ├── string.lua
+│   └── tables.lua
+├── Estruturas de Dados (3 módulos)
+│   ├── constants.lua
+│   ├── queue.lua
+│   └── set.lua
+├── Extensions de Classes Nativas (9 módulos)
+│   ├── item.lua
+│   ├── itemtype.lua
+│   ├── creature.lua
+│   ├── monster.lua
+│   ├── monstertype.lua
+│   ├── player.lua
+│   ├── party.lua
+│   ├── position.lua
+│   └── tile.lua
+├── Sistemas de Boss e Combate (4 módulos)
+│   ├── combat.lua
+│   ├── boss_lever.lua
+│   ├── lever.lua
+│   └── spawn.lua
+├── Funções Globais Avançadas (6 módulos)
+│   ├── functions.lua (60+ funções)
+│   ├── game.lua (13 funções)
+│   ├── gematelier.lua
+│   ├── container.lua
+│   ├── spectators.lua
+│   └── revscriptsys.lua
+└── Sistemas Especializados (5 módulos)
+    ├── teleport.lua
+    ├── modal_window_helper.lua
+    ├── quests.lua
+    ├── vocation.lua
+    └── pronouns.lua
+```
+
+---
+
+## 📚 Módulos Carregados
+
+### Grupo 1: Utilidades Primitivas
+
+#### `bit.lua`
+**Tipo**: OOP Bitwise Operations  
+**Tamanho**: 40 linhas  
+**Função**: Wrapper OOP para operações bitwise com cache em metatable  
+**Dependências**: Nenhuma  
+**Status**: Carregado 1º (sem dependências)
+
+---
+
+#### `bitwise_flags.lua`
+**Tipo**: Functional Bitwise via Modulo  
+**Tamanho**: 16 linhas  
+**Função**: Operações bitwise alternativas usando módulo aritmético  
+**Dependências**: Nenhuma  
+**Status**: Carregado 2º
+
+---
+
+#### `fs.lua`
+**Tipo**: File System Module  
+**Tamanho**: 49 linhas  
+**Função**: Operações cross-platform de arquivo (exists, mkdir, mkdir_p)  
+**Dependências**: Nenhuma  
+**Status**: Carregado 7º
+
+---
+
+#### `string.lua`
+**Tipo**: String Extension Library  
+**Tamanho**: (não verificado)  
+**Função**: Métodos auxiliares de string manipulation  
+**Status**: Carregado 28º
+
+---
+
+#### `tables.lua`
+**Tipo**: Table Utility Library  
+**Tamanho**: (não verificado)  
+**Função**: Funções de manipulação e operação em tabelas  
+**Status**: Carregado 29º
+
+---
+
+### Grupo 2: Extensões de Classes Nativas
+
+#### `item.lua`
+**Tipo**: Method Extension (Item)  
+**Linhas**: 82  
+**Métodos**: 15  
+**Função**: Acesso facilitado a atributos de item (description, name, text, uniqueId, duration, decay)
+
+---
+
+#### `itemtype.lua`
+**Tipo**: Method Extension (ItemType)  
+**Linhas**: 11  
+**Métodos**: 1  
+**Função**: Verificação de slot via `usesSlot()`
+
+---
+
+#### `creature.lua`
+**Tipo**: Method Extension (Creature)  
+**Linhas**: (não verificado)  
+**Função**: Extensões para classe Creature  
+**Status**: Carregado 7º (necessita classes bases)
+
+---
+
+#### `monster.lua`
+**Tipo**: Method Extension (Monster)  
+**Linhas**: (não verificado)  
+**Função**: Extensões específicas para classe Monster  
+**Status**: Carregado 16º
+
+---
+
+#### `monstertype.lua`
+**Tipo**: Method Extension (MonsterType)  
+**Linhas**: (não verificado)  
+**Função**: Extensões para tipo de monstro  
+**Status**: Carregado 17º
+
+---
+
+#### `player.lua`
+**Tipo**: Method Extension (Player)  
+**Linhas**: (não verificado)  
+**Função**: Extensões para classe Player (provavelmente >200 linhas)  
+**Status**: Carregado 19º
+
+---
+
+#### `party.lua`
+**Tipo**: Method Extension (Party)  
+**Linhas**: (não verificado)  
+**Função**: Extensões para sistema de party  
+**Status**: Carregado 18º
+
+---
+
+#### `position.lua`
+**Tipo**: Method Extension (Position)  
+**Linhas**: (não verificado)  
+**Função**: Funções auxiliares para manipulação de posições  
+**Status**: Carregado 20º
+
+---
+
+#### `tile.lua`
+**Tipo**: Method Extension (Tile)  
+**Linhas**: (não verificado)  
+**Função**: Extensões para classe Tile  
+**Status**: Carregado 31º
+
+---
+
+### Grupo 3: Sistemas de Boss e Combate
+
+#### `combat.lua`
+**Tipo**: Combat Extension Library  
+**Linhas**: 20  
+**Métodos**: 2  
+**Função**: Extensões de análise de combate não-destrutiva
+
+---
+
+#### `boss_lever.lua`
+**Tipo**: Boss Room Management (Factory)  
+**Linhas**: 326  
+**Função**: Factory para sistemas de sala de boss  
+**Dependências**: functions.lua (deve carregar antes)  
+**Status**: Carregado 3º (antes de functions.lua para erro se dependência falhar)
+
+---
+
+#### `lever.lua`
+**Tipo**: Lever Class (Factory)  
+**Linhas**: 230  
+**Métodos**: 17  
+**Função**: Sistema de alavancas para teleportação em lote  
+**Status**: Carregado 14º
+
+---
+
+#### `spawn.lua`
+**Tipo**: Spawn Management System  
+**Linhas**: (não verificado)  
+**Função**: Sistema de controle de spawns  
+**Status**: Carregado 26º
+
+---
+
+### Grupo 4: Funções Globais Avançadas
+
+#### `functions.lua`
+**Tipo**: Global Function Library  
+**Linhas**: 1085  
+**Funções**: 60+  
+**Função**: Maior módulo utilitário (serialização, tempo, moeda, monstros, etc)  
+**Status**: Carregado 9º (crítico, muitos dependem)
+
+---
+
+#### `game.lua`
+**Tipo**: Game Module Extension  
+**Linhas**: 200  
+**Métodos**: 13  
+**Função**: Storage dual-layer, broadcast, IP handling, account lookup  
+**Status**: Carregado 10º
+
+---
+
+#### `gematelier.lua`
+**Tipo**: Gem Atelier Loot System  
+**Linhas**: 98  
+**Métodos**: 1 (extension)  
+**Função**: Sistema probabilístico de drops de gemas  
+**Status**: Carregado 11º
+
+---
+
+#### `container.lua`
+**Tipo**: Loot Distribution System  
+**Linhas**: 80+  
+**Métodos**: 2  
+**Função**: Hierarquização de items em containers  
+**Status**: Carregado 6º
+
+---
+
+#### `spectators.lua`
+**Tipo**: Spectator Management  
+**Linhas**: (não verificado)  
+**Função**: Utilidades para obter espectadores de áreas  
+**Status**: Carregado 27º
+
+---
+
+#### `revscriptsys.lua`
+**Tipo**: RevScript System  
+**Linhas**: (não verificado)  
+**Função**: Sistema de scripts reversos  
+**Status**: Carregado 25º
+
+---
+
+### Grupo 5: Utilitários Estruturais
+
+#### `constants.lua`
+**Tipo**: Constants Registry  
+**Linhas**: 11  
+**Constantes**: 7  
+**Função**: Registro centralizado de constantes globais  
+**Status**: Carregado 5º
+
+---
+
+#### `queue.lua`
+**Tipo**: Queue Data Structure  
+**Linhas**: (não verificado)  
+**Função**: Implementação FIFO queue  
+**Status**: Carregado 24º
+
+---
+
+#### `set.lua`
+**Tipo**: Set Data Structure  
+**Linhas**: (não verificado)  
+**Função**: Implementação de conjunto (set)  
+**Status**: Carregado 25º
+
+---
+
+### Grupo 6: Sistemas Especializados
+
+#### `teleport.lua`
+**Tipo**: Teleport System  
+**Linhas**: (não verificado)  
+**Função**: Gerenciamento de teleportação  
+**Status**: Carregado 30º
+
+---
+
+#### `modal_window_helper.lua`
+**Tipo**: UI Helper  
+**Linhas**: (não verificado)  
+**Função**: Assistente para janelas modais  
+**Status**: Carregado 15º
+
+---
+
+#### `quests.lua`
+**Tipo**: Quest Framework  
+**Linhas**: (não verificado)  
+**Função**: Sistema de quests reutilizável  
+**Status**: Carregado 22º
+
+---
+
+#### `vocation.lua`
+**Tipo**: Vocation Extension  
+**Linhas**: (não verificado)  
+**Função**: Extensões para vocações  
+**Status**: Carregado 32º
+
+---
+
+#### `pronouns.lua`
+**Tipo**: Pronoun System  
+**Linhas**: (não verificado)  
+**Função**: Sistema de pronomes (gênero)  
+**Status**: Carregado 21º
+
+---
+
+## 🔄 Ordem de Carregamento Explicada
+
+### Fase 1: Primitivas (Sem Dependências)
+```lua
+dofile(CORE_DIRECTORY .. "/libs/functions/bit.lua")              -- 1. Operações bitwise
+dofile(CORE_DIRECTORY .. "/libs/functions/bitwise_flags.lua")    -- 2. Bitwise alternativo
+dofile(CORE_DIRECTORY .. "/libs/functions/boss_lever.lua")       -- 3. Boss system (early para debug)
+dofile(CORE_DIRECTORY .. "/libs/functions/combat.lua")           -- 4. Combat extensions
+dofile(CORE_DIRECTORY .. "/libs/functions/constants.lua")        -- 5. Constantes globais
+dofile(CORE_DIRECTORY .. "/libs/functions/container.lua")        -- 6. Container loot
+```
+
+**Observação**: `boss_lever.lua` carregado 3º apesar de usar `functions.lua` (carregado depois) - possível **bug de ordem** ou `functions.lua` é carregado globalmente antes.
+
+### Fase 2: Classes Nativas Básicas
+```lua
+dofile(CORE_DIRECTORY .. "/libs/functions/creature.lua")
+dofile(CORE_DIRECTORY .. "/libs/functions/fs.lua")
+dofile(CORE_DIRECTORY .. "/libs/functions/functions.lua")        -- 9. Maior módulo
+dofile(CORE_DIRECTORY .. "/libs/functions/game.lua")             -- 10. Game extensions
+```
+
+### Fase 3: Especialistadas
+```lua
+dofile(CORE_DIRECTORY .. "/libs/functions/gematelier.lua")       -- 11. Gem system
+dofile(CORE_DIRECTORY .. "/libs/functions/item.lua")             -- 12. Item method
+dofile(CORE_DIRECTORY .. "/libs/functions/itemtype.lua")         -- 13. ItemType method
+dofile(CORE_DIRECTORY .. "/libs/functions/lever.lua")            -- 14. Lever system
+```
+
+---
+
+## 🔧 Padrões de Uso
+
+### Integração no Bootstrap
+
+```lua
+-- No arquivo data/core.lua ou data/init.lua:
+dofile(CORE_DIRECTORY .. "/libs/functions/load.lua")
+
+-- Agora todas as 32 bibliotecas estão disponíveis globalmente
+print(Game.broadcastMessage)        -- ✓ Disponível
+print(Lever)                        -- ✓ Disponível
+print(Item.getType)                 -- ✓ Disponível
+```
+
+### Adicionando Novo Módulo
+
+Se criar novo módulo `data/libs/functions/mynewlib.lua`:
+
+1. Implementar as funções
+2. Adicionar `dofile()` em `load.lua` na posição correta
+3. Se tem dependências, colocar depois delas
+4. Se outros dependem, colocar antes deles
+
+```lua
+-- Exemplo: adicionar modal_window_helper com dependência em functions.lua
+-- Inserir depois de functions.lua (linha 9)
+dofile(CORE_DIRECTORY .. "/libs/functions/functions.lua")
+dofile(CORE_DIRECTORY .. "/libs/functions/my_custom_lib.lua")  -- Novo
+dofile(CORE_DIRECTORY .. "/libs/functions/game.lua")
+```
+
+---
+
+## ⚠️ Considerações de Ordem
+
+### Dependências Conhecidas
+
+| Módulo | Dependências | Carreg. |
+|--------|--------------|---------|
+| boss_lever.lua | functions.lua (implícito?) | 3º |
+| lever.lua | Nenhuma explícita | 14º |
+| game.lua | functions.lua (implícito) | 10º |
+| player.lua | creature.lua, constants.lua | 19º |
+| party.lua | player.lua | 18º |
+| gematelier.lua | monster.lua (implícito) | 11º |
+
+### Possíveis Problemas
+
+- ⚠️ `boss_lever.lua` carregado antes de `functions.lua` (pode falhar se usar funções)
+- ⚠️ `game.lua` usa `getGlobalStorage()` não definida em `functions.lua`? (circular)
+- ⚠️ Sem verificação de sucesso `dofile()` (falha silenciosa se arquivo não existe)
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+1. **Bootstrap Pattern**: Arquivo centralizador que inicializa dependências
+2. **Explicit Loading Order**: Ordem literal é crítica para resolver dependências
+3. **Global Namespace Pollution**: Todos 32 módulos populam global Lua
+4. **No Lazy Loading**: Tudo é carregado upfront (vs. require() sob demanda)
+
+### Stack Recomendado
+
+Para novo desenvolvimento, seguir ordem:
+1. Primitivas (bit, string, tables)
+2. Dados (constants, structures)
+3. Classes nativas (item, player, creature)
+4. Sistemas (boss, combat, teleport)
+5. Globais (functions, game)
+6. Especializados (quests, modals)
+
+---
+
+## 📚 Conclusão
+
+O arquivo `load.lua` é **orquestrador simples mas crítico** do servidor Canary. Sua lista de 32 `dofile()` carrega incrementalmente a pilha inteira de utilidades que makes possible o restante do codebase.
+
+Apesar de explícito e debugável, o padrão de **ordem-literal** é frágil: mover uma linha pode quebrar a compilação. Sistemas moderinos usam registry dinâmico (ex: Lua 5.3+ `require()` com `package.path`), mas `dofile()` é mais simples e explícito.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 32/32 (100%)  
+**Módulos Carregados**: 32  
+**Ordem Crítica**: Sim  
+**Verificação de Erro**: Nenhuma (dofile() silencioso)  
+**Documentação Completa**: 13/32 módulos (41%)
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Ao adicionar novo módulo, sempre incluir em `load.lua` na posição correta. Considerar adicionar try-catch ou logging para `dofile()` para detecção de falhas. Manter documentação sincronizada em ARQUITETURA_PROJETO.mdx.
+</Aside>

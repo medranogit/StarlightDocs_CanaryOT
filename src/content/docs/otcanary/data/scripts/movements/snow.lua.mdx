@@ -1,0 +1,348 @@
+---
+title: "Movement - snow.lua"
+description: "Sistema de transformação de neve ao sair, com achievement e validação de ghost mode"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `snow.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (stepout) |
+| **Event Name** | `snow.onStepOut` |
+| **Função Registrada** | `onStepOut(creature, item, position, fromPosition)` |
+| **Linhas de Código** | 25 |
+| **Complexidade** | Médium |
+| **Status** | Base implementation |
+
+**Descrição:**
+Sistema de neve que transforma automaticamente quando jogador sai, com transformações variadas. Inclui validação de ghost mode, incremento de achievement "Snowbunny", e decay automático.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/snow.lua
+```
+
+**Requisitos:**
+- Sistema de ghost mode (validação)
+- 15 tiles de neve monitoradas (799, 6580-6593)
+- Sistema de achievements ("Snowbunny")
+- Sistema de transformação de item com casos especiais
+- Sistema de decay
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Neve com Transformação Progressiva**
+
+Este script implementa um **sistema ambiental de cascata visual**:
+
+1. **Entrada:** Jogador entra em neve
+   - Ghost mode? Ignora
+   - Normal? Continua
+2. **Transformação:** Neve muda ao sair
+   - ID 799 → especial (transformar para 6594)
+   - Outros → ID + 15 (cascata visual)
+3. **Achievement:** Adiciona progresso a "Snowbunny"
+4. **Decay:** Neve desaparece após tempo
+
+**Exemplo Visual:**
+```
+Neve 799 → Neve 6594 (especial, piegada)
+Neve 6580 → Neve 6595 (progressão)
+Neve 6581 → Neve 6596 (progressão)
+...
+Neve 6593 → Neve 6608 (final, desaparece)
+```
+
+**Diferencial:**
+- Ghost mode immuno (jogadores invisíveis não marcam pisadas)
+- Achievement como side-effect (descoberta)
+- Transformação em cascata visual (arte)
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `snow.lua` implementa um sistema dinâmico de neve que transforma progressivamente:
+
+- **Transformação de Neve:** +15 ao ID normal, +814 ao ID 799 (especial)
+- **Validação de Ghost:** Ghost mode não marca neve
+- **Achievement:** Adiciona progresso a "Snowbunny"
+- **Decay:** Neve desaparece naturalmente
+- **Cobertura:** 15 tiles de neve diferentes
+
+### Arquitetura
+
+Callback único de stepout com lógicas de transformação:
+
+```
+Jogador sai da neve
+  └─ onStepOut(creature, item, position, fromPosition)
+     ├─ if not player: return true
+     ├─ if ghost mode: return true
+     ├─ if itemid == 799
+     │  └─ transform(6594)
+     ├─ else
+     │  └─ transform(itemid + 15)
+     ├─ achievement +10000
+     ├─ decay()
+     └─ return true
+```
+
+### Fluxo Lógico Resumido
+
+| ItemID | Ghost? | Transformação | Decay | Achievement |
+|---|---|---|---|---|
+| **799** | Não | → 6594 | Sim | +10k ✅ |
+| **799** | Sim | (nenhum) | Não | ❌ |
+| **6580-6593** | Não | → +15 | Sim | +10k ✅ |
+| **6580-6593** | Sim | (nenhum) | Não | ❌ |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Instanciação do MoveEvent
+
+```lua
+local snow = MoveEvent()
+```
+
+**Propósito:** Cria instância de MoveEvent para sistema de neve.
+
+---
+
+### Callback onStepOut
+
+```lua
+function snow.onStepOut(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return true
+	end
+
+	if player:isInGhostMode() then
+		return true
+	end
+
+	if item.itemid == 799 then
+		item:transform(6594)
+	else
+		item:transform(item.itemid + 15)
+	end
+
+	player:addAchievementProgress("Snowbunny", 10000)
+	item:decay()
+	return true
+end
+```
+
+**Propósito:** Executado quando jogador sai da neve. Transforma neve e aplica efeitos.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu (pode não ser jogador) |
+| `item` | Item | A neve |
+| `position` | Position | Posição da neve |
+| `fromPosition` | Position | Posição anterior |
+
+**Fluxo Lógico:**
+
+1. **Validação de Jogador:** Se não é jogador, retorna true
+2. **Validação de Ghost:** Se em ghost mode, retorna true (sem efeito)
+3. **Lógica de Transformação:**
+   - Se `itemid == 799`: Transforma para 6594 (especial)
+   - Senão: Transforma para `itemid + 15` (progressão)
+4. **Achievement:** Adiciona 10.000 pontos a "Snowbunny"
+5. **Decay:** Inicia decaimento da neve
+6. **Retorna:** true
+
+---
+
+### Registração do Evento
+
+```lua
+snow:type("stepout")
+snow:id(799, 6580, 6581, 6582, 6583, 6584, 6585, 6586, 6587, 6588, 6589, 6590, 6591, 6592, 6593)
+snow:register()
+```
+
+| Método | Valor | Significado |
+|---|---|---|
+| `:type("stepout")` | stepout | Dispara ao sair |
+| `:id(...)` | 15 IDs | Neve em cascata visual (1 base + 14 progressão) |
+| `:register()` | - | Registra evento |
+
+**IDs Monitorados:** 
+- 799 (neve base/especial)
+- 6580-6593 (14 níveis de progressão visual)
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `snow` | MoveEvent | Arquivo | Instância do evento |
+| `player` | Player | Função | Criatura convertida para jogador |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Validação de Ghost Mode
+
+```lua
+if player:isInGhostMode() then
+	return true
+end
+```
+
+**Benefício:** Jogadores invisíveis não deixam pisadas na neve.
+
+### Padrão 2: Transformação Condicional
+
+```lua
+if item.itemid == 799 then
+	item:transform(6594)
+else
+	item:transform(item.itemid + 15)
+end
+```
+
+**Benefício:** Caso especial (799) + regra genérica (+15) para cascata visual.
+
+### Padrão 3: Achievement como Side-Effect
+
+```lua
+player:addAchievementProgress("Snowbunny", 10000)
+```
+
+**Benefício:** Descoberta: jogadores ganham progresso ao deixar pisadas na neve.
+
+### Padrão 4: Decay com Transformação
+
+```lua
+item:transform(...)
+item:decay()
+```
+
+**Benefício:** Item desaparece após visualmente mudar (imersão).
+
+---
+
+## 🤖 Documentação das Funções
+
+### snow.onStepOut(creature, item, position, fromPosition)
+
+Callback executado quando jogador sai da neve. Transforma e marca pisadas com achievement.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu |
+| `item` | Item | A neve |
+| `position` | Position | Posição da neve |
+| `fromPosition` | Position | Posição anterior |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre (validação ou processamento completo) |
+
+**Validações:**
+
+1. **Se não é jogador:** Retorna true (sem ação)
+2. **Se ghost mode:** Retorna true (sem ação)
+3. **Senão:** Transforma, achievement, decay
+
+**Exemplo:**
+
+```lua
+-- Jogador normal sai de neve 799
+snow.onStepOut(player, neve799, pos, fromPos)
+-- isGhostMode() = false
+-- itemid == 799? Sim → transform(6594)
+-- achievement "Snowbunny" +10000
+-- decay()
+-- Resultado: Neve transformada visualmente, contador avança
+
+-- Jogador ghost sai de neve 6580
+snow.onStepOut(ghostPlayer, neve6580, pos, fromPos)
+-- isGhostMode() = true
+-- Retorna true imediatamente
+-- Resultado: Sem transformação, sem achievement
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Deixar Pisadas Normais
+
+```lua
+-- Jogador caminha pela neve (799 até 6593)
+-- Cada saída: antes 799 → depois 6594
+-- Achievement progride (+10k por pisada)
+-- Neve desaparece após progression visual
+```
+
+### Caso 2: Ghost Mode Não Marca
+
+```lua
+-- Jogador invisível (ghost) caminha na neve
+-- Nenhuma transformação
+-- Achievement não progride
+-- Neve permanece inalterada
+```
+
+### Caso 3: Cascata de Progressão
+
+```lua
+-- Inicialmente: 6580 (neve leve pisada)
+-- Jogador sai: 6580 → 6595
+-- Novo jogador entra em 6595, sai: 6595 → 6610
+-- Cascata progressiva de visual
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Achievement:** "Snowbunny"
+- **Item IDs:** 799 (base), 6580-6593 (progressão)
+- **Transformação Especial:** 799 → 6594
+- **Transformação Normal:** itemid + 15
+- **MoveEvent API:** [events/movements](../movements)
+- **Ghost Mode:** Sistema de invisibilidade jogador
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | MoveEvent (stepout) |
+| **Items Monitorados** | 15 (799, 6580-6593) |
+| **Transformação Especial** | 799 → 6594 |
+| **Transformação Normal** | itemid + 15 |
+| **Achievement** | Snowbunny +10000 |
+| **Validação** | Ghost mode |
+| **Decay** | Automático |
+| **Padrão** | Condicional + side-effect achievement |

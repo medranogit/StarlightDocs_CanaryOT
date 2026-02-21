@@ -1,0 +1,445 @@
+---
+title: "vocation.lua"
+description: "Módulo Vocation: tabla global VOCATION com ID maps (server, client, base), função Vocation.getBase para traversal de demoção. Constantes de vocações: NONE, SORCERER, DRUID, PALADIN, KNIGHT, MONK e suas promoções (MASTER_SORCERER, ELDER_DRUID, ROYAL_PALADIN, ELITE_KNIGHT, EXALTED_MONK). Utilities para vocation ID mapping."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que define **Vocation system constants e ID mapping**: tabela global `VOCATION` com 3 submaps (ID server-side, CLIENT_ID client-side, BASE_ID base vocations), e função `Vocation.getBase(self)` para resolver base vocation via demotion chain. Suporte para 11 vocações (5 base + 6 promoções) com mapping entre server e client IDs.
+
+**Caminho Original**: `data/libs/functions/vocation.lua`
+
+<Aside type="tip">
+O arquivo `vocation.lua` é **essential vocation constants library**. Define toda estrutura de vocações (11 tipos), mapeia server ↔ client IDs, e fornece função para resolver base vocation. Perfeito para vocation checking, promotions tracking, client rendering, combat systems.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **1 tabela global + 1 função**:
+
+1. **VOCATION Table** (3 submaps):
+   - ID: Server-side vocation IDs (0-10)
+   - CLIENT_ID: Client-side mapping (0-15)
+   - BASE_ID: Base vocation IDs only (0, 1, 2, 3, 4, 9)
+
+2. **Vocation.getBase(self)**: Resolve base vocation via demotion chain traversal
+
+O design usa **nested tables para ID mapping**, **vocation demotion chain traversal**, e **server/client ID separation**. Suporta 5 base vocações (SORCERER, DRUID, PALADIN, KNIGHT, MONK) + 6 promoções (MASTER_SORCERER, ELDER_DRUID, ROYAL_PALADIN, ELITE_KNIGHT, EXALTED_MONK, MONK promotional).
+
+### Estrutura de Vocações
+
+```
+Vocation System
+├── Base Vocations (5)
+│   ├── NONE (ID: 0)
+│   ├── SORCERER (ID: 1, CLIENT_ID: 3)
+│   ├── DRUID (ID: 2, CLIENT_ID: 4)
+│   ├── PALADIN (ID: 3, CLIENT_ID: 2)
+│   ├── KNIGHT (ID: 4, CLIENT_ID: 1)
+│   └── MONK (ID: 9, CLIENT_ID: 5)
+├── Promoted Vocations (6)
+│   ├── MASTER_SORCERER (ID: 5, CLIENT_ID: 13)
+│   ├── ELDER_DRUID (ID: 6, CLIENT_ID: 14)
+│   ├── ROYAL_PALADIN (ID: 7, CLIENT_ID: 12)
+│   ├── ELITE_KNIGHT (ID: 8, CLIENT_ID: 11)
+│   └── EXALTED_MONK (ID: 10, CLIENT_ID: 15)
+└── Utilities
+    └── Vocation.getBase(self) → base vocation via demotion
+```
+
+### ID Mapping Comparison
+
+| Vocation | Server ID | Client ID | Base ID | Demotion Chain |
+|----------|-----------|-----------|---------|-----------------|
+| NONE | 0 | 0 | 0 | - |
+| SORCERER | 1 | 3 | 1 | - |
+| DRUID | 2 | 4 | 2 | - |
+| PALADIN | 3 | 2 | 3 | - |
+| KNIGHT | 4 | 1 | 4 | - |
+| MONK | 9 | 5 | 9 | - |
+| MASTER_SORCERER | 5 | 13 | 1 | → SORCERER |
+| ELDER_DRUID | 6 | 14 | 2 | → DRUID |
+| ROYAL_PALADIN | 7 | 12 | 3 | → PALADIN |
+| ELITE_KNIGHT | 8 | 11 | 4 | → KNIGHT |
+| EXALTED_MONK | 10 | 15 | 9 | → MONK |
+
+---
+
+## 🎭 Constantes de Vocação
+
+### VOCATION.ID
+
+Mapa de **vocation IDs server-side** (autoridade no servidor).
+
+**Estrutura**:
+```lua
+VOCATION.ID = {
+	NONE = 0,
+	SORCERER = 1,
+	DRUID = 2,
+	PALADIN = 3,
+	KNIGHT = 4,
+	MASTER_SORCERER = 5,
+	ELDER_DRUID = 6,
+	ROYAL_PALADIN = 7,
+	ELITE_KNIGHT = 8,
+	MONK = 9,
+	EXALTED_MONK = 10,
+}
+```
+
+**Vocações (11 total)**:
+- **5 Base**: NONE, SORCERER, DRUID, PALADIN, KNIGHT, MONK
+- **6 Promoções**: MASTER_SORCERER, ELDER_DRUID, ROYAL_PALADIN, ELITE_KNIGHT, EXALTED_MONK
+
+**Uso**:
+```lua
+local vocId = VOCATION.ID.SORCERER  -- 1
+local promId = VOCATION.ID.MASTER_SORCERER  -- 5
+```
+
+---
+
+### VOCATION.CLIENT_ID
+
+Mapa de **vocation IDs client-side** (para rendering no cliente).
+
+**Estrutura**:
+```lua
+VOCATION.CLIENT_ID = {
+	NONE = 0,
+	KNIGHT = 1,
+	PALADIN = 2,
+	SORCERER = 3,
+	DRUID = 4,
+	MONK = 5,
+	ELITE_KNIGHT = 11,
+	ROYAL_PALADIN = 12,
+	MASTER_SORCERER = 13,
+	ELDER_DRUID = 14,
+	EXALTED_MONK = 15,
+}
+```
+
+**Diferenças vs SERVER ID**:
+- Client usa ordem diferente (KNIGHT = 1, PALADIN = 2, SORCERER = 3, DRUID = 4)
+- Server é mais sequencial (SORCERER = 1, DRUID = 2, PALADIN = 3, KNIGHT = 4)
+- Promotional IDs também diferem (Server 5-8 vs Client 11-15)
+
+**Nota**: Mapa bidirecional necessário para converti server ↔ client IDs
+
+**Uso**:
+```lua
+local clientId = VOCATION.CLIENT_ID.MASTER_SORCERER  -- 13
+```
+
+---
+
+### VOCATION.BASE_ID
+
+Mapa de **base vocation IDs only** (sem promoções).
+
+**Estrutura**:
+```lua
+VOCATION.BASE_ID = {
+	NONE = 0,
+	SORCERER = 1,
+	DRUID = 2,
+	PALADIN = 3,
+	KNIGHT = 4,
+	MONK = 9,
+}
+```
+
+**Casos de Uso**:
+- Validar se é base vocation
+- Resolver base vocation de promoted
+- Comparação com VOCATION.ID para demotion detection
+
+**Uso**:
+```lua
+local baseId = VOCATION.BASE_ID.DRUID  -- 2
+if VOCATION.BASE_ID[vocId] then
+	print("É base vocation")
+end
+```
+
+---
+
+## 🔧 Funções
+
+### `Vocation.getBase(self)` → Vocation
+
+Resolve base vocation navegando demotion chain.
+
+**Tipo**: Função estendida  
+**Parâmetro**: self (Vocation object)  
+**Retorna**: Vocation (base vocation)
+
+**Implementação**:
+```lua
+function Vocation.getBase(self)
+	local base = self
+	while base:getDemotion() do
+		base = base:getDemotion()
+	end
+	return base
+end
+```
+
+**Lógica**:
+1. Inicializa base = self (current vocation)
+2. Loop enquanto getDemotion() retorna valor
+3. Move base para demoted vocation
+4. Retorna quando nenhuma demoção exists
+
+**Fluxo de Demoção** (exemplo):
+```
+ELITE_KNIGHT (ID 8)
+  ↓ getDemotion()
+KNIGHT (ID 4)
+  ↓ getDemotion()
+nil (retorna KNIGHT como base)
+```
+
+**Exemplo**:
+```lua
+local promoted = Vocation(VOCATION.ID.ELITE_KNIGHT)  -- Promoted vocation
+local base = promoted:getBase()
+print(base:getId())  -- VOCATION.ID.KNIGHT (4)
+
+local alreadyBase = Vocation(VOCATION.ID.KNIGHT)
+print(alreadyBase:getBase():getId())  -- 4 (sem mudança)
+```
+
+---
+
+## 📊 Análise de Vocações
+
+### Classes de Combate
+
+| Classe | Base Vocation | Promote para | Role |
+|--------|---------------|--------------|------|
+| **Mage** | SORCERER (1) | MASTER_SORCERER (5) | Offensive magic |
+| **Druid** | DRUID (2) | ELDER_DRUID (6) | Healing magic |
+| **Paladin** | PALADIN (3) | ROYAL_PALADIN (7) | Ranged support |
+| **Knight** | KNIGHT (4) | ELITE_KNIGHT (8) | Melee tank |
+| **Monk** | MONK (9) | EXALTED_MONK (10) | Hybrid combat |
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Vocation Lookup por ID
+
+```lua
+function getVocationName(vocId)
+	for name, id in pairs(VOCATION.ID) do
+		if id == vocId then
+			return name
+		end
+	end
+	return "UNKNOWN"
+end
+
+print(getVocationName(VOCATION.ID.SORCERER))  -- "SORCERER"
+```
+
+---
+
+### Padrão 2: Server ↔ Client ID Conversion
+
+```lua
+function serverToClientVoc(serverId)
+	for name, clientId in pairs(VOCATION.CLIENT_ID) do
+		if VOCATION.ID[name] == serverId then
+			return clientId
+		end
+	end
+	return VOCATION.CLIENT_ID.NONE
+end
+
+local clientVoc = serverToClientVoc(VOCATION.ID.MASTER_SORCERER)
+-- clientVoc = VOCATION.CLIENT_ID.MASTER_SORCERER (13)
+```
+
+---
+
+### Padrão 3: Promotion Detection
+
+```lua
+function isPromoted(vocation)
+	local base = vocation:getBase()
+	return vocation:getId() ~= base:getId()
+end
+
+local promoted = Vocation(VOCATION.ID.ELITE_KNIGHT)
+print(isPromoted(promoted))  -- true
+
+local baseVoc = Vocation(VOCATION.ID.KNIGHT)
+print(isPromoted(baseVoc))  -- false
+```
+
+---
+
+### Padrão 4: Base Vocation Grouping
+
+```lua
+function getVocationGroup(vocation)
+	local baseVoc = vocation:getBase()
+	local baseId = baseVoc:getId()
+	
+	if baseId == VOCATION.BASE_ID.SORCERER then
+		return "MAGE_CLASS"
+	elseif baseId == VOCATION.BASE_ID.DRUID then
+		return "HEALER_CLASS"
+	elseif baseId == VOCATION.BASE_ID.PALADIN then
+		return "SUPPORT_CLASS"
+	elseif baseId == VOCATION.BASE_ID.KNIGHT then
+		return "TANK_CLASS"
+	elseif baseId == VOCATION.BASE_ID.MONK then
+		return "HYBRID_CLASS"
+	else
+		return "UNCLASSIFIED"
+	end
+end
+
+local voc = player:getVocation()
+print(getVocationGroup(voc))  -- Retorna classe
+```
+
+---
+
+### Padrão 5: Vocation Skill Check
+
+```lua
+function canCastSpell(player, spellVocations)
+	local playerVoc = player:getVocation()
+	local playerBase = playerVoc:getBase():getId()
+	
+	for _, requiredBase in ipairs(spellVocations) do
+		if playerBase == requiredBase then
+			return true
+		end
+	end
+	return false
+end
+
+-- Spell somente para Mages/Sorcerers
+local magicSpell = {VOCATION.BASE_ID.SORCERER}
+if canCastSpell(player, magicSpell) then
+	-- Execute spell
+end
+```
+
+---
+
+### Padrão 6: Demotion Chain Resolution
+
+```lua
+function getPromotionChain(vocation)
+	local chain = {}
+	local current = vocation
+	
+	while current do
+		table.insert(chain, {
+			id = current:getId(),
+			name = current:getName()
+		})
+		current = current:getPromoted()  -- Próxima promoção
+	end
+	
+	return chain
+end
+
+-- Retorna: {
+--   {id: 4, name: "Knight"},
+--   {id: 8, name: "Elite Knight"}
+-- }
+```
+
+---
+
+### Padrão 7: Vocation Comparison
+
+```lua
+function isSameClass(voc1, voc2)
+	return voc1:getBase():getId() == voc2:getBase():getId()
+end
+
+local knight1 = Vocation(VOCATION.ID.KNIGHT)
+local knight2 = Vocation(VOCATION.ID.ELITE_KNIGHT)
+local sorcerer = Vocation(VOCATION.ID.MASTER_SORCERER)
+
+print(isSameClass(knight1, knight2))       -- true (mesma classe)
+print(isSameClass(knight1, sorcerer))      -- false (classes diferentes)
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Referência |
+|----------|-----------|-----------|
+| **Server ID** | Autoridade no servidor, 0-10 | VOCATION.ID |
+| **Client ID** | Para rendering cliente, 0-15 | VOCATION.CLIENT_ID |
+| **Base ID** | Base vocations only, 0, 1-4, 9 | VOCATION.BASE_ID |
+| **Demotion Chain** | Promoção → Base via getDemotion() | getBase() |
+| **Base Resolution** | Encontrar base vocation | Vocation.getBase() |
+| **Promotion Detection** | Verificar se é promoted | ID != getBase().ID |
+| **Vocations (11)** | 5 base + 6 promoted | VOCATION.ID |
+| **ID Mapping** | Server ↔ Client conversion | ID vs CLIENT_ID |
+| **Class Grouping** | Agrupar por base class | BASE_ID lookup |
+| **Demotion Traversal** | Loop via getDemotion() | getBase() implementation |
+
+### Padrões Identificados
+
+1. **Nested ID Maps**: 3 níveis (ID, CLIENT_ID, BASE_ID) para diferentes contextos
+2. **Demotion Chain Traversal**: Loop while getDemotion() retorna
+3. **Base Resolution**: Sempre resolver para base pra validação
+4. **Server/Client Separation**: Different ID schemes para server vs client
+5. **Class-Based Grouping**: Usar BASE_ID para agrupar promoted vocations
+
+### Responsabilidades
+
+- **Vocation Definition**: 11 vocações (5 base + 6 promoted)
+- **ID Mapping**: 3 ID schemes para diferentes contextos
+- **Demotion Management**: Resolve base vocation via demotion chain
+- **Promotion Support**: Mapeia base ↔ promoted
+- **Client Compatibility**: Converte server ↔ client IDs
+
+---
+
+## 📚 Conclusão
+
+O arquivo `vocation.lua` define **Vocation system completo** com 11 vocações (5 base + 6 promoções), 3 ID maps (server, client, base), e função getBase() para demotion chain traversal. Essencial para sistemas de vocação, promoção, skills requeridos, e classe-based gameplay. Suporta mapping bidirecional server ↔ client, demoção para resolver base class, e agrupamento de vocações por classe.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 50/50 (100%)  
+**Vocações Totais**: 11 (5 base + 6 promoted)  
+**ID Schemes**: 3 (VOCATION.ID, VOCATION.CLIENT_ID, VOCATION.BASE_ID)  
+**Funções**: 1 (Vocation.getBase)  
+**Base Vocations**: NONE, SORCERER, DRUID, PALADIN, KNIGHT, MONK  
+**Promoted Vocations**: MASTER_SORCERER, ELDER_DRUID, ROYAL_PALADIN, ELITE_KNIGHT, EXALTED_MONK  
+**Exemplos Práticos**: 7  
+**Complexidade**: Baixa (constants + 1 função simples)  
+**Dependências**: Vocation C++ API (getDemotion, getId, getName)
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: VOCATION.ID é autoridade no servidor - use para todas validações internas. VOCATION.CLIENT_ID é somente para renderização cliente - não use para comparações no servidor. VOCATION.BASE_ID contém somente 5 base vocations (0, 1, 2, 3, 4, 9) - use para detetar promoção. Vocation.getBase() navega demotion chain - cada promoção tem uma demoção, base vocations retornam self. getBase().getId() sempre retorna um ID em VOCATION.BASE_ID. Mapping não é 1:1 entre schemes - necessário converter explicitamente. Server = 0-10, Client = 0-15 (gaps em client). Base IDs não são contíguos (0, 1, 2, 3, 4 depois 9).
+</Aside>

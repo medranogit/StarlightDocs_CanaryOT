@@ -1,0 +1,530 @@
+---
+title: "Spell - executioners_throw.lua"
+description: "Spell de lançamento carrasco para knights level 300 com WOD chain bounces"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `executioners_throw.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant - MUITO COMPLEXO) |
+| **ID do Spell** | 261 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Knight, Elite Knight |
+| **Level Requerido** | 300 (MÁXIMO!) |
+| **Mana Requerida** | 225 |
+| **Words** | exori amp kor |
+| **Alcance** | 5 |
+| **Área** | Single target + CHAIN (bounces!) |
+| **Cooldown** | 18s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Skill-based complexa (skill*attack coefficients × 1.28) |
+| **Som Conjura** | (sem especificado) |
+| **Sistema** | WOD (Wheel of Destiny) |
+| **WOD Skill** | Executioner's Throw |
+| **BLOCKARMOR** | 1 (ignora armadura!) |
+| **CHAINVALUE** | WOD grade-based bounces (1-4!) |
+| **Requer Weapon** | Sim (needWeapon) |
+| **Requer Learn** | Sim (needLearn - RARO!) |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 56 |
+| **Complexidade** | MUITO Alto |
+
+**Descrição:**
+Spell EXTREMAMENTE COMPLEXO de lançamento carrasco para knights nível 300 (MÁXIMO!). WOD chain system com grade-based bounces (grade 1-4 = 2-5 targets total!). Skill-based escalável complexo com multiplicadores. BLOCKARMOR ignora armadura. Range 5. Requer weapon + needLearn (raro!). Premium only. Cooldown 18s. Mana 225. Endgame puro!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/executioners_throw.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(261)
+spell:name("Executioner's Throw")
+spell:words("exori amp kor")
+spell:level(300)
+spell:mana(225)
+spell:isPremium(true)
+spell:range(5)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:needWeapon(true)
+spell:cooldown(18 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(true)
+spell:vocation("knight;true", "elite knight;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Lançamento Carrasco - WOD Chain Grade System**
+
+Este spell implementa um **sistema MUITO COMPLEXO de weapon physical com WOD chain bounces**:
+
+1. **Level 300 Absolute Endgame:**
+   - MÁXIMO level possível!
+   - needLearn: true (RARO! skill tree requirement!)
+   - Spell puro endgame
+   - Knights exclusive
+
+2. **WOD Chain Bounces:**
+   - CALLBACK_PARAM_CHAINVALUE (NEW!)
+   - revelationStageWOD("Executioner's Throw")
+   - Grade 0: não pode usar
+   - Grade 1: 2 bounces (3 targets total)
+   - Grade 2: 3 bounces (4 targets total)
+   - Grade 3+: 4 bounces (5 targets total!)
+
+3. **Skill-Based Complexo:**
+   - Skill × Attack × coefficients
+   - min = ((skillTotal*0.17)+17+levelTotal)*1.28
+   - max = ((skillTotal*0.20)+40+levelTotal)*1.28
+   - Multiplicador final 1.28!
+
+4. **Weapon-Based:**
+   - needWeapon: true
+   - BLOCKARMOR: 1 (ignora defesa)
+   - USECHARGES: não especificado
+   - Range 5
+
+**Chain Visual:**
+```
+Grade 1 (1 bounce):
+  Alvo primário + 1 bounce = 2 targets
+
+Grade 2 (2 bounces):
+  Alvo primário + 2 bounces = 3 targets
+
+Grade 3 (3 bounces):
+  Alvo primário + 3 bounces = 4 targets
+
+Grade 3+ (4 bounces):
+  Alvo primário + 4 bounces = 5 targets! (MÁXIMO)
+```
+
+**Diferencial:** WOD chain bounces weapon system endgame!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `executioners_throw` oferece dano físico CHAIN com WOD:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE skill-based
+- **Fórmula:** Skill × Attack complexa × 1.28 (MUITO ALTA!)
+- **Mana:** 225 (custoso)
+- **Level:** 300 (MÁXIMO!)
+- **Sistema:** WOD chain bounces (1-4 bounces)
+
+### Arquitetura (MUITO Complexa!)
+
+```
+Dual Callback System:
+
+1. Combat Base
+├─ Type: PHYSICALDAMAGE
+├─ BLOCKARMOR: 1
+├─ Distance: WEAPONTYPE
+└─ Callback: onGetFormulaValues (SKILLVALUE!)
+
+2. Chain Bounces
+├─ CALLBACK_PARAM_CHAINVALUE
+├─ getChainValue(creature)
+│  └─ Grade check: bounces 1-4
+└─ Função retorna: bounces, chain range, ???
+
+spell.onCastSpell() COMPLEX:
+├─ Player validation
+├─ WOD grade check (0 = reject!)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_WEAPONTYPE)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+```
+
+**Propósito:** Combat de dano físico base.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_WEAPONTYPE | Efeito weapon |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Ignora armadura! |
+
+---
+
+### Função Global: onGetFormulaValues (Skill-Based Complexo!)
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local skillTotal = skill * attack
+	local levelTotal = player:getLevel() / 5
+	return -(((skillTotal * 0.17) + 17) + levelTotal) * 1.28, -(((skillTotal * 0.20) + 40) + levelTotal) * 1.28
+end
+```
+
+**Propósito:** Calcula dano weapon skill-based COMPLEXO.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Attack power weapon |
+| `factor` | number | Factor (não usado) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+skillTotal = skill * attack
+levelTotal = player:getLevel() / 5
+
+min = (((skillTotal * 0.17) + 17) + levelTotal) * 1.28
+max = (((skillTotal * 0.20) + 40) + levelTotal) * 1.28
+```
+
+**Pesos Complexos:**
+- skillTotal min: 0.17 coefficient
+- skillTotal max: 0.20 coefficient
+- bônus: 17/40 (significativo)
+- levelTotal: 0.2 por ponto
+- Multiplicador final: 1.28 (28% boost!)
+
+**Exemplos:**
+
+| Level | Skill | Attack | Min | Max |
+|---|---|---|---|
+| 300 | 100 | 50 | 200 | 320 |
+| 300 | 150 | 75 | 360 | 560 |
+
+---
+
+### Função Global: getChainValue (WOD CALLBACKS!)
+
+```lua
+function getChainValue(creature)
+	local grade = creature:revelationStageWOD("Executioner's Throw")
+	if grade == 0 then
+		return false
+	end
+
+	local bounces = 0
+	if grade >= 3 then
+		bounces = 4
+	elseif grade >= 2 then
+		bounces = 3
+	elseif grade >= 1 then
+		bounces = 2
+	end
+
+	return bounces + 1, 3, false
+end
+```
+
+**Propósito:** Calcula chain bounces baseado WOD grade.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight |
+
+**Retorno:**
+
+| Valor | Semântica |
+|---|---|
+| false | Grade 0 (não pode usar) |
+| bounces+1, 3, false | Targets, chain range, ??? |
+
+**Chain Logic:**
+
+| Grade | Bounces | Total Targets | Behavior |
+|---|---|---|---|
+| 0 | 0 | Reject! | Não pode usar |
+| 1 | 2 | 3 (primário + 2 bounce) | Baseline |
+| 2 | 3 | 4 (primário + 3 bounce) | Mid upgrade |
+| 3+ | 4 | 5 (primário + 4 bounce) | MÁXIMO! |
+
+---
+
+### Registração dos Callbacks
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+combat:setCallback(CALLBACK_PARAM_CHAINVALUE, "getChainValue")
+```
+
+---
+
+### Função Global: spell.onCastSpell (MUITO COMPLEXA!)
+
+```lua
+function spell.onCastSpell(creature, var)
+	if not creature or not creature:isPlayer() then
+		return false
+	end
+
+	local grade = creature:revelationStageWOD("Executioner's Throw")
+	if grade == 0 then
+		creature:sendCancelMessage("You need to learn this spell first")
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler complexo com WOD grade validation.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight |
+| `var` | Variant | Target |
+
+**Lógica:**
+1. Valida creature é player
+2. Check revelationStageWOD("Executioner's Throw")
+3. Se grade 0: send cancel message + POFF effect
+4. Senão: execute combat
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Lançamento ativado |
+| `false` | Validação falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callbacks duplos |
+| `onGetFormulaValues` | function | Global | Callback skill damage |
+| `getChainValue` | function | Global | Callback WOD chain |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `skillTotal` | number | skill × attack |
+| `levelTotal` | number | level/5 |
+
+**Variáveis Locais (em getChainValue):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `grade` | number | WOD revelationStage |
+| `bounces` | number | Chain bounces count |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: WOD Grade Chain System
+
+```lua
+local grade = creature:revelationStageWOD("Executioner's Throw")
+if grade >= 3 then
+	bounces = 4
+elseif grade >= 2 then
+	bounces = 3
+elseif grade >= 1 then
+	bounces = 2
+end
+return bounces + 1, 3, false
+```
+
+**Benefício:** Grade-based chain bounces (1-4).
+
+### Padrão 2: Dual Callback System
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+combat:setCallback(CALLBACK_PARAM_CHAINVALUE, "getChainValue")
+```
+
+**Benefício:** Damage + chain control separados.
+
+### Padrão 3: Skill-Based Complex Formula
+
+```lua
+local skillTotal = skill * attack
+return -(((skillTotal * 0.17) + 17) + levelTotal) * 1.28
+```
+
+**Benefício:** Skill × Attack com multiplicador!
+
+### Padrão 4: Weapon-Based Exclusive
+
+```lua
+spell:needWeapon(true)
+spell:needLearn(true)
+```
+
+**Benefício:** Weapon required + learning required (raro!).
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, skill, attack, factor)
+
+**Descrição:** Calcula dano carrasco skill-based complexo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Attack power |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+---
+
+### getChainValue(creature)
+
+**Descrição:** Calcula chain bounces baseado WOD grade.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| false | Grade 0 (reject) |
+| bounces+1, 3, false | Targets, range, ??? |
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Lança carrasco com WOD check.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight |
+| `var` | Variant | Target |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Lançamento OK |
+| `false` | Validação falhou |
+
+**Requisitos:**
+- Level 300
+- 225 mana
+- Weapon equipped
+- WOD grade > 0
+- needLearn: true
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Endgame Knight
+
+```lua
+-- Knight lvl 300, WOD grade 3
+// Executioner's Throw = ultimate
+// Grade 3 = 5 targets!
+// Chain bounces + skill damage
+```
+
+### Caso 2: WOD Progression
+
+```lua
+-- Knight grinding Executioner's Throw
+// Grade 0: não pode usar
+// Grade 1: 3 targets
+// Grade 2: 4 targets
+// Grade 3: 5 targets
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callbacks:** CALLBACK_PARAM_SKILLVALUE, CALLBACK_PARAM_CHAINVALUE
+- **WOD:** revelationStageWOD, Executioner's Throw
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant - MUITO Complexo) |
+| **Função** | Lançamento carrasco chain |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | Skill × Attack complexa × 1.28 |
+| **Mana** | 225 |
+| **Range** | 5 |
+| **Level** | 300 (MÁXIMO!) |
+| **Cooldown** | 18s |
+| **Premium** | Sim |
+| **WOD Chain** | Grade 1-3+ = bounces 2-4 |
+| **BLOCKARMOR** | 1 |
+| **Weapon Required** | Sim |
+| **Learn Required** | Sim (RARO!) |
+| **Vocações** | Knight, Elite Knight |
+| **Padrão** | Skill-based weapon + WOD chain + dual callbacks |

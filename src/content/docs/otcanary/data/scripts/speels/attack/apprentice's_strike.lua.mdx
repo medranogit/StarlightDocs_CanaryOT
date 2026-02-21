@@ -1,0 +1,431 @@
+---
+title: "Spell - apprentice's_strike.lua"
+description: "Spell de fogo iniciante para druids/sorcerers level 8"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `apprentice's_strike.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 169 |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Vocações** | Druid, Elder Druid, Sorcerer, Master Sorcerer |
+| **Level Requerido** | 8 |
+| **Mana Requerida** | 6 |
+| **Words** | exori min flam |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Cooldown** | 2s |
+| **GroupCooldown** | 2s |
+| **Premium** | Não |
+| **Fórmula** | Magic-level based (0.4-0.7 MLvl) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_FLAME_STRIKE |
+| **Requer Caster/Target/Direction** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 38 |
+| **Complexidade** | Baixo |
+
+**Descrição:**
+Spell de fogo iniciante para druids/sorcerers nível 8. Dano fogo económico com mana baixa (6). Fórmula magic-level escalável (0.4-0.7 MLvl). Alcance 3 tiles. Sem premium. Free-to-play friendly. Primeiro spell fire da classe. Efeito FIREATTACK.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/apprentice's_strike.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(169)
+spell:name("Apprentice's Strike")
+spell:words("exori min flam")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_FLAME_STRIKE)
+spell:level(8)
+spell:mana(6)
+spell:isPremium(false)
+spell:range(3)
+spell:needCasterTargetOrDirection(true)
+spell:blockWalls(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("druid;true", "elder druid;true", "sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Golpe do Aprendiz - Fire Magic Starter**
+
+Este spell implementa um **sistema de dano fogo iniciante escalável**:
+
+1. **Magic-Level Based:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - Depende apenas magic level
+   - Sem weapon dependency
+
+2. **Fórmula Económica:**
+   - min = (level/5) + (maglevel × 0.4) + 3
+   - max = (level/5) + (maglevel × 0.7) + 5
+   - Baixa escalabilidade (iniciante)
+
+3. **Free-to-Play:**
+   - Level 8 (muito cedo)
+   - Mana 6 (baratíssimo)
+   - Sem premium
+   - Nenhum learn requerido
+
+4. **Acesso Universal:**
+   - 4 vocações (druids + sorcerers)
+   - Alcance 3 (ranged)
+   - Livre targeting
+
+**Fórmula Visual:**
+```
+Druida lvl 8, mlvl 1:
+  min = 1.6 + 0.4 + 3 = 5
+  max = 1.6 + 0.7 + 5 = 7.3
+
+Druida lvl 50, mlvl 20:
+  min = 10 + 8 + 3 = 21
+  max = 10 + 14 + 5 = 29
+```
+
+**Diferencial:** Spell zero-cost starter fire!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `apprentice's_strike` oferece dano fire iniciante:
+
+- **Dano:** COMBAT_FIREDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*0.4/0.7) + bônus (ECONÓMICO!)
+- **Mana:** 6 (muito barato)
+- **Level:** 8 (muito cedo)
+- **Range:** 3 (ranged)
+
+### Arquitetura
+
+Combat com callback magic-level:
+
+```
+local combat = Combat()
+├─ Type: FIREDAMAGE
+├─ Effect: FIREATTACK
+├─ Distance: FIRE
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max económico
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_FIREATTACK)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_FIRE)
+```
+
+**Propósito:** Combat de dano fogo.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_FIREATTACK | Efeito fogo |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_FIRE | Projétil fogo |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 0.4) + 3
+	local max = (level / 5) + (maglevel * 0.7) + 5
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano fogo iniciante.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 0.4) + 3
+max = (level / 5) + (maglevel * 0.7) + 5
+```
+
+**Pesos:**
+- Level: 0.2 por ponto (baixo)
+- Maglevel min: 0.4 (muito baixo)
+- Maglevel max: 0.7 (muito baixo)
+- Bônus: 3/5 (moderado)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 8 | 1 | 5 | 7 |
+| 30 | 10 | 14 | 20 |
+| 60 | 25 | 28 | 42 |
+| 100 | 50 | 48 | 71 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Golpe ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback magic |
+| `spell` | Spell | Arquivo | Instância do spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Magic-Level Based
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 0.4) + 3
+	local max = (level / 5) + (maglevel * 0.7) + 5
+	return -min, -max
+end
+```
+
+**Benefício:** Escalável com skill mago.
+
+### Padrão 2: Mana Barato
+
+```lua
+spell:mana(6)
+```
+
+**Benefício:** Spam-friendly iniciante.
+
+### Padrão 3: Acesso Universal
+
+```lua
+spell:vocation("druid;true", "elder druid;true", "sorcerer;true", "master sorcerer;true")
+```
+
+**Benefício:** 4 vocações = todos magic users.
+
+### Padrão 4: Alcance Ranged
+
+```lua
+spell:range(3)
+```
+
+**Benefício:** 3 tiles de distância.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano fogo iniciante.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(druid, 30, 10)
+// min = 6 + 4 + 3 = 13
+// max = 6 + 7 + 5 = 18
+// Retorna: -13, -18
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura golpe fogo em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druida/Sorcerer |
+| `var` | Variant | Target ou direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Golpe ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 8+
+- 6 mana
+- Range 3
+- Nenhum item requerido
+
+**Efeito:**
+- Efeito fogo
+- Projétil fogo
+- Dano magic-level based
+- Alcance 3 tiles
+
+**Exemplo:**
+
+```lua
+-- Druida lvl 30, MLvl 10
+spell.onCastSpell(druid, targetVariant)
+// Validações OK (8+ level, 6 mana)
+// Combat executa
+// Dano: -13 a -18
+// Efeito fogo visual
+// Alcance 3 tiles
+// Resultado: Golpe iniciante fire!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Primeiro Spell
+
+```lua
+-- Novo druida level 8
+// Apprentice's Strike = primeiro fire
+// Zero cost praticamente
+// Escalável
+```
+
+### Caso 2: Spam Training
+
+```lua
+-- Leveling magic level
+// 6 mana = spam muito
+// Cumulativo dano
+```
+
+### Caso 3: Free-to-Play
+
+```lua
+-- Sem premium
+// Acessível cedo
+// Tudo gratuito
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_FIREDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Effects:** CONST_ME_FIREATTACK
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Dano fogo iniciante |
+| **Dano Type** | COMBAT_FIREDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*0.4)+3, max=(lvl/5)+(mlvl*0.7)+5 |
+| **Mana** | 6 (muito barato) |
+| **Range** | 3 |
+| **Level** | 8 (muito cedo) |
+| **Cooldown** | 2s |
+| **Premium** | Não |
+| **Vocações** | Druid, Elder Druid, Sorcerer, Master Sorcerer |
+| **Padrão** | Magic-level + mana barato + acesso universal |

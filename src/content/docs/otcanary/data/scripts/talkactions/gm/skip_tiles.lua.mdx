@@ -1,0 +1,177 @@
+---
+title: Skip Tiles
+description: Comando GM para teleportar N passos na direção que o jogador está olhando
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `skip_tiles.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Teleportar N passos em linha reta |
+| **Comando** | `/a <steps>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | steps (número de passos) |
+| **Separador** | Espaço |
+| **Funcionalidade** | Pula N tiles na direção atual |
+| **Localização Alvo** | Posição livre mais próxima |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/skip_tiles.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando de salto configurável em linha reta. Valida param não vazio e conversão numérica. Obtém posição e direção atuais, avança N passos via `getNextPosition(direction, steps)`, depois busca tile livre mais próxima com `getClosestFreePosition()`. Valida se posição é válida (x != 0) antes de teleportar. Útil para navegar rápido em linha reta sem procurar colisões manualmente.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `skip_tiles.lua` implementa um comando TalkAction (`/a`) que permite gamemasters pular N passos na direção atual. O sistema valida parâmetro como número inteiro, obtém posição e direção do jogador, calcula posição N passos adiante via `getNextPosition()`, busca tile livre mais próxima com `getClosestFreePosition()`, valida resultado, e teleporta. Ferramenta de navegação rápida em linha reta.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local skipTiles = TalkAction("/a")
+
+-- 2. Função Principal (onSay)
+function skipTiles.onSay(player, words, param)
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Converter para número
+    local steps = tonumber(param)
+    if not steps then
+        return true  -- Silencioso se não numérico
+    end
+    
+    -- Obter posição atual
+    local position = player:getPosition()
+    
+    -- Avançar N passos na direção atual
+    -- (modifica position in-place? ou retorna nova position?)
+    position:getNextPosition(player:getDirection(), steps)
+    
+    -- Buscar tile livre mais próxima
+    position = player:getClosestFreePosition(position, false)
+    
+    -- Validação: posição válida
+    if position.x == 0 then
+        player:sendCancelMessage("You cannot teleport there.")
+        return true
+    end
+    
+    -- Teleportar
+    player:teleportTo(position)
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+skipTiles:separator(" ")
+skipTiles:groupType("gamemaster")
+skipTiles:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **skipTiles.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/a` é utilizado. Teleporta jogador N passos na direção atual.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando
+- `words` (string): Palavras do comando (`/a`)
+- `param` (string): **[OBRIGATÓRIO]** Número de passos (inteiro positivo)
+
+**Formato de Comando:**
+```
+/a 5                  -- Pula 5 passos
+/a 10                 -- Pula 10 passos
+/a 1                  -- Pula 1 passo
+```
+
+**Fluxo de Execução:**
+
+1. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+2. **Conversão para Número:**
+   ```lua
+   local steps = tonumber(param)
+   if not steps then
+       return true  -- Silencioso
+   end
+   ```
+
+3. **Obtenção de Posição:**
+   ```lua
+   local position = player:getPosition()
+   ```
+
+4. **Cálculo de Posição Alvo:**
+   ```lua
+   position:getNextPosition(player:getDirection(), steps)
+   ```
+   - Função modifica position in-place
+   - Avança `steps` passos na direção atual (NORTH/SOUTH/EAST/WEST)
+
+5. **Busca de Tile Livre:**
+   ```lua
+   position = player:getClosestFreePosition(position, false)
+   ```
+   - Busca tile livre mais próxima (raio expandindo)
+   - false = apenas walkables
+   - Retorna position com x == 0 se nenhuma encontrada
+
+6. **Validação de Posição:**
+   ```lua
+   if position.x == 0 then
+       player:sendCancelMessage("You cannot teleport there.")
+       return true
+   end
+   ```
+
+7. **Teleportação:**
+   ```lua
+   player:teleportTo(position)
+   ```
+
+**Exemplo de Uso:**
+
+```
+Position atual: (100, 200, 7), direção: EAST
+Comando: /a 5
+
+Resultado:
+- Calcula: (105, 200, 7)
+- Busca livre: encontra (105, 200, 7) se disponível
+- Teleporta para (105, 200, 7)
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `tonumber(str)` | Converte string para número |
+| `player:getPosition()` | Obtém Position atual |
+| `player:getDirection()` | Obtém direção (0-3) |
+| `position:getNextPosition(dir, steps)` | Avança N passos |
+| `player:getClosestFreePosition(pos, bool)` | Busca tile livre |
+| `player:teleportTo(position)` | Teleporta |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `skip_tiles.lua` é ferramenta de navegação em linha reta. Implementação que converte parâmetro numérico, calcula posição adiante, busca tile livre inteligentemente, e teleporta com validação. Essencial para GMs navegarem rápido sem procurar obstáculos manualmente. Design simples mas poderoso, integrando busca de espaço livre automática.

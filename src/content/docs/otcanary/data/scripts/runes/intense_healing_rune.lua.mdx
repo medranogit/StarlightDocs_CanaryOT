@@ -1,0 +1,474 @@
+---
+title: "Spell/Rune - intense_healing_rune.lua"
+description: "Runa de cura intensa com proteção contra monstros e early game access"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `intense_healing_rune.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 4 |
+| **ID do Item (runeId)** | 3152 |
+| **Level Requerido** | 15 |
+| **Magic Level Requerido** | 1 |
+| **Grupo** | healing |
+| **Tipo de Efeito** | COMBAT_HEALING |
+| **Área** | Single target (alvo ou self) |
+| **Cooldown** | 1s |
+| **Cargas** | 1 |
+| **Validação** | Monster check (não cura monstros) |
+| **Agressividade** | Não (é cura!) |
+| **Requer Target** | Sim |
+| **PZ Locked** | Não |
+| **Dispel** | CONDITION_PARALYZE |
+| **Linhas de Código** | 38 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa de cura intensa com muito early game access (level 15, MLvl 1). Implementa validação especial contra monstros usando Monster check. Remove paralyze ao curar. Fórmula escalável com bônus fixo significativo. Única carga por uso (custosa em mana, não cargas).
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/intense_healing_rune.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(4)
+rune:runeId(3152)
+rune:level(15)
+rune:magicLevel(1)
+rune:group("healing")
+rune:needTarget(true)
+rune:isAggressive(false)
+rune:charges(1)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Cura Intensa para Iniciantes**
+
+Esta runa implementa um **sistema de cura escalonado com proteção contra abuso**:
+
+1. **Early Game Access:**
+   - Level 15 (muito cedo!)
+   - MLvl 1 (mínimo absoluto)
+   - Primeira cura escalável
+
+2. **Proteção Anti-Monstro:**
+   - Monster check em onCastSpell
+   - Evita farm de cura
+   - Balanceamento PvM
+
+3. **Fórmula Agressiva:**
+   - min = (level/5) + (maglevel*3.2) + 20
+   - max = (level/5) + (maglevel*5.4) + 40
+   - Muito escalável em MLvl!
+
+4. **Efeito Extra:** Dispel CONDITION_PARALYZE
+
+**Fórmula Visual:**
+```
+level 15, mlvl 1:
+  min = 3 + 3.2 + 20 = 26.2
+  max = 3 + 5.4 + 40 = 48.4
+
+level 60, mlvl 20:
+  min = 12 + 64 + 20 = 96
+  max = 12 + 108 + 40 = 160
+```
+
+**Diferencial:** Primeira cura com escalabilidade extrema!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `intense_healing_rune` oferece cura early game com validação:
+
+- **Cura:** COMBAT_HEALING (não dano!)
+- **Fórmula:** (level/5) + (maglevel*3.2/5.4) + bônus
+- **Validação:** Monster check
+- **Acesso:** Level 15 (MUITO CEDO!)
+- **Cargas:** 1 (custosa!)
+
+### Arquitetura
+
+Combat com fórmula callback + validação especial:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_HEALING
+├─ Effect: MAGIC_BLUE
+├─ Aggressive: 0 (healing)
+├─ Callback: onGetFormulaValues
+└─ Dispel: CONDITION_PARALYZE
+
+rune.onCastSpell()
+├─ Monster check (validação)
+├─ Se monstro: cancela
+└─ Else: combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_HEALING)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+combat:setParameter(COMBAT_PARAM_TARGETCASTERORTOPMOST, 1)
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+```
+
+**Propósito:** Instância de Combat para cura intensa.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_HEALING | Tipo cura |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_MAGIC_BLUE | Efeito magia azul |
+| `COMBAT_PARAM_AGGRESSIVE` | 0 | Não agressivo |
+| `COMBAT_PARAM_TARGETCASTERORTOPMOST` | 1 | Alvo ou self |
+| `COMBAT_PARAM_DISPEL` | CONDITION_PARALYZE | Remove paralyze |
+
+**Características:**
+- Sem `combat:setArea()` = single target
+- Callback para fórmula escalável cura
+- Dispel automático de paralyze
+- Não agressivo (proteção PG)
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 3.2) + 20
+	local max = (level / 5) + (maglevel * 5.4) + 40
+	return min, max
+end
+```
+
+**Propósito:** Calcula cura escalável (POSITIVO, não negativo!).
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level total |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Cura mínima (POSITIVO!) |
+| `max` | number | Cura máxima (POSITIVO!) |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 3.2) + 20
+max = (level / 5) + (maglevel * 5.4) + 40
+```
+
+**Diferença Chave:** Retorna `min, max` (não negativo!)
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 3.2 (ALTO)
+- Maglevel max: 5.4 (MUITO ALTO!)
+- Bônus: 20/40 (suporta early)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 15 | 1 | 26 | 48 |
+| 40 | 8 | 51 | 91 |
+| 80 | 20 | 80 | 148 |
+| 100 | 30 | 98 | 204 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	if Monster(var:getNumber(1073762188)) then
+		creature:sendCancelMessage("Sorry, not possible.")
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	else
+		return combat:execute(creature, var)
+	end
+end
+```
+
+**Propósito:** Handler com validação anti-monstro.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Target (alvo ou self) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Cura aplicada |
+| `false` | Alvo é monstro |
+
+**Validação Monster:**
+
+```lua
+if Monster(var:getNumber(1073762188)) then
+	creature:sendCancelMessage("Sorry, not possible.")
+	creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+	return false
+end
+```
+
+**Propósito:** Rejeita tentativa de curar monstros (evita farm)
+**Número:** `1073762188` = constante do tipo criatura
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Cura mínima |
+| `max` | number | Cura máxima |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Validação Monster
+
+```lua
+if Monster(var:getNumber(1073762188)) then
+	creature:sendCancelMessage("Sorry, not possible.")
+	creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+	return false
+end
+```
+
+**Benefício:** Evita farm de cura em monstros, força PvP/PvE equilibrado.
+
+### Padrão 2: Fórmula Escalável Cura
+
+```lua
+local min = (level / 5) + (maglevel * 3.2) + 20
+local max = (level / 5) + (maglevel * 5.4) + 40
+return min, max  -- POSITIVO, não negativo!
+```
+
+**Benefício:** Escalabilidade muito ALTA em MLvl (~5x).
+
+### Padrão 3: Early Game Access
+
+```lua
+rune:level(15)
+rune:magicLevel(1)
+```
+
+**Benefício:** Primeira cura disponível muito cedo (nível 15, MLvl 1).
+
+### Padrão 4: Dispel Paralyze
+
+```lua
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+```
+
+**Benefício:** Remove paralyze ao curar (utilidade extra).
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula cura de intense healing (escalável alto).
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Cura mínima (POSITIVO) |
+| `max` | number | Cura máxima (POSITIVO) |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(player, 40, 8)
+// min = 8 + 25.6 + 20 = 53.6
+// max = 8 + 43.2 + 40 = 91.2
+// Retorna: 53.6, 91.2 (cura!)
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Cura com validação contra monstros e dispel.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Target (alvo ou self) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Cura aplicada |
+| `false` | Alvo é monstro (blocked) |
+
+**Validação:**
+- Monster check: `var:getNumber(1073762188)`
+- Se monstro: cancela com send message + effect
+- Se player/self: aplica cura
+
+**Efeito:**
+- Cura escalável
+- Dispel automático paralyze
+- Efeito visual MAGIC_BLUE
+- No PZ lock (funciona town)
+
+**Exemplo:**
+
+```lua
+-- Mago nível 40, MLvl 8 cura aliado
+rune.onCastSpell(mago, aliadoVariant, false)
+// Monster check: é player? SIM
+// Calcula: -53 a -91 cura
+// Dispel paralyze se houver
+// Efeito azul
+// Resultado: Aliado curado!
+
+-- Mago tenta curar um monstro
+rune.onCastSpell(mago, monstroVariant, false)
+// Monster check: é monstro? SIM
+// Cancela com: "Sorry, not possible."
+// Efeito poff (erro)
+// Resultado: Bloqueado!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Primeira Cura Escalável
+
+```lua
+-- Mago novo nível 15, MLvl 1
+-- Quer cura escalável
+// Intense healing = primeira opção
+// Escalabilidade extrema em MLvl
+```
+
+### Caso 2: Cura de Aliado
+
+```lua
+-- Forma grupo de players
+// Cura aliado (needTarget)
+// Força team play
+```
+
+### Caso 3: Proteção Paralyze
+
+```lua
+-- Inimigo aplica paralyze
+// Intense healing dispel automaticamente
+// Utilidade tática extra
+```
+
+### Caso 4: PvM Seguro
+
+```lua
+-- Monster check evita farm
+// Monstros não podem ser curados
+// Balance design PvM
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Type:** COMBAT_HEALING
+- **Effects:** CONST_ME_MAGIC_BLUE, CONST_ME_POFF
+- **Conditions:** CONDITION_PARALYZE (dispel)
+- **Validation:** Monster() type check
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Cura intensa com validação |
+| **Type** | COMBAT_HEALING |
+| **Fórmula** | min=(lvl/5)+(mlvl*3.2)+20, max=(lvl/5)+(mlvl*5.4)+40 |
+| **Area** | Single target (alvo/self) |
+| **Cargas** | 1 (custosa!) |
+| **Validação** | Monster check (anti-farm) |
+| **Dispel** | CONDITION_PARALYZE |
+| **Target** | Requerido |
+| **Level** | 15 (VERY EARLY) |
+| **MLvl** | 1 (mínimo) |
+| **Padrão** | Callback cura + validação monster |

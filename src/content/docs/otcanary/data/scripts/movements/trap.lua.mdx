@@ -1,0 +1,524 @@
+---
+title: "Movement - trap.lua"
+description: "Sistema complexo de armadilhas com transformação condicional, dano variável e handlers de remoção"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `trap.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (stepin + stepout + removeitem) |
+| **Event Names** | `trap.onStepIn`, `trap.onStepOut`, `trap.onRemoveItem` |
+| **Funções Registradas** | 3 callbacks |
+| **Linhas de Código** | 73 |
+| **Complexidade** | Alto |
+| **Status** | Base implementation |
+
+**Descrição:**
+Sistema dinâmico de armadilhas com configuração por item, suportando transformação condicional, dano variável (físico/terra), proteção contra jogadores em PvP, e casos especiais (Starving Wolf).
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/trap.lua
+```
+
+**Requisitos:**
+- Tabela complexa de configuração de armadilhas
+- 5+ tipos de armadilhas diferentes
+- Sistema de damage variável (PHYSICAL, EARTH)
+- Item removal com distância check
+- Validação de PZ (protection zone)
+- Caso especial: "Starving Wolf"
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Sistema Avançado de Armadilhas com Configuração**
+
+Este script implementa um **mecanismo de armadilhas altamente configurável**:
+
+**Tabela de Configuração:**
+```lua
+[itemId] = {
+	transformTo = resultId,       -- Opcional: transforma ao disparar
+	damage = {min, max},          -- Dano variável
+	ignorePlayer = boolean,       -- Ignora jogadores? (PvP/PvE)
+	type = COMBAT_TYPE,           -- Tipo de dano (padrão: PHYSICAL)
+}
+```
+
+**Exemplos:**
+- 2145: transformTo=2146, dano -50 a -100, sem ignore
+- 3482: transformTo=3481, dano -15 a -30, ignorePlayer=(PvE)
+- 3944: dano terra -15 a -30
+- 12368: especial (Starving Wolf)
+
+**3 Handlers:**
+1. **onStepIn:** Dispara armadilha, dano, transformação
+2. **onStepOut:** Restaura (transform -1)
+3. **onRemoveItem:** Remove remotamente, restaura + efeito
+
+**Diferencial:** Caso especial para criatura específica (Starving Wolf)!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `trap.lua` implementa um sistema versátil de armadilhas:
+
+- **Configuração Dinâmica:** Tabela suporta múltiplos tipos
+- **Transformação Condicional:** Pode transformar ao disparar
+- **Dano Variável:** Range min-max por armadilha
+- **Tipo de Dano:** Suporta PHYSICAL, EARTH, etc
+- **Proteção:** Ignora jogadores em PvP/PvE conforme config
+- **Casos Especiais:** Handler especial para "Starving Wolf"
+
+### Arquitetura
+
+Tabela + 3 callbacks em MoveEvents separadas:
+
+```
+local traps = {
+	[itemId] = { transformTo, damage[], ignorePlayer, type }
+}
+
+onStepIn:
+  ├─ Validação: PZ, item count, ignorePlayer
+  ├─ Transform (se config)
+  ├─ Caso especial: Starving Wolf
+  └─ Dano (se não especial)
+
+onStepOut:
+  └─ Restaura (transform -1)
+
+onRemoveItem:
+  ├─ Valida distância
+  └─ Restaura + efeito
+```
+
+### Fluxo Lógico Resumido
+
+| Evento | Ação | Resultado |
+|---|---|---|
+| **onStepIn** | Validação + dano | Criatura sofre dano |
+| **onStepOut** | Restaura | Armadilha volta visual |
+| **onRemoveItem** | Remove remotamente | Restaura + efeito |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Tabela de Armadilhas
+
+```lua
+local traps = {
+	[2145] = { transformTo = 2146, damage = { -50, -100 } },
+	[2148] = { damage = { -50, -100 } },
+	[3482] = { transformTo = 3481, damage = { -15, -30 }, ignorePlayer = (Game.getWorldType() == WORLD_TYPE_NO_PVP) },
+	[3944] = { transformTo = 3945, damage = { -15, -30 }, type = COMBAT_EARTHDAMAGE },
+	[12368] = { ignorePlayer = true },
+}
+```
+
+**Propósito:** Configuração centralizada de todas as armadilhas.
+
+| Item ID | transformTo | damage | type | ignorePlayer |
+|---|---|---|---|---|
+| 2145 | 2146 | -50 a -100 | DEFAULT | false |
+| 2148 | - | -50 a -100 | DEFAULT | false |
+| 3482 | 3481 | -15 a -30 | DEFAULT | PvE-only |
+| 3944 | 3945 | -15 a -30 | EARTH | false |
+| 12368 | - | - | - | true |
+
+**Nota:** 12368 é caso especial (Starving Wolf feed trap).
+
+---
+
+### Callback onStepIn
+
+```lua
+function trap.onStepIn(creature, item, position, fromPosition)
+	local trap = traps[item.itemid]
+	if not trap then
+		return true
+	end
+
+	local tile = Tile(position)
+	if not tile then
+		return true
+	end
+
+	if tile:hasFlag(TILESTATE_PROTECTIONZONE) then
+		return true
+	end
+
+	if tile:getItemCountById(3482) > 1 then
+		return true
+	end
+
+	if trap.ignorePlayer and creature:isPlayer() then
+		return true
+	end
+
+	if trap.transformTo then
+		item:transform(trap.transformTo)
+	end
+
+	if item.itemid == 12368 and creature:getName() == "Starving Wolf" then
+		position:sendMagicEffect(CONST_ME_STUN)
+		creature:remove()
+		Game.createItem(12369, 1, position)
+	else
+		doTargetCombatHealth(0, creature, trap.type or COMBAT_PHYSICALDAMAGE, trap.damage[1], trap.damage[2], CONST_ME_NONE)
+	end
+
+	return true
+end
+```
+
+**Propósito:** Ao pisar, dispara armadilha com dano e transformação.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que pisou |
+| `item` | Item | A armadilha |
+| `position` | Position | Posição |
+| `fromPosition` | Position | De onde veio |
+
+**Fluxo Lógico:**
+
+1. **Lookup:** Busca `traps[item.itemid]`
+   - Se não encontrado: retorna true (não é armadilha)
+2. **Valida Tile:** Se não consegue pegar tile, retorna true
+3. **Validação PZ:** Se em protection zone, retorna true (não dispara)
+4. **Validação de Item Count:** Se há mais de 1 item ID 3482 na tile, retorna (preventivo)
+5. **Validação ignorePlayer:** Se `ignorePlayer=true` e é jogador, retorna true
+6. **Transformação:** Se config tem `transformTo`, executa
+7. **Caso Especial (Starving Wolf):**
+   - Se item 12368 e criatura se chama "Starving Wolf"
+   - Efeito STUN
+   - Remove a criatura
+   - Cria item 12369 (comida)
+8. **Dano Normal:**
+   - Se não especial: aplica dano variável
+   - Tipo: `trap.type or COMBAT_PHYSICALDAMAGE`
+
+---
+
+### Callback onStepOut
+
+```lua
+function trap.onStepOut(creature, item, position, fromPosition)
+	if Tile(position):hasFlag(TILESTATE_PROTECTIONZONE) then
+		return true
+	end
+
+	item:transform(item.itemid - 1)
+	return true
+end
+```
+
+**Propósito:** Ao sair, volta armadilha ao estado anterior.
+
+**Fluxo:**
+
+1. **Validação PZ:** Se em zone segura, não restaura
+2. **Restaura:** `item:transform(item.itemid - 1)`
+   - Volta ao visual anterior (ex: 2146 → 2145)
+3. **Retorna:** true
+
+**Padrão:** Assume que ID anterior é -1 (2146 → 2145).
+
+---
+
+### Registração do onStepIn/Out
+
+```lua
+trap:type("stepin")
+for itemId, info in pairs(traps) do
+	trap:id(itemId)
+end
+trap:register()
+
+trap = MoveEvent()
+trap:type("stepout")
+trap:id(2146, 3945)
+trap:register()
+```
+
+**onStepOut:** Apenas para IDs transformados (2146, 3945).
+
+---
+
+### Callback onRemoveItem
+
+```lua
+function trap.onRemoveItem(item, position)
+	local itemPosition = item:getPosition()
+	if itemPosition:getDistance(position) > 0 then
+		item:transform(item.itemid - 1)
+		itemPosition:sendMagicEffect(CONST_ME_POFF)
+	end
+	return true
+end
+```
+
+**Propósito:** Se armadilha is removed remotamente, restaura + efeito.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `item` | Item | A armadilha |
+| `position` | Position | Posição do remover |
+
+**Fluxo:**
+
+1. **Get Item Position:** Posição atual do item
+2. **Valida Distância:** Se remover não é exato (distance > 0)
+   - Transforma para ID anterior
+   - Efeito POFF (poof)
+3. **Retorna:** true
+
+---
+
+### Registração do onRemoveItem
+
+```lua
+trap:type("removeitem")
+trap:id(3482)
+trap:register()
+```
+
+**Apenas para:** Item 3482 (armadilha removível).
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `traps` | table | Arquivo | Configuração de todas as armadilhas |
+| `trap` | any | Função/Loop | Config atual OU MoveEvent |
+| `tile` | Tile | Função | Tile na posição |
+| `itemId` | number | Loop | ID do item |
+| `info` | table | Loop | Configuração da armadilha |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Configuração Centralizada
+
+```lua
+local traps = {
+	[itemId] = { transformTo, damage[], type, ignorePlayer }
+}
+
+local trapConfig = traps[item.itemid]
+if trapConfig then
+	-- Usa config
+end
+```
+
+**Benefício:** Fácil adicionar novas armadilhas sem mudar lógica.
+
+### Padrão 2: Defaults com OR
+
+```lua
+doTargetCombatHealth(..., trap.type or COMBAT_PHYSICALDAMAGE, ...)
+```
+
+**Benefício:** Se não especificado, usa PHYSICAL.
+
+### Padrão 3: Caso Especial Nomeado
+
+```lua
+if item.itemid == 12368 and creature:getName() == "Starving Wolf" then
+	-- Handler especial
+else
+	-- Dano normal
+end
+```
+
+**Benefício:** Criatura específica tem comportamento unique.
+
+### Padrão 4: Validação em Cascata
+
+```lua
+if not trap then return true end
+if not tile then return true end
+if Tile(position):hasFlag(TILESTATE_PROTECTIONZONE) then return true end
+if tile:getItemCountById(3482) > 1 then return true end
+if trap.ignorePlayer and creature:isPlayer() then return true end
+```
+
+**Benefício:** Múltiplas camadas de proteção/segurança.
+
+---
+
+## 🤖 Documentação das Funções
+
+### trap.onStepIn(creature, item, position, fromPosition)
+
+Ao pisar, dispara armadilha com dano/transformação.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que pisou |
+| `item` | Item | A armadilha |
+| `position` | Position | Posição |
+| `fromPosition` | Position | De onde veio |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre |
+
+**Validações:**
+
+- **Config:** Se item não em traps, ignora
+- **PZ:** Em protection zone, não dispara
+- **ignorePlayer:** Se true e jogador, ignora
+- **Especial:** "Starving Wolf" tem handler próprio
+
+**Exemplo:**
+
+```lua
+-- Jogador pisa em armadilha 2145 (dano -50 a -100)
+trap.onStepIn(player, item2145, pos, fromPos)
+-- transformTo = 2146 → executa
+-- Não é PZ → continua
+-- damage aplicado: random entre -50 e -100
+// Resultado: Armadilha disparada, visual muda
+
+// Criatura "Starving Wolf" pisa em 12368
+trap.onStepIn(wolf, item12368, pos, fromPos)
+// ignorePlayer = true, mas é criatura → continua
+// itemid == 12368 && name == "Starving Wolf"? Sim
+// Efeito STUN, remove lobo, cria item 12369
+```
+
+---
+
+### trap.onStepOut(creature, item, position, fromPosition)
+
+Ao sair, volta armadilha ao estado anterior.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu |
+| `item` | Item | A armadilha |
+| `position` | Position | Posição |
+| `fromPosition` | Position | Para onde vai |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre |
+
+**Nota:** Apenas registrado para 2146 e 3945.
+
+---
+
+### trap.onRemoveItem(item, position)
+
+Se armadilha removed remotamente, restaura + efeito.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `item` | Item | A armadilha |
+| `position` | Position | Posição do remover |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre |
+
+**Nota:** Apenas para item 3482.
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Armadilha Simples
+
+```lua
+-- Jogador pisa em 2145 (dano físico -50 a -100)
+-- Transforma para 2146
+// Sofre dano aleatório
+```
+
+### Caso 2: Ignorar Jogadores em PvE
+
+```lua
+// Item 3482 em mundo PvE
+// ignorePlayer = true
+// Jogador pisa → sem dano
+// Monstro pisa → dano aplicado
+```
+
+### Caso 3: Dano de Terra
+
+```lua
+// Item 3944 (tipo EARTH)
+// Criatura pisa
+// doTargetCombatHealth com COMBAT_EARTHDAMAGE
+```
+
+### Caso 4: Starving Wolf Feed
+
+```lua
+// Lobo faminto pisa em 12368
+// Efeito STUN, lobo removed
+// Item 12369 criado (comida)
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Item IDs:** 2145-2148, 3482, 3944, 12368-12369
+- **Combat Types:** COMBAT_PHYSICALDAMAGE, COMBAT_EARTHDAMAGE
+- **Magic Effects:** CONST_ME_STUN, CONST_ME_POFF
+- **World Types:** WORLD_TYPE_NO_PVP
+- **MoveEvent API:** [events/movements](../movements)
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | MoveEvent (stepin + stepout + removeitem) |
+| **Callbacks** | 3 |
+| **Armadilhas Configuradas** | 5 tipos |
+| **Dano Min/Max** | -15 a -100 |
+| **Tipos de Dano** | PHYSICAL, EARTH |
+| **Transformação** | Condicional |
+| **Caso Especial** | "Starving Wolf" feed |
+| **Validações** | PZ, ignorePlayer, config |
+| **Padrões** | Config centralizada + cascata |

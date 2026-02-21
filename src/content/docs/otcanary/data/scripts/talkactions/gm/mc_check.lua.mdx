@@ -1,0 +1,232 @@
+---
+title: MC Check
+description: Comando GM para detectar multiclient listando múltiplos jogadores conectados pela mesma IP
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `mc_check.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Detectar multiclient por IP |
+| **Comando** | `/mc` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Não |
+| **Separador** | Espaço |
+| **Saída** | Listagem em MESSAGE_ADMINISTRATOR |
+| **Formato** | IP: Nome [Level], Nome [Level]... |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/mc_check.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Sistema de detecção de multiclient que agrupa jogadores por IP. Itera todos os jogadores via `Game.getPlayers()`, extrai IP numérico, cria hash map `ipList[ip]`, e lista apenas IPs com mais de 1 jogador. Formata saída como `"IP: Nome1 [Level1], Nome2 [Level2]..."` para fácil leitura. Usa `pairs()` para iterar hash map (order arbitrary). Envia cada linha com MESSAGE_ADMINISTRATOR para destaque. Sem parametrização, lista todos suspeitos.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `mc_check.lua` implementa um comando TalkAction (`/mc`) que detecta e lista suspeitas de multiclient no servidor. O sistema itera todos os jogadores, agrupa por IP em hash map, filtra IPs com múltiplas contas (> 1), formata lista legível com nome e level de cada jogador, e envia resultado via MESSAGE_ADMINISTRATOR. Ferramenta de auditoria essencial para identificar abuso de multiclient.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local mcCheck = TalkAction("/mc")
+
+-- 2. Função Principal (onSay)
+function mcCheck.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Enviar header
+    player:sendTextMessage(MESSAGE_ADMINISTRATOR, "Multiclient Check List:")
+    
+    -- Hash map de IPs -> lista de jogadores
+    local ipList = {}
+    
+    -- Obter todos os jogadores online
+    local players = Game.getPlayers()
+    
+    -- Iterar cada jogador
+    for i = 1, #players do
+        local tmpPlayer = players[i]
+        local ip = tmpPlayer:getIp()
+        
+        -- Filtrar IPs válidos (não zero)
+        if ip ~= 0 then
+            -- Inicializar lista para IP se não existe
+            local list = ipList[ip]
+            if not list then
+                ipList[ip] = {}
+                list = ipList[ip]
+            end
+            
+            -- Adicionar jogador à lista do IP
+            list[#list + 1] = tmpPlayer
+        end
+    end
+    
+    -- Iterar cada IP e seus jogadores
+    for ip, list in pairs(ipList) do
+        local listLength = #list
+        
+        -- Filtrar: apenas IPs com mais de 1 jogador (multiclient)
+        if listLength > 1 then
+            -- Primeiro jogador (base da mensagem)
+            local tmpPlayer = list[1]
+            local message = ("%s: %s [%d]"):format(
+                Game.convertIpToString(ip),     -- Converter IP para string
+                tmpPlayer:getName(),             -- Nome
+                tmpPlayer:getLevel()             -- Level
+            )
+            
+            -- Adicionar todos os jogadores adicionais
+            for i = 2, listLength do
+                tmpPlayer = list[i]
+                message = ("%s, %s [%d]"):format(
+                    message,
+                    tmpPlayer:getName(),
+                    tmpPlayer:getLevel()
+                )
+            end
+            
+            -- Enviar mensagem formatada
+            player:sendTextMessage(MESSAGE_ADMINISTRATOR, message .. ".")
+        end
+    end
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+mcCheck:separator(" ")
+mcCheck:groupType("gamemaster")
+mcCheck:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **mcCheck.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/mc` é utilizado. Detecta e lista suspeitas de multiclient por IP.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando
+- `words` (string): Palavras do comando (`/mc`)
+- `param` (string): Parâmetros adicionais (não utilizado)
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Enviar Header:**
+   - `player:sendTextMessage(MESSAGE_ADMINISTRATOR, "Multiclient Check List:")`
+
+3. **Inicializar Hash Map:**
+   ```lua
+   local ipList = {}  -- ipList[ip] = { player1, player2, ... }
+   ```
+
+4. **Iterar Todo os Jogadores:**
+   ```lua
+   local players = Game.getPlayers()  -- Array de todos jogadores
+   for i = 1, #players do
+       local tmpPlayer = players[i]
+       local ip = tmpPlayer:getIp()   -- IP numérico
+   ```
+
+5. **Agrupar por IP:**
+   ```lua
+   if ip ~= 0 then  -- Ignora IPs zero (invalidos)
+       local list = ipList[ip]
+       if not list then
+           ipList[ip] = {}   -- Criar nova lista
+           list = ipList[ip]
+       end
+       list[#list + 1] = tmpPlayer  -- Adicionar à lista
+   end
+   ```
+
+6. **Filtrar Multiclient:**
+   ```lua
+   for ip, list in pairs(ipList) do
+       local listLength = #list
+       if listLength > 1 then
+           -- Apenas IPs com 2+ jogadores
+       end
+   end
+   ```
+
+7. **Formatar Mensagem:**
+   ```lua
+   -- Primeiro jogador
+   local message = ("%s: %s [%d]"):format(
+       Game.convertIpToString(ip),
+       player1:getName(),
+       player1:getLevel()
+   )
+   -- Adicionar outros
+   for i = 2, listLength do
+       message = ("%s, %s [%d]"):format(
+           message,
+           player_i:getName(),
+           player_i:getLevel()
+       )
+   end
+   ```
+
+8. **Enviar Resultado:**
+   - `player:sendTextMessage(MESSAGE_ADMINISTRATOR, message .. ".")`
+
+**Exemplo de Saída:**
+```
+Multiclient Check List:
+192.168.1.100: Vinicius [50], AltAccount [35], TesterChar [20].
+10.0.0.5: Player1 [45], Player2 [42].
+```
+
+**Fluxo de Dados:**
+
+```
+Game.getPlayers()
+    ↓
+[player1, player2, player3, player4, ...]
+    ↓
+Extrair IP de cada um
+    ↓
+ipList = {
+    ["192.168.1.100"] = [player1, player2, player4],
+    ["10.0.0.5"] = [player3],
+    ["172.16.0.1"] = [player5, player6]
+}
+    ↓
+Filtrar apenas listLength > 1
+    ↓
+Formatar e enviar cada IP suspeito
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Game.getPlayers()` | Retorna array de todos jogadores online |
+| `player:getIp()` | Obtém IP numérico do jogador |
+| `Game.convertIpToString(ip)` | Converte IP numérico para formato XXX.XXX.XXX.XXX |
+| `player:getName()` | Obtém nome do jogador |
+| `player:getLevel()` | Obtém level do jogador |
+| `player:sendTextMessage()` | Envia mensagem ao jogador |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `mc_check.lua` é ferramenta de auditoria essencial para detecção de multiclient. Implementação que agrupa jogadores por IP em hash map, filtra suspeitos (2+ por IP), e formata saída legível com nomes e levels. Design eficiente que evita false positives (apenas relata 2+) e agrupa informações de forma clara para inspeção rápida. Essencial para moderação fairplay e identificação de fraude de multi-account.

@@ -1,0 +1,222 @@
+---
+title: Poison Arrow
+description: Arma de projétil flecha com dano físico single-target e condição poison delayed com dano escalado em 3 ticks
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `poison_arrow.lua` |
+| **Tipo de Arma** | Ammo (flecha veneno) |
+| **ID do Item** | 3448 |
+| **Tipo de Dano Principal** | COMBAT_PHYSICALDAMAGE |
+| **Efeito Distância** | CONST_ANI_POISONARROW |
+| **Ataque Base** | 21 |
+| **Chance de Acerto** | 91% |
+| **Ação** | removecount (consome ammo) |
+| **Condição** | CONDITION_POISON (delayed) |
+| **Ticks de Veneno** | 3 (4s, 9s, 20s intervals) |
+| **Dano Veneno** | -3, -2, -1 dano por tick |
+| **Duração Tick** | 4000ms (4 segundos) |
+| **Fórmula** | Skill-based pure (1.0 factor) |
+| **Bloqueabilidade** | Reducível por armor |
+
+## 📍 Caminho Original
+
+```
+data/scripts/weapons/scripts/poison_arrow.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Poison Arrow é flecha básica que combina dano físico imediato + condição poison delayed em 3 ticks. O veneno causa dano progressivo: tick 1 (4s) = -3 dano, tick 2 (9s total) = -2 dano, tick 3 (20s total) = -1 dano. Delayed flag indica damage ocorre depois de delay, não imediato. Chance acerto 91% (rara de esquiva). Padrão útil para debuff + damage combo em early game. Simples implementação com condition adicional ao combat.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `poison_arrow.lua` implementa weapon ammo single-target com dano físico imediato + condição poison delayed em 3 ticks. Script define Combat físico com fórmula skill-based puro, adiciona Condition poison com delayed flag e 3 escalas de damage (4s/-3, 9s/-2, 20s/-1). Weapon registra como WEAPON_AMMO com ID 3448, ataque 21, chance acerto 91%, ação removecount. Implementação straightforward de poison ammo early-game que combina dano imediato + dot (damage over time) escalante progressivamente. Padrão útil para early progression com efeito visual poison arrow.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Configuração de Combat Físico
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_POISONARROW)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, true)  -- Armor reduz dano
+combat:setFormula(COMBAT_FORMULA_SKILL, 0, 0, 1, 0)  -- Skill-based puro
+
+-- 2. Configuração de Condição Poison
+local condition = Condition(CONDITION_POISON)
+condition:setParameter(CONDITION_PARAM_DELAYED, true)  -- Dano delayed
+condition:addDamage(4, 4000, -3)   -- Tick 1: 4s interval, 4000ms duration, -3 dano
+condition:addDamage(9, 4000, -2)   -- Tick 2: 9s interval, 4000ms duration, -2 dano
+condition:addDamage(20, 4000, -1)  -- Tick 3: 20s interval, 4000ms duration, -1 dano
+
+-- 3. Adição de Condição ao Combat
+combat:addCondition(condition)
+
+-- 4. Instância de Weapon
+local poisonArrow = Weapon(WEAPON_AMMO)
+
+-- 5. Handler de Uso
+function poisonArrow.onUseWeapon(player, variant)
+	return combat:execute(player, variant)
+end
+
+-- 6. Configuração do Item
+poisonArrow:id(3448)
+poisonArrow:attack(21)
+poisonArrow:action("removecount")
+poisonArrow:ammoType("arrow")
+poisonArrow:shootType(CONST_ANI_POISONARROW)
+poisonArrow:maxHitChance(91)
+poisonArrow:register()
+```
+
+## 📊 Parâmetros de Combat
+
+| Parâmetro | Valor | Descrição |
+|---|---|---|
+| COMBAT_PARAM_TYPE | COMBAT_PHYSICALDAMAGE | Tipo de dano (físico) |
+| COMBAT_PARAM_DISTANCEEFFECT | CONST_ANI_POISONARROW | Animação da flecha em voo |
+| COMBAT_PARAM_BLOCKARMOR | true | Armor reduz dano |
+| COMBAT_FORMULA_SKILL | 0, 0, 1, 0 | Formula skill-based puro |
+
+## 📊 Escalas de Poison Damage
+
+| Tick | Tipo | Intervalo | Duração | Dano |
+|---|---|---|---|---|
+| 1 | addDamage(4, 4000, -3) | 4 segundos | 4 segundos | -3 |
+| 2 | addDamage(9, 4000, -2) | 9 segundos | 4 segundos | -2 |
+| 3 | addDamage(20, 4000, -1) | 20 segundos | 4 segundos | -1 |
+
+**Total Dano Veneno:** -3 -2 -1 = -6 dano over 20 segundos
+
+**Timeline:**
+- 0s: Hit imediato + aplicar condition
+- 4s: Tick 1 (-3)
+- 9s: Tick 2 (-2)
+- 20s: Tick 3 (-1)
+
+## 🎯 Padrões de Implementação
+
+### 1. **Padrão de Condition Poison Delayed**
+
+```lua
+local condition = Condition(CONDITION_POISON)
+condition:setParameter(CONDITION_PARAM_DELAYED, true)
+condition:addDamage(4, 4000, -3)
+condition:addDamage(9, 4000, -2)
+condition:addDamage(20, 4000, -1)
+combat:addCondition(condition)
+```
+
+Condition poison com delayed flag (não imediato) e 3 ticks escalantes.
+
+### 2. **Padrão de addDamage(interval, duration, damage)**
+
+```lua
+condition:addDamage(4, 4000, -3)
+```
+
+Adiciona tick de damage:
+- Intervalo 4 segundos
+- Duração 4 segundos
+- Dano -3
+
+### 3. **Padrão de Ammo Single-Target Sem AoE**
+
+```lua
+-- Sem area definida = single target
+combat:addCondition(condition)
+```
+
+Sem createCombatArea() = apenas hit target único.
+
+### 4. **Padrão de Skill-Based Puro**
+
+```lua
+combat:setFormula(COMBAT_FORMULA_SKILL, 0, 0, 1, 0)
+```
+
+Dano 100% baseado em distance skill (factor 1.0).
+
+## 🤖 Documentação de Funções
+
+### **poisonArrow.onUseWeapon(player, variant)**
+
+**Descrição:** Handler chamado quando player usa poison arrow.
+
+**Parâmetros:**
+- `player` (Player): Player disparando
+- `variant` (Variant): Target/tile alvo
+
+**Lógica:**
+1. Executa combat:execute(player, variant)
+2. Combat causa dano físico imediato
+3. Aplica condition poison (delayed)
+
+**Retorno:**
+- `boolean`: true (sucesso)
+
+**Exemplo de Uso:**
+```lua
+-- Player dispara poison arrow em inimigo
+-- 1. Dano físico imediato (skill-based)
+-- 2. Condition poison aplicada (delayed)
+-- 3. 3 ticks: -3 (4s), -2 (9s), -1 (20s) dano
+```
+
+---
+
+### **Condition:setParameter(CONDITION_PARAM_DELAYED, boolean)**
+
+**Descrição:** Define se condição causa dano delayed (não imediato).
+
+**Valor:** `true`
+- Dano ocorre em ticks schedulados (4s, 9s, 20s)
+- Não imediato ao hit
+
+---
+
+### **Condition:addDamage(interval, duration, damage)**
+
+**Descrição:** Adiciona tick de damage à condição.
+
+**Parâmetros:**
+- `interval` (number): Segundos até este tick
+- `duration` (number): Duração em ms (4000 = 4s)
+- `damage` (number): Dano (negativo)
+
+**Poison Arrow:**
+- Tick 1: interval=4, duration=4000, damage=-3
+- Tick 2: interval=9, duration=4000, damage=-2
+- Tick 3: interval=20, duration=4000, damage=-1
+
+---
+
+### **Combat:addCondition(condition)**
+
+**Descrição:** Adiciona condição ao combat (aplicada ao hit).
+
+**Poison Arrow:** Adiciona poison condition ao físico combat
+
+---
+
+### **Weapon:maxHitChance(percentage)**
+
+**Descrição:** Define chance máxima de acerto da arma.
+
+**Valor Poison Arrow:** `91`
+- 91% chance hit
+- 9% chance esquiva
+- Rara para early game ammo
+
+## 📌 Resumo
+
+**Poison Arrow** é weapon ammo single-target com dano físico imediato + condição poison delayed em 3 ticks escalonados. Implementação combina Combat skill-based (dano físico) com Condition poison (dano over time: -3/-2/-1 em 4s/9s/20s). Weapon ammo básico (ataque 21) com chance acerto 91% para early game progression. Padrão útil de debuff combo que primeiro causa dano imediato+aplicar poison, depois dano progressivo em ticks. Formula skill-based permite escalamento com distance skill. Straightforward implementação single-target poison weapon.
+
+Diferencia-se por: (1) condition poison delayed, (2) 3 ticks escalantes, (3) single target (sem AoE), (4) skill-based formula, (5) chance acerto 91%, (6) dano progressivo -3/-2/-1.

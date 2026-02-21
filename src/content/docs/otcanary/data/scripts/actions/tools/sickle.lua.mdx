@@ -1,0 +1,195 @@
+---
+title: sickle.lua
+description: Handler de colheita inline que detecta crop (5463) e gera item colhido (5466).
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="sickle.lua" icon="pencil">
+Handler com lógica inline de harvest/crop detection.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/tools/sickle.lua`
+
+**Linhas:** 15 | **ID do Tool:** 1 (3293) | **Tipo:** Action Handler com Item Detection
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa colheita com detecção de crop. Ao usar foice (3293): valida target (item target deve ser crop 5463). Se sim: transform crop (5463 -> 5462, estado colhido/murchado), decay automático, cria item colhido (5466) na posição alvo e retorna true. Se target não é crop 5463: retorna nil (silenciosamente). Padrão simples de harvest com estado de planta.
+
+### Estrutura de Funcionalidades
+
+```
+HANDLER:
+  └─ sickle.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+      ├─ target.itemid == 5463?
+      │   ├─ SIM:
+      │   │   ├─ target:transform(5462) → Marca como colhido
+      │   │   ├─ target:decay() → Remove após tempo
+      │   │   ├─ Game.createItem(5466, 1, toPosition)
+      │   │   │   └─ Cria item colhido na posição
+      │   │   └─ return true
+      │   │
+      │   └─ NÃO:
+      │       └─ return nil (silencioso)
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| sickle | Action | Objeto handler |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Crop/Harvest Items
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| Crop ID (Vivo) | 5463 | Planta/crop pronta para colher |
+| Crop ID (Colhido) | 5462 | Planta/crop após colheita |
+| Output Item | 5466 | Item obtido na colheita |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local sickle = Action()
+
+function sickle.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: Target é crop?
+	if target.itemid == 5463 then
+		-- BRANCH: Crop detectado
+		target:transform(5462)      -- Transforma para estado colhido
+		target:decay()              -- Schedule remoção
+		Game.createItem(5466, 1, toPosition)  -- Cria item colhido
+		return true
+	end
+	-- Se não é crop: return nil (falha silenciosa)
+end
+
+sickle:id(3293)
+sickle:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador usa sickle (3293) + target item
+  │
+  ├─ target.itemid == 5463?
+  │   │
+  │   ├─ SIM (é crop vivo):
+  │   │   │
+  │   │   ├─ target:transform(5462)
+  │   │   │   └─ Muda para estado colhido
+  │   │   │
+  │   │   ├─ target:decay()
+  │   │   │   └─ Schedule remoção automática
+  │   │   │
+  │   │   ├─ Game.createItem(5466, 1, toPosition)
+  │   │   │   └─ Cria item na posição alvo
+  │   │   │
+  │   │   └─ return true (sucesso)
+  │   │
+  │   └─ NÃO (não é crop):
+  │       └─ return nil (falha silenciosa)
+  │           (Nenhuma mensagem enviada ao jogador)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Item Detection**: target.itemid para verificar tipo
+- **Transform State**: Muda ID para representar estado
+- **Decay Schedule**: item:decay() para remoção automática
+- **Item Creation**: Game.createItem() no local alvo
+- **Silent Failure**: return nil sem mensagem
+- **Single ID**: 1 sickle, 1 handler
+- **Crop Pattern**: Vivo (5463) -> Colhido (5462)
+
+### Responsabilidades do Handler
+
+1. **Validar target**: É crop (5463)?
+2. **Transform state**: 5463 -> 5462
+3. **Schedule removal**: target:decay()
+4. **Create output**: Game.createItem(5466)
+5. **Confirmar**: return true/nil
+
+---
+
+## Patterns e Implementação
+
+### Padrão Crop Detection e Transform
+
+Detectar crop e transformar estado:
+
+```lua
+if target.itemid == 5463 then
+	target:transform(5462)
+	target:decay()
+	Game.createItem(5466, 1, toPosition)
+	return true
+end
+return nil
+```
+
+### Padrão Silent Failure
+
+Retornar nil sem mensagem:
+
+```lua
+-- Se não é crop, retorna nil
+-- Nenhuma mensagem de erro enviada ao jogador
+-- Comportamento silencioso
+```
+
+### Comparação: Sickle vs Tools Inline
+
+| Aspecto | Sickle | Toolgear |
+|---------|--------|----------|
+| Linhas | 15 | 20 |
+| Lógica | Harvest inline | RNG cascata inline |
+| Validation | target.itemid | math.random |
+| Transform | Sim (1) | Sim (itemid+1) |
+| Decay | Sim | Sim |
+| Item Create | Sim | Não |
+| Complexity | Baixa | Alta |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: sickle.lua" icon="star">
+Análise de handler com lógica inline de colheita. Demonstra crop detection, state transform e silent failure pattern.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Crop detection with state transform | Complexidade: Baixa
+</Aside>

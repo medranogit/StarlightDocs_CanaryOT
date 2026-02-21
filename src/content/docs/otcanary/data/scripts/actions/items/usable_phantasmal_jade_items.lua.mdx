@@ -1,0 +1,307 @@
+---
+title: usable_phantasmal_jade_items.lua
+description: Sistema de 3 items com key-value storage acumulativo que destrava mount após atingir ALL requirements.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="usable_phantasmal_jade_items.lua" icon="pencil">
+Handler de accumulation via KV storage com loop de verificação de completion.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/usable_phantasmal_jade_items.lua`
+
+**Linhas:** 38 | **IDs dos Items:** 3 (34072, 34073, 34074) | **Tipo:** Action Handler com KV Storage
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema de accumulation de 3 items diferentes usando key-value storage (KV) do servidor. Cada item possui chave única e count requirement (4, 1, 1). Quando o jogador usa qualquer item, incrementa o KV correspondente. Loop verifica se TODOS os requirements foram atingidos; só então destrava mount 167 (Phantasmal Jade) e concede achievements.
+
+### Estrutura de Funcionalidades
+
+```
+CONFIG:
+  ├─ 34072 (Spectral Horseshoes) → key "spectral-horseshoes", count 4
+  ├─ 34073 (Spectral Saddle) → key "spectral-saddle", count 1
+  └─ 34074 (Spectral Horse-Tac) → key "spectral-horse-tac", count 1
+  └─ mountId = 167
+
+HANDLER:
+  └─ usablePhantasmalJadeItems.onUse()
+      ├─ itemInfo = config.requiredItems[item.getId()]
+      ├─ hasMount(167)? → return true (já tem)
+      ├─ currentCount = kv():get(key) or 0 + 1
+      ├─ kv():set(key, currentCount) → salva no KV
+      ├─ Effect: HOLYDAMAGE
+      ├─ item:remove(1)
+      ├─ Loop requiredItems:
+      │   └─ For each: kv():get(key) < count?
+      │   └─ SIM → return true (faltam items)
+      │   └─ NÃO → continua
+      ├─ addMount(167)
+      ├─ addAchievement("Natural Born Cowboy")
+      ├─ addAchievement("You got Horse Power")
+      ├─ Message: "Phantasmal jade is now yours!"
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| config | table | requiredItems + mountId (167) |
+| usablePhantasmalJadeItems | Action | Objeto handler |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Required Items Table
+
+| Item ID | Item Nome | KV Key | Count Required | Total Needed |
+|---------|-----------|--------|---|---|
+| 34072 | Spectral Horseshoes | spectral-horseshoes | 4 | 4 unidades |
+| 34073 | Spectral Saddle | spectral-saddle | 1 | 1 unidade |
+| 34074 | Spectral Horse-Tac | spectral-horse-tac | 1 | 1 unidade |
+
+### Mount Constants
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| Mount ID | 167 | Phantasmal Jade |
+| Effect | CONST_ME_HOLYDAMAGE | Dourado/holy |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local config = {
+	requiredItems = {
+		[34072] = { key = "spectral-horseshoes", count = 4 },
+		[34073] = { key = "spectral-saddle", count = 1 },
+		[34074] = { key = "spectral-horse-tac", count = 1 },
+	},
+	mountId = 167,
+}
+
+function usablePhantasmalJadeItems.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Obter informação do item
+	local itemInfo = config.requiredItems[item:getId()]
+	if not itemInfo then
+		return true
+	end
+
+	-- Verificar se já tem mount
+	if player:hasMount(config.mountId) then
+		return true
+	end
+
+	-- Incrementar KV
+	local currentCount = (player:kv():get(itemInfo.key) or 0) + 1
+	player:kv():set(itemInfo.key, currentCount)
+	
+	-- Efeito visual
+	player:getPosition():sendMagicEffect(CONST_ME_HOLYDAMAGE)
+	
+	-- Consumir item
+	item:remove(1)
+
+	-- ============= COMPLETION CHECK =============
+	-- Loop verificar se tem TODOS os items
+	for _, info in pairs(config.requiredItems) do
+		-- Se falta qualquer um, aborta
+		if (player:kv():get(info.key) or 0) < info.count then
+			return true
+		end
+	end
+
+	-- Todos os items obtidos!
+	player:addMount(config.mountId)
+	player:addAchievement("Natural Born Cowboy")
+	player:addAchievement("You got Horse Power")
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Phantasmal jade is now yours!")
+	return true
+end
+
+-- Registrar todos os item IDs
+for itemId, _ in pairs(config.requiredItems) do
+	usablePhantasmalJadeItems:id(itemId)
+end
+
+usablePhantasmalJadeItems:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador usa spectral item
+  │
+  ├─ itemInfo = config[itemId]?
+  │   └─ NÃO → return true (item desconhecido)
+  │
+  ├─ SIM → Continua
+  │
+  ├─ hasMount(167)?
+  │   └─ SIM → return true (já tem mount)
+  │
+  ├─ NÃO → Continua
+  │
+  ├─ currentCount = kv():get(key) or 0 + 1
+  │   └─ Incrementa contador no KV (persistente)
+  │
+  ├─ kv():set(key, currentCount)
+  │   └─ Salva no banco de dados
+  │
+  ├─ Effect: HOLYDAMAGE
+  │
+  ├─ item:remove(1)
+  │   └─ Consome 1 item
+  │
+  ├─ COMPLETION LOOP:
+  │   ├─ para cada required item:
+  │   │   ├─ kv():get(key) < count?
+  │   │   ├─ SIM (falta) → return true
+  │   │   └─ NÃO → continua
+  │   │
+  │   └─ Após loop (todos têm count):
+  │
+  ├─ addMount(167)
+  │
+  ├─ addAchievement("Natural Born Cowboy")
+  │
+  ├─ addAchievement("You got Horse Power")
+  │
+  ├─ Message: "Phantasmal jade is now yours!"
+  │
+  └─ return true
+```
+
+### KV Storage Accumulation
+
+```
+Antes:
+  └─ kv():get("spectral-horseshoes") = nil (não existe)
+
+Usar horseshoes (1ª vez):
+  ├─ currentCount = (nil or 0) + 1 = 1
+  ├─ kv():set("spectral-horseshoes", 1) → salva
+  ├─ Loop verifica: 1 < 4? SIM → return true (falta 3 mais)
+
+Usar horseshoes (2ª vez):
+  ├─ currentCount = (1 or 0) + 1 = 2
+  ├─ kv():set("spectral-horseshoes", 2) → salva
+  ├─ Loop verifica: 2 < 4? SIM → return true (falta 2 mais)
+
+...
+
+Usar horseshoes (4ª vez):
+  ├─ currentCount = (3 or 0) + 1 = 4
+  ├─ kv():set("spectral-horseshoes", 4) → salva
+  ├─ Loop verifica: 4 < 4? NÃO → continua
+  │   └─ Sela: 1 < 1? NÃO → continua
+  │   └─ Tac: 1 < 1? NÃO → continua
+  ├─ Todos têm count → UNLOCK MOUNT
+  ├─ addMount(167)
+  └─ "Phantasmal jade is now yours!"
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **KV Storage**: player:kv() para persistent data
+- **KV Get**: :get(key) retorna valor ou nil (usar `or 0`)
+- **KV Set**: :set(key, value) para salvar
+- **Accumulation Loop**: Incrementa +1 por uso
+- **Completion Check**: Loop for verifica ALL items
+- **Early Return**: return true se falta qualquer item
+- **Persistence**: KV dados salvos no database
+- **Mount Unlock**: Só ao completar todos os requirements
+- **Double Achievement**: "Natural Born Cowboy" + "You got Horse Power"
+
+### Responsabilidades do Handler
+
+1. **Obter info**: config.requiredItems[itemId]
+2. **Verificar mount**: hasMount(167)
+3. **Ler KV**: kv():get(key) or 0
+4. **Incrementar**: + 1
+5. **Salvar KV**: kv():set(key, value)
+6. **Efeito**: HOLYDAMAGE
+7. **Consumir**: item:remove(1)
+8. **Verificar completion**: Loop for verifica < count
+9. **Return early**: Se falta qualquer item
+10. **Unlock**: addMount + achievements + message
+
+---
+
+## Patterns e Implementação
+
+### Padrão KV Accumulation
+
+Incremento persistente:
+
+```lua
+local currentCount = (player:kv():get(itemInfo.key) or 0) + 1
+player:kv():set(itemInfo.key, currentCount)
+```
+
+### Padrão Completion Loop
+
+Verifica ALL requirements:
+
+```lua
+for _, info in pairs(config.requiredItems) do
+	if (player:kv():get(info.key) or 0) < info.count then
+		return true  -- Falta este
+	end
+end
+
+-- Se chegou aqui, tem todos!
+player:addMount(config.mountId)
+```
+
+### Comparação: Phantasmal Jade vs Surprise Music Box
+
+| Aspecto | Phantasmal | Music Box |
+|---------|-----------|-----------|
+| Sistema | Accumulation KV | RNG puro |
+| Items | 3 específicos | 11 opções |
+| Requirement | 4+1+1 total | Nenhuma (instant) |
+| Persistence | Sim (KV) | Não |
+| Unlock | Após completion | Instant |
+| Mount | Sim (167) | Não |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: usable_phantasmal_jade_items.lua" icon="star">
+Análise de sistema de accumulation com KV storage persistente. Demonstra loop de completion check para verificar múltiplos requirements antes de unlock.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Multi-item accumulation com KV | Complexidade: Média
+</Aside>

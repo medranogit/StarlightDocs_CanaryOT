@@ -1,0 +1,370 @@
+---
+title: "Spell - electrify.lua"
+description: "Spell de eletrificação com condition energy para sorcerers level 34"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `electrify.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 140 |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 34 |
+| **Mana Requerida** | 30 |
+| **Words** | utori vis |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Condition** | CONDITION_ENERGY com DoT fixo |
+| **Cooldown** | 30s (LONGO!) |
+| **GroupCooldown** | 2s |
+| **Premium** | Não |
+| **Dano** | Fixed 25 damage @ 3000ms (DELAYED) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_ELECTRIFY |
+| **Agressividade** | Sim (isAggressive) |
+| **Requer Target** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 31 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de eletrificação com condition energy para sorcerers nível 34 (cedo). CONDITION_ENERGY com DOT fixo (25 dano @ 3000ms delayed). Cooldown muito longo 30s (tático). Range 3, needTarget obrigatório. Tipo energia. Não premium. Agressivo marcado. Efeito ENERGYAREA.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/electrify.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(140)
+spell:name("Electrify")
+spell:words("utori vis")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_ELECTRIFY)
+spell:level(34)
+spell:mana(30)
+spell:isAggressive(true)
+spell:range(3)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:cooldown(30 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Eletrificação - Fixed Energy DoT**
+
+Este spell implementa um **sistema de condition energy com dano fixo atrasado**:
+
+1. **Condition Energy Simples:**
+   - CONDITION_ENERGY (tipo)
+   - 25 dano fixo (não escalável!)
+   - 3000ms interval (3 segundos)
+   - DELAYED: 1 (começa com delay)
+
+2. **Cooldown Muito Longo:**
+   - 30s cooldown (TÁTICO!)
+   - Reflete potência condition
+   - Spell poderoso = espera longa
+
+3. **Early-Mid Game:**
+   - Level 34 (cedo-mid)
+   - 30 mana (baato)
+   - Non-premium (gratuito!)
+   - Single target (não AOE)
+
+4. **Tipo Energy:**
+   - COMBAT_ENERGYDAMAGE
+   - Efeito ENERGYAREA
+   - Range 3 (ranged)
+   - Agressivo True
+
+**Situação Condition:**
+```
+- CONDITION_ENERGY aplicada
+- DELAYED: 1 (wait antes começo)
+- addDamage(25, 3000, -45)
+  └─ 25 dano @ 3000ms interval
+  └─ -45 = ticks (45 ticks = 3s×45 ticks)
+- Fixed dano (sem escalabilidade!)
+```
+
+**Diferencial:** Fixed energy DoT tactical com 30s CD!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `electrify` oferece condition energy persistente:
+
+- **Dano:** COMBAT_ENERGYDAMAGE + condition-based
+- **Condition:** CONDITION_ENERGY (fixed 25 dano)
+- **Level:** 34 (early-mid)
+- **Cooldown:** 30s (longo/tático)
+
+### Arquitetura
+
+Combat com condition:
+
+```
+local combat = Combat()
+├─ Type: ENERGYDAMAGE
+├─ Effect: ENERGYAREA
+├─ Condition: CONDITION_ENERGY
+│  └─ Delayed: 1
+│  └─ addDamage(25, 3000, -45)
+└─ Distance: ENERGY
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
+```
+
+**Propósito:** Combat de dano energia.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ENERGYDAMAGE | Dano energia |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ENERGYAREA | Efeito área energia |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ENERGY | Projétil energia |
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_ENERGY)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+condition:addDamage(25, 3000, -45)
+combat:addCondition(condition)
+```
+
+**Propósito:** Condition energy com DoT fixo.
+
+**Configuração:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `Type` | CONDITION_ENERGY | Tipo condition |
+| `DELAYED` | 1 | Começa com delay |
+| `addDamage` | 25, 3000, -45 | 25 dano @ 3s, 45 ticks |
+
+**DOT Estrutura:**
+- Dano: 25 (fixo)
+- Interval: 3000ms (3 segundos)
+- Ticks: 45 (-45)
+- Total duração: ~45 × 3s = 135 segundos (~2min15s!)
+- Total damage: 25 × múltiplo ticks
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Electrify ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com condition energy |
+| `condition` | Condition | Arquivo | ENERGY avec DoT |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Fixed Energy Condition
+
+```lua
+local condition = Condition(CONDITION_ENERGY)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+condition:addDamage(25, 3000, -45)
+combat:addCondition(condition)
+```
+
+**Benefício:** Dano fixo (não escalável) com DoT persistente.
+
+### Padrão 2: Long Cooldown Tactical
+
+```lua
+spell:cooldown(30 * 1000)
+```
+
+**Benefício:** 30s = spell poderoso tático.
+
+### Padrão 3: Single Target Debuff
+
+```lua
+spell:needTarget(true)
+spell:range(3)
+```
+
+**Benefício:** Target específico, não AOE.
+
+---
+
+## 🤖 Documentação das Funções
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura eletrificação em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer conjurador |
+| `var` | Variant | Target (obrigatório) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Electrify ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 34+
+- 30 mana
+- Target próximo (range 3)
+- Cooldown 30s (LONGO!)
+
+**Efeito:**
+- Efeito energia área
+- Projétil energia
+- CONDITION_ENERGY aplicada
+- DoT fixo: 25 dano @ 3000ms
+- ~45 ticks (2min15s duração!)
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 34
+spell.onCastSpell(sorcerer, targetVariant)
+// Validações:
+//   ✓ Level 34 >= 34
+//   ✓ Mana 30 disponível
+//   ✓ Target range 3
+// Combat executa
+// Projétil energia viaja
+// Impacto ENERGYAREA
+// Condition ENERGY aplicada
+// DoT começa com delay
+// 25 dano @ 3000ms intervals
+// ~135 segundos duração total
+// 30s cooldown antes próximo cast
+// Resultado: Eletrificação persistente!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Single Target Debuff
+
+```lua
+-- Sorcerer vs boss/strong target
+// Electrify = debidder tactical
+// 30 dano @ 3s = constante
+// 30s CD = timing crítico
+```
+
+### Caso 2: PvP Control
+
+```lua
+-- Duelo sorcerer
+// Eletrificação = debuff control
+// 25 dano persistent
+// Tactical cooldown
+```
+
+### Caso 3: Training Dungeon
+
+```lua
+-- Farmando elite mob
+// Single target energy DoT
+// Fixed 25 dano por tick
+// Long duration = total dano significante
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat Condition
+- **Damage:** COMBAT_ENERGYDAMAGE
+- **Condition:** CONDITION_ENERGY
+- **Effects:** CONST_ME_ENERGYAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Eletrificação DoT energia |
+| **Dano Type** | COMBAT_ENERGYDAMAGE |
+| **Condition** | CONDITION_ENERGY |
+| **Dano Fixo** | 25 @ 3000ms (não escalável) |
+| **Duração** | ~135 segundos (45 ticks) |
+| **Mana** | 30 |
+| **Range** | 3 |
+| **Level** | 34 (early-mid) |
+| **Cooldown** | 30s (longo!) |
+| **Premium** | Não |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | Fixed condition DoT + delayed start + long cooldown |

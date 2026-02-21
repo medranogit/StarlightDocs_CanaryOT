@@ -1,0 +1,733 @@
+---
+title: death.lua
+description: CreatureEvent "PlayerDeath" que registra mortes, coordena guild wars e envia webhooks com integração de banco de dados.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="death.lua" icon="pencil">
+Listener de morte que gerencia registros, screenshots e guild wars.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/player/death.lua`
+
+**Linhas:** 211 | **Event:** CreatureEvent "PlayerDeath" | **Tipo:** onDeath Listener Complexo
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener complexo de morte de player que coordena múltiplos sistemas. Valida deathListEnabled (global flag), obtém lista de killers, extrai info do killer/mostDamage via funções locais (validando master players), tira screenshots (PVP/PVE conditional), serializa participants, salva morte no DB via saveDeathRecord, envia webhook de anúncio, coordena guild war com checagem de limite de frags. Padrão enterprise com banco de dados, webhooks e sistemas integrados.
+
+### Estrutura de Funcionalidades
+
+```
+GLOBAL: deathListEnabled = true (flag de controle)
+
+FUNÇÕES LOCAIS (7):
+  1. getKillerInfo(killer)
+     └─ Extrai nome + validação de player
+  
+  2. getMostDamageInfo(mostDamageKiller)
+     └─ Extrai nome + validação de player
+  
+  3. serializeParticipants(participants)
+     └─ Transforma array em string formatada
+  
+  4. saveDeathRecord(playerGuid, ...)
+     └─ INSERT no DB player_deaths
+  
+  5. getDeathRecords(playerGuid)
+     └─ COUNT de mortes no DB
+  
+  6. handleGuildWar(player, killer, ...)
+     └─ Orquestra guild war
+  
+  7. checkForGuildWar(targetGuildId, killerGuildId)
+     └─ Query SELECT guild_wars
+  
+  8. recordGuildWarKill(killer, player, ...)
+     └─ INSERT em guildwar_kills
+  
+  9. checkAndUpdateGuildWarScore(warId, ...)
+     └─ Atualiza score + channels
+  
+  10. updateGuildWarScore(...)
+      └─ Envia mensagem para members online
+  
+  11. endGuildWarIfLimitReached(...)
+      └─ Finaliza guerra se limite atingido
+
+EVENT: "PlayerDeath"
+  └─ onDeath(player, corpse, killer, mostDamageKiller, unjustified, mostDamageUnjustified)
+      ├─ Validação: deathListEnabled?
+      ├─ Killers list → participants array
+      ├─ getKillerInfo() + getMostDamageInfo()
+      ├─ takeScreenshot (conditional PVP/PVE)
+      ├─ saveDeathRecord()
+      ├─ Webhook.sendMessage()
+      └─ handleGuildWar()
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| deathListEnabled | boolean | Flag global para controlar registros |
+| playerDeath | CreatureEvent | Listener de morte |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| db | módulo | Database operations |
+| Result | classe | Database result handling |
+| Webhook | módulo | Discord webhook integration |
+| Game | classe | Game global API |
+
+---
+
+## Funções Locais
+
+### getKillerInfo(killer)
+
+Extrai nome do killer com validação de master:
+
+```lua
+local function getKillerInfo(killer)
+	local byPlayer = 0
+	local killerName
+
+	if killer then
+		if killer:isPlayer() then
+			byPlayer = 1
+		else
+			-- Se é summon, obtem master player
+			local master = killer:getMaster()
+			if master and master ~= killer and master:isPlayer() then
+				killer = master
+				byPlayer = 1
+			end
+		end
+
+		-- Nome: monster type ou player name
+		killerName = killer:isMonster() and 
+			killer:getType():getNameDescription() or 
+			killer:getName()
+	else
+		killerName = "field item"
+	end
+
+	return killerName, byPlayer
+end
+```
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| killer | Creature | Assassino (player/monster/summon) |
+
+| Retorno 1 | Tipo | Descrição |
+|-----------|------|-----------|
+| killerName | string | Nome do killer ou "field item" |
+
+| Retorno 2 | Tipo | Descrição |
+|-----------|------|-----------|
+| byPlayer | número | 1 se player, 0 se monster |
+
+### getMostDamageInfo(mostDamageKiller)
+
+Similar ao getKillerInfo, para o que deu mais dano:
+
+```lua
+local function getMostDamageInfo(mostDamageKiller)
+	local byPlayerMostDamage = 0
+	local mostDamageKillerName
+
+	if mostDamageKiller then
+		if mostDamageKiller:isPlayer() then
+			byPlayerMostDamage = 1
+		else
+			local master = mostDamageKiller:getMaster()
+			if master and master ~= mostDamageKiller and master:isPlayer() then
+				mostDamageKiller = master
+				byPlayerMostDamage = 1
+			end
+		end
+
+		mostDamageKillerName = mostDamageKiller:isMonster() and 
+			mostDamageKiller:getType():getNameDescription() or 
+			mostDamageKiller:getName()
+	else
+		mostDamageKillerName = "field item"
+	end
+
+	return mostDamageKillerName, byPlayerMostDamage
+end
+```
+
+| Retorno | Tipo | Descrição |
+|---------|------|-----------|
+| mostDamageKillerName | string | Nome do mais dano |
+| byPlayerMostDamage | número | 1 se player, 0 se monster |
+
+### serializeParticipants(participants)
+
+Converte array de participants em string formatada:
+
+```lua
+local function serializeParticipants(participants)
+	if not participants or #participants == 0 then
+		return ""
+	end
+
+	local result = {}
+	for _, participant in ipairs(participants) do
+		local entry = string.format("Name: %s\nType: %s", 
+			participant.name, participant.type)
+		result[#result + 1] = entry
+	end
+	return table.concat(result, "\n\n")
+end
+```
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| participants | table | Array de `{name, type}` |
+
+| Retorno | Tipo | Descrição |
+|---------|------|-----------|
+| result | string | Participants formatados (ou "") |
+
+### saveDeathRecord(playerGuid, player, killerName, byPlayer, ...)
+
+Salva morte no banco de dados:
+
+```lua
+local function saveDeathRecord(playerGuid, player, killerName, byPlayer, 
+	mostDamageName, byPlayerMostDamage, unjustified, 
+	mostDamageUnjustified, participants)
+	
+	local participantsString = serializeParticipants(participants)
+	local query = string.format(
+		"INSERT INTO `player_deaths` (...) VALUES (%d, %d, %d, %s, %d, %s, %d, %d, %d, %s)",
+		playerGuid, os.time(), player:getLevel(),
+		db.escapeString(killerName), byPlayer,
+		db.escapeString(mostDamageName), byPlayerMostDamage,
+		unjustified and 1 or 0, mostDamageUnjustified and 1 or 0,
+		db.escapeString(participantsString)
+	)
+	db.query(query)
+end
+```
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| playerGuid | número | ID único do player |
+| player | Player | Player object |
+| killerName | string | Nome do killer |
+| byPlayer | número | 1 se player, 0 se monster |
+| ... | múltiplos | Dados adicionais |
+
+### getDeathRecords(playerGuid)
+
+Conta total de mortes no DB:
+
+```lua
+local function getDeathRecords(playerGuid)
+	local resultId = db.storeQuery(
+		"SELECT `player_id` FROM `player_deaths` WHERE `player_id` = " .. playerGuid)
+	local deathRecords = 0
+	while resultId do
+		resultId = Result.next(resultId)
+		deathRecords = deathRecords + 1
+	end
+
+	if resultId then
+		Result.free(resultId)
+	end
+
+	return deathRecords
+end
+```
+
+| Retorno | Tipo | Descrição |
+|---------|------|-----------|
+| deathRecords | número | Total de mortes |
+
+### handleGuildWar(player, killer, mostDamageKiller, killerName, mostDamageName)
+
+Orquestra sistema de guild wars:
+
+```lua
+local function handleGuildWar(player, killer, mostDamageKiller, 
+	killerName, mostDamageName)
+	
+	-- Validação de guilds
+	if not player or not killer or not killer:isPlayer() or 
+		not player:getGuild() or not killer:getGuild() then
+		return
+	end
+
+	-- Same guild = skip
+	if player:getGuild():getId() == killer:getGuild():getId() then
+		return
+	end
+
+	-- Check if war exists
+	if getDeathRecords(player:getGuid()) > 0 then
+		local warId = checkForGuildWar(player:getGuild():getId(), 
+			killer:getGuild():getId())
+		
+		if warId then
+			recordGuildWarKill(killer, player, ...)
+			checkAndUpdateGuildWarScore(warId, ...)
+		end
+	end
+end
+```
+
+### checkForGuildWar(targetGuildId, killerGuildId)
+
+Query de guerra ativa entre guilds:
+
+```lua
+local function checkForGuildWar(targetGuildId, killerGuildId)
+	local resultId = db.storeQuery(string.format(
+		"SELECT `id` FROM `guild_wars` WHERE `status` = 1 " ..
+		"AND ((`guild1` = %d AND `guild2` = %d) " ..
+		"OR (`guild1` = %d AND `guild2` = %d))",
+		killerGuildId, targetGuildId, targetGuildId, killerGuildId))
+
+	local warId = false
+	if resultId then
+		warId = Result.getNumber(resultId, "id")
+		Result.free(resultId)
+	end
+
+	return warId
+end
+```
+
+| Retorno | Tipo | Descrição |
+|---------|------|-----------|
+| warId | número/false | ID da guerra ou false |
+
+### checkAndUpdateGuildWarScore(warId, targetGuildId, killerGuildId, ...)
+
+Atualiza score da guerra com query complexa:
+
+```lua
+local function checkAndUpdateGuildWarScore(warId, targetGuildId, 
+	killerGuildId, playerName, killerName, mostDamageName)
+	
+	-- Query complexa: conta kills de cada guild
+	local resultId = db.storeQuery(string.format(
+		"SELECT `guild_wars`.`id`, `guild_wars`.`frags_limit`, " ..
+		"(SELECT COUNT(*) FROM `guildwar_kills` WHERE ... guild1) AS guild1_kills, " ..
+		"(SELECT COUNT(*) FROM `guildwar_kills` WHERE ... guild2) AS guild2_kills " ..
+		"FROM `guild_wars` WHERE ...",
+		killerGuildId, targetGuildId, warId))
+
+	if resultId then
+		-- Score update + broadcast
+		updateGuildWarScore(...)
+		endGuildWarIfLimitReached(...)
+	end
+end
+```
+
+### updateGuildWarScore(killerGuild, targetGuild, playerName, killerName, ...)
+
+Envia mensagem para guild members online:
+
+```lua
+local function updateGuildWarScore(killerGuild, targetGuild, 
+	playerName, killerName, guild1Kills, guild2Kills, fragsLimit)
+	
+	-- Mensagem para killer guild
+	local members = killerGuild:getMembersOnline()
+	for _, member in ipairs(members) do
+		member:sendChannelMessage(member, 
+			string.format("%s was killed by %s. Score: %s %d:%d %s", ...),
+			TALKTYPE_CHANNEL_R1, CHANNEL_GUILD)
+	end
+	
+	-- Mensagem para target guild (enemy)
+	local enemyMembers = targetGuild:getMembersOnline()
+	for _, enemy in ipairs(enemyMembers) do
+		enemy:sendChannelMessage(enemy, string.format(...), ...)
+	end
+end
+```
+
+### endGuildWarIfLimitReached(guild1Kills, guild2Kills, fragsLimit, warId, ...)
+
+Finaliza guerra se limite de frags atingido:
+
+```lua
+local function endGuildWarIfLimitReached(guild1Kills, guild2Kills, 
+	fragsLimit, warId, killerGuild, targetGuild)
+	
+	if guild1Kills >= fragsLimit or guild2Kills >= fragsLimit then
+		db.query(string.format(
+			"UPDATE `guild_wars` SET `status` = 4, `ended` = %d WHERE `id` = %d",
+			os.time(), warId))
+		
+		Game.broadcastMessage(
+			string.format("%s has just won the war against %s.",
+				killerGuild:getName(),
+				targetGuild:getName()))
+	end
+end
+```
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Player que morreu |
+| corpse | Item | Corpo do player |
+| killer | Creature | Assassino direto (player/monster) |
+| mostDamageKiller | Creature | Creature que deu mais dano |
+| unjustified | bool | Se last hit foi injustificado |
+| mostDamageUnjustified | bool | Se most damage foi injustificado |
+
+### Database Tables
+
+#### player_deaths (INSERT INTO)
+
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| player_id | int | PlayerGuid |
+| time | int | os.time() |
+| level | int | player:getLevel() |
+| killed_by | string | killerName |
+| is_player | tinyint | byPlayer (0/1) |
+| mostdamage_by | string | mostDamageName |
+| mostdamage_is_player | tinyint | byPlayerMostDamage (0/1) |
+| unjustified | tinyint | Flag (0/1) |
+| mostdamage_unjustified | tinyint | Flag (0/1) |
+| participants | text | Serialized participants |
+
+#### guild_wars (SELECT/UPDATE)
+
+| Coluna | Descrição |
+|--------|-----------|
+| id | War ID |
+| guild1 | Guild 1 ID |
+| guild2 | Guild 2 ID |
+| status | 1=active, 4=ended |
+| frags_limit | Limite de kills |
+| ended | Timestamp de fim |
+
+#### guildwar_kills (INSERT INTO)
+
+| Coluna | Descrição |
+|--------|-----------|
+| killer | Nome do killer |
+| target | Nome do target |
+| killerguild | Guild ID do killer |
+| targetguild | Guild ID do target |
+| time | Timestamp |
+| warid | War ID |
+
+### Screenshot Types
+
+| Tipo | Descrição |
+|------|-----------|
+| SCREENSHOT_TYPE_DEATHPVP | Morte PvP (player killer) |
+| SCREENSHOT_TYPE_DEATHPVE | Morte PvE (monster killer) |
+| SCREENSHOT_TYPE_PLAYERKILL | Kill de player (killer screenshot) |
+
+---
+
+## Fluxo de Operação
+
+### onDeath - Event Handler
+
+```lua
+local playerDeath = CreatureEvent("PlayerDeath")
+
+function playerDeath.onDeath(player, corpse, killer, mostDamageKiller, 
+	unjustified, mostDamageUnjustified)
+	
+	-- Validação global
+	if not deathListEnabled then
+		return
+	end
+
+	-- 1. Obter lista de killers
+	local killers = player:getKillers(false)
+	local participants = {}
+	for _, entry in ipairs(killers) do
+		local name = entry:isMonster() and 
+			entry:getType():getNameDescription() or 
+			entry:getName()
+		local type = entry:isPlayer() and "player" or "monster"
+		participants[#participants + 1] = { name = name, type = type }
+	end
+
+	-- 2. Extrair info killer/mostDamage
+	local killerName, byPlayer = getKillerInfo(killer)
+	local mostDamageName, byPlayerMostDamage = getMostDamageInfo(mostDamageKiller)
+
+	-- 3. Screenshots
+	player:takeScreenshot(byPlayer and SCREENSHOT_TYPE_DEATHPVP or SCREENSHOT_TYPE_DEATHPVE)
+	if mostDamageKiller and mostDamageKiller:isPlayer() then
+		mostDamageKiller:takeScreenshot(SCREENSHOT_TYPE_PLAYERKILL)
+	end
+
+	-- 4. Salvar morte no DB
+	local playerGuid = player:getGuid()
+	saveDeathRecord(playerGuid, player, killerName, byPlayer, 
+		mostDamageName, byPlayerMostDamage, unjustified, 
+		mostDamageUnjustified, participants)
+
+	-- 5. Webhook announce
+	Webhook.sendMessage(
+		":skull_crossbones: " .. player:getMarkdownLink() .. 
+		" has died. Killed at level _" .. player:getLevel() .. 
+		"_ by **" .. killerName .. "**.",
+		announcementChannels["player-kills"])
+
+	-- 6. Guild war coordination
+	handleGuildWar(player, killer, mostDamageKiller, killerName, mostDamageName)
+end
+
+playerDeath:register()
+```
+
+### Árvore de Decisão
+
+```
+Player morre
+  │
+  ├─ deathListEnabled = false?
+  │   ├─ SIM → return (sem processar)
+  │   └─ NÃO → Continua
+  │
+  ├─ ========== COLETA DE DADOS ==========
+  │  ├─ killers = player:getKillers(false)
+  │  │   └─ Lista de todos que deram dano
+  │  │
+  │  ├─ for each killer:
+  │  │   ├─ name = monster type || player name
+  │  │   ├─ type = "player" || "monster"
+  │  │   └─ participants[+] = {name, type}
+  │  │
+  │  ├─ getKillerInfo(killer)
+  │  │   └─ killerName, byPlayer (master validation)
+  │  │
+  │  └─ getMostDamageInfo(mostDamageKiller)
+  │      └─ mostDamageName, byPlayerMostDamage
+  │
+  ├─ ========== SCREENSHOTS ==========
+  │  ├─ player:takeScreenshot(
+  │  │   byPlayer ? DEATHPVP : DEATHPVE)
+  │  │   └─ Screenshot condicional
+  │  │
+  │  └─ if mostDamageKiller:isPlayer():
+  │      └─ mostDamageKiller:takeScreenshot(PLAYERKILL)
+  │
+  ├─ ========== DATABASE RECORD ==========
+  │  └─ saveDeathRecord(playerGuid, player, ...)
+  │      ├─ serializeParticipants()
+  │      ├─ INSERT INTO player_deaths
+  │      │   ├─ killer: db.escapeString()
+  │      │   ├─ mostdamage: db.escapeString()
+  │      │   ├─ unjustified: 1/0
+  │      │   └─ participants: string formatada
+  │      └─ db.query(query)
+  │
+  ├─ ========== WEBHOOK ANNOUNCE ==========
+  │  └─ Webhook.sendMessage(
+  │      ":skull_crossbones: [player link] killed at level X by [killer]",
+  │      announcementChannels["player-kills"])
+  │
+  └─ ========== GUILD WAR COORDINATION ==========
+     └─ handleGuildWar(player, killer, ...)
+         │
+         ├─ Validação: guilds exist?
+         │   ├─ NÃO → return
+         │   └─ SIM → Continua
+         │
+         ├─ player:getGuild():getId() == killer:getGuild():getId()?
+         │   ├─ SIM → return (same guild, skip)
+         │   └─ NÃO → Continua
+         │
+         ├─ getDeathRecords(playerGuid) > 0?
+         │   ├─ NÃO → return
+         │   └─ SIM → Continua (tem histórico)
+         │
+         ├─ warId = checkForGuildWar(guildIds)
+         │   └─ Query: guild_wars status=1
+         │
+         └─ if warId:
+             │
+             ├─ recordGuildWarKill(...)
+             │   └─ INSERT INTO guildwar_kills
+             │       ├─ killer: escapeString()
+             │       ├─ target: escapeString()
+             │       ├─ killerguild/targetguild
+             │       ├─ time: os.time()
+             │       └─ warid: warId
+             │
+             └─ checkAndUpdateGuildWarScore(warId, ...)
+                 │
+                 ├─ Query complexa: COUNT kills por guild
+                 │   ├─ SELECT guild_wars.*
+                 │   ├─ + SELECT COUNT guild1_kills
+                 │   └─ + SELECT COUNT guild2_kills
+                 │
+                 ├─ updateGuildWarScore(...)
+                 │   └─ sendChannelMessage to online members
+                 │       ├─ killer guild
+                 │       └─ target guild (enemy)
+                 │
+                 └─ endGuildWarIfLimitReached(...)
+                     └─ if kills >= fragsLimit:
+                         ├─ UPDATE guild_wars status=4
+                         └─ Game.broadcastMessage("[guild] won vs [guild]")
+```
+
+### Master Validation Pattern
+
+```lua
+-- Quando killer é summon (cão, elemental, etc)
+if killer:isPlayer() then
+	byPlayer = 1
+else
+	local master = killer:getMaster()
+	-- Valida: master existe && é diferente de killer && é player
+	if master and master ~= killer and master:isPlayer() then
+		killer = master  -- Override para player
+		byPlayer = 1
+	end
+end
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onDeath**: Callback disparado ao morrer
+- **getKillers()**: Lista de todos que deram dano
+- **Master Validation**: Summons com owner player
+- **Conditional Screenshots**: PVP vs PVE based on byPlayer
+- **Database Integration**: db.query, db.storeQuery, Result API
+- **String Escaping**: db.escapeString() para segurança SQL
+- **Guild Wars System**: Integração com sistema de guerra
+- **Webhook Integration**: Discord announcements
+- **Score Tracking**: COUNT subqueries para kills
+- **Channel Messages**: sendChannelMessage to guild members
+- **Global Broadcasting**: Game.broadcastMessage() to server
+- **Damage Accumulation**: getDamageMap por playerId
+
+### Responsabilidades do Handler
+
+1. **Validar**: deathListEnabled flag
+2. **Collect**: Killers list + participants
+3. **Extract**: KillerInfo + MostDamageInfo (com master validation)
+4. **Screenshot**: Condicional PVP/PVE
+5. **Database**: saveDeathRecord com escaping
+6. **Announce**: Webhook para Discord
+7. **Coordinate**: Guild war (se aplicável)
+8. **Update**: Guild war score + broadcast
+
+---
+
+## Patterns e Implementação
+
+### Padrão Master Validation
+
+Validar owner de summon:
+
+```lua
+if killer:isMonster() then
+	local master = killer:getMaster()
+	if master and master ~= killer and master:isPlayer() then
+		killer = master
+		byPlayer = 1
+	end
+end
+```
+
+### Padrão Conditional Screenshot
+
+Screenshot baseado em PVP/PVE:
+
+```lua
+player:takeScreenshot(byPlayer and SCREENSHOT_TYPE_DEATHPVP or SCREENSHOT_TYPE_DEATHPVE)
+```
+
+### Padrão Safe SQL Insertion
+
+Escape de strings para DB:
+
+```lua
+db.escapeString(killerName)
+db.escapeString(mostDamageName)
+db.escapeString(participantsString)
+```
+
+### Padrão Guild War Score Query
+
+Subquery para COUNT de kills:
+
+```lua
+"(SELECT COUNT(1) FROM `guildwar_kills` WHERE `guildwar_kills`.`warid` = `guild_wars`.`id` AND `guildwar_kills`.`killerguild` = `guild_wars`.`guild1`) AS guild1_kills"
+```
+
+### Padrão Channel Message to Members
+
+Loop de members online:
+
+```lua
+local members = killerGuild:getMembersOnline()
+for _, member in ipairs(members) do
+	member:sendChannelMessage(member, message, TALKTYPE_CHANNEL_R1, CHANNEL_GUILD)
+end
+```
+
+### Padrão Global Flag Control
+
+Controlar execução via global flag:
+
+```lua
+local deathListEnabled = true
+
+function playerDeath.onDeath(...)
+	if not deathListEnabled then
+		return
+	end
+	-- ... resto
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: death.lua" icon="star">
+Análise de listener de morte enterprise. Demonstra database integration, guild wars coordination, master validation, conditional logic e webhook integration.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Player death with multi-system coordination | Complexidade: Muito Alta
+</Aside>

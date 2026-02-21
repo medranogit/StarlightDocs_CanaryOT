@@ -1,0 +1,514 @@
+---
+title: "Global Event - global_server_save.lua"
+description: "Global event para server save com warning messages e cleanup"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `global_server_save.lua` |
+| **Localização** | `data/scripts/globalevents/` |
+| **Tipo de Script** | GlobalEvent |
+| **Event Name** | `GlobalServerSave` |
+| **Função Principal** | `onTime(interval)` |
+| **Linhas de Código** | 54 |
+| **Complexidade** | Médium-Complexo |
+| **Status** | Base implementation com múltiplas features |
+
+**Descrição:**
+Global event que processa o server save em intervalo configurado. Coordena warning messages (notificações ao jogador), cleanup de mapa, reset de contadores de raid, atualização de daily rewards, e mudança de estado do servidor (save/shutdown/close).
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/globalevents/global_server_save.lua
+```
+
+**Pré-requisitos:**
+- GlobalEvent API (`GlobalEvent` função global)
+- configManager com keys: GLOBAL_SERVER_SAVE_CLEAN_MAP, GLOBAL_SERVER_SAVE_CLOSE, GLOBAL_SERVER_SAVE_SHUTDOWN, GLOBAL_SERVER_SAVE_NOTIFY_MESSAGE, GLOBAL_SERVER_SAVE_NOTIFY_DURATION, GLOBAL_SERVER_SAVE_TIME
+- Game API: setGameState(), broadcastMessage()
+- Webhook system: sendMessage()
+- Raid.registry e raid.kv()
+- Daily reward system: UpdateDailyRewardGlobalStorage()
+- cleanMap() global function
+- addEvent() scheduling
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Server Save (Server Save)**
+
+No horário configurado (via config), o server inicia processo de save:
+
+1. **Trigger:** GlobalEvent dispara na hora configurada (e.g., 10:00)
+2. **Warning Cascade:** Envia mensagens a cada 1 minuto (10:00, 10:01, 10:02...)
+3. **Notificações:** 
+   - Webhook notification ao discord/admin
+   - In-game broadcast message aos jogadores
+4. **Save Execution:** Depois do tempo de warning:
+   - cleanMap() remove items do chão
+   - Reseta raid daily counters
+   - Atualiza daily reward timestamp
+5. **State Change:** 
+   - GAME_STATE_CLOSED (vai fechar server?)
+   - GAME_STATE_SHUTDOWN (vai shutdown?)
+
+**Exemplo: Server Save às 10:00 com warning de 5 minutos**
+```
+10:00:00 → onTime() dispara
+  ├─ Broadcast: "Server is saving the game in 5 minute(s)."
+  ├─ Webhook: "Server save" notification
+  └─ Schedule: ServerSaveWarning(5 * 60000) em 1 minuto
+
+10:01:00 → ServerSaveWarning(300000)
+  ├─ remainingTime = 300000 - 60000 = 240000 (4min)
+  ├─ Broadcast: "Server is saving the game in 4 minute(s)."
+  └─ Schedule: ServerSaveWarning(240000) em 1 minuto
+
+10:02:00 → ServerSaveWarning(240000)
+  ├─ Broadcast: "Server is saving the game in 3 minute(s)."
+  └─ Schedule próximo
+
+... (mais warnings)
+
+10:05:00 → Última warning
+  ├─ remainingTime = 60000 (1min)
+  ├─ Broadcast: "Server is saving the game in 1 minute(s)."
+  └─ Schedule: ServerSave() em 1 minuto (não mais ServerSaveWarning)
+
+10:06:00 → ServerSave()
+  ├─ cleanMap() → Remove items
+  ├─ Reset raids → Zero counters
+  ├─ Update daily reward
+  ├─ Game.setGameState() → mudar estado
+  └─ Server continua ou encerra conforme config
+```
+
+**Configurações Importantes:**
+- `GLOBAL_SERVER_SAVE_TIME` → Hora do save (format: HH:MM:SS)
+- `GLOBAL_SERVER_SAVE_NOTIFY_DURATION` → Duração do warning (em minutos)
+- `GLOBAL_SERVER_SAVE_CLEAN_MAP` → Fazer cleanMap? (true/false)
+- `GLOBAL_SERVER_SAVE_SHUTDOWN` → Fazer shutdown? (true/false)
+- `GLOBAL_SERVER_SAVE_CLOSE` → Fechar server? (true/false)
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `global_server_save.lua` implementa o sistema de server save programado. Quando chega na hora configurada:
+
+- **Inicia cascade de warning messages** para os jogadores (a cada 1 minuto)
+- **Notifica via webhook** (Discord, admin systems)
+- **Executa server save** com cleanup e resets
+- **Muda estado do servidor** (closed/shutdown) conforme config
+
+### Arquitetura
+
+O script usa um padrão de **scheduled cascade with deferred execution**:
+
+```
+GlobalEvent (onTime fired uma vez por horário)
+  ├─ Broadcast warning inicial
+  ├─ Schedule ServerSaveWarning() recursiva (a cada 1 minuto)
+  │  └─ Decrementa timer, rebroadcast, reschedule
+  └─ Última warning schedula ServerSave() final
+     ├─ cleanMap() if config
+     ├─ Reset raids
+     ├─ Update daily rewards
+     └─ Game.setGameState() if config
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Processamento | Saída |
+|---------|---------------|-------|
+| `interval` | Inicia cascade warnings | Executa ServerSave após tempo |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Funções Locais
+
+#### **ServerSave()**
+
+```lua
+local function ServerSave()
+	if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLEAN_MAP) then
+		cleanMap()
+	end
+
+	if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLOSE) then
+		Game.setGameState(GAME_STATE_CLOSED)
+	end
+	if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_SHUTDOWN) then
+		Game.setGameState(GAME_STATE_SHUTDOWN)
+	end
+
+	UpdateDailyRewardGlobalStorage(DailyReward.storages.lastServerSave, os.time())
+
+	for name, raid in pairs(Raid.registry) do
+		raid.kv:set("checks-today", 0)
+		raid.kv:set("last-check-date", os.date("%Y%m%d"))
+	end
+end
+```
+
+**Propósito:** Executa ações finais do server save (cleanup, resets, state change).
+
+**Fluxo de Execução:**
+
+1. **Map Cleanup:**
+   - Se `GLOBAL_SERVER_SAVE_CLEAN_MAP` ativado, chama `cleanMap()`
+   - Remove items droppados, debris, etc
+
+2. **Server State:**
+   - Se `GLOBAL_SERVER_SAVE_CLOSE`, muda para GAME_STATE_CLOSED
+   - Se `GLOBAL_SERVER_SAVE_SHUTDOWN`, muda para GAME_STATE_SHUTDOWN
+
+3. **Daily Reward Update:**
+   - Atualiza storage com timestamp atual
+
+4. **Raid Counters Reset:**
+   - Para cada raid em `Raid.registry`:
+     - Zera `checks-today` (contador de checks realizados)
+     - Atualiza `last-check-date` para data corrente (YYYYMMDD)
+
+---
+
+#### **ServerSaveWarning(time)**
+
+```lua
+local function ServerSaveWarning(time)
+	local remainingTime = tonumber(time) - 60000
+	if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_NOTIFY_MESSAGE) then
+		local message = "Server is saving the game in " .. (remainingTime / 60000) .. " minute(s). Please logout."
+		Webhook.sendMessage("Server save", message, WEBHOOK_COLOR_WARNING)
+		Game.broadcastMessage(message, MESSAGE_GAME_HIGHLIGHT)
+	end
+
+	if remainingTime > 60000 then
+		addEvent(ServerSaveWarning, 60000, remainingTime)
+	else
+		addEvent(ServerSave, 60000)
+	end
+end
+```
+
+**Propósito:** Envia warning message recursivamente a cada 1 minuto.
+
+**Fluxo de Execução:**
+
+1. **Cálculo de Tempo Restante:**
+   - Decrementa `time` por 60000ms (1 minuto)
+
+2. **Notificação:**
+   - Se `GLOBAL_SERVER_SAVE_NOTIFY_MESSAGE` ativo:
+     - Calcula minutos: `remainingTime / 60000`
+     - Envia webhook message
+     - Broadcast in-game message
+
+3. **Reschedule:**
+   - Se `remainingTime > 60000` (mais de 1 minuto):
+     - Reschedula ServerSaveWarning com novo time em 60000ms
+   - Senão (1 minuto ou menos):
+     - Schedula ServerSave() final em 60000ms
+
+---
+
+### Função Principal (GlobalEvent)
+
+#### **onTime(interval)**
+
+```lua
+function globalServerSave.onTime(interval)
+	local remainingTime = configManager.getNumber(configKeys.GLOBAL_SERVER_SAVE_NOTIFY_DURATION) * 60000
+	if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_NOTIFY_MESSAGE) then
+		local message = "Server is saving the game in " .. (remainingTime / 60000) .. " minute(s). Please logout."
+		Webhook.sendMessage("Server save", message, WEBHOOK_COLOR_WARNING)
+		Game.broadcastMessage(message, MESSAGE_GAME_HIGHLIGHT)
+	end
+
+	addEvent(ServerSaveWarning, 60000, remainingTime)
+	return not configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_SHUTDOWN)
+end
+```
+
+**Propósito:** Entry point do global event. Dispara quando chega a hora configurada.
+
+**Fluxo de Execução:**
+
+1. **Leitura de Config:**
+   - Obtém `GLOBAL_SERVER_SAVE_NOTIFY_DURATION` (minutos)
+   - Converte para milliseconds
+
+2. **Warning Inicial:**
+   - Se notificações ativadas:
+     - Envia webhook
+     - Broadcast initial message
+
+3. **Scheduling:**
+   - Schedula ServerSaveWarning em 60000ms (1 minuto depois)
+   - Passa remainingTime para ServerSaveWarning
+
+4. **Return:**
+   - Retorna `not GLOBAL_SERVER_SAVE_SHUTDOWN`
+   - Se shutdown ativado, retorna false (GlobalEvent para)
+   - Senão retorna true (GlobalEvent continua)
+
+**Parâmetros:**
+- `interval` - Intervalo configurado (não usado nesta implementação)
+
+**Retorno:**
+- `true` - GlobalEvent continua ativo (server continua)
+- `false` - GlobalEvent para (server vai shutdown)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Locais (Funções)
+
+| Variável | Tipo | Função | Descrição |
+|----------|------|--------|-----------|
+| `remainingTime` | number | ServerSaveWarning, onTime | Tempo restante em ms |
+| `message` | string | ServerSaveWarning, onTime | Mensagem de broadcast |
+| `name, raid` | iterate | ServerSave | Loop de raids |
+| `globalServerSave` | GlobalEvent | Global | GlobalEvent object |
+
+### Constantes/Config Keys Utilizadas
+
+| Config Key | Tipo | Descrição |
+|------------|------|-----------|
+| `GLOBAL_SERVER_SAVE_CLEAN_MAP` | boolean | Fazer cleanMap? |
+| `GLOBAL_SERVER_SAVE_CLOSE` | boolean | Fechar server? (GAME_STATE_CLOSED) |
+| `GLOBAL_SERVER_SAVE_SHUTDOWN` | boolean | Shutdown server? (GAME_STATE_SHUTDOWN) |
+| `GLOBAL_SERVER_SAVE_NOTIFY_MESSAGE` | boolean | Enviar notificações? |
+| `GLOBAL_SERVER_SAVE_NOTIFY_DURATION` | number | Duração warning (minutos) |
+| `GLOBAL_SERVER_SAVE_TIME` | string | Hora do save (HH:MM:SS) |
+
+### Constantes de Jogo
+
+| Constante | Descrição |
+|-----------|-----------|
+| `GAME_STATE_CLOSED` | Estado: Server fechado |
+| `GAME_STATE_SHUTDOWN` | Estado: Server shutdowning |
+| `MESSAGE_GAME_HIGHLIGHT` | Chat channel para messages importantes |
+| `WEBHOOK_COLOR_WARNING` | Cor do webhook (warning orange) |
+
+### Objetos Externos Utilizados
+
+| Objeto | Método/Propriedade | Descrição |
+|--------|-------------------|-----------|
+| `Game` | setGameState(state) | Muda estado do servidor |
+| `Game` | broadcastMessage(msg, type) | Envia mensagem a todos jogadores |
+| `Webhook` | sendMessage(title, msg, color) | Envia webhook (Discord, etc) |
+| `Raid` | registry | Table de todos os raids |
+| `raid` | kv:set(key, value) | Atualiza storage do raid |
+| `DailyReward` | storages.lastServerSave | Key de storage |
+| `UpdateDailyRewardGlobalStorage` | (key, value) | Global function |
+| `cleanMap` | () | Global function - limpa items |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Scheduled Cascade with Deferred Execution
+
+**Técnica:** Usar addEvent() recursivo para executar ações em cascata com delays.
+
+```lua
+-- First call (onTime)
+addEvent(ServerSaveWarning, 60000, remainingTime)
+
+-- ServerSaveWarning reschedules itself
+if remainingTime > 60000 then
+	addEvent(ServerSaveWarning, 60000, remainingTime)  -- Recursive
+else
+	addEvent(ServerSave, 60000)  -- Final action
+end
+```
+
+**Vantagem:** Não bloqueia main thread. Permite cancellation. Temporal accuracy.
+
+**Aplicação:** Multi-stage operations que necessitam delays (countdown, timed events).
+
+---
+
+### Padrão 2: Config-Driven Feature Toggles
+
+**Técnica:** Usar configManager booleanos para ativar/desativar features.
+
+```lua
+if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLEAN_MAP) then
+	cleanMap()
+end
+if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLOSE) then
+	Game.setGameState(GAME_STATE_CLOSED)
+end
+```
+
+**Vantagem:** Recompile-free configuration. Runtime toggles. Modular.
+
+**Aplicação:** Qualquer feature que pode ser ligada/desligada (notifications, features, behaviors).
+
+---
+
+### Padrão 3: Multi-System Coordination
+
+**Técnica:** Coordenar múltiplos sistemas em um único evento (map, raids, rewards, state).
+
+```lua
+ServerSave()
+  ├─ cleanMap() (map system)
+  ├─ Raid.registry reset (raid system)
+  ├─ UpdateDailyRewardGlobalStorage() (reward system)
+  └─ Game.setGameState() (core engine)
+```
+
+**Vantagem:** Garante consistência. Evita race conditions. Centralizado.
+
+**Aplicação:** Quando múltiplos sistemas necessitam sincronizar em event crítico.
+
+---
+
+### Padrão 4: Return Value Controls Continuation
+
+**Técnica:** Usar return value de GlobalEvent para controlar se continua.
+
+```lua
+return not configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_SHUTDOWN)
+-- Se SHUTDOWN ativo, retorna false → GlobalEvent para
+-- Se não, retorna true → GlobalEvent continua
+```
+
+**Vantagem:** Simple, expressa intent. Engine handles cleanup.
+
+**Aplicação:** GlobalEvents que podem ser terminais (shutdown, maintenance).
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Server Save às 10:00 com warning 5min
+
+```
+Config:
+  GLOBAL_SERVER_SAVE_TIME: "10:00:00"
+  GLOBAL_SERVER_SAVE_NOTIFY_DURATION: 5 (minutos)
+  GLOBAL_SERVER_SAVE_NOTIFY_MESSAGE: true
+  GLOBAL_SERVER_SAVE_CLEAN_MAP: true
+  GLOBAL_SERVER_SAVE_SHUTDOWN: false
+
+10:00:00 → onTime(interval) dispara
+  ├─ remainingTime = 5 * 60000 = 300000ms
+  ├─ Webhook: "Server save" with warning color
+  ├─ Broadcast: "Server is saving the game in 5 minute(s). Please logout."
+  ├─ addEvent(ServerSaveWarning, 60000, 300000)
+  └─ return true (não vai shutdown)
+
+10:01:00 → ServerSaveWarning(300000) executa
+  ├─ remainingTime = 300000 - 60000 = 240000ms (4min)
+  ├─ Webhook: "Server is saving the game in 4 minute(s)."
+  ├─ Broadcast similar
+  ├─ remainingTime > 60000? YES
+  └─ addEvent(ServerSaveWarning, 60000, 240000)
+
+10:02:00, 10:03:00, 10:04:00 → Similar cascade
+
+10:05:00 → ServerSaveWarning(60000)
+  ├─ remainingTime = 60000 - 60000 = 0ms (1min)
+  ├─ Webhook: "Server is saving the game in 0 minute(s)."
+  ├─ Broadcast similar
+  ├─ remainingTime > 60000? NO
+  └─ addEvent(ServerSave, 60000) ← Final action scheduled
+
+10:06:00 → ServerSave() executa
+  ├─ cleanMap() ← Remove items from ground
+  ├─ Game.setGameState(GAME_STATE_CLOSED)? NO (not configured)
+  ├─ Game.setGameState(GAME_STATE_SHUTDOWN)? NO (not configured)
+  ├─ UpdateDailyRewardGlobalStorage(key, os.time())
+  ├─ For each raid in Raid.registry:
+  │  ├─ raid.kv:set("checks-today", 0)
+  │  └─ raid.kv:set("last-check-date", "20260220")
+  └─ [Server continues normally]
+```
+
+**Resultado:** Jogadores recebem 5 warnings (10:01, 10:02, 10:03, 10:04, 10:05), map é limpo, raids reset
+
+---
+
+### Cenário 2: Server Save com shutdown
+
+```
+Config:
+  GLOBAL_SERVER_SAVE_SHUTDOWN: true
+
+onTime() executa
+  ├─ [Mesmo processo de warnings]
+  └─ return not true = false
+
+ServerSave() executa
+  ├─ Game.setGameState(GAME_STATE_SHUTDOWN) ← ATIVA
+  └─ [GlobalEvent retorna false → Server vai shutdown]
+```
+
+**Resultado:** Após save, server inicia shutdown sequence
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Médium-Complexo |
+| **Estimativa de Aprendizado** | 25-30 minutos |
+| **Tópicos Principais** | Cascade scheduling, Config toggles, Multi-system coordination, Return value control |
+| **Padrões Documentados** | 4 padrões |
+| **Cenários Documentados** | 2 cenários (normal save, with shutdown) |
+| **Funções Locais** | 2 (ServerSave, ServerSaveWarning) |
+| **Funções GlobalEvent** | 1 (onTime) |
+| **GlobalEvents Registrados** | GlobalServerSave |
+| **Config Keys** | 6 keys |
+| **Dependencies** | CleanMap, Game state, Raid system, Daily rewards, Webhooks |
+
+### Curva de Aprendizado
+
+**Médium:**
+- Entender cascade scheduling (~10 min)
+- Compreender multi-stage operation (~10 min)
+- Config-driven toggles (~5 min)
+
+### Sistemas Integrados
+
+Este script coordena:
+- ✅ **Map system** - cleanMap() removes ground items
+- ✅ **Raid system** - Reset daily counters
+- ✅ **Reward system** - Update daily reward timestamp
+- ✅ **Game engine** - State changes (closed/shutdown)
+- ✅ **Notification system** - Webhooks + broadcasts
+
+### Melhorias Potenciais
+
+- [ ] Implementar backup antes de save (snapshot)
+- [ ] Adicionar customizable warning intervals (não fixed 1min)
+- [ ] Implementar player logout tracking (kick AFK only)
+- [ ] Suportar multiple scheduled saves (não just uma por dia)
+- [ ] Adicionar pre-save callback hooks para custom logic
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Cascade scheduling with multi-system coordination

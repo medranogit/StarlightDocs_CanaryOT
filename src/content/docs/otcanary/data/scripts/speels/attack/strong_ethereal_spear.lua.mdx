@@ -1,0 +1,440 @@
+---
+title: "Spell - strong_ethereal_spear.lua"
+description: "Spell de lança etérea forte para paladins level 90 com skill-based ÚNICO"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `strong_ethereal_spear.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 57 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Paladin, Royal Paladin |
+| **Level Requerido** | 90 |
+| **Mana Requerida** | 55 |
+| **Words** | exori gran con |
+| **Alcance** | 7 |
+| **Área** | Single target |
+| **Cooldown** | 8s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Skill-based (UNIQUE! Não magic-level) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_STRONG_ETHEREAL_SPEAR |
+| **Distance Effect** | CONST_ANI_ETHEREALSPEAR |
+| **Requer Target** | Sim (needTarget) |
+| **Bloqueia Walls** | Sim |
+| **BLOCKARMOR** | 1 |
+| **Linhas de Código** | 38 |
+| **Complexidade** | Alta |
+
+**Descrição:**
+Spell ÚNICO de lança etérea forte para paladins nível 90 (high-end). RARO: Skill-based (não magic-level!). Usa melee skill + weapon attack stats! Dano físico com armor ignore. 55 mana. Range 7 (very ranged!). Target required. Cooldown 8s. Premium only. Melee hybrid spell!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/strong_ethereal_spear.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(57)
+spell:name("Strong Ethereal Spear")
+spell:words("exori gran con")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_STRONG_ETHEREAL_SPEAR)
+spell:level(90)
+spell:mana(55)
+spell:isPremium(true)
+spell:range(7)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:cooldown(8 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("paladin;true", "royal paladin;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Lança Etérea Forte - Skill-Based Paladin Range 7 UNIQUE**
+
+Este spell implementa um sistema ÚNICO de damage skill-based (melee skill!):
+
+1. **Skill-Based UNIQUE:**
+   - CALLBACK_PARAM_SKILLVALUE (não magic-level!)
+   - Usa melee skill + weapon attack
+   - Formula: ((2*skill + attack/2500)*2.30)+level/5+7
+   - Min: ((2*skill + attack/1875)*3.30)+level/5+13
+   - Escalabilidade MELEE = UNIQUE!
+
+2. **High-End Paladin:**
+   - Level 90 (HIGH!)
+   - 55 mana (moderate)
+   - Premium only
+   - Cooldown 8s
+
+3. **Ranged Melee Hybrid:**
+   - Range 7 (VERY ranged!)
+   - BLOCKARMOR: 1
+   - Melee skill based
+   - Weapon attack dependent
+
+4. **Tipo Físico:**
+   - COMBAT_PHYSICALDAMAGE
+   - Distance effect ETHEREALSPEAR
+   - Armor ignore
+   - High-end utility
+
+**Fórmula Visual:**
+```
+Paladin lvl 90, melee skill 100, attack 100:
+  min = ((2*100 + 100/2500)*2.30) + 18 + 7 = 230.092 + 25 = 255.092
+  max = ((2*100 + 100/1875)*3.30) + 18 + 13 = 330.176 + 31 = 361.176
+
+Paladin lvl 90, melee skill 150, attack 150:
+  min = ((2*150 + 150/2500)*2.30) + 18 + 7 = 345.138 + 25 = 370.138
+  max = ((2*150 + 150/1875)*3.30) + 18 + 13 = 495.264 + 31 = 526.264
+```
+
+**Diferencial:** Skill-based spell único melee hybrid range 7 armor ignore!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `strong_ethereal_spear` oferece damage skill-based ÚNICO:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE skill-based (não magic!)
+- **Fórmula:** ((2*skill + attack/ratio)*coef) + level/5 + bonus (UNIQUE!)
+- **Mana:** 55 (moderate)
+- **Level:** 90 (high-end)
+- **Range:** 7 (very ranged!)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ Effect: HITAREA
+├─ Distance Effect: ETHEREALSPEAR
+├─ BlockArmor: 1
+└─ Callback: onGetFormulaValues (SKILLVALUE!)
+
+onGetFormulaValues(player, skill, attack, factor)
+└─ min/max skill-based + weapon stats
+
+spell.onCastSpell(creature, var)
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ETHEREALSPEAR)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+```
+
+**Propósito:** Combat de dano físico skill-based ranged.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITAREA | Efeito hit área |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ETHEREALSPEAR | Projétil lança etérea |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Ignora armadura! |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local levelTotal = player:getLevel() / 5
+	return -(((2 * skill + attack / 2500) * 2.30) + levelTotal + 7), 
+	       -(((2 * skill + attack / 1875) * 3.30) + levelTotal + 13)
+end
+```
+
+**Propósito:** Calcula dano físico skill-based UNIQUE.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Paladim |
+| `skill` | number | Melee skill |
+| `attack` | number | Weapon attack |
+| `factor` | number | Fator (não usado) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+levelTotal = level / 5
+
+min = -( ((2*skill + attack/2500) * 2.30) + levelTotal + 7 )
+max = -( ((2*skill + attack/1875) * 3.30) + levelTotal + 13 )
+```
+
+**Componentes:**
+- **Skill Component:** 2 * skill (linear)
+- **Attack Component:** attack / ratio (2500 ou 1875)
+- **Coef:** 2.30 (min) ou 3.30 (max)
+- **Level:** level / 5 (pequeno)
+- **Bonus:** 7 (min) ou 13 (max)
+
+**Exemplos:**
+
+| Level | Skill | Attack | Min | Max |
+|---|---|---|---|---|
+| 90 | 100 | 100 | 255 | 361 |
+| 90 | 150 | 150 | 370 | 526 |
+| 90 | 200 | 200 | 488 | 695 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Lança ativada |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Skill-based callback |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `levelTotal` | number | Level / 5 |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Skill-Based (UNIQUE!)
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local levelTotal = player:getLevel() / 5
+	return -(((2 * skill + attack / 2500) * 2.30) + levelTotal + 7), 
+	       -(((2 * skill + attack / 1875) * 3.30) + levelTotal + 13)
+end
+```
+
+**Benefício:** Escalabilidade melee skill única!
+
+### Padrão 2: Weapon Attack Dependent
+
+```lua
+-- attack / 2500 (min)
+-- attack / 1875 (max)
+```
+
+**Benefício:** Weapon stats influenciam dano!
+
+### Padrão 3: Armor Ignore Physical
+
+```lua
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+```
+
+**Benefício:** Bypassa defesa de armadura!
+
+### Padrão 4: High-End Range Hybrid
+
+```lua
+spell:level(90)
+spell:range(7)
+spell:isPremium(true)
+```
+
+**Benefício:** High-end melee hybrid ranged!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, skill, attack, factor)
+
+**Descrição:** Calcula dano físico skill-based com weapon stats.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Paladim |
+| `skill` | number | Melee skill |
+| `attack` | number | Weapon attack stat |
+| `factor` | number | Fator (não usado) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(paladin, 120, 120, nil)
+-- levelTotal = 90 / 5 = 18
+-- min = -( ((2*120 + 120/2500)*2.30) + 18 + 7 )
+//     = -( (240.048 * 2.30) + 18 + 7 )
+//     = -( 552.11 + 25 ) = -577.11
+-- max = -( ((2*120 + 120/1875)*3.30) + 18 + 13 )
+//     = -( (240.064 * 3.30) + 18 + 13 )
+//     = -( 792.21 + 31 ) = -823.21
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura lança etérea em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Paladin |
+| `var` | Variant | Target |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Lança ativada |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 90+
+- 55 mana
+- Target required
+- Premium account
+- Range 7 (very ranged!)
+- Cooldown 8s
+
+**Efeito:**
+- Efeito hit área
+- Projétil lança etérea
+- Dano skill-based
+- Weapon attack dependent
+- Ignora armadura!
+- Range 7 tiles
+- Bloqueia walls
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: High-End Paladin Skill-Based
+
+```lua
+-- Paladin lvl 90+ premium
+// Strong Ethereal Spear = skill spell
+// Dano melee skill based
+// Weapon attack importante!
+// Range 7 = muito ranged
+// Armor ignore = vantagem
+```
+
+### Caso 2: Hybrid Melee-Ranged
+
+```lua
+-- Paladin high-end hybrid
+// Strong Ethereal Spear = melee range combo
+// Skill escalação = melee advantage
+// Weapon stats determinam dano
+// 55 mana = moderate cost
+// 8s cooldown = regulado
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callback:** CALLBACK_PARAM_SKILLVALUE (melee skill!)
+- **Effects:** CONST_ME_HITAREA, CONST_ANI_ETHEREALSPEAR
+- **Parameter:** COMBAT_PARAM_BLOCKARMOR
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Skill-based melee hybrid range |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | Skill-based + weapon attack (UNIQUE!) |
+| **Mana** | 55 (moderate) |
+| **Range** | 7 (very ranged!) |
+| **Level** | 90 (high-end) |
+| **Cooldown** | 8s |
+| **Premium** | Sim |
+| **BlockArmor** | 1 (ignora!) |
+| **Skill-Based** | Sim (CALLBACK_PARAM_SKILLVALUE) |
+| **Vocações** | Paladin, Royal Paladin |
+| **Padrão** | Skill-based + weapon-dependent + armor-ignore + melee-hybrid |

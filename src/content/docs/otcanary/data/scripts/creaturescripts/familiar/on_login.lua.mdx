@@ -1,0 +1,320 @@
+---
+title: on_login.lua
+description: CreatureEvent "FamiliarLogin" que restaura familiar ao fazer login, com validações premium/level e cálculo de cooldown.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="on_login.lua" icon="pencil">
+Listener de login que restaura familiar com cálculo de cooldown.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/familiar/on_login.lua`
+
+**Linhas:** 37 | **Event:** CreatureEvent "FamiliarLogin" | **Tipo:** onLogin Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener de login que restaura familiar. Registra event listener "FamiliarAdvance" para este player. Lookup vocation em FAMILIAR_ID. Se não premium E tem familiar: remove familiar. Se level < 200: remove familiar. Se premium E level 200+: calcula familiarTimeLeft (math.max(0, summonTime - agora)), se timeLeft > 0 obtem familiarName, seta looktype e adiciona familiar, depois cria familiar com createFamiliar(name, timeLeft). Padrão complexo com cooldown calculation.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT: "FamiliarLogin"
+  └─ onLogin(player)
+      ├─ Validação: player exists?
+      │   └─ NÃO → return false
+      │
+      ├─ player:registerEvent("FamiliarAdvance")
+      │   └─ Registra outro listener
+      │
+      ├─ vocation = FAMILIAR_ID[player:getVocation():getBaseId()]
+      │   └─ Lookup: Tabela global
+      │
+      ├─ Cálculo de cooldown:
+      │   ├─ familiarSummonTime = kv():get("familiar-summon-time") ou 0
+      │   ├─ familiarTimeLeft = max(0, summonTime - os.time())
+      │   │   └─ Calcula tempo restante de cooldown
+      │   └─ Se timeLeft > 0: famil iarName = vocation.name
+      │
+      ├─ Validação: não premium && tem familiar?
+      │   └─ SIM → removeFamiliar(vocation.id)
+      │
+      ├─ Validação: level < 200?
+      │   └─ SIM → removeFamiliar(vocation.id)
+      │
+      ├─ Se premium && level >= 200:
+      │   ├─ getFamiliarLooktype() == 0?
+      │   │   └─ SIM → setFamiliarLooktype(vocation.id)
+      │   └─ hasFamiliar(vocation.id)?
+      │       └─ NÃO → addFamiliar(vocation.id)
+      │
+      ├─ Se familiarName exists:
+      │   └─ createFamiliar(familiarName, familiarTimeLeft)
+      │       └─ Restaura familiar com cooldown
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| familiarOnLogin | CreatureEvent | Listener de login |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| FAMILIAR_ID | table | Tabela global de mapeamento vocation -> familiar |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Jogador fazendo login |
+
+### Cooldown Calculation
+
+| Parâmetro | Fórmula | Descrição |
+|-----------|---------|-----------|
+| familiarSummonTime | kv():get() ou 0 | Timestamp de morte anterior |
+| familiarTimeLeft | max(0, summonTime - now) | Tempo restante de cooldown |
+| Mínimo | 0 | Não pode ser negativo |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local familiarOnLogin = CreatureEvent("FamiliarLogin")
+
+function familiarOnLogin.onLogin(player)
+	-- Validação: Player exists?
+	if not player then
+		return false
+	end
+
+	-- Registrar outro listener
+	player:registerEvent("FamiliarAdvance")
+	
+	-- Lookup: Vocation familiar data
+	local vocation = FAMILIAR_ID[player:getVocation():getBaseId()]
+
+	-- Variáveis de cooldown
+	local familiarName
+	local familiarSummonTime = player:kv():get("familiar-summon-time") or 0
+	local familiarTimeLeft = math.max(0, familiarSummonTime - os.time())
+
+	if vocation then
+		-- Validação 1: Não premium && tem familiar?
+		if (not player:isPremium() and player:hasFamiliar(vocation.id)) or player:getLevel() < 200 then
+			player:removeFamiliar(vocation.id)
+		-- Validação 2: Premium && level 200+?
+		elseif player:isPremium() and player:getLevel() >= 200 then
+			-- Se tem cooldown ativo: obter nome
+			if familiarTimeLeft > 0 then
+				familiarName = vocation.name
+			end
+			
+			-- Seta looktype se não possui
+			if player:getFamiliarLooktype() == 0 then
+				player:setFamiliarLooktype(vocation.id)
+			end
+			
+			-- Adiciona familiar se não possui
+			if not player:hasFamiliar(vocation.id) then
+				player:addFamiliar(vocation.id)
+			end
+		end
+	end
+
+	-- Recriar familiar se houver cooldown
+	if not familiarName then
+		return true
+	end
+	player:createFamiliar(familiarName, familiarTimeLeft)
+	return true
+end
+
+familiarOnLogin:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador faz login
+  │
+  ├─ player exists?
+  │   ├─ NÃO → return false (erro)
+  │   └─ SIM → Continua
+  │
+  ├─ player:registerEvent("FamiliarAdvance")
+  │   └─ Registra listener de advance
+  │
+  ├─ vocation = FAMILIAR_ID[baseVocationId]
+  │   └─ Lookup: Tabela global
+  │
+  ├─ CÁLCULO DE COOLDOWN:
+  │   ├─ familiarSummonTime = kv():get("familiar-summon-time") || 0
+  │   │   └─ Timestamp de morte anterior (ou 0)
+  │   │
+  │   └─ familiarTimeLeft = max(0, summonTime - agora)
+  │       └─ Quanto tempo ainda falta de cooldown?
+  │
+  ├─ if vocation exists:
+  │   │
+  │   ├─ (não premium && tem familiar) || level < 200?
+  │   │   ├─ SIM → removeFamiliar(vocation.id)
+  │   │   │         (Remove familiar inválido)
+  │   │   └─ NÃO → Continua
+  │   │
+  │   └─ premium && level >= 200?
+  │       │
+  │       ├─ SIM:
+  │       │   │
+  │       │   ├─ familiarTimeLeft > 0?
+  │       │   │   ├─ SIM → familiarName = vocation.name
+  │       │   │   │         (Tem cooldown ativo, obtem nome)
+  │       │   │   └─ NÃO → familiarName = nil
+  │       │   │
+  │       │   ├─ getFamiliarLooktype() == 0?
+  │       │   │   ├─ SIM → setFamiliarLooktype(vocation.id)
+  │       │   │   └─ NÃO → Pula (já tem)
+  │       │   │
+  │       │   └─ hasFamiliar(vocation.id)?
+  │       │       ├─ SIM → Pula (já tem)
+  │       │       └─ NÃO → addFamiliar(vocation.id)
+  │       │
+  │       └─ NÃO: Pula (não qualificado)
+  │
+  ├─ if familiarName:
+  │   └─ createFamiliar(familiarName, familiarTimeLeft)
+  │       └─ Restaura familiar com cooldown
+  │
+  └─ return true (sucesso)
+```
+
+### Cooldown Calculation Example
+
+```lua
+-- Exemplo: Familiar morreu há 30 minutos
+familiarSummonTime = 1650000000  -- Timestamp de morte
+os.time() = 1650001800            -- Agora (30 min depois)
+
+familiarTimeLeft = max(0, 1650000000 - 1650001800)
+                 = max(0, -1800)
+                 = 0               -- Cooldown expirou
+
+-- Exemplo 2: Familiar morreu há 10 minutos (cooldown = 1 hora)
+familiarSummonTime = 1650003600   -- Timestamp de morte
+os.time() = 1650004200             -- Agora (10 min depois)
+
+familiarTimeLeft = max(0, 1650003600 - 1650004200)
+                 = 0  (ou ainda ativo se summonTime é futuro)
+
+-- Nota: O cooldown é baseado na diferença, não em duração fixa
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onLogin**: Callback disparado ao fazer login
+- **registerEvent()**: Registrar listener adicional para player
+- **kv():get()**: Obter valor persistente (ou default)
+- **os.time()**: Timestamp Unix atual
+- **math.max()**: Garantir valor mínimo (não negativo)
+- **Premium Gating**: Requisito premium para familiar
+- **Level Requirement**: Level 200+ necessário
+- **Familiar Restoration**: createFamiliar() com cooldown persistence
+- **Looktype Setup**: Visual do familiar
+
+### Responsabilidades do Handler
+
+1. **Validar**: player exists?
+2. **Registrar**: registerEvent("FamiliarAdvance")
+3. **Lookup**: vocation = FAMILIAR_ID[baseId]
+4. **Calcular cooldown**: max(0, summonTime - agora)
+5. **Remover inválido**: Sem premium ou level < 200
+6. **Restaurar valido**: Premium + level 200+
+7. **Recriar**: createFamiliar(name, timeLeft)
+8. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Cooldown Calculation
+
+Calcular tempo restante de cooldown:
+
+```lua
+local familiarSummonTime = player:kv():get("familiar-summon-time") or 0
+local familiarTimeLeft = math.max(0, familiarSummonTime - os.time())
+
+if familiarTimeLeft > 0 then
+	-- Tem cooldown ativo
+	familiarName = vocation.name
+end
+```
+
+### Padrão Familiar Restoration with Cooldown
+
+Restaurar familiar com cooldown:
+
+```lua
+if familiarName then
+	player:createFamiliar(familiarName, familiarTimeLeft)
+end
+```
+
+### Padrão Premium Level Requirements
+
+Validação dual:
+
+```lua
+if (not player:isPremium() and player:hasFamiliar(vocation.id)) or player:getLevel() < 200 then
+	player:removeFamiliar(vocation.id)
+elseif player:isPremium() and player:getLevel() >= 200 then
+	-- Operações de familiar
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: on_login.lua" icon="star">
+Análise de listener de login com cooldown calculation e familiar restoration. Demonstra kv persistent storage, math.max e premium gating.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Familiar restoration with cooldown calculation | Complexidade: Alta
+</Aside>

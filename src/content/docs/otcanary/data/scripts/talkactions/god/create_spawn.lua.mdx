@@ -1,0 +1,223 @@
+---
+title: Create Spawn
+description: Comando GOD para spawnar monstros com spawntime customizável
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `create_spawn.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Spawnar monstros |
+| **Comando** | `/spawn <monster_name>, [spawntime]` |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Spawntime Padrão** | 60 segundos |
+| **Sistema** | Spawn system (não temporary, mas registrado) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/create_spawn.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando minimalista que usa Spawn() system. Parse 2 parâmetros (monster, spawntime), spawntime default 60 se não fornecido. Constrói tabela config com monsterName, spawntime, position, status=true. Aplica via `setPositions()` e `executeSpawn()`. Magic effect GREEN no sucesso. Diferente de summon (que é temporary pet).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `create_spawn.lua` implementa um comando TalkAction (`/spawn`) que spawna monstros com spawntime customizável. O sistema valida parâmetro, extrai monster name e spawntime (default 60), configura via tabela, executa via Spawn system, e fornece feedback. Ferramenta de spawn dinâmico de monstros.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local createMonster = TalkAction("/spawn")
+
+function createMonster.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    -- Validação: parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Parse: monsterName, spawntime (opcional)
+    local spawn = Spawn()
+    local parameter = param:split(",")
+    local config = {
+        {
+            spawntime = tonumber(parameter[2]) or 60,
+            monster = parameter[1],
+            pos = player:getPosition(),
+            status = true,
+        },
+    }
+    
+    -- Executar spawn
+    spawn:setPositions(config)
+    spawn:executeSpawn()
+    
+    -- Feedback
+    player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+    player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have spawned " .. parameter[1] .. ".")
+    
+    return true
+end
+
+createMonster:separator(" ")
+createMonster:groupType("god")
+createMonster:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **createMonster.onSay(player, words, param)**
+
+**Descrição:** Função callback que spawna monstro com spawntime customizável.
+
+**Parâmetros:**
+- `param` (string): `<monster_name>, [spawntime]`
+
+**Formato de Comando:**
+```
+/spawn Rat                      -- Spawna Rat, spawntime 60s
+/spawn Dragon Lord, 120         -- Spawna Dragon Lord, spawntime 120s
+/spawn Balrog, 30              -- Spawna Balrog, spawntime 30s
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Parse de Parâmetros:**
+   ```lua
+   local parameter = param:split(",")
+   -- Exemplo: "Dragon Lord, 120" -> {"Dragon Lord", " 120"}
+   ```
+
+4. **Construir Configuração:**
+   ```lua
+   local spawn = Spawn()
+   local config = {
+       {
+           spawntime = tonumber(parameter[2]) or 60,
+           monster = parameter[1],
+           pos = player:getPosition(),
+           status = true,
+       },
+   }
+   ```
+   - spawntime: parameter[2] ou default 60
+   - monster: nome do monstro
+   - pos: posição do GM
+   - status: true (ativo)
+
+5. **Executar Spawn:**
+   ```lua
+   spawn:setPositions(config)
+   spawn:executeSpawn()
+   ```
+   - Posiciona spawn natable config
+   - Executa imediatamente
+
+6. **Feedback:**
+   ```lua
+   player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+   player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have spawned " .. parameter[1] .. ".")
+   ```
+
+**Exemplos de Uso:**
+
+```
+GM: /spawn Rat
+
+Parse:
+- parameter[1] = "Rat"
+- parameter[2] = nil
+
+Config:
+- spawntime = 60 (default)
+- monster = "Rat"
+- pos = GM position
+- status = true
+
+Resultado:
+- Rat spawned na posição do GM
+- Spawntime 60 segundos
+- GREEN magic effect
+- Mensagem: "You have spawned Rat."
+
+---
+
+GM: /spawn Ferumbras, 180
+
+Parse:
+- parameter[1] = "Ferumbras"
+- parameter[2] = " 180"
+
+Config:
+- spawntime = 180
+- monster = "Ferumbras"
+
+Resultado:
+- Ferumbras spawned
+- Spawntime 180 segundos
+- Mensagem: "You have spawned Ferumbras."
+```
+
+**Diferenças com `/s` (Summon):**
+
+| Aspecto | /spawn | /s (Summon) |
+|---|---|---|
+| Sistema | Spawn system | Temporary pet |
+| Tipo | Monstro normal | Summon do GM |
+| Duração | Spawntime até despawn | Session duration |
+| Master | Nenhum | GM executor |
+| Objetivo | World populating | Assistência ao GM |
+
+---
+
+### **Estrutura de Configuração**
+
+A tabela `config` estrutura spawn:
+
+```lua
+{
+    spawntime = number,    -- Segundos até despawn
+    monster = string,      -- Nome do monstro
+    pos = Position,        -- Posição
+    status = true,         -- Ativo (sempre true)
+}
+```
+
+---
+
+### **Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `param:split(sep)` | Divide por separador |
+| `tonumber(str)` | Converte para número |
+| `Spawn()` | Cria novo spawn |
+| `spawn:setPositions(table)` | Configura spawn |
+| `spawn:executeSpawn()` | Executa spawn |
+| `player:getPosition()` | Posição do GM |
+| `position:sendMagicEffect(effect)` | Efeito visual |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `create_spawn.lua` é ferramenta de spawn dinâmico. Implementação minimalista usando Spawn system, suporte a spawntime customizável (default 60), feedback clara, magic effect GREEN. Essencial para GMs popuar mapa dinamicamente ou testar spawns. Design simples focado em eficiência.

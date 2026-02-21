@@ -1,0 +1,303 @@
+---
+title: Grimvale - Full Moon Event System
+description: Documentação técnica do arquivo grimvale.lua, que gerencia o evento de eclipse da lua cheia (Feroxa) com sistema de fases e spectators.
+sidebar:
+  order: 3
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **grimvale.lua** implementa um **evento global de lua cheia** onde o boss Feroxa spawna progressivamente através de 3 fases (0-15-30 min), com removal automático de itens/terreno e criação de cenário.
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/quests/grimvale.lua`
+</Card>
+
+<Aside type="caution">
+**Tipo**: Event System (Global)  
+**Boss**: Feroxa  
+**Duração Total**: 30+ minutos  
+**Armazém**: GlobalStorage.Feroxa.Active  
+**Estado**: 0 (inativo) → 1 → 2 → 3 (ativo)
+</Aside>
+
+## 📄 Visão Geral
+
+Sistema de **evento lunar progressivo** onde:
+1. **Fase 1** (0 min): Meia lua aparece
+2. **Fase 2** (15 min): Lua metade visible
+3. **Fase 3** (30 min): Lua totalmente exposta + Feroxa spawna
+
+## 🔧 Estrutura Técnica
+
+### Configuração
+
+```lua
+local config = {
+  position = {
+    fromPosition = Position(33415, 31522, 11),
+    toPosition = Position(33445, 31554, 11)
+  },
+}
+```
+
+- **Área**: 30x32 tiles (aprox)
+- **Z-level**: Floor 11 (topo de Grimvale)
+
+### Variáveis Globais
+
+```lua
+local oldpos = {}  -- Armazena posição anterior de players
+```
+
+## 🗺️ Fases do Evento
+
+### Fase 0: Inativo
+
+```
+GlobalStorage.Feroxa.Active = 0 (ou nil)
+Status: Evento não iniciado
+Próxima chamada: grimvaleSpectators() inicia processo
+```
+
+### Fase 1: Iniciar Evento
+
+```lua
+Game.setStorageValue(GlobalStorage.Feroxa.Active, 1)
+-- Não há ação automática aqui
+```
+
+### Fase 2: Meia Lua (15 minutos após fase 1)
+
+```lua
+Game.setStorageValue(GlobalStorage.Feroxa.Active, 2)
+-- Mensagem: "Half of the current full moon is visible now..."
+addEvent(grimvaleSpectators, 15 * 60 * 1000)  -- Próxima check em 15 min
+```
+
+- **Duração**: 15 minutos
+- **Broadcast**: Metade da lua está visível
+- **Próxima**: Agendado para fase 3
+
+### Fase 3: Lua Cheia + Feroxa (30 minutos após fase 1)
+
+```lua
+Game.setStorageValue(GlobalStorage.Feroxa.Active, 3)
+-- Sequência de eventos agendados:
+addEvent(removeItems, 15 * 60 * 1000)        -- Clear items
+addEvent(loadMap, 15 * 60 * 1000)            -- Load novo mapa
+addEvent(Game.broadcastMessage, 15 * 60 * 1000,
+         "The full moon is completely exposed: Feroxa awaits!")
+addEvent(final, 30 * 60 * 1000)              -- Feroxa aparece
+```
+
+## 🎮 Funções Principais
+
+### grimvaleSpectators()
+
+**Função**: Processa spectators na área e avança fase ou reagendar.
+
+```lua
+function grimvaleSpectators()
+  -- 1. Busca todos spectators na zona
+  local specs, spec = Game.getSpectators(
+    Position(33430, 31537, 11), false, false,
+    18, 18, 18, 18
+  )
+  
+  -- 2. Armazena posições anteriores
+  for i = 1, #specs do
+    spec = specs[i]
+    if spec and spec:isPlayer() then
+      oldpos = spec:getPosition()
+    end
+    -- 3. Agenda teleport em 60 minutos (com oldpos)
+    addEvent(teleportPlayer, 1, 60 * 1000, spec:getId(), oldpos)
+  end
+  
+  -- 4. Verifica storage para avançar fase
+  if Game.getStorageValue(GlobalStorage.Feroxa.Active) == 2 then
+    -- FASE 3: Remover items e spawn Feroxa
+    addEvent(removeItems, 15 * 60 * 1000)
+    addEvent(loadMap, 15 * 60 * 1000)
+    addEvent(Game.broadcastMessage, 15 * 60 * 1000,
+             "The full moon is completely exposed: Feroxa awaits!")
+    addEvent(final, 30 * 60 * 1000)
+    Game.setStorageValue(GlobalStorage.Feroxa.Active, 3)
+    return true
+  end
+  
+  -- 5. Reagendar para próxima check em 15 minutos
+  Game.setStorageValue(GlobalStorage.Feroxa.Active, 2)
+  addEvent(grimvaleSpectators, 15 * 60 * 1000)
+  addEvent(Game.broadcastMessage, 15 * 60 * 1000,
+           "Half of the current full moon is visible now...")
+end
+```
+
+**Timeline**:
+- **Min 0**: Function chamada, Phase=2, Broadcast "Half moon..."
+- **Min 15**: Verifica se Phase ainda == 2
+  - Se SIM: Avança para Phase 3 (Feroxa event)
+  - Se NÃO: Re-agenda grimvaleSpectators() em +15 min
+- **Min 30**: Final() = map load + Feroxa spawn
+
+### removeItems()
+
+**Função**: Remove todos itens na região (limpa campo de batalha).
+
+```lua
+function removeItems()
+  for x = config.position.fromPosition.x, config.position.toPosition.x do
+    for y = config.position.fromPosition.y, config.position.toPosition.y do
+      for z = config.position.fromPosition.z, config.position.toPosition.z do
+        local tile = Tile(Position(x, y, z))
+        if not tile then break end
+        
+        -- Remove todos items
+        local items = tile:getItems()
+        if items then
+          for i = 1, #items do
+            items[i]:remove()
+          end
+        end
+        
+        -- Remove ground
+        local ground = tile:getGround()
+        if ground then
+          ground:remove()
+        end
+      end
+    end
+  end
+end
+```
+
+**Propósito**: Limpeza total de arena antes de Feroxa (evita obstáculos)
+
+### loadMap()
+
+**Função**: Carrega arquivo de mapa pré-configurado.
+
+```lua
+local function loadMap()
+  Game.loadMap(DATA_DIRECTORY .. "/world/world_changes/full_moon/final.otbm")
+end
+```
+
+- **Tipo**: Carregamento de arquivo OTBM (Open Tibia Binary Map)
+- **Arquivo**: `world_changes/full_moon/final.otbm`
+- **Propósito**: Restaura cenário original ou transformado
+
+### removeFeroxa(feroxa)
+
+**Função**: Remove boss Feroxa após 5 minutos (timeout).
+
+```lua
+local function removeFeroxa(feroxa)
+  if not feroxa then
+    return true
+  end
+
+  feroxa = Game.createMonster("Feroxa", Position(33380, 31537, 11), true, true)
+  if feroxa then
+    addEvent(removeFeroxa, 5 * 60 * 1000, feroxa:getId())
+  end
+end
+```
+
+**Lógica**:
+- Se feroxa morreu: Retorna true
+- Se ainda viva: Reagenda removal em +5 min
+
+### final()
+
+**Função**: Finalização da fase 3 - spawn de Feroxa e setup de arena.
+
+```lua
+local function final()
+  -- 1. Teleporta spectators para posição central
+  local specs, spec = Game.getSpectators(
+    Position(33430, 31537, 11), false, false, 18, 18, 18, 18
+  )
+  for i = 1, #specs do
+    spec = specs[i]
+    if spec:isPlayer() then
+      spec:teleportTo(Position(33419, 31539, 10))
+    end
+  end
+  
+  -- 2. Configura teleporte na arena
+  local teleport = Tile(Position(33430, 31537, 11)):getItemById(1949)
+  if teleport and teleport:isTeleport() then
+    teleport:transform(22761)
+    teleport:setDestination(Position(33419, 31539, 10))
+    teleport:setActionId(12450)
+  end
+  
+  -- 3. Mensagem dramática
+  if spec then
+    spec:say("You are the contenders. This is your only chance...",
+             TALKTYPE_MONSTER_SAY, false, nil, Position(33419, 31539, 10))
+  end
+  
+  -- 4. Spawn Feroxa com auto-removal 5 min depois
+  local feroxa = Game.createMonster("Feroxa", Position(33380, 31537, 11), true, true)
+  addEvent(removeFeroxa, 5 * 60 * 1000, feroxa:getId())
+end
+```
+
+## 📊 Timeline Completa
+
+```
+[Trigger: grimvaleSpectators() chamada]
+↓
+Min 0: Broadcast "Half moon is visible..."
+       Storage = 2
+↓
+Min 15: Verifica Storage == 2?
+        ├─ SIM:
+        │   ├─ removeItems() agendado
+        │   ├─ loadMap() agendado
+        │   ├─ Broadcast "Full moon exposed: Feroxa awaits!"
+        │   ├─ final() agendado
+        │   └─ Storage = 3
+        │
+        └─ NÃO: Re-agenda em +15 min
+↓
+Min 30: final() executa
+        ├─ Teleporta players
+        ├─ Configura arena
+        ├─ Spawn Feroxa
+        └─ Auto-remove Feroxa em +5 min
+↓
+Min 35-∞: Feroxa vive ~5 min, depois removido automaticamente
+          (Ou removido ao morrer por player)
+```
+
+## 💾 Storage
+
+```lua
+GlobalStorage.Feroxa.Active
+- 0/nil: Inativo
+- 1: Iniciado (não usado diretamente)
+- 2: Meia lua (running)
+- 3: Lua cheia (Feroxa spawned)
+```
+
+## ⚠️ Notas Técnicas
+
+1. **Sem player requirement**: Event funciona mesmo sem players online
+2. **Persistent state**: Storage persiste entre restarts
+3. **Auto-removal**: Feroxa removido automaticamente após 5 min (evita permanência)
+4. **Area cleanup**: Todos itens/ground removidos antes de spawn
+5. **Broadcast global**: Mensagens vão para todos players online
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Completo  
+**Evento**: Lua Cheia de Grimvale (Feroxa)

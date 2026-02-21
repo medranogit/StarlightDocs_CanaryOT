@@ -1,0 +1,145 @@
+---
+title: Kick
+description: Comando GM para desconectar um jogador do servidor com validação de proteção de acesso
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `kick.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Desconectar jogador do servidor |
+| **Comando** | `/kick <playername>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Nome do jogador |
+| **Separador** | Espaço |
+| **Proteção** | Não permite kick de admins |
+| **Integração** | Webhook Discord para auditoria |
+| **Tipo de Mensagem** | WEBHOOK_COLOR_YELLOW |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/kick.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando simples de desconexão com proteção integrada. Valida se jogador tem acesso de admin via `getGroup():getAccess()` e bloqueia kick se verdadeiro. Envia webhook Discord automático com informações de quem fez kick. Remove jogador via `target:remove()`. Sem efeitos visuais ou confirmação adicional, reduz fricção. Útil para GMs responder rapidamente a violações de regras ou comportamento disruptivo.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `kick.lua` implementa um comando TalkAction (`/kick`) que permite gamemasters desconectar jogadores do servidor. O sistema valida busca do jogador pelo nome, verifica proteção de acesso (bloqueia kick de admins), envia notificação via webhook Discord para auditoria, e executa desconexão via `remove()`. Implementação simples sem parâmetros adicionais ou efeitos visuais, focada em resposta rápida a infrações.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local kick = TalkAction("/kick")
+
+-- 2. Função Principal (onSay)
+function kick.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Buscar jogador pelo nome
+    local target = Player(param)
+    
+    -- Validação: jogador não encontrado
+    if not target then
+        player:sendCancelMessage("Player not found.")
+        return true
+    end
+    
+    -- Validação: proteção de acesso (não pode kick admins)
+    if target:getGroup():getAccess() then
+        player:sendCancelMessage("You cannot kick this player.")
+        return true
+    end
+    
+    -- Enviar webhook Discord para auditoria
+    Webhook.sendMessage(
+        "Player Kicked",                          -- Título
+        target:getName() .. " has been kicked by " .. player:getName(),  -- Mensagem
+        WEBHOOK_COLOR_YELLOW,                     -- Cor (amarelo = aviso)
+        announcementChannels["serverAnnouncements"]  -- Canal de webhook
+    )
+    
+    -- Desconectar jogador
+    target:remove()
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+kick:separator(" ")
+kick:groupType("gamemaster")
+kick:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **kick.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/kick` é utilizado. Desconecta jogador do servidor com validações de proteção.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando (GM)
+- `words` (string): Palavras do comando (`/kick`)
+- `param` (string): **[OBRIGATÓRIO]** Nome do jogador a desconectar
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Busca de Jogador:**
+   - `target = Player(param)` - Busca por nome (case-sensitive)
+   - Se não encontrado: retorna "Player not found."
+
+3. **Validação de Proteção de Acesso:**
+   - `target:getGroup():getAccess()` - Verifica se é admin/moderador
+   - Se tem acesso: retorna "You cannot kick this player." (protege admins)
+
+4. **Webhook Discord:**
+   ```lua
+   Webhook.sendMessage(
+       "Player Kicked",
+       "{player} has been kicked by {gm}",
+       WEBHOOK_COLOR_YELLOW,
+       announcementChannels["serverAnnouncements"]
+   )
+   ```
+   - Título: "Player Kicked"
+   - Descrição: Nome do jogador + GM que fez kick
+   - Cor: YELLOW (aviso/auditoria)
+   - Canal: serverAnnouncements (configurado em config)
+
+5. **Desconexão:**
+   - `target:remove()` - Remove jogador da sessão ativa
+
+**Comportamento:**
+- Desconexão é imediata e sem confirmação
+- Jogador disconectado vê mensagem de desconexão normal (não "kicked")
+- Logs de server registram ação via webhook
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+### **Validações e Proteção**
+
+| Cenário | Ação | Retorno |
+|---|---|---|
+| Jogador não encontrado | Enviar erro | "Player not found." |
+| Jogador é admin | Bloquear | "You cannot kick this player." |
+| Jogador é válido | Desconectar | Webhook + remove() |
+
+---
+
+## 📌 Resumo
+
+O arquivo `kick.lua` é utilitário simples de moderação. Implementação minimalista com proteção de acesso para evitar desconexão acidental de admins, webhook automático para auditoria, e desconexão direta sem fricção. Essencial para resposta rápida a violações de regras ou comportamento disruptivo. Sem confirmação extra ou efeitos visuais, mantém rapidez operacional necessária para moderação eficaz.

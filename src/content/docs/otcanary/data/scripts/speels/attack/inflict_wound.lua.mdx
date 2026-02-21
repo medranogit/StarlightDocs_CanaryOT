@@ -1,0 +1,441 @@
+---
+title: "Spell - inflict_wound.lua"
+description: "Spell de infligir ferida para knights level 40 com condition BLEEDING"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `inflict_wound.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 141 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Knight, Elite Knight, Monk, Exalted Monk (4!) |
+| **Level Requerido** | 40 |
+| **Mana Requerida** | 30 |
+| **Words** | utori kor |
+| **Alcance** | 1 |
+| **Área** | Single target |
+| **Cooldown** | 30s |
+| **GroupCooldown** | 2s |
+| **Premium** | Não |
+| **Fórmula** | Fixed damage (15 dano + condition 2s) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_INFLICT_WOUND |
+| **Condition** | CONDITION_BLEEDING (sangramento!) |
+| **Condition Damage** | 15 dano fixo a cada 2s |
+| **Condition Delay** | 10 (delay antes de começar!) |
+| **Condition Period** | -50 (oscilação!) |
+| **Requer Target** | Sim (needTarget) |
+| **Bloqueia Walls** | Sim |
+| **isAggressive** | Sim |
+| **TARGETCASTERORTOPMOST** | 1 |
+| **Distance Effect** | CONST_ANI_WEAPONTYPE |
+| **USECHARGES** | 1 |
+| **Linhas de Código** | 32 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de infligir ferida para knights/monks nível 40 (mid). Dano físico fixed (15) com condition BLEEDING (sangramento!). RARO: 4 vocações (Knight + Monk + versões master!). Condition com delay 10ms antes de começar! Sistema de condition com damage oscilante. 30 mana (baato). Range 1 (melee). Target required. Cooldown 30s. Weapon distance effect. Não-premium. Spell CC utility melee!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/inflict_wound.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(141)
+spell:name("Inflict Wound")
+spell:words("utori kor")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_INFLICT_WOUND)
+spell:level(40)
+spell:mana(30)
+spell:isAggressive(true)
+spell:range(1)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:cooldown(30 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("knight;true", "elite knight;true", "monk;true", "exalted monk;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Infligir Ferida - Melee CC Utility Multi-Vocação BLEEDING**
+
+Este spell implementa um sistema ÚNICO de condition utility melee multi-vocação:
+
+1. **Fixed Damage com Condition:**
+   - Dano físico: 15 (fixed!)
+   - Condition BLEEDING (sangramento)
+   - Condition damage: 15 fixo
+   - Duration: 2 segundos
+   - Delay INICIAL: 10ms (unique!)
+
+2. **CC Utility Mid Knights/Monks:**
+   - Level 40 (mid)
+   - 30 mana (baato!)
+   - Cooldown 30s (long duration)
+   - RARO: 4 vocações!
+   - Para sangrar targets!
+
+3. **Melee Multi-Class:**
+   - Range 1 (melee!)
+   - Knight + Elite Knight
+   - Monk + Exalted Monk
+   - TARGETCASTERORTOPMOST: 1
+   - Weapon distance effect
+
+4. **Condition System:**
+   - CONDITION_BLEEDING (unique!)
+   - CONDITION_PARAM_DELAYED: 10 (UNIQUE DELAY!)
+   - addDamage(15, 2000, -50) oscilação!
+
+**Fórmula Visual:**
+```
+Knight/Monk lvl 40:
+  Impact damage: 15 (fixed)
+  
+Condition BLEEDING:
+  Initial delay: 10ms (sangurar devagar!)
+  Damage tick: 15 fixo
+  Duration: 2000ms (2s)
+  PeriodChange: -50 (oscilação!)
+
+Total effect:
+  Initial: 15 dano
+  Over 2s: 15 × múltiplos ticks (com delay inicial)
+  CC: Sangramento (BLEEDING)!
+```
+
+**Diferencial:** Melee CC multi-vocação condition BLEEDING com delay inicial!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `inflict_wound` oferece dano físico melee com condition CC:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE (fixed 15)
+- **Condition:** CONDITION_BLEEDING (sangramento!)
+- **Mana:** 30 (baato)
+- **Level:** 40 (mid)
+- **Range:** 1 (melee)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ TARGETCASTERORTOPMOST: 1
+├─ Effect: DRAWBLOOD
+├─ Distance Effect: WEAPONTYPE
+├─ USECHARGES: 1
+└─ Condition: BLEEDING
+    ├─ Delay: 10ms
+    ├─ Damage: 15 fixo
+    ├─ Duration: 2000ms
+    └─ Period: -50 (oscilação)
+
+spell.onCastSpell(creature, var)
+└─ combat:execute(creature, var)
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_TARGETCASTERORTOPMOST, 1)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_DRAWBLOOD)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_WEAPONTYPE)
+combat:setParameter(COMBATPARAM_USECHARGES, 1)
+```
+
+**Propósito:** Combat de dano físico melee com condition.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `TARGETCASTERORTOPMOST` | 1 | Target caster ou topmost |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_DRAWBLOOD | Efeito sangue |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_WEAPONTYPE | Weapon distance |
+| `COMBATPARAM_USECHARGES` | 1 | Consome charges |
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_BLEEDING)
+condition:setParameter(CONDITION_PARAM_DELAYED, 10)
+condition:addDamage(15, 2000, -50)
+combat:addCondition(condition)
+```
+
+**Propósito:** Condition de sangramento com damage periódico.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `Type` | CONDITION_BLEEDING | Sangramento! |
+| `DELAYED` | 10 | Delay inicial 10ms! |
+| `Damage` | 15 | Dano fixo |
+| `Duration` | 2000ms | 2 segundos |
+| `Period` | -50 | Oscilação negativa |
+
+**Detalhes:**
+- Dano fixo 15 (não aleatório)
+- `2000`: duração 2 segundos
+- `-50`: período oscilante (efeito variável!)
+- `10`: delay INICIAL antes de começar sangrar (UNIQUE!)
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples executa combat.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight ou Monk |
+| `var` | Variant | Target |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Ferida infligida |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Physical + condition |
+| `condition` | Condition | Arquivo | BLEEDING sangramento |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Condition-Based Utility Melee
+
+```lua
+local condition = Condition(CONDITION_BLEEDING)
+condition:setParameter(CONDITION_PARAM_DELAYED, 10)
+condition:addDamage(15, 2000, -50)
+combat:addCondition(condition)
+```
+
+**Benefício:** CC utility melee com damage delay!
+
+### Padrão 2: Delayed Condition Start
+
+```lua
+condition:setParameter(CONDITION_PARAM_DELAYED, 10)
+```
+
+**Benefício:** Sangramento começa com delay (UNIQUE!)
+
+### Padrão 3: Fixed Damage Condition
+
+```lua
+condition:addDamage(15, 2000, -50)
+```
+
+**Benefício:** Dano fixo, período oscilante!
+
+### Padrão 4: Multi-Vocação Melee CC
+
+```lua
+spell:vocation("knight;true", "elite knight;true", "monk;true", "exalted monk;true")
+```
+
+**Benefício:** 4 vocações melee CC utility!
+
+---
+
+## 🤖 Documentação das Funções
+
+### Condition: CONDITION_BLEEDING
+
+**Descrição:** Sangramento com damage periódico delayed.
+
+**Parâmetros:**
+
+| Nome | Valor | Descrição |
+|---|---|---|
+| `Type` | BLEEDING | Sangramento efeito |
+| `Delayed` | 10 | Delay inicial 10ms |
+| `Damage` | 15 | Fixo |
+| `Duration` | 2000ms | 2 segundos |
+| `Period` | -50 | Oscilação |
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Inflige ferida com condition CC.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight ou Monk |
+| `var` | Variant | Target |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Ferida infligida |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 40+
+- 30 mana
+- Target required
+- Range 1 (melee!)
+- Cooldown 30s (longo!)
+
+**Efeito:**
+- Efeito sangue (DRAWBLOOD)
+- Weapon distance effect
+- Damage initial: 15
+- Condition BLEEDING (sangramento!)
+- Delay inicial: 10ms
+- Damage over time: 2s
+- Period oscilante
+- Weapon charges usado
+
+**Exemplo:**
+
+```lua
+-- Knight lvl 40 vs target
+spell.onCastSpell(knight, targetVariant)
+// Validações:
+//   ✓ Level 40 >= 40
+//   ✓ Mana 30 disponível
+//   ✓ Target in range 1
+// Combat executa
+// Weapon distance effect
+// Impact damage: 15 físico
+// Condition BLEEDING aplicada
+// Delay inicial 10ms
+// Sangramento ativa!
+// Duration 2s com damage 15/tick
+// Weapon charges consumido
+// Cooldown 30s (longo!)
+// Resultado: CC utility melee!
+
+-- Monk lvl 40 vs target
+spell.onCastSpell(monk, targetVariant)
+// Mesmo efeito que Knight
+// Mesma condition BLEEDING
+// Mesma duração 2s
+// Resultado: CC utility melee monk também!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Mid CC Utility Melee
+
+```lua
+-- Knight/Monk lvl 40+
+// Inflict Wound = sangramento targets
+// CC utility para melee
+// Long cooldown 30s = regulated
+```
+
+### Caso 2: Melee CC Training
+
+```lua
+-- Knight farming sangramento
+// Inflict Wound = condition damage
+// Range 1 = melee close
+// 30 mana = baato
+// Cooldown 30s timer skill
+```
+
+### Caso 3: Multi-Vocação Utility
+
+```lua
+-- Knight/Monk/Exalted Monk
+// Inflict Wound = condition multi-class
+// Sangramento tática = shared
+// Melee CC advantage
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat, Condition
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Condition:** CONDITION_BLEEDING, CONDITION_PARAM_DELAYED
+- **Effects:** CONST_ME_DRAWBLOOD, CONST_ANI_WEAPONTYPE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Melee CC condition utility |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Dano** | Fixed 15 + condition 15/2s |
+| **Mana** | 30 (baato!) |
+| **Range** | 1 (melee!) |
+| **Level** | 40 (mid) |
+| **Cooldown** | 30s (longo!) |
+| **Premium** | Não |
+| **Condition** | BLEEDING (sangramento!) |
+| **Condition Delay** | 10ms inicial (UNIQUE!) |
+| **Condition Duration** | 2 segundos |
+| **Distance Effect** | WEAPONTYPE |
+| **Vocações** | Knight, Elite Knight, Monk, Exalted Monk (4!) |
+| **TARGETCASTERORTOPMOST** | 1 |
+| **USECHARGES** | 1 |
+| **Padrão** | Condition-based + multi-vocação + delayed start + weapon effect |

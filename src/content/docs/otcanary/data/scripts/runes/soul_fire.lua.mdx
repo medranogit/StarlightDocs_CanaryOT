@@ -1,0 +1,330 @@
+---
+title: "Spell/Rune - soul_fire.lua"
+description: "Runa de fogo com dano over time através de condition fire"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `soul_fire.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID do Item (runeId)** | 3195 |
+| **ID da Runa** | (Não definida - padrão auto!) |
+| **Level Requerido** | 27 |
+| **Magic Level Requerido** | 7 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Condition** | CONDITION_FIRE com DoT |
+| **Dano DoT** | 10 dano a cada 2000ms |
+| **Cooldown** | 2s |
+| **Cargas** | 3 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Bloqueio** | Sim (isBlocking: true) |
+| **Agressividade** | Sim |
+| **Requer Target** | Sim |
+| **Linhas de Código** | 28 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa de fogo com dano over time (DoT) via condition fire customizada. Não define rune:id() (comportamento atípico). Condition fire aplica 10 dano a cada 2000ms com delay inicial. Combina impacto FIREDAMAGE com queimadura prolongada. Requer target selecionado. Cargas moderadas (3) indicam poder consistente.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/soul_fire.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:group("attack")
+rune:name("soulfire rune")
+rune:runeId(3195)
+rune:allowFarUse(true)
+rune:needTarget(true)
+rune:charges(3)
+rune:level(27)
+rune:magicLevel(7)
+rune:isBlocking(true)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fogo da Alma com Queimadura Prolongada**
+
+Esta runa implementa um **sistema de dano inicial + DoT (damage over time)**:
+
+1. **Impacto Imediato:**
+   - COMBAT_FIREDAMAGE direto
+   - Efeito HITBYFIRE
+   - Dano instantâneo
+
+2. **DoT Condition:**
+   - CONDITION_FIRE customizada
+   - 10 dano a cada 2000ms (cada 2 segundos)
+   - Delayed: 1 (inicia após delay)
+
+3. **Sem Rune ID:**
+   - rune:id() não definido
+   - Usa ID padrão auto-assigned
+   - Comportamento atípico!
+
+4. **Requer Target:**
+   - needTarget: true
+   - Seleção explícita
+
+**Fluxo:**
+```
+Alvo atingido
+├─ Impacto FIREDAMAGE (instantâneo)
+├─ Efeito HITBYFIRE (visual)
+├─ Condition FIRE aplicada
+├─ Delay inicial (CONDITION_PARAM_DELAYED: 1)
+└─ 10 dano a cada 2s (persistente)
+```
+
+**Diferencial:** DoT clássico + soul identity!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `soul_fire` oferece dano com queimadura:
+
+- **Dano:** COMBAT_FIREDAMAGE + DoT
+- **Condition:** FIRE com 10 dano/2s
+- **Target:** Requerido
+- **Cargas:** 3
+
+### Arquitetura
+
+Combat com condition DoT:
+
+```
+local combat = Combat()
+├─ Type: FIREDAMAGE
+├─ Effect: HITBYFIRE
+├─ Distance: FIRE
+└─ Condition: FIRE
+   └─ DoT: 10 dano @ 2000ms
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITBYFIRE)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_FIRE)
+```
+
+**Propósito:** Combat com dano fogo.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITBYFIRE | Efeito queimadura |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_FIRE | Projétil fogo |
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_FIRE)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+condition:addDamage(10, 2000, -10)
+combat:addCondition(condition)
+```
+
+**Propósito:** Condition de queimadura com DoT.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `Type` | CONDITION_FIRE | Tipo: fogo |
+| `DELAYED` | 1 | Inicia com delay |
+| `addDamage(10, 2000, -10)` | 10 dano @ 2000ms | DoT persistente |
+
+**Fórmula DoT:**
+```
+10 dano a cada 2000ms (2 segundos)
+-10 = tick duration
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Soul fire ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com condition fire |
+| `condition` | Condition | Arquivo | DoT fire 10 dano/2s |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: DoT via Condition
+
+```lua
+local condition = Condition(CONDITION_FIRE)
+condition:setParameter(CONDITION_PARAM_DELAYED, 1)
+condition:addDamage(10, 2000, -10)
+combat:addCondition(condition)
+```
+
+**Benefício:** Queimadura persistente = dano prolongado.
+
+### Padrão 2: Sem Rune ID
+
+```lua
+-- rune:id() NÃO definido
+```
+
+**Benefício:** Auto-assigned ID (comportamento padrão fallback).
+
+### Padrão 3: Requer Target
+
+```lua
+rune:needTarget(true)
+```
+
+**Benefício:** Seleção explícita = controle precisão.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Aplica soul fire com DoT permanente.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Target (obrigatório) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Soul fire aplicado |
+| `false` | Target falhou |
+
+**Efeitos:**
+
+| Efeito | Tipo | Duração |
+|---|---|---|
+| FIREDAMAGE | Instantâneo | Imediato |
+| HITBYFIRE | Visual | Visível |
+| CONDITION_FIRE | DoT | Persistente |
+| Tick | 10 dano @ 2000ms | Enquanto ativo |
+
+**Exemplo:**
+
+```lua
+-- Mago nível 27, MLvl 7
+rune.onCastSpell(mago, targetVariant, false)
+// Combat executa
+// Impacto FIREDAMAGE
+// Efeito HITBYFIRE (visual)
+// Condition FIRE aplicada
+// Alvo sofre:
+//   - Impacto inicial
+//   - 10 dano a cada 2s
+// Resultado: Queimadura prolongada!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Dano Persistente
+
+```lua
+-- Mago quer DoT prolongado
+// Soul fire = queimadura
+// 10 dano a cada 2s = cumulativo
+```
+
+### Caso 2: Targeting Preciso
+
+```lua
+-- needTarget: true
+// Seleção explícita
+// Sem erro de target
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat Condition
+- **Condition:** CONDITION_FIRE
+- **Parameters:** CONDITION_PARAM_DELAYED, addDamage
+- **Effects:** CONST_ME_HITBYFIRE, CONST_ANI_FIRE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Fogo com DoT |
+| **Dano Type** | COMBAT_FIREDAMAGE + CONDITION_FIRE |
+| **DoT** | 10 dano a cada 2000ms |
+| **Cargas** | 3 |
+| **Distancia** | Sim (allowFarUse) |
+| **Bloqueio** | Sim |
+| **Target** | Requerido |
+| **Level** | 27 (mid) |
+| **MLvl** | 7 |
+| **Padrão** | DoT condition + sem rune:id |

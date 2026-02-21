@@ -1,0 +1,388 @@
+---
+title: "Spell/Rune - fireball.lua"
+description: "Runa ofensiva de bola de fogo com dano escalável em single target"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `fireball.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 15 |
+| **ID do Item (runeId)** | 3189 |
+| **Level Requerido** | 27 |
+| **Magic Level Requerido** | 4 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Área** | Single target (sem area) |
+| **Cooldown** | 2s |
+| **Cargas** | 5 |
+| **PZ Locked** | Não |
+| **Requer Target** | Sim |
+| **Agressividade** | Sim |
+| **Linhas de Código** | 33 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa ofensiva que causa dano de fogo escalável em single target. Usa fórmula dinâmica baseada em level + maglevel com pesos diferentes. Sem PZ lock permite uso em town. Requer target selecionado.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/fireball.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(15)
+rune:runeId(3189)
+rune:level(27)
+rune:magicLevel(4)
+rune:group("attack")
+rune:needTarget(true)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Bola de Fogo com Escalabilidade**
+
+Esta runa implementa um **sistema de dano escalável com alvo requerido**:
+
+1. **Fórmula Escalável:**
+   - min = (level/5) + (maglevel*1.81) + 10
+   - max = (level/5) + (maglevel*3) + 18
+   - Crescimento suave + bônus fixo
+
+2. **Sem PZ Lock:** Funciona em town!
+3. **Target Requerido:** Precisa clicar no alvo
+4. **Efeito:** FIREATTACK (ataque, não queimadura)
+
+**Fórmula Visual:**
+```
+level 27, mlvl 4:
+  min = 5.4 + 7.24 + 10 = 22.64
+  max = 5.4 + 12 + 18 = 35.4
+
+level 50, mlvl 10:
+  min = 10 + 18.1 + 10 = 38.1
+  max = 10 + 30 + 18 = 58
+```
+
+**Diferencial:** Barata (5 cargas), no PZ lock = early disponibilidade!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `fireball` oferece dano escalável inicial:
+
+- **Dano:** COMBAT_FIREDAMAGE escalável
+- **Fórmula:** (level/5) + (maglevel*1.81/3) + bônus
+- **Área:** Single target
+- **Acesso:** Level 27, sem PZ lock
+
+### Arquitetura
+
+Combat com fórmula callback:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_FIREDAMAGE
+├─ Effect: FIREATTACK
+├─ Distance: FIRE
+└─ Callback: onGetFormulaValues
+
+onGetFormulaValues()
+└─ min/max escalável
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_FIREATTACK)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_FIRE)
+```
+
+**Propósito:** Instância de Combat para bola de fogo.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_FIREATTACK | Efeito ataque |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_FIRE | Projétil fogo |
+
+**Características:**
+- Sem `combat:setArea()` = single target
+- Callback para fórmula escalável
+- Sem armor bypass
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.81) + 10
+	local max = (level / 5) + (maglevel * 3) + 18
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level total |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 1.81) + 10
+max = (level / 5) + (maglevel * 3) + 18
+```
+
+**Pesos:**
+- Level: 0.2 por nível
+- Maglevel min: 1.81
+- Maglevel max: 3.0
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 27 | 4 | 23 | 35 |
+| 40 | 8 | 37 | 57 |
+| 60 | 15 | 54 | 81 |
+| 100 | 25 | 85 | 123 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler da runa.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Dano aplicado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Fórmula Assimétrica
+
+```lua
+local min = (level / 5) + (maglevel * 1.81) + 10
+local max = (level / 5) + (maglevel * 3) + 18
+```
+
+**Benefício:** Maglevel tem impacto maior que level (~2x).
+
+### Padrão 2: Bônus Fixo
+
+```lua
+-- + 10 (min), + 18 (max)
+```
+
+**Benefício:** Garante dano base mesmo com level baixo.
+
+### Padrão 3: Sem PZ Lock
+
+```lua
+-- Runa SEM rune:setPzLocked(true)
+```
+
+**Benefício:** Funciona em town, early availability.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano de fireball.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(player, 40, 8)
+// min = 8 + 14.48 + 10 = 32.48
+// max = 8 + 24 + 18 = 50
+// Retorna: -32.48, -50
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Lança bola de fogo escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Target (obrigatório) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Dano aplicado |
+| `false` | Target inválido |
+
+**Efeito:**
+- Projétil fogo viaja
+- Impacto FIREATTACK
+- Dano escalável aplicado
+- Single target (sem área)
+
+**Exemplo:**
+
+```lua
+-- Mago nível 40, MLvl 8 aponta em inimigo
+rune.onCastSpell(mago, targetVariant, false)
+// Precisa target selecionado (needTarget)
+// Calcula dano: -32 a -50
+// Projétil viaja e impacta
+// Resultado: Inimigo queimado
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Early Game Fireball
+
+```lua
+-- Mago novato nível 27
+-- Wants escalable damage
+// Fireball disponível
+// Escalabilidade com progresso
+```
+
+### Caso 2: Town Safe
+
+```lua
+-- Sem PZ lock
+// Funciona em town
+// Útil para preemptive strikes
+```
+
+### Caso 3: Escalabilidade
+
+```lua
+-- Mesmo mago, level 27 -> 60
+// Dano: 23 -> 54
+// Melhora contínua
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage Type:** COMBAT_FIREDAMAGE
+- **Effects:** CONST_ME_FIREATTACK
+- **Distance:** CONST_ANI_FIRE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Dano fogo escalável |
+| **Dano Type** | COMBAT_FIREDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*1.81)+10, max=(lvl/5)+(mlvl*3)+18 |
+| **Area** | Single target |
+| **Cargas** | 5 (barata) |
+| **PZ Lock** | Não (funciona town) |
+| **Target** | Requerido |
+| **Level** | 27 (mid-game) |
+| **Padrão** | Callback + escalabilidade assimétrica |

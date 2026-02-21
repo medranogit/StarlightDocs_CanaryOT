@@ -1,0 +1,267 @@
+---
+title: spawn_system.lua
+description: CreatureEvents "monsterDeath" e "monsterDeathBoss" que integram sistema de spawn de monsters com execução de callbacks.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="spawn_system.lua" icon="pencil">
+Listeners de morte que gerenciam ciclo de vida de monsters spawned.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/monster/spawn_system.lua`
+
+**Linhas:** 27 | **Events:** CreatureEvent "monsterDeath" + "monsterDeathBoss" | **Tipo:** onDeath Listeners
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra dois listeners de morte para gerenciar spawn system. Ambos validam se creature é monster. `monsterDeath`: obtem spawn object via storage (MonsterStorage.Spawn.monster_spawn_object), executa callback "onDeath", deleta monster da lista. `monsterDeathBoss`: obtem spawn object, remove spawn inteiro e todos os monsters. Padrão de lifecycle management com callbacks.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT 1: "monsterDeath"
+  └─ onDeath(creature, corpse, killer, mostDamage, unjustified, mostDamageUnjustified)
+      ├─ Validação: creature:isMonster()?
+      │   ├─ SIM → Continua
+      │   └─ NÃO → return true (silencioso)
+      │
+      ├─ self = creature:getStorageValue(MonsterStorage.Spawn.monster_spawn_object)
+      │   └─ Obtem spawn object
+      │
+      ├─ self:executeFunctionMonster("onDeath", creature)
+      │   └─ Executa callback externo
+      │
+      ├─ self:deleteMonster(creature)
+      │   └─ Remove monster da lista
+      │
+      └─ return true
+
+EVENT 2: "monsterDeathBoss"
+  └─ onDeath(creature, corpse, killer, mostDamage, unjustified, mostDamageUnjustified)
+      ├─ Validação: creature:isMonster()?
+      │   ├─ SIM → Continua
+      │   └─ NÃO → return true (silencioso)
+      │
+      ├─ self = creature:getStorageValue(MonsterStorage.Spawn.monster_spawn_object)
+      │   └─ Obtem spawn object
+      │
+      ├─ self:removeSpawn()
+      │   └─ Remove spawn inteiro
+      │
+      ├─ self:removeMonsters()
+      │   └─ Remove todos os monsters
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| monsterDeath | CreatureEvent | Listener monsterDeath |
+| monsterDeathBoss | CreatureEvent | Listener monsterDeathBoss |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| MonsterStorage.Spawn.monster_spawn_object | constant | Chave de storage para spawn object |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters (ambos)
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| creature | Monster | Monster que morreu |
+| corpse | Item | Corpo deixado |
+| killer | Player | Assassino |
+| mostDamage | Player | Player com mais dano |
+| unjustified | bool | Morte injustificada |
+| mostDamageUnjustified | bool | Most damage injustificado |
+
+### Storage Keys
+
+| Chave | Tipo | Descrição |
+|-------|------|-----------|
+| MonsterStorage.Spawn.monster_spawn_object | storage | Storage que armazena spawn object |
+
+---
+
+## Fluxo de Operação
+
+### monsterDeath - Regular Monster Death
+
+```lua
+local monsterDeath = CreatureEvent("monsterDeath")
+
+function monsterDeath.onDeath(creature, corpse, killer, mostDamage, unjustified, mostDamageUnjustified)
+	if creature and creature:isMonster() then
+		local self = creature:getStorageValue(MonsterStorage.Spawn.monster_spawn_object)
+		self:executeFunctionMonster("onDeath", creature)
+		self:deleteMonster(creature)
+		return true
+	end
+	return true
+end
+
+monsterDeath:register()
+```
+
+### monsterDeathBoss - Boss Death (Cleanup)
+
+```lua
+local monsterDeathBoss = CreatureEvent("monsterDeathBoss")
+
+function monsterDeathBoss.onDeath(creature, corpse, killer, mostDamage, unjustified, mostDamageUnjustified)
+	if creature and creature:isMonster() then
+		local self = creature:getStorageValue(MonsterStorage.Spawn.monster_spawn_object)
+		self:removeSpawn()
+		self:removeMonsters()
+		return true
+	end
+	return true
+end
+
+monsterDeathBoss:register()
+```
+
+### Árvore de Decisão
+
+```
+Monster morre
+  │
+  ├─ creature exists && creature:isMonster()?
+  │   ├─ SIM → Continua
+  │   └─ NÃO → return true (silencioso)
+  │
+  ├─ self = getStorageValue(MonsterStorage.Spawn.monster_spawn_object)
+  │   └─ Obtem spawn object da storage
+  │
+  ├─ TIPO DE MONSTER?
+  │   │
+  │   ├─ REGULAR (monsterDeath):
+  │   │   ├─ self:executeFunctionMonster("onDeath", creature)
+  │   │   │   └─ Executa callback externo
+  │   │   │
+  │   │   └─ self:deleteMonster(creature)
+  │   │       └─ Remove apenas este monster
+  │   │
+  │   └─ BOSS (monsterDeathBoss):
+  │       ├─ self:removeSpawn()
+  │       │   └─ Remove spawn inteiro
+  │       │
+  │       └─ self:removeMonsters()
+  │           └─ Remove todos os monsters
+  │
+  └─ return true (sucesso)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onDeath**: Callback disparado ao morrer
+- **creature:isMonster()**: Valida se é monster
+- **getStorageValue()**: Obtem spawn object (storage)
+- **executeFunctionMonster()**: Executa callback na classe spawn
+- **deleteMonster()**: Remove monster (mas não o spawn)
+- **removeSpawn()**: Remove spawn inteiro
+- **removeMonsters()**: Remove todos os monsters do spawn
+- **Storage-based Delegation**: Usa storage para obter objeto externo
+
+### Responsabilidades do Handler
+
+**monsterDeath:**
+1. **Validar**: creature:isMonster()?
+2. **Obter**: spawn object via storage
+3. **Callback**: executeFunctionMonster("onDeath")
+4. **Deletar**: Apenas este monster
+5. **Confirmar**: return true
+
+**monsterDeathBoss:**
+1. **Validar**: creature:isMonster()?
+2. **Obter**: spawn object via storage
+3. **Cleanup**: removeSpawn() + removeMonsters()
+4. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Storage-based Object Retrieval
+
+Obter objeto armazenado em storage:
+
+```lua
+local self = creature:getStorageValue(MonsterStorage.Spawn.monster_spawn_object)
+```
+
+### Padrão External Function Execution
+
+Executar função na classe spawn:
+
+```lua
+self:executeFunctionMonster("onDeath", creature)
+```
+
+### Padrão Regular Monster Cleanup
+
+Deletar apenas este monster:
+
+```lua
+self:deleteMonster(creature)
+```
+
+### Padrão Boss Cleanup
+
+Deletar spawn inteiro:
+
+```lua
+self:removeSpawn()
+self:removeMonsters()
+```
+
+### Comparação: Regular vs Boss
+
+| Operação | monsterDeath | monsterDeathBoss |
+|----------|--------------|------------------|
+| Obter spawn | getStorageValue | getStorageValue |
+| Callback | executeFunctionMonster | (nenhum) |
+| Cleanup | deleteMonster (único) | removeSpawn + removeMonsters |
+| Escopo | Monster individual | Spawn inteiro |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: spawn_system.lua" icon="star">
+Análise de listeners de morte para spawn system. Demonstra storage-based delegation, callbacks e lifecycle management.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Monster spawn lifecycle management | Complexidade: Média
+</Aside>

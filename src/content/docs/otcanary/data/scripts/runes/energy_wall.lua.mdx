@@ -1,0 +1,292 @@
+---
+title: "Spell/Rune - energy_wall.lua"
+description: "Runa que cria linha/parede de campos de energia com área extensa e dano variável"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `energy_wall.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 33 |
+| **ID do Item (runeId)** | 3166 |
+| **Level Requerido** | 41 |
+| **Magic Level Requerido** | 9 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Área** | Wall + Diagonal (linha/parede) |
+| **Cooldown** | 2s |
+| **Cargas** | 4 |
+| **PZ Locked** | Sim |
+| **Agressividade** | Sim |
+| **Linhas de Código** | 31 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Runa que cria parede de campos de energia em linha com área extensa. Usa áreas WALLFIELD_ENERGY + AREADIAGONAL para cobertura em linha/parede. Permite controle territorial avançado.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/energy_wall.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(33)
+rune:runeId(3166)
+rune:level(41)
+rune:magicLevel(9)
+rune:group("attack")
+rune:setPzLocked(true)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Parede de Energia com Cobertura Diagonal**
+
+Esta runa implementa um **sistema de controle territorial em linha**:
+
+1. **Área Wall:** AREA_WALLFIELD_ENERGY
+   - Cria linha horizontal ou vertical
+   - Múltiplos fields em sequência
+
+2. **Área Diagonal:** AREADIAGONAL_WALLFIELD_ENERGY
+   - Cobre cantos diagonais
+   - Bloqueia fuga por diagonal
+
+3. **Cargas:** 4 (cara, mas extensa)
+4. **PZ Locked:** Força combate fora town
+
+**Fluxo:**
+```
+Aponta runa em linha
+├─ Area wallfield (linha)
+├─ Area diagonal (cantos)
+├─ Múltiplos fields criados
+└─ Parede completa bloqueia
+```
+
+**Diferencial:** Wall patterns = controle territorial max!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `energy_wall` oferece criação de parede:
+
+- **Dano:** COMBAT_ENERGYDAMAGE
+- **Áreas:** Wall + diagonal (cobertura linha)
+- **Fields:** Múltiplos em parede
+- **Controle:** Territorial completo
+
+### Arquitetura
+
+Combat com áreas especializadas:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_ENERGYDAMAGE
+├─ Effect: ENERGYHIT
+├─ Distance: ENERGYBALL
+├─ CreateItem: ENERGYFIELD_PVP
+├─ Area: WALLFIELD_ENERGY
+└─ Area: AREADIAGONAL_WALLFIELD_ENERGY
+
+rune.onCastSpell()
+└─ combat:execute(creature, var)
+```
+
+### Fluxo Lógico Resumido
+
+| Etapa | Descrição |
+|---|---|
+| **Conjura** | onCastSpell() |
+| **PZ Lock** | Valida fora PZ |
+| **Combat Execute** | Wall fields criados |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYHIT)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGYBALL)
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_ENERGYFIELD_PVP)
+combat:setArea(createCombatArea(AREA_WALLFIELD_ENERGY, AREADIAGONAL_WALLFIELD_ENERGY))
+```
+
+**Propósito:** Instância de Combat para parede de energia.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ENERGYDAMAGE | Dano energia |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ENERGYHIT | Impacto |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ENERGYBALL | Projétil |
+| `COMBAT_PARAM_CREATEITEM` | ITEM_ENERGYFIELD_PVP | Field criado |
+| `Area 1` | AREA_WALLFIELD_ENERGY | Linha principal |
+| `Area 2` | AREADIAGONAL_WALLFIELD_ENERGY | Diagonais |
+
+**Características:**
+- 2 áreas combinadas = cobertura completa
+- Sem fórmula = dano fixo
+- Wall patterns = linha/parede
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler principal da runa ao conjuração.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Alvo (position) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Wall criada, fields múltiplos |
+| `false` | PZ lock bloqueado |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Múltiplas Áreas
+
+```lua
+combat:setArea(createCombatArea(AREA_WALLFIELD_ENERGY, AREADIAGONAL_WALLFIELD_ENERGY))
+```
+
+**Benefício:** Duas áreas combinadas = cobertura line + diagonal.
+
+### Padrão 2: Wall Patterns
+
+```lua
+AREA_WALLFIELD_ENERGY           -- Linha
+AREADIAGONAL_WALLFIELD_ENERGY   -- Diagonais
+```
+
+**Benefício:** Checa padrão do mapa (horizontal vs vertical).
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Cria parede de campos de energia.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Position alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Wall criada |
+| `false` | PZ bloqueado |
+
+**Efeito:**
+- Parede de fields criados
+- Cobertura linha + diagonal
+- Múltiplos fields em sequência
+
+**Exemplo:**
+
+```lua
+-- Sorcerer nível 41 cria parede
+rune.onCastSpell(sorcerer, lineVariant, false)
+// Parede horizontal (wallfield)
+// Diagonais cobertas (areadiagonal)
+// Resultado: Linha completa de energy fields
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Bloqueio de Passagem
+
+```lua
+-- Sorcerer cria wall em corredor
+// Energy fields em linha
+// Bloqueia passagem completa
+// Resultado: Fuga impossível
+```
+
+### Caso 2: Defesa Territorial
+
+```lua
+-- Criador usa 4 cargas para parede completa
+// Wall + diagonais
+// Zona protegida por energia
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Areas:** AREA_WALLFIELD_ENERGY, AREADIAGONAL_WALLFIELD_ENERGY
+- **Field:** ITEM_ENERGYFIELD_PVP
+- **Effects:** CONST_ME_ENERGYHIT
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Cria parede de energy fields |
+| **Áreas** | Wall + diagonal (2) |
+| **Cargas** | 4 (cara, extensa) |
+| **PZ Locked** | Sim |
+| **Level** | 41 (late game) |
+| **Padrão** | Múltiplas áreas combinadas |

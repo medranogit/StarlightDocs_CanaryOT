@@ -1,0 +1,299 @@
+---
+title: "Player - on_rotate_item.lua"
+description: "Callback de rotação/virada de item com validação de movimento"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `on_rotate_item.lua` |
+| **Localização** | `data/scripts/eventcallbacks/player/` |
+| **Tipo de Script** | EventCallback |
+| **Callback Principal** | `PlayerOnRotateItemBaseEvent` |
+| **Função Registrada** | `playerOnRotateItem(player, item, position)` |
+| **Linhas de Código** | 11 |
+| **Complexidade** | Trivial-Médium |
+| **Status** | Base implementation com validação |
+
+**Descrição:**
+Callback responsável por processar eventos quando um jogador tenta rotacionar/virar um item no chão ou em container. Valida se item é imóvel (immovable) e bloqueia rotação se necessário, retornando mensagem de erro apropriada.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/eventcallbacks/player/on_rotate_item.lua
+```
+
+**Pré-requisitos:**
+- EventCallback API (`EventCallback` função global)
+- Item action ID system
+- IMMOVABLE_ACTION_ID constant
+- RETURNVALUE_NOTPOSSIBLE constant
+- Player cancel message system
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Rotação de Item (Rotate Item)**
+
+Quando um jogador tenta rotacionar um item:
+
+1. **Trigger:** Client envia ROTATE_ITEM packet
+2. **Validação:** playerOnRotateItem verifica se item é imóvel
+3. **Ação:** Se imóvel, cancela e mostra mensagem; se móvel, permite
+
+**Exemplo de Cenários:**
+```
+Rotação Permitida:
+  Item: Tronco de árvore (rotatable furniture)
+  Action ID: 0 (default, não immovable)
+  Resultado: Item rotaciona ✓
+
+Rotação Bloqueada:
+  Item: Estatua antiga (decoração)
+  Action ID: IMMOVABLE_ACTION_ID
+  Resultado: "Sorry, not possible." (bloqueado) ✗
+
+Items com Action ID especiais:
+  - IMMOVABLE_ACTION_ID → não pode rotacionar
+  - Outros custom IDs → podem ter comportamentos diferentes
+```
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `on_rotate_item.lua` implementa o callback de rotação de item. Quando um jogador tenta rotacionar um item:
+
+- **Valida se item é imóvel** via action ID
+- **Bloqueia rotação se imóvel** com mensagem de erro
+- **Permite rotação se móvel** retornando true
+
+### Arquitetura
+
+O script usa um padrão simples de **permission check com early return**:
+
+```
+playerOnRotateItem (entrada)
+  ├─ item:getActionId() == IMMOVABLE_ACTION_ID?
+  │  ├─ true → sendCancelMessage + return false
+  │  └─ false → return true (permitir)
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Validação | Saída |
+|---------|-----------|-------|
+| Imóvel (IMMOVABLE_ACTION_ID) | Bloqueia | false + mensagem erro |
+| Móvel (action ID ≠ IMMOVABLE) | Permite | true (ação prossegue) |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (Callback)
+
+#### **playerOnRotateItem(player, item, position)**
+
+```lua
+function callback.playerOnRotateItem(player, item, position)
+	if item:getActionId() == IMMOVABLE_ACTION_ID then
+		player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		return false
+	end
+
+	return true
+end
+```
+
+**Propósito:** Entry point do callback. Valida se item pode ser rotacionado.
+
+**Fluxo de Execução:**
+
+1. **Validação:** Obtém action ID do item
+2. **Comparação:** Verifica se é IMMOVABLE_ACTION_ID
+3. **Bloquear se imóvel:**
+   - Envia mensagem de erro: "Sorry, not possible."
+   - Retorna `false` (ação é cancelada)
+4. **Permitir senão:** Retorna `true` (ação é permitida)
+
+**Parâmetros:**
+- `player` - Player tentando rotacionar o item
+- `item` - Item object sendo rotacionado
+- `position` - Position table `{x, y, z}` do item
+
+**Retorno:**
+- `true` - Rotação permitida
+- `false` - Rotação bloqueada
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Não há variáveis locais declaradas
+
+### Constantes Globais Referenciadas
+
+| Constante | Uso | Descrição |
+|-----------|-----|-----------|
+| `IMMOVABLE_ACTION_ID` | playerOnRotateItem | Action ID que marca items como imóveis |
+| `RETURNVALUE_NOTPOSSIBLE` | playerOnRotateItem | Código de erro para ações impossíveis |
+
+### Item Methods Utilizados
+
+| Método | Descrição |
+|--------|-----------|
+| `item:getActionId()` | Retorna action ID do item (0 = default, >0 = custom) |
+
+### Player Methods Utilizados
+
+| Método | Descrição |
+|--------|-----------|
+| `player:sendCancelMessage(returnValue)` | Envia mensagem de erro ao jogador |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Immovable Flag via Action ID
+
+**Técnica:** Usar action ID como flag para propriedades de item.
+
+```lua
+if item:getActionId() == IMMOVABLE_ACTION_ID then
+	-- Item é imóvel, bloqueia ação
+	return false
+end
+```
+
+**Vantagem:** Simples, centralizado. Fácil marcar items como immovable no editor.
+
+**Aplicação:** Qualquer propriedade binária em items (immovable, undroppable, locked).
+
+---
+
+### Padrão 2: Early Return for Denied Permission
+
+**Técnica:** Retornar false imediatamente quando permissão é negada.
+
+```lua
+if item:getActionId() == IMMOVABLE_ACTION_ID then
+	player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+	return false  -- Early return, não executa resto
+end
+```
+
+**Vantagem:** Reduz indentação, melhora legibilidade, evita lógica complexa.
+
+**Aplicação:** Validação de permissão/acesso em qualquer callback.
+
+---
+
+### Padrão 3: Paired Error Message with Return Code
+
+**Técnica:** Enviar mensagem de erro junto com código de retorno.
+
+```lua
+player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)  -- Mensagem: "Sorry, not possible."
+return false  -- Indica falha ao engine
+```
+
+**Vantagem:** Player recebe feedback. Engine sabe ação falhou. Consistent.
+
+**Aplicação:** Qualquer ação que pode ser negada.
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Jogador tenta rotacionar furniture normal
+
+```
+playerOnRotateItem(player, tablewood, position{100, 100, 7})
+  ├─ item:getActionId() → 0 (default)
+  ├─ compare: 0 == IMMOVABLE_ACTION_ID? → false
+  └─ return true → Cliente rotaciona item ✓
+```
+
+**Resultado:** Furniture rotaciona normalmente
+
+---
+
+### Cenário 2: Jogador tenta rotacionar estátua imóvel
+
+```
+playerOnRotateItem(player, statue, position{100, 100, 7})
+  ├─ item:getActionId() → IMMOVABLE_ACTION_ID (e.g., 7543)
+  ├─ compare: 7543 == IMMOVABLE_ACTION_ID? → true
+  ├─ player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+  │  └─ Client mostra: "Sorry, not possible."
+  └─ return false → Rotação bloqueada ✗
+```
+
+**Resultado ao Cliente:** Mensagem de erro, item não rotaciona
+
+---
+
+### Cenário 3: Jogador com perms admin tenta rotacionar imóvel
+
+```
+playerOnRotateItem(adminPlayer, statue, position)
+  ├─ [Mesmo fluxo, IMMOVABLE_ACTION_ID bloqueia universal]
+  ├─ Callback base não verifica grupo do player
+  └─ return false → Mesmo admin é bloqueado no base callback
+```
+
+**Nota:** Para admin bypass, seria necessário adicionar check de `player:getGroup():getAccess()`
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial-Médium |
+| **Estimativa de Aprendizado** | 10 minutos |
+| **Tópicos Principais** | Permission checks, Action ID flags, Early returns, Cancel messages |
+| **Padrões Documentados** | 3 padrões |
+| **Cenários Documentados** | 3 cenários (rotate allowed, blocked, admin case) |
+| **Funções** | 1 (playerOnRotateItem - callback entry) |
+| **Callbacks Registrados** | PlayerOnRotateItemBaseEvent |
+| **Dependencies** | IMMOVABLE_ACTION_ID constant, RETURNVALUE_NOTPOSSIBLE constant |
+
+### Curva de Aprendizado
+
+**Trivial-Médium:** 
+- Básico: Entender early return pattern (~5 min)
+- Intermediário: Compreender action ID flags system (~5 min)
+
+### Variações de Action IDs
+
+| Action ID | Comportamento | Uso |
+|-----------|--------------|-----|
+| `0` | Default | Items normais (rotáveis) |
+| `IMMOVABLE_ACTION_ID` | Bloqueado | Decorações/estátuas |
+| Outros custom IDs | Customizado | Podem ter comportamentos especiais |
+
+### Melhorias Potenciais
+
+- [ ] Adicionar check de admin for bypass (getAccess())
+- [ ] Implementar custom action ID handlers (switch statement)
+- [ ] Adicionar logging de tentativas bloqueadas
+- [ ] Suportar diferentes mensagens por tipo de item
+- [ ] Implementar quest/event-based immovable flags (temporário)
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Permission check with early return pattern

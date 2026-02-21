@@ -1,0 +1,149 @@
+---
+title: appearances.dat
+description: Arquivo binário com dados de aparências de itens do Tibia
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="appearances.dat" icon="star">
+Arquivo binário compilado contendo metadados de aparências visuais de todos os itens do servidor.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/items/appearances.dat`
+
+Arquivo binário que não deve ser editado manualmente. É tipicamente gerado a partir de tools de compilação da engine Tibia.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O arquivo `appearances.dat` é um arquivo binário propietário que armazena informações compiladas sobre a aparência de todos os itens do jogo. Diferentemente do `items.xml` que é textual e declarativo, este arquivo contém dados otimizados em formato binário para acesso rápido pela engine.
+
+**Estrutura Geral**
+
+```
+[BINARY DATA]
+├── Header (Magic bytes + Version)
+├── Item Appearance Catalog
+│   ├── Item ID
+│   ├── Sprite ID
+│   ├── Animation Data
+│   ├── Physics Properties
+│   └── Visual Flags
+└── Index Tables (for fast lookup)
+```
+
+## Características Técnicas
+
+### Propósito do Arquivo
+
+- Contém dados compilados de sprite IDs associados aos item IDs
+- Armazena informações de animação (frames, delays)
+- Define propriedades físicas (tamanho, colisão)
+- Otimizado para leitura rápida em tempo de execução
+
+### Formato Binário
+
+O arquivo segue o protocolo binário proprietário da engine Tibia:
+
+- **Magic Signature**: Bytes iniciais identificam o tipo de arquivo
+- **Versão**: Compatibilidade com versão específica do cliente/servidor
+- **Tabelas Hash**: Índices para lookup O(1) de aparências por ID
+- **Blocos de Dados**: Aparências de itens em sequência
+
+### Relação com items.xml
+
+| Aspecto | items.xml | appearances.dat |
+|---------|-----------|-----------------|
+| **Formato** | Texto XML | Binário compilado |
+| **Editável** | Sim, manualmente | Não, gerado |
+| **Acesso** | Leitura em startup | Acesso rápido em runtime |
+| **Conteúdo** | Configuração lógica | Dados visuais compilados |
+
+## Tipos de Dados Armazenados
+
+### Por Item
+
+Cada entrada contém:
+
+1. **Identificadores**
+   - Item ID (referência cruzada com items.xml)
+   - Sprite ID (textura/visual)
+
+2. **Propriedades de Animação**
+   - Frame count
+   - Duration entre frames
+   - Loop type (pingpong, forward, backward)
+
+3. **Propriedades Físicas**
+   - Tamanho em pixels
+   - Offset X/Y
+   - Padrão de repetição
+
+4. **Flags Visuais**
+   - Sempre mostrar (always draw)
+   - Cor padrão
+   - Modo de blending
+
+## Fluxo de Uso
+
+```
+[Server Startup]
+    ↓
+[Load appearances.dat]
+    ↓
+[Parse Binary Index]
+    ↓
+[Build SpriteLookup HashMap]
+    ↓
+[Item Render Ready]
+    ↓
+[Client requests item #123]
+    ↓
+[Lookup: 123 → Sprite ID + Animation]
+    ↓
+[Return visual data to client]
+```
+
+## Notas de Implementação
+
+- **Não editar manualmente**: Arquivo binário corrompem facilmente
+- **Regeneração**: Recompile usando ferramentas de compilação do Tibia (não incluídas neste repo)
+- **Versionamento**: Versão do arquivo deve corresponder ao cliente Tibia suportado
+- **Sincronização**: Deve estar em sync com items.xml (mesmos item IDs)
+- **Performance**: Arquivo crítico para renderização - mantém em SSD para I/O rápido
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Arquivo binário propietário não editável diretamente
+2. Contém mapping de itemID → spriteID + propriedades visuais
+3. Otimizado para acesso O(1) em tempo de execução
+4. Gerado por ferramentas externas de compilação
+5. Complementa items.xml com dados de renderização
+
+**Responsabilidades:**
+1. Armazenar aparência compilada de todos os itens
+2. Providenciar lookup rápido por ID durante gameplay
+3. Manter sincronismo com item IDs do items.xml
+4. Suportar múltiplos tipos de animação
+5. Compatibilidade com versão do cliente Tibia
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Arquivo Binário Propietário  
+**Tamanho**: ~5-15 MB (típico)  
+**Editável**: Não  
+**Status**: Requerido para funcionamento
+</Card>
+
+<Aside type="note">
+Documentação conceitual - arquivo binário não pode ser analisado como código. Baseado em padrões conhecidos de format propietário Tibia (protocolo 10.x+).
+
+Alterações devem ser feitas em items.xml e arquivo recompilado usando ferramentas apropriadas.
+</Aside>

@@ -1,0 +1,292 @@
+---
+title: "#extended_opcode.lua"
+description: "Handler de extended opcodes do cliente OTClient para suporte a multi-linguagem e customizações do protocolo estendido"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo de **handler de extended opcodes** que implementa suporte a mensagens customizadas do cliente OTClient. Define ponto de entrada para processamento de opcodes estendidos do protocolo, atualmente suportando apenas `OPCODE_LANGUAGE` para detecção de idioma do cliente (en/pt). Estrutura extensível que permite adicionar novos opcodes sem modificação do core C++ da engine.
+
+**Caminho Original**: `data/scripts/creaturescripts/others/#extended_opcode.lua`
+
+**Tipo**: CreatureEvent (onExtendedOpcode trigger)
+
+**Dependências**:
+- CreatureEvent API (engine C++)
+- Player object (userdata)
+
+<Aside>
+Este evento é disparado quando o cliente envia um pacote de extended opcode. O hash `#` no nome do arquivo é convenção da framework para arquivos sensíveis ao protocolo. Toda lógica de parsing de opcodes customizados faz-se aqui.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `#extended_opcode.lua` implementa **receptor de mensagens estendidas** do protocolo OTClient através de um CreatureEvent que intercepta todos os `onExtendedOpcode` disparados quando o cliente envia pacotes customizados. Atualmente define apenas `OPCODE_LANGUAGE = 1` para detecção de idioma (English ou Portuguese), com suporte futura para adicionar novos opcodes. A implementação é um padrão de **routing extensível** onde cada opcode pode ter sua própria lógica de processamento sem impactar outras funcionalidades.
+
+### Arquitetura de Componentes
+
+```
+Extended Opcode Handler
+│
+├─ CONSTANTES (1 valor)
+│  └── OPCODE_LANGUAGE = 1 (opcode para idioma do cliente)
+│
+├─ EVENT REGISTRATION (1 função)
+│  └── extendedOpcode:register() (registra handler na engine)
+│
+└─ OPCODE ROUTER (1 função)
+   └── onExtendedOpcode(player, opcode, buffer)
+      ├── Validação do opcode
+      ├── OPCODE_LANGUAGE (1) → parse language
+      └── Default → ignora outros opcodes
+```
+
+### Diagrama de Fluxo
+
+```
+Cliente OTClient
+    │
+    ├─ Envia Extended Opcode
+    │  └─ opcode=1, buffer="en" ou "pt"
+    │
+    ▼
+Engine C++ (recepciona)
+    │
+    ├─ Dispara CreatureEvent "ExtendedOpcode"
+    │
+    ▼
+onExtendedOpcode(player, opcode, buffer)
+    │
+    ├─ if opcode == OPCODE_LANGUAGE
+    │  └─ Processa: "en" ou "pt"
+    │     └─ TODO: setStorageValue para language preference
+    │
+    └─ else
+       └─ Ignora (server funciona normalmente)
+```
+
+---
+
+## Detalhes das Variáveis Locais
+
+### `OPCODE_LANGUAGE = 1`
+
+**Tipo**: number (constante)
+
+**Descrição**: Identificador único do opcode de idioma. Valor `1` é reservado para mensagens de idioma do cliente OTClient. Quando cliente envia opcode `1`, o valor em `buffer` contém a string co idioma selecionado.
+
+**Valores Esperados em `buffer`**:
+- `"en"` → English
+- `"pt"` → Portuguese (Brasileiro)
+
+**Exemplo de Uso**:
+```lua
+if opcode == OPCODE_LANGUAGE then
+    -- buffer = "pt" ou "en"
+    player:setStorageValue(SOME_LANGUAGE_STORAGE_ID, buffer)
+end
+```
+
+---
+
+## Detalhes da Função Global
+
+### `extendedOpcode.onExtendedOpcode(player, opcode, buffer)`
+
+**Tipo**: CreatureEvent callback
+
+**Descrição**: Função principal disparada pela engine quando um cliente conectado envia um pacote de extended opcode. Atua como **router central** que direciona cada opcode para sua respectiva lógica de processamento.
+
+**Parâmetros**:
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `player` | userdata | Referência ao jogador que enviou o opcode |
+| `opcode` | number | Identificador do tipo de mensagem estendida |
+| `buffer` | string | Dados/payload do opcode em formato string |
+
+**Retorna**: 
+- `true` (sempre, protoco completa com sucesso)
+- `nil` (implícito) em caso de erro (não recomendado)
+
+**Comportamento por Opcode**:
+
+#### Opcode 1 (OPCODE_LANGUAGE)
+
+```lua
+if opcode == OPCODE_LANGUAGE then
+    -- otclient language
+    if buffer == "en" or buffer == "pt" then
+        -- example, setting player language, because otclient is multi-language...
+        -- player:setStorageValue(SOME_STORAGE_ID, SOME_VALUE)
+    end
+end
+```
+
+**Processamento**:
+1. Valida se `buffer` é "en" ou "pt"
+2. Se válido: comentário indica que deveria persistir ajuste via storage
+3. Se inválido: ignora silenciosamente
+
+**Nota**: Código comentado é **template/exemplo** aguardando implementação de persistência de idioma
+
+#### Outros Opcodes
+
+```lua
+else
+    -- other opcodes can be ignored, and the server will just work fine...
+end
+```
+
+**Comportamento Default**:
+- Opcodes desconhecidos são **ignorados** sem erro
+- Permite adicionar novos opcodes no futuro
+- Padrão **fail-safe** que não quebra servidor mesmo com cliente desatualizado
+
+**Retorno**: `true` (sempre, mesmo para opcodes ignorados)
+
+**Características Principais**:
+
+| Característica | Valor | Notas |
+|---|---|---|
+| Validação do Opcode | if/else | Roteamento direto por tipo |
+| Tratamento de Erro | Silent ignore | Não quebra fluxo |
+| Extensibilidade | Simples adicionar | Novo opcode = novo if |
+| Estado Persistido | Storage (comentado) | Não implementado ainda |
+| Async/Callback | Síncrono | Execução imediata |
+
+---
+
+## Padrões & Implementação
+
+### 1. Padrão de Router/Dispatcher
+
+Implementação clássica de **event dispatcher** onde cada tipo de evento (opcode) é roteado para sua handler:
+
+```lua
+function dispatcher.onMessage(source, type, data)
+    if type == TYPE_A then
+        handleTypeA(data)
+    elseif type == TYPE_B then
+        handleTypeB(data)
+    else
+        -- default: ignore
+    end
+    return true
+end
+```
+
+**Vantagens**:
+- Código legível e previsível
+- Fácil adicionar nova rota (novo `if`)
+- Isola lógica de opcode em blocos separados
+
+**Limitações**:
+- Com muitos opcodes, cresce linear
+- Sem abstração de callback (sem table de handlers)
+
+**Onde Usar**:
+- Poucos opcodes (< 5-10)
+- Lógica simples por opcode
+- Prototipagem rápida
+
+### 2. Padrão de Validação de Input
+
+Validação **whitelist** de valores permitidos:
+
+```lua
+if buffer == "en" or buffer == "pt" then
+    -- aceita são apenas estes 2 valores
+    -- ...
+end
+-- sem else: outros valores ignorados silenciosamente
+```
+
+**Segurança**:
+- Rejeita valores não-esperados
+- Protege contra typos de cliente (`"En"`, `"EN"`, etc.)
+- Não quebra server
+
+**Alternativa com Else**:
+```lua
+if buffer == "en" then
+    currentLanguage = "en"
+elseif buffer == "pt" then
+    currentLanguage = "pt"
+else
+    -- invalid: use default
+    currentLanguage = "en"
+end
+```
+
+### 3. Padrão de Extensibilidade Implícita
+
+Estrutura preparada para crescimento:
+
+```lua
+-- Fácil adicionar opcode novo
+local OPCODE_LANGUAGE = 1
+local OPCODE_CUSTOM_ACTION = 2  -- novo
+local OPCODE_PEER_MESSAGE = 3   -- novo
+
+function onExtendedOpcode(player, opcode, buffer)
+    if opcode == OPCODE_LANGUAGE then
+        -- ...
+    elseif opcode == OPCODE_CUSTOM_ACTION then
+        -- novo handler
+    elseif opcode == OPCODE_PEER_MESSAGE then
+        -- novo handler
+    else
+        -- catch-all
+    end
+end
+```
+
+**Sem Refactoring Necessário**:
+- Cada opcode novo é um bloco `elseif`
+- Não require mudança na estrutura geral
+- Default `else` absorve opcodes futuros desconhecidos
+
+---
+
+## 🤖 Informações da Documentação
+
+**Versão da Documentação**: 1.0
+
+**Última Atualização**: 2026-02-19
+
+**Tipo de Complexidade**: ⚪ **Trivial**
+- Arquivo com 16 linhas de código
+- 1 função callback
+- 1 variável local
+- Lógica: roteamento simples com 1 opcode implementado
+- Tempo estimado de aprendizado: 5-10 minutos
+
+**Cobertura de Tópicos**:
+- ✅ Variáveis locais
+- ✅ Função global
+- ✅ Padrões de implementação
+- ✅ Fluxo de operação
+
+**Referências Relacionadas**:
+- [ARQUITETURA_PROJETO.mdx](../../../ARQUITETURA_PROJETO.mdx) - Visão geral de creaturescripts
+- CreatureEvent API (engine C++) - onExtendedOpcode trigger
+- OTClient Protocol Documentation
+
+**Status de Implementação**: ⚠️ **Parcialmente Implementado**
+- Handler criado e funcional
+- OPCODE_LANGUAGE validado
+- Persistência de idioma comentada (TODO - awaiting setStorageValue integration)
+
+**Notas para Futuros Desenvolvedores**:
+1. Para implementar persistência de idioma, descomentar `player:setStorageValue()`
+2. Adicionar novas opcodes como novos `elseif` sem refactoring
+3. Considerar pattern de callback-table se número de opcodes > 10
+4. Testar com cliente OTClient real para validar protocolo estendido
+

@@ -1,0 +1,246 @@
+---
+title: Auto Loot System
+description: Comando PLAYER para ativar/desativar auto-loot
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | auto_loot.lua |
+| **Tipo de Sistema** | Feature Toggle (PLAYER) |
+| **Funcionalidade Principal** | Gerenciar auto-loot |
+| **Comando** | !autoloot |
+| **Requisito** | Feature habilitado + VIP opt |
+| **Separador** | Espaço |
+| **Parâmetros** | on, off (commented: all) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/auto_loot.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Valida configManager.getBoolean(AUTOLOOT). Valida VIP se configurado (AUTOLOOT_VIP_ONLY). Valida param em validValues (on, off). setFeature(Features.AutoLoot, value): 0=off, 1=on (regular), 2=all (inclusive bosses). Feedback diferenciado por modo.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo auto_loot.lua implementa sistema de toggle de auto-loot. Dispõe de validação de feature, VIP check opcional, 3 modos (off/on/all), validação de parâmetros. Ferramenta essencial de auto-loot management.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Variáveis Locais**
+
+```lua
+local feature = TalkAction("!autoloot")
+
+local validValues = {
+	-- "all",        -- Comentado
+	"on",
+	"off",
+}
+```
+
+---
+
+### **TalkAction !autoloot**
+
+```lua
+function feature.onSay(player, words, param)
+	-- Gate 1: Feature habilitado?
+	if not configManager.getBoolean(configKeys.AUTOLOOT) then
+		return true  -- Silent fail
+	end
+	
+	-- Gate 2: VIP only?
+	if configManager.getBoolean(configKeys.VIP_SYSTEM_ENABLED) and 
+	   configManager.getBoolean(configKeys.VIP_AUTOLOOT_VIP_ONLY) and 
+	   not player:isVip() then
+		player:sendCancelMessage("You need to be VIP to use this command!")
+		return true
+	end
+	
+	-- Gate 3: Param válido?
+	if not table.contains(validValues, param) then
+		local validValuesStr = table.concat(validValues, "/")
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Invalid param specified. Usage: !feature [" .. validValuesStr .. "]")
+		return true
+	end
+
+	-- Executar ação
+	if param == "all" then
+		player:setFeature(Features.AutoLoot, 2)
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "AutoLoot is now enabled for all kills (including bosses).")
+	elseif param == "on" then
+		player:setFeature(Features.AutoLoot, 1)
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "AutoLoot is now enabled for all regular kills (no bosses).")
+	elseif param == "off" then
+		player:setFeature(Features.AutoLoot, 0)
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "AutoLoot is now disabled.")
+	end
+	return true
+end
+
+feature:separator(" ")
+feature:groupType("normal")
+feature:register()
+```
+
+**Comando:** `!autoloot <mode>`
+
+**Parâmetros:**
+| Param | Modo | Feature Value | Descrição |
+|---|---|---|---|
+| on | Regular | 1 | Auto-loot sem bosses |
+| off | Disabled | 0 | Desativado |
+| all | All (comentado) | 2 | Inclusive bosses |
+
+---
+
+## **Gates de Validação**
+
+### **Gate 1: Feature Habilitado**
+
+```lua
+configManager.getBoolean(configKeys.AUTOLOOT)
+```
+
+Se falso: Comando silencioso (return true sem feedback)
+
+---
+
+### **Gate 2: VIP Check (Opcional)**
+
+```lua
+if VIP_SYSTEM_ENABLED and VIP_AUTOLOOT_VIP_ONLY and not isVip() then
+    erro: "You need to be VIP to use this command!"
+end
+```
+
+Se habilitado e player não VIP: Nega acesso
+
+---
+
+### **Gate 3: Param Validation**
+
+```lua
+validValues = {"on", "off"}  -- "all" comentado
+if not table.contains(validValues, param) then
+    erro com lista de valores válidos
+end
+```
+
+---
+
+## **Modos de AutoLoot**
+
+| Modo | Value | Descrição | Drops |
+|---|---|---|---|
+| off | 0 | Desativado | Manual |
+| on | 1 | Auto-loot regular | Monstros normais |
+| all | 2 | Auto-loot total | Monstros + Bosses |
+
+---
+
+**Exemplos de Uso:**
+
+```
+Player: !autoloot on
+Config: AUTOLOOT=true, VIP_ONLY=false
+
+Fluxo:
+1. Gate 1: configManager.AUTOLOOT = true ✓
+2. Gate 2: VIP_ONLY = false (skip)
+3. Gate 3: param="on" in validValues ✓
+4. setFeature(Features.AutoLoot, 1)
+5. Feedback: "AutoLoot is now enabled for all regular kills (no bosses)."
+
+Resultado:
+- Auto-loot ativado
+- Drops automáticos de monstros
+- Bosses excluídos
+
+---
+
+Player: !autoloot off
+
+Fluxo:
+1. Gates passam
+2. setFeature(Features.AutoLoot, 0)
+3. Feedback: "AutoLoot is now disabled."
+
+Resultado:
+- Auto-loot desativado
+- Deve coletar manualmente
+
+---
+
+Player: !autoloot on
+Config: AUTOLOOT=true, VIP_ONLY=true, isVip()=false
+
+Fluxo:
+1. Gate 1: true ✓
+2. Gate 2: VIP_ONLY=true AND not isVip() = FALHA
+3. Feedback: "You need to be VIP to use this command!"
+
+Resultado:
+- Acesso negado (need VIP)
+
+---
+
+Player: !autoloot xyz
+
+Fluxo:
+1. Gates 1-2 passam
+2. Gate 3: "xyz" not in {"on", "off"}
+3. validValuesStr = "on/off"
+4. Feedback: "Invalid param specified. Usage: !feature [on/off]"
+
+Resultado:
+- Param rejeitado
+- Lista de valores válidos exibida
+```
+
+---
+
+**Configuração Necessária**
+
+```lua
+-- config.lua
+AUTOLOOT = true              -- Feature habilitado
+VIP_SYSTEM_ENABLED = true    -- VIP system
+VIP_AUTOLOOT_VIP_ONLY = false -- Restricão VIP (opcional)
+```
+
+---
+
+**Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `configManager.getBoolean(key)` | Obtém config bool |
+| `player:isVip()` | Valida VIP status |
+| `player:setFeature(feature, value)` | Seta feature |
+| `table.contains(table, value)` | Busca na tabela |
+| `table.concat(table, sep)` | Junta tabela |
+| `player:sendCancelMessage(msg)` | Envia erro |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+
+**Constantes:**
+- `configKeys.AUTOLOOT`
+- `configKeys.VIP_SYSTEM_ENABLED`
+- `configKeys.VIP_AUTOLOOT_VIP_ONLY`
+- `Features.AutoLoot`
+- `MESSAGE_EVENT_ADVANCE`
+
+**Retorno:** `true`
+
+---
+
+## 📌 Resumo
+
+O arquivo auto_loot.lua é sistema robusto de auto-loot toggle. Implementação com 3 gates (feature/vip/param), 2-3 modos, validação extensa, feedback diferenciado. Essencial para players gerenciar auto-loot. Design seguro com validações em cadeia.

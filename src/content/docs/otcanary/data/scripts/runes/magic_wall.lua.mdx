@@ -1,0 +1,457 @@
+---
+title: "Spell/Rune - magic_wall.lua"
+description: "Runa que cria campo mágico com validações e callback de posição"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `magic_wall.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 86 |
+| **ID do Item (runeId)** | 3180 |
+| **Level Requerido** | 32 |
+| **Magic Level Requerido** | 9 |
+| **Grupo** | attack |
+| **Tipo de Efeito** | Bloqueio de passagem (não dano) |
+| **Cooldown** | 2s |
+| **Cargas** | 3 |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Bloqueio** | Sim, duplo (creatures + players) |
+| **PZ Locked** | Não mencionado (padrão) |
+| **Callback** | TARGETTILE (onCreateMagicWall) |
+| **Linhas de Código** | 45 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Runa especializada que cria campos mágicos sólidos com múltiplas validações. Diferente de outras runes (sem Combat dano), usa callback TARGETTILE para execução custom. Valida tile (floorchange, creatures). Diferencia entre mundos PvP/Safe gerando item apropriado. Item criado tem duração variável e descrição customizada com nome do caster.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/magic_wall.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(86)
+rune:runeId(3180)
+rune:level(32)
+rune:magicLevel(9)
+rune:group("attack")
+rune:allowFarUse(true)
+rune:charges(3)
+rune:isBlocking(true, true)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Campo Mágico com Validações Avançadas**
+
+Esta runa implementa um **sistema de bloqueio posicional com callbacks**:
+
+1. **Callback TARGETTILE:**
+   - Executa função em tile específica
+   - Não usa Combat dano padrão
+   - Lógica custom completa
+
+2. **Validações:**
+   - Floorchange: não cria se descida
+   - Creatures: falha se monstro presente
+   - Tile nula: fallback seguro
+
+3. **Diferenciação PvP/Safe:**
+   - ITEM_MAGICWALL (PvP)
+   - ITEM_MAGICWALL_SAFE (Safe)
+   - Auto-detecção WorldType!
+
+4. **Item com Duração:**
+   - 16-24 segundos
+   - Descrição: "Casted by: [Nome]"
+   - Rastreabilidade!
+
+**Fluxo:**
+```
+Conjura em tile
+├─ Valida tile (existe?)
+├─ Valida floor (não desce?)
+├─ Valida creatures (monstro?)
+├─ Detecta mundo (PvP? Safe?)
+├─ Cria MAGICWALL item
+├─ Duração 16-24s
+└─ Com assinatura do caster!
+```
+
+**Diferencial:** Lógica posicional + validações = campo tático!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `magic_wall` oferece bloqueio posicional tático:
+
+- **Tipo:** Campo (ITEM_MAGICWALL)
+- **Callback:** TARGETTILE com função custom
+- **Validações:** Tile, floor, creatures
+- **Mundo:** Diferencia PvP/Safe
+- **Duração:** 16-24 segundos
+
+### Arquitetura
+
+Combat com callback posicional (não dano):
+
+```
+local combat = Combat()
+├─ Callback: TARGETTILE
+└─ Função: onCreateMagicWall
+
+onCreateMagicWall(creature, position)
+├─ Tile validation
+├─ Floor check
+├─ Creature check
+├─ WorldType detect
+├─ Item create
+└─ Duration + description
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Global: onCreateMagicWall
+
+```lua
+function onCreateMagicWall(creature, position)
+	local tile = Tile(position)
+	if not tile then
+		return false
+	end
+
+	if tile:hasFlag(TILESTATE_FLOORCHANGE) then
+		return false
+	end
+
+	if tile:getTopCreature() and not tile:getTopCreature():isPlayer() then
+		return false
+	end
+
+	local magicWall
+	if Game.getWorldType() == WORLD_TYPE_NO_PVP then
+		magicWall = ITEM_MAGICWALL_SAFE
+	else
+		magicWall = ITEM_MAGICWALL
+	end
+
+	local item = Game.createItem(magicWall, 1, position)
+	if item then
+		item:setDuration(16, 24)
+		item:setAttribute(ITEM_ATTRIBUTE_DESCRIPTION, string.format("Casted by: %s", creature:getName()))
+	end
+end
+```
+
+**Propósito:** Cria campo mágico com validações e atributos.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `position` | Position | Tile alvo |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Campo criado |
+| `false` | Validação falhou |
+
+**Validações:**
+
+| Check | Lógica | Efeito |
+|---|---|---|
+| `Tile(position)` | Tile existe? | Se nulo: false |
+| `TILESTATE_FLOORCHANGE` | É descida? | Se true: false |
+| `getTopCreature()` | Top = player? | Se monstro: false |
+
+**Diferenciação Mundo:**
+
+```lua
+if Game.getWorldType() == WORLD_TYPE_NO_PVP then
+    magicWall = ITEM_MAGICWALL_SAFE
+else
+    magicWall = ITEM_MAGICWALL
+end
+```
+
+**Atributos Item:**
+
+| Atributo | Valor |
+|---|---|
+| Duration | 16-24 segundos (aleatório) |
+| Description | "Casted by: [Nome Caster]" |
+
+---
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGY)
+combat:setCallback(CALLBACK_PARAM_TARGETTILE, "onCreateMagicWall")
+```
+
+**Propósito:** Combat sem dano, apenas callback.
+
+**Parâmetro:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ENERGY | Projétil energia |
+| `Callback` | TARGETTILE | Executa função em tile |
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, variant, isHotkey)
+	return combat:execute(creature, variant)
+end
+```
+
+**Propósito:** Handler que executa callback.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Campo criado (onCreateMagicWall retornou true) |
+| `false` | Validação falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância sem dano |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onCreateMagicWall):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `tile` | Tile | Tile destino |
+| `magicWall` | number | Item ID (SAFE ou PvP) |
+| `item` | Item | Item criado |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Callback TARGETTILE
+
+```lua
+combat:setCallback(CALLBACK_PARAM_TARGETTILE, "onCreateMagicWall")
+```
+
+**Benefício:** Execução custom sem Combat dano padrão.
+
+### Padrão 2: Validações em Cadeia
+
+```lua
+if not tile then return false end
+if tile:hasFlag(TILESTATE_FLOORCHANGE) then return false end
+if tile:getTopCreature() and not tile:getTopCreature():isPlayer() then return false end
+```
+
+**Benefício:** Fallback seguro em cada etapa.
+
+### Padrão 3: World Type Detection
+
+```lua
+if Game.getWorldType() == WORLD_TYPE_NO_PVP then
+    magicWall = ITEM_MAGICWALL_SAFE
+else
+    magicWall = ITEM_MAGICWALL
+end
+```
+
+**Benefício:** Adapta item ao mundo automaticamente.
+
+### Padrão 4: Item Rastreabilidade
+
+```lua
+item:setAttribute(ITEM_ATTRIBUTE_DESCRIPTION, string.format("Casted by: %s", creature:getName()))
+```
+
+**Benefício:** Saber quem criou o campo!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onCreateMagicWall(creature, position)
+
+**Descrição:** Cria campo mágico com validações e atributos.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `position` | Position | Tile alvo |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Campo criado |
+| `false` | Falhou em validação |
+
+**Validações (em ordem):**
+
+1. `Tile(position)` - Tile existe?
+2. `TILESTATE_FLOORCHANGE` - É descida/piso diferente?
+3. `getTopCreature()` - Tem criatura? É monstro?
+
+**Mundo:**
+
+| Tipo | Item | Efeito |
+|---|---|---|
+| NO_PVP (Safe) | ITEM_MAGICWALL_SAFE | Versão segura |
+| PVP | ITEM_MAGICWALL | Versão normal |
+
+**Duração:** 16-24 segundos (aleadamente)
+
+**Descrição:** "Casted by: [Nome do Caster]"
+
+**Exemplo:**
+
+```lua
+onCreateMagicWall(mago, targetPosition)
+// Tile existe? SIM
+// Floor change? NÃO
+// Top creature = player? SIM (player ou vazio)
+// Mundo = PvP? SIM -> ITEM_MAGICWALL
+// Item criado com duração 16-24s
+// Description: "Casted by: MagoNome"
+// Retorna: true (criado!)
+```
+
+---
+
+### rune.onCastSpell(creature, variant, isHotkey)
+
+**Descrição:** Executa callback TARGETTILE para criar campo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `variant` | Variant | Tile destino |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Campo criado |
+| `false` | Validação falhou |
+
+**Efeito:**
+- Projétil energia viaja até tile
+- Callback onCreateMagicWall executado
+- Item mágico criado com duração
+- Campo bloqueia movimento (blocking=true)
+
+**Exemplo:**
+
+```lua
+-- Mago nível 32, MLvl 9
+rune.onCastSpell(mago, tileVariant, false)
+// Callback TARGETTILE
+// Valida tile em tileVariant
+// Se OK: cria MAGICWALL item
+// Duração: 16-24s
+// Descrição: "Casted by: MagoNome"
+// Resultado: Campo tático criado!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Bloqueio Tático
+
+```lua
+-- Mago cria wall em corredor
+// Bloqueia passagem
+// Duração 16-24s
+// Tática dungeon
+```
+
+### Caso 2: PvP Safe
+
+```lua
+-- Mundo Safe: usa ITEM_MAGICWALL_SAFE
+// Menos OP
+// Balanceamento world
+```
+
+### Caso 3: Rastreabilidade
+
+```lua
+-- Qualquer um clica field
+// Descrição mostra: "Casted by: [Mago]"
+// Accountability!
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat Callback
+- **Callback Tipo:** CALLBACK_PARAM_TARGETTILE
+- **Item:** ITEM_MAGICWALL, ITEM_MAGICWALL_SAFE
+- **World Types:** WORLD_TYPE_NO_PVP
+- **Tile Flags:** TILESTATE_FLOORCHANGE
+- **Effects:** CONST_ANI_ENERGY
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Campo bloqueio com callback |
+| **Callback** | TARGETTILE (custom) |
+| **Item** | MAGICWALL / SAFE (world-dependent) |
+| **Validações** | Tile, floor, creatures |
+| **Duração** | 16-24 segundos |
+| **Bloqueio** | Duplo (creatures + players) |
+| **Cargas** | 3 |
+| **Distancia** | Sim (allowFarUse) |
+| **Level** | 32 (mid-late) |
+| **MLvl** | 9 |
+| **Padrão** | Callback TARGETTILE + validações |

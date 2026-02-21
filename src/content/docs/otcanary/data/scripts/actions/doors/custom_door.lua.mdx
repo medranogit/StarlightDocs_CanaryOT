@@ -1,0 +1,233 @@
+---
+title: custom_door.lua
+description: Sistema de portas customizáveis com transformação de estado
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="custom_door.lua" icon="star">
+Script de ação Lua que implementa sistema de portas customizáveis com transformação entre estados aberto e fechado.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/doors/custom_door.lua`
+
+Script que registra handlers de portas customizadas baseadas em CustomDoorTable. Portas sem restrições de nível, chave ou quest.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `custom_door.lua` implementa um sistema de portas simples e rápido para portas customizadas sem validações especiais. Diferentemente de level_door ou quest_door, portas customizadas são puros estados de aberto e fechado. Cada porta tem dois IDs (openDoor e closedDoor) e transforma entre eles ao ser usada, com efeitos sonoros.
+
+**Estrutura Fundamental**
+
+```
+[Load CustomDoorTable]
+    ↓
+[Extract doorIds from table]
+    ↓
+[Create customDoor Action]
+    ↓
+[onUse function]
+    ├── Check creature inside
+    ├── Closed door → Open (transform + sound)
+    └── Open door → Closed (transform + sound)
+    ↓
+[Register Action on all doorIds]
+```
+
+## Variáveis Globais
+
+### doorIds (local array)
+
+```lua
+local doorIds = {}
+```
+
+Array contendo todos os IDs únicos de portas (abertas + fechadas) para registrar a ação.
+
+**Preenchimento**:
+```lua
+for index, value in ipairs(CustomDoorTable) do
+  if not table.contains(doorIds, value.openDoor) then
+    table.insert(doorIds, value.openDoor)
+  end
+  if not table.contains(doorIds, value.closedDoor) then
+    table.insert(doorIds, value.closedDoor)
+  end
+end
+```
+
+Itera CustomDoorTable, extrai openDoor e closedDoor, evita duplicatas.
+
+### CustomDoorTable (global, externa)
+
+Tabela global esperada contendo configurações:
+
+```lua
+-- Estrutura esperada:
+CustomDoorTable = {
+  {
+    openDoor = 1000,     -- ID item quando aberta
+    closedDoor = 1001    -- ID item quando fechada
+  },
+  -- ... mais portas
+}
+```
+
+## Funções
+
+### customDoor.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback principal acionado quando player usa a porta.
+
+**Parâmetros:**
+- player: Creature player que usou a porta
+- item: Item da porta (door object)
+- fromPosition: Posição origin da ação
+- target: Target da ação (pode ser targetless)
+- toPosition: Posição destino
+- isHotkey: Boolean se executado via hotkey
+
+**Fluxo:**
+
+```
+1. checkCreatureInsideDoor(player, toPosition)?
+   ├─ SIM → return true (não fazer nada)
+   └─ NÃO → continuar
+
+2. Loop CustomDoorTable procurando closedDoor:
+   ├─ Encontrou → transform(openDoor) + som + return true
+   └─ Não encontrou → continuar
+
+3. Loop CustomDoorTable procurando openDoor:
+   ├─ Encontrou → transform(closedDoor) + som + return true
+   └─ Não encontrou → continuar
+
+4. return true (fallback)
+```
+
+**Blocos:**
+
+**Bloco 1: Creature Check**
+```lua
+if Creature.checkCreatureInsideDoor(player, toPosition) then
+  return true
+end
+```
+
+Previne abrir porta se criatura está do outro lado (evita empurrar).
+
+**Bloco 2: Closed Door Opening**
+```lua
+for index, value in ipairs(CustomDoorTable) do
+  if value.closedDoor == item.itemid then
+    item:transform(value.openDoor)
+    item:getPosition():sendSingleSoundEffect(SOUND_EFFECT_TYPE_ACTION_OPEN_DOOR)
+    return true
+  end
+end
+```
+
+Se porta está fechada (closedDoor), transforma para openDoor com efeito sonoro.
+
+**Bloco 3: Open Door Closing**
+```lua
+for index, value in ipairs(CustomDoorTable) do
+  if value.openDoor == item.itemid then
+    item:transform(value.closedDoor)
+    item:getPosition():sendSingleSoundEffect(SOUND_EFFECT_TYPE_ACTION_CLOSE_DOOR)
+    return true
+  end
+end
+```
+
+Se porta está aberta (openDoor), transforma para closedDoor com efeito sonoro.
+
+## Efeitos Sonoros
+
+| Constante | Trigger | Som |
+|-----------|---------|-----|
+| SOUND_EFFECT_TYPE_ACTION_OPEN_DOOR | closedDoor → openDoor | Áudio de porta abrindo |
+| SOUND_EFFECT_TYPE_ACTION_CLOSE_DOOR | openDoor → closedDoor | Áudio de porta fechando |
+
+## Fluxo de Operação
+
+```
+[Player clica na porta]
+    ↓
+[Script triggered se item.id em doorIds]
+    ↓
+[onUse function]
+    ↓
+[Creature inside check]
+    ├─ SIM: return true (no-op)
+    └─ NÃO: next
+    ↓
+[Search CustomDoorTable]
+    ├─ item é closedDoor?
+    │   ├─ SIM: Open transform + som → return true
+    │   └─ NÃO: next
+    └─ item é openDoor?
+        ├─ SIM: Close transform + som → return true
+        └─ NÃO: return true (fallback)
+```
+
+## Padrões de Implementação
+
+### CustomDoorTable Structure
+
+```lua
+CustomDoorTable = {
+  { openDoor = 1000, closedDoor = 1001 },
+  { openDoor = 1002, closedDoor = 1003 },
+  { openDoor = 5000, closedDoor = 5001 },
+}
+```
+
+Cada entrada mapeia IDs de porta aberta para fechada.
+
+### Action Registration
+
+```lua
+for index, value in ipairs(doorIds) do
+  customDoor:id(value)
+end
+customDoor:register()
+```
+
+Registra a mesma ação em todos os IDs (4+ IDs se 2+ portas).
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Portas customizadas sem validações (nível, chave, quest)
+2. Dois estados: openDoor e closedDoor com IDs diferentes
+3. Transform alterna entre IDs automaticamente
+4. Efeitos sonoros sincronizam com animação
+5. Creature check previne empurrar NPCs e players
+
+**Responsabilidades:**
+1. Iterar CustomDoorTable e extrair todos IDs únicos
+2. Implementar toggle entre states (closed ↔ open)
+3. Validar creature não está bloqueando porta
+4. Emitir efeitos sonoros corretos por estado
+5. Registrar ação em todos os IDs aplicáveis
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 38 linhas  
+**Funções**: 1 (onUse)  
+**Variáveis**: 1 local (doorIds)  
+**Tabelas Externas**: CustomDoorTable (obrigatória)
+</Card>
+
+<Aside type="note">
+Script simples implementando portas com apenas transformação de estado. Requer CustomDoorTable global com estrutura openDoor e closedDoor. Sem validações de nível, chave ou quest. Usado como fallback para portas que não precisam de restrições especiais.
+</Aside>

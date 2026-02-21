@@ -1,0 +1,218 @@
+---
+title: cobra_flask.lua
+description: Flask de cobra com transformação dupla e cooldown global
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="cobra_flask.lua" icon="star">
+Script de ação Lua que implementa flask de cobra com dois estados e transformação bidireccional.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/cobra_flask.lua`
+
+Sistema duplo: ID 31296 (cheio) pode ser usado em plantas/objetos específicos transformando para 31297 (vazio). ID 31297 pode ser reabastecido em fontes (4188-4190) voltando para 31296. Cooldown global de 30 minutos.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `cobra_flask.lua` implementa flask de cobra com dois handlers para dois estados (cheio/vazio). Estado cheio (31296) intoxica plantas com poção cobra (verde smoke), após uso transforma para vazio (31297) e ativa cooldown global 30 min. Estado vazio pode ser refill em 3 fontes específicas, voltando para estado cheio.
+
+**Estrutura de Funcionalidades**
+
+```
+[Handler 1: Flask cheio (31296)]
+    ├─ Check target em {31284, 31285, 31286, 31287}
+    ├─ SIM → continuar
+    └─ NÃO → return true
+    ├─ sendMagicEffect(GREENSMOKE)
+    ├─ sendTextMessage aviso
+    ├─ item:transform(31297) [vazio]
+    ├─ Game.setStorageValue(CobraFlask, now + 30min)
+    └─ return true
+
+[Handler 2: Flask vazio (31297)]
+    ├─ Check target em {4188, 4189, 4190}
+    ├─ SIM → item:transform(31296)
+    ├─ NÃO → noop
+    └─ return true
+```
+
+## Funções Globais
+
+### Handler 1: cobraFlask.onUse para ID 31296
+
+Callback que aplica cobra flask em plantas/objetos.
+
+**Parâmetros:**
+- player: Creature player
+- item: Flask sendo usado
+- fromPosition: Posição uso
+- target: Alvo (deve ser plant ID específico)
+- toPosition: Posição destino
+- isHotkey: Boolean via hotkey
+
+**Lógica:**
+
+```lua
+if table.contains({ 31284, 31285, 31286, 31287 }, target:getId()) then
+	target:getPosition():sendMagicEffect(CONST_ME_GREENSMOKE)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+		"You carefully pour just a tiny, little, finely dosed... and there goes the whole content of the bottle. Stand back!")
+	item:transform(31297)
+	Game.setStorageValue(Global.Storage.CobraFlask, os.time() + 30 * 60)
+end
+return true
+```
+
+**Efeito:**
+1. Verifica se target é uma das 4 plantas cobras
+2. Emite smoke verde na posição
+3. Envia mensagem ao player
+4. Transforma flask em vazio (31297)
+5. Ativa cooldown global 30 minutos
+
+### Handler 2: cobraFlask.onUse para ID 31297
+
+Callback que reabastece flask vazio.
+
+**Parâmetros:**
+- player: Creature player
+- item: Flask vazio
+- fromPosition: Posição uso
+- target: Fonte de água
+- toPosition: Posição destino
+- isHotkey: Boolean via hotkey
+
+**Lógica:**
+
+```lua
+if table.contains({ 4188, 4189, 4190 }, target:getId()) then
+	item:transform(31296)
+end
+return true
+```
+
+**Efeito:**
+1. Verifica se target é uma das 3 fontes
+2. Transforma flask em cheio (31296)
+3. Sem mensagem ou efeito (simples refill)
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| Global.Storage.CobraFlask | storage key | Cooldown global |
+| 31284-31287 | constant | IDs das 4 plantas cobra |
+| 4188-4190 | constant | IDs das 3 fontes refill |
+| 31296 | constant | Flask cheio |
+| 31297 | constant | Flask vazio |
+| 30 * 60 | integer | Cooldown em segundos |
+
+## Fluxo de Operação
+
+### Fluxo 1: Aplicação (ID 31296)
+
+```
+[Player usa flask cheio em plant]
+    ↓
+[target em {31284, 31285, 31286, 31287}?]
+    ├─ NÃO → return true (silently)
+    └─ SIM → continuar
+    ↓
+[Smoke verde na plant]
+    ↓
+[Mensagem aviso ao player]
+    ↓
+[item:transform(31297)] [vazio]
+    ↓
+[setStorageValue cooldown 30min]
+    ↓
+[return true]
+```
+
+### Fluxo 2: Refill (ID 31297)
+
+```
+[Player usa flask vazio em fonte]
+    ↓
+[target em {4188, 4189, 4190}?]
+    ├─ NÃO → noop
+    └─ SIM → continuar
+    ↓
+[item:transform(31296)] [cheio]
+    ↓
+[return true]
+```
+
+## Plantas e Fontes
+
+### Plantas Cobra (aplicáveis)
+
+| ID | Descrição |
+|----|-----------|
+| 31284 | Cobra plant tipo 1 |
+| 31285 | Cobra plant tipo 2 |
+| 31286 | Cobra plant tipo 3 |
+| 31287 | Cobra plant tipo 4 |
+
+### Fontes de Refill
+
+| ID | Descrição |
+|----|-----------|
+| 4188 | Fonte tipo 1 |
+| 4189 | Fonte tipo 2 |
+| 4190 | Fonte tipo 3 |
+
+## Cooldown Global
+
+### Global.Storage.CobraFlask
+
+Storage value compartilhado entre todos players.
+
+**Efeito**: Após usar cobra flask, globaliza cooldown de 30 minutos.
+
+**Nota**: Provavelmente para evento específico ou limitação temática.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Dual handlers para dois estados de item
+2. table.contains para validação de múltiplos IDs
+3. Transformação como estado change
+4. Global storage para cooldown compartilhado
+5. Efeito mágico como feedback visual
+6. Refill pattern: empty → full
+
+**Responsabilidades (Handler 1):**
+1. Validar plant ID target
+2. Emitir efeito smoke verde
+3. Notificar player com mensagem
+4. Transformar para estado vazio
+5. Ativar cooldown global
+
+**Responsabilidades (Handler 2):**
+1. Validar fonte ID target
+2. Transformar para estado cheio
+3. Sem outros efeitos
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler - dual)  
+**Tamanho**: 30 linhas  
+**Funções**: 2 (onUse)  
+**Item IDs**: 2 (31296, 31297)  
+**Plantas Alvo**: 4  
+**Fontes Refill**: 3  
+**Cooldown**: 30 minutos (global)
+</Card>
+
+<Aside type="note">
+Sistema duplo de estados com handlers separados. Cheio aplica cobra toxic, vazio refill em fontes. Cooldown global de 30 minutos após uso. Feedback visual com smoke verde.
+</Aside>

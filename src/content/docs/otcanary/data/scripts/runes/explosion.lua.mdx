@@ -1,0 +1,421 @@
+---
+title: "Spell/Rune - explosion.lua"
+description: "Runa de dano físico explosivo com fórmula escalável em single target"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `explosion.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 18 |
+| **ID do Item (runeId)** | 3200 |
+| **Level Requerido** | 31 |
+| **Magic Level Requerido** | 6 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Área** | 1x1 (single tile) |
+| **Cooldown** | 2s |
+| **Cargas** | 6 |
+| **PZ Locked** | Não |
+| **Agressividade** | Sim |
+| **BLOCKARMOR** | 1 (ignora armadura) |
+| **Linhas de Código** | 35 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa física que causa dano explosivo escalável. Usa fórmula dinâmica baseada em level + maglevel. BLOCKARMOR ignora defesa de armadura, oferecendo penetração. Barata em cargas (6), sem PZ lock permite uso em town.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/explosion.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(18)
+rune:runeId(3200)
+rune:level(31)
+rune:magicLevel(6)
+rune:group("attack")
+rune:charges(6)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Dano Físico Explosivo com Penetração**
+
+Esta runa implementa um **sistema de dano com bypass de armadura**:
+
+1. **Tipo Físico:** COMBAT_PHYSICALDAMAGE
+2. **Fórmula Escalável:**
+   - min = 0
+   - max = (level / 5) + (maglevel * 4.8)
+
+3. **BLOCKARMOR = 1:** Ignora armadura!
+   - Armadura não reduz dano
+   - Penetração total
+
+4. **Sem PZ Lock:** Funciona em town!
+
+**Fórmula Visual:**
+```
+level 31, mlvl 6:
+  max = 6.2 + 28.8 = 35 dano
+
+level 50, mlvl 15:
+  max = 10 + 72 = 82 dano
+
+level 100, mlvl 30:
+  max = 20 + 144 = 164 dano
+```
+
+**Diferencial:** BLOCKARMOR = assassino de armados!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `explosion` oferece dano penetrante:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE escalável
+- **Penetração:** BLOCKARMOR ignora armadura
+- **Fórmula:** (level/5) + (maglevel*4.8)
+- **Acesso:** Level 31 (mid-game)
+
+### Arquitetura
+
+Combat com fórmula callback + armor bypass:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_PHYSICALDAMAGE
+├─ Effect: EXPLOSIONAREA
+├─ Distance: EXPLOSION
+├─ BlockArmor: 1 (ignora)
+├─ Area: 1x1
+└─ Callback: onGetFormulaValues
+
+onGetFormulaValues()
+└─ max = (level/5) + (maglevel*4.8)
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+### Fluxo Lógico Resumido
+
+| Etapa | Descrição |
+|---|---|
+| **Conjura** | onCastSpell() |
+| **Calcula Dano** | Callback onGetFormulaValues |
+| **Aplica Dano** | BLOCKARMOR ignora armor |
+| **Efeito** | EXPLOSIONAREA |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_EXPLOSIONAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_EXPLOSION)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+combat:setArea(createCombatArea(AREA_CIRCLE1X1))
+```
+
+**Propósito:** Instância de Combat para explosão física.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_EXPLOSIONAREA | Explosão visual |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_EXPLOSION | Projétil explosão |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Ignora armadura (penetra) |
+| `Area` | AREA_CIRCLE1X1 | 1x1 single target |
+
+**Características:**
+- BLOCKARMOR penetra defesa
+- Sem área espalha = single tile
+- Callback para fórmula escalável
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = 0
+	local max = (level / 5) + (maglevel * 4.8)
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level total |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo (0) |
+| `-max` | number | Dano máximo escalável |
+
+**Fórmula:**
+```
+min = 0
+max = (level / 5) + (maglevel * 4.8)
+```
+
+**Peso:**
+- Level: 0.2 por nível (leve)
+- Maglevel: 4.8 por magic level (pesado)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 31 | 6 | 0 | 35 |
+| 50 | 10 | 0 | 58 |
+| 75 | 20 | 0 | 111 |
+| 100 | 30 | 0 | 164 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+**Propósito:** Anexa função ao callback.
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler principal.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Explosão executada, dano aplicado |
+| `false` | Falha (LOS, etc) |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo (0) |
+| `max` | number | Dano máximo escalável |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Fórmula Callback
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = 0
+	local max = (level / 5) + (maglevel * 4.8)
+	return -min, -max
+end
+
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+**Benefício:** Dano escalável dinamicamente.
+
+### Padrão 2: Armor Penetration
+
+```lua
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+```
+
+**Benefício:** Ignora armadura do alvo.
+
+### Padrão 3: Dano Mínimo Zero
+
+```lua
+local min = 0
+```
+
+**Benefício:** Variância 0 a max (explosão catastrophal).
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano da explosão.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | 0 |
+| `-max` | number | (lvl/5) + (mlvl*4.8) |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(player, 50, 10)
+// min = 0
+// max = 10 + 48 = 58
+// Retorna: 0, -58
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Causa explosão com dano físico penetrante.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Explosão, dano aplicado |
+| `false` | Falha |
+
+**Efeito:**
+- Projétil explosão viaja
+- Impacto EXPLOSIONAREA
+- Dano ignora armadura (BLOCKARMOR)
+- Single tile (1x1)
+
+**Exemplo:**
+
+```lua
+-- Knight armado aponta em sorcerer
+rune.onCastSpell(sorcerer, knightVariant, false)
+// Apesar de armadura do knight
+// BLOCKARMOR penetra
+// Dano escalável: (50/5) + (10*4.8) = 58
+// Knight sofre 58 dano mesmo armado
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Anti-Armor
+
+```lua
+-- Knight com plate + shield
+-- Sorcerer usa explosion
+// Armadura não reduz
+// Penetração total
+// Resultado: Armor inútil
+```
+
+### Caso 2: Escalabilidade
+
+```lua
+-- Mesmo sorcerer, level 31 -> level 50
+// Dano sobe: 35 -> 58
+// Melhora com progresso
+```
+
+### Caso 3: Sem PZ Lock
+
+```lua
+-- Usa em town (não bloqueada)
+// Permite preemptive strikes
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage Type:** COMBAT_PHYSICALDAMAGE
+- **Block Armor:** COMBAT_PARAM_BLOCKARMOR
+- **Areas:** AREA_CIRCLE1X1
+- **Effects:** CONST_ME_EXPLOSIONAREA
+- **Distance:** CONST_ANI_EXPLOSION
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Dano físico explosivo |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | min=0, max=(lvl/5)+(mlvl*4.8) |
+| **Armor Bypass** | BLOCKARMOR=1 (penetra) |
+| **Area** | 1x1 (single target) |
+| **Cargas** | 6 (barata) |
+| **PZ Lock** | Não (funciona em town) |
+| **Padrão** | Callback + armor penetration |

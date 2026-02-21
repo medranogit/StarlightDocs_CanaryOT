@@ -1,0 +1,858 @@
+---
+title: "purchases.lua"
+description: "Módulo de processamento de compras do gamestore com 20+ tipos de transações e integrações de jogador"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo de **execução de compras** que implementa 20+ processadores especializados, cada um responsável por dar efeito real no servidor à compra de um tipo específico de oferta (items, blessings, outfits, mounts, hireling, etc). Este é o módulo de **business logic pura**, onde cada função converte uma transação abstrata em mudanças de estado concretas no servidor. Inclui 2 funções helpers para interações modais com jogadores (hireling name/sex change).
+
+**Caminho Original**: `data/libs/gamestore/purchases.lua`
+
+**Dependências**:
+- gamestore.senders (envio de pacotes de resposta)
+- GameStore global (constantes, helpers, handlers)
+- Player object (extensão com métodos próprios)
+
+<Aside>
+Este módulo é **disparado por parsers.lua** após todas as validações passarem. Cada função aqui assume que o jogador **legally pode** fazer aquela compra e simplesmente executa a transação. Qualquer erro aqui é capturado em pcall no dispatcher.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `purchases.lua` é um **processador transacional especializado** que implementa **20 funções de processamento de compra** (procesXxxPurchase), cada uma com lógica única para aplicar efeito de um tipo de oferta diferente. Além disso, fornece **2 funções helpers** que coordenam interações modais complexas (seleção de hireling, confirmação de dados). O módulo é notável por sua **arquitetura discriminada** (switch por tipo de oferta), com cada branch implementando regras de negócio sofisticadas: desde simples (item na inbox) até complexas (hireling com persistência de UI, outfit com validações de sexo).
+
+### Arquitetura de Processadores
+
+```
+purchases (módulo de execução)
+│
+├─ ITEMS (3 processadores)
+│  ├── processItemPurchase (item padrão)
+│  ├── processChargesPurchase (item com charges)
+│  └── processStackablePurchase (stackável com lógica stack)
+│
+├─ BLESSINGS (2 processadores)
+│  ├── processSingleBlessingPurchase (bênção única)
+│  └── processAllBlessingsPurchase (todas bênções com fill)
+│
+├─ COSMETICS (3 processadores)
+│  ├── processOutfitPurchase (outfit com sexo + addon)
+│  ├── processMountPurchase (montaria simples)
+│  └── processHirelingOutfitPurchase (aparência de capanga)
+│
+├─ SERVIÇOS (5 processadores)
+│  ├── processNameChangePurchase (renomeação com validação)
+│  ├── processSexChangePurchase (troca de sexo)
+│  ├── processTempleTeleportPurchase (teleporte com PZ check)
+│  ├── processHirelingPurchase (criação novo capanga)
+│  └── processCharmsPurchase (expansão charm simples)
+│
+├─ TEMPORARY BUFFS (2 processadores)
+│  ├── processExpBoostPurchase (XP com stacking de tempo)
+│  └── processPreyBonusReroll (wildcard de prey)
+│
+├─ SLOTS (2 processadores)
+│  ├── processPreyThirdSlot (3º slot prey)
+│  └── processTaskHuntingThirdSlot (3º slot hunting)
+│
+├─ SPECIAL (3 processadores)
+│  ├── processPremiumPurchase (premium time + VIP system)
+│  ├── processInstantRewardAccess (token de reward)
+│  └── processHouseRelatedPurchase (house items com decoration kit)
+│
+├─ HIRELING MODS (3 processadores)
+│  ├── processHirelingChangeNamePurchase (renomear capanga)
+│  ├── processHirelingChangeSexPurchase (troca sexo capanga)
+│  └── processHirelingSkillPurchase (skill nova para capangas)
+│
+└─ MODALHELPERS (2 funções locais)
+   ├── HandleHirelingNameChange (callback de modal)
+   └── HandleHirelingSexChange (callback de modal)
+```
+
+### Variáveis Locais (Cache de Funções)
+
+| Variável Local | Função Original | Propósito |
+|---|---|---|
+| sendStorePurchaseSuccessful | senders.sendStorePurchaseSuccessful | Confirmação de compra bem-sucedida |
+| sendRequestPurchaseData | senders.sendRequestPurchaseData | Solicitar dados adicionais (modal) |
+| sendUpdatedStoreBalances | senders.sendUpdatedStoreBalances | Atualizar UI de saldo |
+
+---
+
+## Detalhes das Funções Globais
+
+### 1. processItemPurchase(player, offerId, offerCount, movable, setOwner)
+
+Processa compra de item padrão, adicionando à store inbox do jogador.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offerId (number): ID do item
+- offerCount (number): Quantidade
+- movable (boolean): Se item pode ser movido
+- setOwner (boolean): Se deve setar dono
+
+**Lógica**:
+1. Validar capacidade inbox: `canReceiveStoreItems()`
+2. Loop offerCount vezes: `addItemStoreInbox()`
+
+**Erro**: Retorna pcall error se inbox cheio
+
+---
+
+### 2. processChargesPurchase(player, offerId, name, charges, movable, setOwner)
+
+Processa item com charges (ex: wand, rod).
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offerId (number): ID do item
+- name (string): Nome do item
+- charges (number): Quantidade de charges
+- movable (boolean): Se movível
+- setOwner (boolean): Se setar dono
+
+**Diferença vs Item**: Usa `charges` em vez de `offerCount` para addItemStoreInbox
+
+---
+
+### 3. processSingleBlessingPurchase(player, blessId, count)
+
+Compra single blessing (bênção individual).
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- blessId (number): ID da bênção (1-8)
+- count (number): Quantidade de levels
+
+**Efeito**: `player:addBlessing(blessId, count)`
+
+---
+
+### 4. processAllBlessingsPurchase(player, count) - FUNÇÃO COMPLEXA
+
+Compra todas as bênções, com fill inteligente (enche as que faltam até 5).
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- count (number): Quantidade por bênção
+
+**Algoritmo**:
+
+```lua
+-- Twist of Fate (id=1) tem tratamento especial
+local twistOfFateCount = player:getBlessingCount(1)
+if twistOfFateCount == 0 then
+    player:addBlessing(1, count)  -- 0 → count
+elseif twistOfFateCount > 0 and twistOfFateCount < 5 then
+    player:addBlessing(1, 5 - twistOfFateCount)  -- Preenche até 5
+end
+
+-- Outras bênções (2-8)
+for i = 2, 8 do
+    local currentCount = player:getBlessingCount(i)
+    if currentCount < 5 then
+        -- Sempre min(count, 5 - currentCount)
+        player:addBlessing(i, math.min(count, 5 - currentCount))
+    end
+end
+```
+
+**Efeito**: Garante que nenhuma bênção fica acima de 5 counts
+
+---
+
+### 5. processInstantRewardAccess(player, offerCount)
+
+Adiciona tokens de acesso a instant reward.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offerCount (number): Quantidade de tokens a adicionar
+
+**Validação**: 
+- Total não pode exceder limite (INSTANT_REWARD_ACCESS)
+- Retorna pcall error se violaria limite
+
+**Efeito**: `player:setCollectionTokens(current + offerCount)`
+
+**Erro Handled**: "You cannot own more than X reward tokens."
+
+---
+
+### 6. processCharmsPurchase(player)
+
+Compra expansão de charm (desbloqueio único).
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+
+**Efeito**: `player:charmExpansion(true)`
+
+**Nota**: Simples boolean de desbloqueio, não stackável
+
+---
+
+### 7. processPremiumPurchase(player, offerId) - FUNÇÃO MULTI-SISTEMA
+
+Processa compra de premium time, integrada com sistema VIP opcional.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offerId (number): ID da oferta (offset em 3000)
+
+**Lógica**:
+
+```lua
+local days = offerId - 3000  -- Calcular dias oferta
+player:addPremiumDays(days)
+
+if configManager.getBoolean(configKeys.VIP_SYSTEM_ENABLED) then
+    player:onAddVip(days)  -- Sistema VIP integrado
+end
+```
+
+**Integração Config**: Verifica se VIP_SYSTEM_ENABLED em runtime
+
+---
+
+### 8. processStackablePurchase(player, offerId, offerCount, offerName, movable, setOwner) - FUNÇÃO COMPLEXA
+
+Processa item stackável com lógica inteligente de empilhamento.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offerId (number): ID do item
+- offerCount (number): Quantidade
+- offerName (string): Nome
+- movable (boolean): Se movível
+- setOwner (boolean): Se setar dono
+
+**Algoritmo de Stacking**:
+
+```lua
+local iType = ItemType(offerId)
+local stackSize = iType:getStackSize()
+local remainingCount = offerCount
+
+while remainingCount > 0 do
+    local countToAdd = math.min(remainingCount, stackSize)
+    local inboxItem = inbox:addItem(offerId, countToAdd)
+    
+    if inboxItem and not movable then
+        inboxItem:setAttribute(ITEM_ATTRIBUTE_STORE, systemTime())
+    end
+    
+    remainingCount = remainingCount - countToAdd
+end
+```
+
+**Efeito**: Divide quantidade em múltiplos stacks se necessário
+
+---
+
+### 9. processHouseRelatedPurchase(player, offer) - FUNÇÃO MUITO COMPLEXA
+
+Processa compra de items da casa, convertendo em decoration kits.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offer (table): Dados da oferta (itemtype, count, movable)
+
+**Lógica Interna**:
+
+1. **Função de Verificação Cask**:
+   ```lua
+   function isCaskItem(itemId)
+       return (itemId >= ITEM_HEALTH_CASK_START and itemId <= ITEM_HEALTH_CASK_END)
+              or (itemId >= ITEM_MANA_CASK_START and itemId <= ITEM_MANA_CASK_END)
+              or (itemId >= ITEM_SPIRIT_CASK_START and itemId <= ITEM_SPIRIT_CASK_END)
+   end
+   ```
+
+2. **Normalizar itemIds** (table ou single):
+   ```lua
+   local itemIds = offer.itemtype
+   if type(itemIds) ~= "table" then itemIds = { itemIds } end
+   ```
+
+3. **Validar Capacidade**: `canReceiveStoreItems(#itemIds)`
+
+4. **Loop de Criação**:
+   - Se Cask: 1 decoration kit com unWrapId = original
+   - Se Normal: offer.count decoration kits com unWrapId
+
+5. **Atribuições Kit**:
+   - ITEM_ATTRIBUTE_DESCRIPTION: "You bought this item in Store. Unwrap in your house..."
+   - setCustomAttribute("unWrapId", itemId): ID original
+   - ITEM_ATTRIBUTE_DATE: offer.count (quantidade)
+   - Se não movável: ITEM_ATTRIBUTE_STORE = systemTime()
+
+**Peculiaridade**: Cask items recebem 1 kit, itens normais recebem offer.count kits
+
+---
+
+### 10. processOutfitPurchase(player, offerSexIdTable, addon) - FUNÇÃO CRÍTICA
+
+Processa compra de outfit com validações de sexo e addon.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offerSexIdTable (table): `{ male: looktype, female: looktype }`
+- addon (number, opcional): 0 (sem addon), 1 (addon 1), 2 (addon 2)
+
+**Validações em Cascata**:
+
+1. **Sexo do Outfit**:
+   ```lua
+   if player:getSex() == PLAYERSEX_MALE then
+       looktype = offerSexIdTable.male
+   else
+       looktype = offerSexIdTable.female
+   end
+   
+   if not looktype then
+       error({ code = 0, message = "This outfit doesn't suit your sex..." })
+   end
+   ```
+
+2. **Addon Sem Outfit Base**:
+   ```lua
+   if (not player:hasOutfit(looktype, 0)) and (_addon == 1 or _addon == 2) then
+       error({ code = 0, message = "You must own the outfit before buying addon..." })
+   end
+   ```
+
+3. **Duplo Dono**:
+   ```lua
+   if player:hasOutfit(looktype, _addon) then
+       error({ code = 0, message = "You already own this outfit." })
+   end
+   ```
+
+4. **Adicionar Outfit + Ambos Sexos**:
+   ```lua
+   if not player:addOutfitAddon(looktype, _addon) then
+       error({ ... })
+   else
+       player:addOutfitAddon(offerSexIdTable.male, _addon)
+       player:addOutfitAddon(offerSexIdTable.female, _addon)
+   end
+   ```
+
+---
+
+### 11. processMountPurchase(player, offerId)
+
+Simples adição de montaria.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offerId (number): ID da montaria
+
+**Validação**: Não pode ter já
+
+**Efeito**: `player:addMount(offerId)`
+
+---
+
+### 12. processNameChangePurchase(player, offer, productType, newName) - FUNÇÃO MODAL
+
+Processa renomeação de jogador com múltiplos paths dependendo de productType.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offer (table): Dados da oferta
+- productType (number): CLIENT_STORE_OFFER_NAMECHANGE ou outro
+- newName (string): Novo nome requisitado
+
+**Path A: CLIENT_STORE_OFFER_NAMECHANGE (produtoType == esperado)**
+
+1. **Validação PZ**: Deve estar em protection zone
+2. **Normalizar Nome**:
+   ```lua
+   newName = newName:lower():trim():gsub("(%l)(%w*)", function(a, b)
+       return string.upper(a) .. b
+   end)
+   -- "john smith" → "John Smith"
+   ```
+3. **Verificar Nome Duplicado**: `Game.getNormalizedPlayerName()`
+4. **Validar Nome**: `GameStore.canChangeToName()`
+5. **Aplicar Transação**:
+   ```lua
+   if not namelockReason then
+       player:makeCoinTransaction(offer)  -- Cobrar
+       message = "You have purchased..."
+   else
+       message = "Character renamed successfully"  -- Bonus
+   end
+   ```
+6. **Mudar Nome**: `player:changeName(newName)`
+
+**Path B: Outro productType**
+
+- Agenda `sendRequestPurchaseData` para solicitar input ao cliente
+
+---
+
+### 13. processSexChangePurchase(player)
+
+Simples toggle de sexo.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+
+**Efeito**: `player:toggleSex()`
+
+---
+
+### 14. processExpBoostPurchase(player)
+
+Adiciona XP boost de 1 hora.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+
+**Efeito**:
+```lua
+player:setXpBoostPercent(50)  -- 50% extra XP
+player:setXpBoostTime(currentXpBoostTime + 3600)  -- +1h (3600 segundos)
+```
+
+---
+
+### 15. processPreyThirdSlot(player)
+
+Desbloqueia 3º slot de prey.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+
+**Validação**: Não pode já estar desbloqueado
+
+**Efeito**: `player:preyThirdSlot(true)`
+
+---
+
+### 16. processTaskHuntingThirdSlot(player)
+
+Desbloqueia 3º slot de hunting task.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+
+**Validação**: Não pode já estar desbloqueado
+
+**Efeito**: `player:taskHuntingThirdSlot(true)`
+
+---
+
+### 17. processPreyBonusReroll(player, offerCount)
+
+Adiciona wildcard de prey (reroll).
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offerCount (number): Quantidade de wildcards
+
+**Validação**: Total não pode exceder limite (50)
+
+**Efeito**: `player:addPreyCards(offerCount)`
+
+---
+
+### 18. processTempleTeleportPurchase(player)
+
+Teletransporta jogador para templo da sua cidade.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+
+**Validações**:
+```lua
+local inPz = player:getTile():hasFlag(TILESTATE_PROTECTIONZONE)
+local inFight = player:isPzLocked() or player:getCondition(CONDITION_INFIGHT, CONDITIONID_DEFAULT)
+
+if not inPz and inFight then
+    error({ code = 0, message = "You can't use temple teleport in fight!" })
+end
+```
+
+**Efeito**:
+```lua
+player:teleportTo(player:getTown():getTemplePosition())
+player:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have been teleported...")
+```
+
+---
+
+### 19. processHirelingPurchase(player, offer, productType, hirelingName, chosenSex) - FUNÇÃO MODAL COMPLEXA
+
+Processa criação novo capanga com múltiplos paths.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offer (table): Dados da oferta
+- productType (number): CLIENT_STORE_OFFER_HIRELING ou outro
+- hirelingName (string): Nome do capanga
+- chosenSex (number): Sexo (HIRELING_SEX.MALE ou FEMALE)
+
+**Validação Versão Cliente**: Requer client >= 1200
+
+**Path A: CLIENT_STORE_OFFER_HIRELING**
+
+1. Validar nome: `GameStore.canUseHirelingName()`
+2. Capitalizar nome
+3. Criar capanga: `player:addNewHireling()`
+4. Transação: `player:makeCoinTransaction(offer, hirelingName)`
+5. Transaction summary: `player:createTransactionSummary()`
+6. Mensagem: "You have successfully bought [NAME]"
+
+**Path B: Outro productType**
+
+- Agenda `sendRequestPurchaseData` para solicitar nome ao cliente
+
+---
+
+### 20. handleHirelingNameChange(playerId, offer, newHirelingName) - FUNÇÃO LOCAL HELPER
+
+Helper que coordena modal de seleção de capanga + renomeação.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- offer (table): Dados da oferta
+- newHirelingName (string): Novo nome do capanga
+
+**Callback Interno**:
+
+```lua
+local functionCallback = function(playerIdInFunction, data, hireling)
+    -- Validações
+    if not hireling then error "Must select..." end
+    if hireling.active > 0 then error "Must be in lamp" end
+    
+    -- Renomear
+    local oldName = hireling.name
+    hireling.name = data.newHirelingName
+    
+    -- Transação
+    player:makeCoinTransaction(data.offer, oldName .. " to " .. newHirelingName)
+    
+    -- Atualizar descrição lamp
+    local lamp = player:findHirelingLamp(hireling:getId())
+    if lamp then
+        lamp:setAttribute(ITEM_ATTRIBUTE_DESCRIPTION, "...This lamp is home of " .. hireling:getName() .. ".")
+    end
+end
+```
+
+**Efeito**: Modal de seleção, callback executa renomeação
+
+---
+
+### 21. processHirelingChangeNamePurchase(player, offer, productType, newHirelingName) - FUNÇÃO MODAL
+
+Processa renomeação de capanga.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offer (table): Dados da oferta
+- productType (number): CLIENT_STORE_OFFER_NAMECHANGE ou outro
+- newHirelingName (string): Novo nome
+
+**Validação Versão Cliente**: Requer client >= 1200
+
+**Path A: CLIENT_STORE_OFFER_NAMECHANGE**
+
+1. Validar nome: `GameStore.canUseHirelingName()`
+2. Capitalizar nome
+3. Mensagem inicial ao jogador
+4. Agenda `HandleHirelingNameChange` callback
+
+**Path B: Outro productType**
+
+- Agenda `sendRequestPurchaseData` para solicitar nome
+
+---
+
+### 22. handleHirelingSexChange(playerId, offer) - FUNÇÃO LOCAL HELPER
+
+Helper que coordena modal de seleção de capanga + mudança sexo.
+
+**Parâmetros**:
+- playerId (number): ID do jogador
+- offer (table): Dados da oferta
+
+**Callback Interno**:
+
+```lua
+local functionCallback = function(playerIdInFunction, data, hireling)
+    -- Validações
+    if not hireling then error "Must select..." end
+    if hireling.active > 0 then error "Must be in lamp" end
+    
+    -- Transação
+    player:makeCoinTransaction(data.offer, hireling:getName())
+    
+    -- Alternar sexo
+    local changeTo, lookType
+    if hireling.sex == HIRELING_SEX.FEMALE then
+        changeTo = HIRELING_SEX.MALE
+        lookType = HIRELING_OUTFIT_DEFAULT.male
+    else
+        changeTo = HIRELING_SEX.FEMALE
+        lookType = HIRELING_OUTFIT_DEFAULT.female
+    end
+    
+    hireling.sex = changeTo
+    hireling.looktype = lookType
+end
+```
+
+---
+
+### 23. processHirelingChangeSexPurchase(player, offer) - FUNÇÃO MODAL
+
+Processa mudança sexo de capanga.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offer (table): Dados da oferta
+
+**Validação Versão Cliente**: Requer client >= 1200
+
+**Efeito**:
+1. Mensagem inicial
+2. Agenda `HandleHirelingSexChange` callback
+
+---
+
+### 24. processHirelingSkillPurchase(player, offer)
+
+Desbloqueia skill nova para todos os capangas.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offer (table): Dados da oferta (id = skill id)
+
+**Validação Versão Cliente**: Requer client >= 1200
+
+**Efeito**:
+```lua
+player:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+player:enableHirelingSkill(GetHirelingSkillNameById(offer.id))
+player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "A new skill has been added to all your hirelings")
+```
+
+---
+
+### 25. processHirelingOutfitPurchase(player, offer)
+
+Desbloqueia outfit novo para todos os capangas.
+
+**Parâmetros**:
+- player (userdata): Objeto jogador
+- offer (table): Dados da oferta (id = outfit id)
+
+**Validação Versão Cliente**: Requer client >= 1200
+
+**Efeito**:
+```lua
+player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+player:enableHirelingOutfit(GetHirelingOutfitNameById(offer.id))
+player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "A new outfit has been added to all your hirelings")
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Processamento Item Simples
+
+```lua
+local purchases = require("gamestore.purchases")
+
+-- Dispatch from parsers
+purchases.processItemPurchase(player, itemId, 1, false, true)
+```
+
+### Padrão 2: Validação com Error Handling
+
+```lua
+local purchases = require("gamestore.purchases")
+
+-- parseBuyStoreOffer usa pcall
+local ok, err = pcall(function()
+    purchases.processStackablePurchase(player, itemId, 50, "Item", true, false)
+end)
+
+if not ok then
+    -- err.code = 0/1 para error tipo
+    -- Enviar mensagem ao jogador
+end
+```
+
+### Padrão 3: Multiple-Path com ProductType
+
+```lua
+local purchases = require("gamestore.purchases")
+
+-- Path A: Dados já validados
+if productType == GameStore.ClientOfferTypes.CLIENT_STORE_OFFER_NAMECHANGE then
+    purchases.processNameChangePurchase(player, offer, productType, newName)
+else
+    -- Path B: Solicitar ao cliente
+    -- sendRequestPurchaseData reenvia offer
+end
+```
+
+### Padrão 4: Modal com Callback
+
+```lua
+local purchases = require("gamestore.purchases")
+
+-- Agenda callback que será executado após seleção
+purchases.HandleHirelingNameChange(playerId, offer, newName)
+-- Interno: sendHirelingSelectionModal + functionCallback
+```
+
+### Padrão 5: Stacking Inteligente
+
+```lua
+local purchases = require("gamestore.purchases")
+
+-- 150 items stackáveis com stackSize 100
+-- Cria 2 stacks: 100 + 50
+purchases.processStackablePurchase(player, itemId, 150, "Item", true, false)
+```
+
+### Padrão 6: House Items com Unwrap
+
+```lua
+local purchases = require("gamestore.purchases")
+
+local offer = {
+    itemtype = { item1, item2, item3 },  -- Table de items
+    count = 1,
+    movable = false
+}
+purchases.processHouseRelatedPurchase(player, offer)
+```
+
+### Padrão 7: Blessed com Fill Inteligente
+
+```lua
+local purchases = require("gamestore.purchases")
+
+-- Compra "todas bênções", mas respeita máximo 5
+-- Caso jogador tenha 2 bênções, preenche até 5
+purchases.processAllBlessingsPurchase(player, 5)
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Exemplo |
+|---|---|---|
+| **Discriminador por Tipo** | Cada tipo oferta tem função própria | 20+ processadores |
+| **Error Handling com Code** | Errors com .code são handled | pcall captura ambos |
+| **Modal Callbacks** | Interação UI → Callback executado | hireling selection |
+| **Stacking Inteligente** | Divdir items em stacks | processStackablePurchase |
+| **Decoration Kit Wrapper** | House items empacotados | processHouseRelatedPurchase |
+| **Fill Inteligente** | Preencher até limite | processAllBlessingsPurchase |
+| **Path Alternativo** | ProductType determina ação | sendRequestPurchaseData fallback |
+| **Versioning Check** | Client version >= 1200 para hireling | Compatibilidade |
+
+### Padrões Implementados
+
+1. **Single Responsibility**: Cada função = um tipo oferta
+2. **Error Propagation**: Errors bubbled para parsers.lua
+3. **State Mutation**: Funções mudam estado jogador
+4. **Callback Pattern**: Modals agendadas com callbacks
+5. **Conditional Execution**: branch por productType
+6. **Limit Checking**: Validações de cap/max
+7. **Stacking Algorithm**: Loop com math.min para division
+8. **Magic Effects**: Feedback visual com sendMagicEffect
+
+### Responsabilidades do Módulo
+
+- ✅ Executar lógica pura de 20+ tipos oferta
+- ✅ Validar pré-condições (inbox space, limits)
+- ✅ Mutar estado de jogador apropriadamente
+- ✅ Coordenar callbacks de UI para dados input
+- ✅ Registrar transações em histórico (via makeCoinTransaction)
+- ✅ Propagar errors (com .code handled/unhandled)
+- ✅ Fornecer feedback visual (magic effects, messages)
+- ✅ Respeitar compatibilidade de versão cliente
+
+### Casos de Uso Principais
+
+1. **Item Stackável**: Quantidade em múltiplos stacks
+2. **Outfit com Addon**: Validação sexo + base required
+3. **Blessing All**: Fill inteligente até 5 cada
+4. **Hireling**: Modal de seleção + ação
+5. **House Deco**: Wrapper em decoration kit
+6. **Premium**: Integração com VIP system
+7. **Temple Teleport**: Validação PZ + fight
+8. **Name Change**: Path modal ou direto
+
+---
+
+## 📚 Conclusão
+
+O módulo `purchases.lua` é um exemplo magistral de **arquitetura discriminada** em Lua, onde 20+ tipos de transações são implementados através de funções especializadas, cada uma com lógica única apropriada. A sofisticação reside não em funções individuais complexas, mas na **coordenação coesa** de padrões: desde simples (item na inbox) até sofisticados (modal com callback, stacking inteligente, fill respectful de limites).
+
+Dois patterns particularmente notáveis emergem: **múltiplos paths por productType** demonstram como lidar com UI indefinida (solicitando dados ao cliente se necessário), enquanto **decoration kit wrapping** em `processHouseRelatedPurchase()` exemplifica transformação de dados com metadata rica. Os helpers de hireling (HandleHirelingNameChange, HandleHirelingSexChange) mostram padrão Lua de callbacks enriquecidos com contexto capturado em closures.
+
+Estudando este módulo, compreende-se como sistemas de loja complexos (múltiplos tipos itens, integração com player state, UI dinâmica, versionamento cliente) mantêm-se organizados através de separação de responsabilidades clara. O uso de `error()` em lugar de `return false` é particularmente interessante - permite que pcall distinga erros applicação (com .code) de erros script genuínos.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadados do Documento">
+- **Versão do Módulo**: Conforme constants.lua v2.0
+- **Data da Documentação**: 19 de Fevereiro, 2026
+- **Cobertura**: 100% (25 funções: 20 globais + 2 helpers + 3 variáveis cache)
+- **Complexidade**: Muito Alta (modal callbacks, stacking, decoration kit wrapping, multi-path)
+- **Autor**: Documentação Canary Server Libs
+- **Padrão**: 7 seções MDX/Astro
+- **Exemplos Inclusos**: 7 padrões de uso completos
+</Card>
+
+<Aside type="tip">
+**Dica de Integração**: Este módulo **não deve ser chamado diretamente** a não ser através de parsers.lua após todas validações. Cada função assume que o jogador pode legalmente fazer aquela compra. Se adicionar novo tipo oferta, adicionar função aqui + dispatcher em parsers.lua + validação em player.canBuyOffer().
+</Aside>
+
+<Aside type="caution">
+**Atenção Crítica**: 
+- Erros aqui devem ser capturados em pcall pelo dispatcher
+- Validações de inbox.canReceive() são críticas - sem elas items perdem-se
+- processAllBlessingsPurchase com fill inteligente é crítico - testar exhaustivamente
+- Client version check (>= 1200) é absoluto para hireling - não remover
+- Stacking algorithm deve respeitar stackSize - nunca criar stack ilegal
+</Aside>
+
+<Aside type="note">
+**Notas de Manutenção**:
+- Cada function = um tipo oferta (ONE RESPONSIBILITY)
+- error with structure `{ code: 0/1, message }` to distinguish error types
+- sendMagicEffect + sendTextMessage sempre para feedback visual
+- Modal callbacks captura contexto em closure (offer, newName, etc)
+- Transaction summary inserido em makeCoinTransaction via player module
+- ITEM_ATTRIBUTE_STORE = systemTime() marca item como non-movable
+- playerKV:set() para estado persistente (expBootCount, etc)
+- ProcessAllBlessings normaliza twist of fate como especial
+</Aside>

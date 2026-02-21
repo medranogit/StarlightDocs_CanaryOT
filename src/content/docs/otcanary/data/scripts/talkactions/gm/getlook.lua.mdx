@@ -1,0 +1,132 @@
+---
+title: GetLook
+description: Comando GM para obter os dados visuais (outfit) de uma criatura específica em formato XML
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `getlook.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Consultar dados de aparência visual (outfit) |
+| **Comando** | `/getlook <creature_name>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Nome da criatura |
+| **Separador** | Espaço |
+| **Saída** | XML com atributos de outfit |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/getlook.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este comando consulta os dados visuais de qualquer criatura por nome e retorna em formato XML. Usa `Creature(name)` para buscar a criatura, depois `getOutfit()` para obter tabela com campos de aparência (`lookType`, `lookHead`, `lookBody`, `lookLegs`, `lookFeet`, `lookAddons`, `lookMount`). Útil para documenta customizações de aparência ou replicar outfits. Requer todas as 7 informações de outfit para saída XML válida.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `getlook.lua` implementa um comando TalkAction (`/getlook`) que permite gamemasters consultar os dados visuais completos de qualquer criatura no servidor. O sistema busca a criatura pelo nome fornecido como parâmetro, extrai sua tabela de outfit através de `getOutfit()`, e retorna os 7 componentes visuais em formato XML estruturado (`lookType`, `lookHead`, `lookBody`, `lookLegs`, `lookFeet`, `lookAddons`, `lookMount`). Incluindo validação de entrada e mensagens de erro apropriadas.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local getlook = TalkAction("/getlook")
+
+-- 2. Função Principal (onSay)
+function getlook.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro obrigatório
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Busca da criatura por nome
+    local creature = Creature(param)
+    if not creature then
+        player:sendCancelMessage("A creature with that name could not be found.")
+        return true
+    end
+    
+    -- Extração dos dados visuais (outfit)
+    local lookt = creature:getOutfit()
+    
+    -- Construção de XML com 7 componentes:
+    -- - lookType: Tipo de outfit base
+    -- - lookHead: Cor/padrão da cabeça
+    -- - lookBody: Cor/padrão do corpo
+    -- - lookLegs: Cor/padrão das pernas
+    -- - lookFeet: Cor/padrão dos pés
+    -- - lookAddons: Nível de addons (0-3)
+    -- - lookMount: ID da montaria
+    
+    local xmlOutput = '<look type="' .. lookt.lookType .. '" head="' .. lookt.lookHead .. 
+                      '" body="' .. lookt.lookBody .. '" legs="' .. lookt.lookLegs .. 
+                      '" feet="' .. lookt.lookFeet .. '" addons="' .. lookt.lookAddons .. 
+                      '" mount="' .. lookt.lookMount .. '" />'
+    
+    player:sendTextMessage(MESSAGE_HOTKEY_PRESSED, xmlOutput)
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+getlook:separator(" ")
+getlook:groupType("gamemaster")
+getlook:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **getlook.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/getlook` é utilizado. Consulta dados visuais de uma criatura e retorna em formato XML.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavras do comando (`/getlook`)
+- `param` (string): **[OBRIGATÓRIO]** Nome da criatura a consultar
+
+**Fluxo de Execução:**
+1. Registra comando em log via `logCommand(player, words, param)`
+2. **Validação de Parâmetro:**
+   - Se vazio: Envia `"Command param required."` e retorna
+3. **Busca de Criatura:**
+   - `creature = Creature(param)` - Busca por nome
+   - Se não encontrada: Envia `"A creature with that name could not be found."` e retorna
+4. **Extração de Outfit:**
+   - `lookt = creature:getOutfit()` - Obtém tabela com 7 campos
+5. **Construção de XML:**
+   ```xml
+   <look type="X" head="Y" body="Z" legs="W" feet="A" addons="B" mount="C" />
+   ```
+6. **Envio de Resultado:**
+   - Tipo de mensagem: `MESSAGE_HOTKEY_PRESSED`
+   - Conteúdo: String XML completa
+
+**Campos de Outfit Retornados:**
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `lookType` | number | ID numérico do tipo de outfit |
+| `lookHead` | number | Valor de cor/padrão da cabeça (0-255) |
+| `lookBody` | number | Valor de cor/padrão do corpo (0-255) |
+| `lookLegs` | number | Valor de cor/padrão das pernas (0-255) |
+| `lookFeet` | number | Valor de cor/padrão dos pés (0-255) |
+| `lookAddons` | number | Nível de addons: 0=nenhum, 1=addon1, 2=addon2, 3=ambos |
+| `lookMount` | number | ID da montaria (0=sem montaria) |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `getlook.lua` é um utilitário GM para consultar e exportar dados visuais de criaturas. Implementação robusta com validação de entrada, tratamento de erros apropriado, e saída em formato XML estruturado que pode ser utilizado para replicar outfits ou documentar customizações. Essencial para administradores que gerenciam aparências de NPCs e criaturas no servidor.

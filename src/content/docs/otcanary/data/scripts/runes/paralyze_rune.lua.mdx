@@ -1,0 +1,398 @@
+---
+title: "Spell/Rune - paralyze_rune.lua"
+description: "Runa de suporte para paralizar inimigos com efeito visual e condição"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `paralyze_rune.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 54 |
+| **ID do Item (runeId)** | 3165 |
+| **Level Requerido** | 54 |
+| **Magic Level Requerido** | 18 |
+| **Grupo** | support |
+| **Tipo de Efeito** | CONDITION_PARALYZE |
+| **Duração da Paralisia** | 6000 ms (6 segundos) |
+| **Mana** | 1400 (muito custosa!) |
+| **Cooldown** | 6s (grupo), 2s (individual) |
+| **Cargas** | 1 (extremamente cara!) |
+| **Distância Longa** | Sim (allowFarUse) |
+| **PZ Locked** | Sim |
+| **Agressividade** | Sim |
+| **Requer Target** | Sim |
+| **Vocalizations** | Druid, Elder Druid (restrita!) |
+| **Linhas de Código** | 35 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Runa de suporte que paraliza alvo com condition customizada. Vocação exclusiva (Druids). Altamento custosa: 1 carga + 1400 mana = uso tático pontual. Sem dano direto (UNDEFINEDDAMAGE), puro efeito de controle. Efeitos visuais duplos: RED no target, GREEN no caster (feedback). Cooldown assimétrico: 6s grupo, 2s individual.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/paralyze_rune.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(54)
+rune:runeId(3165)
+rune:level(54)
+rune:magicLevel(18)
+rune:group("support")
+rune:needTarget(true)
+rune:setPzLocked(true)
+rune:charges(1)
+rune:mana(1400)
+rune:vocation("druid;true", "elder druid;true")
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Paralisia Tática de Druida**
+
+Esta runa implementa um **sistema de controle com condition customizada**:
+
+1. **Vocação Exclusiva:**
+   - Druid (suporte)
+   - Elder Druid (suporte especializado)
+   - Força identity tática!
+
+2. **Condition Paralyze:**
+   - Duração: 6000 ms (6 segundos)
+   - Formula: -1, 0, -1, 0
+   - Bloqueia movimento total
+
+3. **Custo Extremo:**
+   - 1 carga (usar uma vez!)
+   - 1400 mana (enorme!)
+   - Efeito tático = pontos críticos
+
+4. **Efeitos Visuais Duplos:**
+   - RED na vítima (paralisia)
+   - GREEN no caster (sucesso)
+   - Feedback imediato!
+
+**Duração:**
+```
+Alvo preso por 6 segundos
+├─ Não pode se mover
+├─ Não pode atacar
+├─ Não pode fugir
+└─ Apenas toma dano
+```
+
+**Diferencial:** Paralisia tática + efeitos visuais = controle puro!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `paralyze_rune` oferece controle tático:
+
+- **Efeito:** CONDITION_PARALYZE 6s
+- **Tipo:** Suporte (não dano)
+- **Vocação:** Druids (restrita)
+- **Custo:** 1 carga + 1400 mana
+- **Cooldown:** Assimétrico (6s/2s)
+
+### Arquitetura
+
+Combat com condition (sem dano):
+
+```
+local combat = Combat()
+├─ Type: UNDEFINEDDAMAGE (sem dano)
+├─ Effect: MAGIC_RED (target)
+├─ Condition: PARALYZE
+│  └─ Ticks: 6000 ms
+├─ Formula: -1, 0, -1, 0 (puro paralise)
+└─ Resultado: Paralisia!
+
+rune.onCastSpell()
+├─ combat:execute()
+├─ Se sucesso:
+│  └─ Efeito GREEN caster
+└─ Paralisia aplicada!
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_RED)
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_UNDEFINEDDAMAGE)
+```
+
+**Propósito:** Combat de suporte sem dano.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_EFFECT` | CONST_ME_MAGIC_RED | Efeito RED (alvo) |
+| `COMBAT_PARAM_TYPE` | COMBAT_UNDEFINEDDAMAGE | Sem dano |
+
+**Características:**
+- Sem dano direto
+- Apenas paralisia
+- Efeito visual RED
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_PARALYZE)
+condition:setParameter(CONDITION_PARAM_TICKS, 6000)
+condition:setFormula(-1, 0, -1, 0)
+combat:addCondition(condition)
+```
+
+**Propósito:** Condition de paralisia customizada.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `Type` | CONDITION_PARALYZE | Tipo: paralisia |
+| `TICKS` | 6000 | Duração: 6 segundos |
+| `Formula` | -1, 0, -1, 0 | Puro imobilizar |
+
+**Fórmula Condition:**
+```
+-1, 0, -1, 0 = paralisa completamente
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var)
+	if not combat:execute(creature, var) then
+		return false
+	end
+
+	creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+	return true
+end
+```
+
+**Propósito:** Handler com efeito visual duplo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Target |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Paralisia aplicada |
+| `false` | Combat falhou |
+
+**Lógica:**
+
+```lua
+if not combat:execute(creature, var) then
+    return false  -- Combat falhou
+end
+
+creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+return true  -- Sucesso + efeito caster
+```
+
+**Efeitos:**
+- Target: RED (paralizado)
+- Caster: GREEN (sucesso)
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância suporte |
+| `condition` | Condition | Arquivo | Paralisia 6s |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Condition Customizada
+
+```lua
+local condition = Condition(CONDITION_PARALYZE)
+condition:setParameter(CONDITION_PARAM_TICKS, 6000)
+condition:setFormula(-1, 0, -1, 0)
+combat:addCondition(condition)
+```
+
+**Benefício:** Paralisia exata com duração fixa.
+
+### Padrão 2: Efeitos Duplos
+
+```lua
+if not combat:execute(creature, var) then
+    return false
+end
+creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+```
+
+**Benefício:** RED target + GREEN caster = feedback claro.
+
+### Padrão 3: Custo Extremo
+
+```lua
+rune:charges(1)
+rune:mana(1400)
+```
+
+**Benefício:** Uso tático (não spam), poder balanceado.
+
+### Padrão 4: Vocação Restrita
+
+```lua
+rune:vocation("druid;true", "elder druid;true")
+```
+
+**Benefício:** Suporte exclusivo druida.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, var)
+
+**Descrição:** Paralisa alvo com condition e efeitos duplos.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador (Druid) |
+| `var` | Variant | Target (obrigatório) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Paralisia aplicada |
+| `false` | Combat falhou |
+
+**Condições:**
+- Level 54+ requerido
+- MLvl 18+ requerido
+- Druid ou Elder Druid
+- 1400 mana disponível
+- 1 carga disponível
+- PZ lock válido
+
+**Efeitos:**
+
+| Efeito | Tipo | Duração |
+|---|---|---|
+| RED | Target | Visível |
+| GREEN | Caster | Visível |
+| PARALYZE | Condition | 6000ms |
+
+**Exemplo:**
+
+```lua
+-- Druid nível 54, MLvl 18
+rune.onCastSpell(druid, targetVariant)
+// Combat com condition PARALYZE
+// Target paralizado por 6s
+// Efeito RED em alvo
+// Efeito GREEN em druid
+// Mana: -1400
+// Cargas: -1
+// Resultado: Alvo preso 6 segundos!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Escape Tático
+
+```lua
+-- Druid perseguido, quer escapar
+// Paraliza perseguidor por 6s
+// Ganha tempo de fuga
+// Custo alto = uso crítico
+```
+
+### Caso 2: Proteção Aliado
+
+```lua
+-- Aliado cercado
+// Druid paraliza inimigo
+// Cria abertura para cura
+// Suporte puro
+```
+
+### Caso 3: Controle PvP
+
+```lua
+-- Guild war contra druidas
+// Paralisia tática = controle
+// Custo alto = pontos críticos
+// Vocação restrita = apenas druidas
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat Condition
+- **Condition:** CONDITION_PARALYZE
+- **Parameters:** CONDITION_PARAM_TICKS
+- **Effects:** CONST_ME_MAGIC_RED, CONST_ME_MAGIC_GREEN
+- **Vocations:** Druid, Elder Druid
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Paralisia tática |
+| **Condition** | PARALYZE 6000ms |
+| **Duração** | 6 segundos |
+| **Efeitos** | RED target + GREEN caster |
+| **Mana** | 1400 (muito!) |
+| **Cargas** | 1 (extremo) |
+| **Cooldown** | 6s grupo, 2s solo |
+| **Vocação** | Druid, Elder Druid |
+| **Target** | Requerido |
+| **PZ Locked** | Sim |
+| **Level** | 54 (high) |
+| **MLvl** | 18 |
+| **Padrão** | Condition customizada + efeitos duplos |

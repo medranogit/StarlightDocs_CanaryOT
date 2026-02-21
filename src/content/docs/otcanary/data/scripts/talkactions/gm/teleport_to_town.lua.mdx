@@ -1,0 +1,156 @@
+---
+title: Teleport To Town
+description: Comando GM para teleportar para templo de cidade específica por nome ou ID
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `teleport_to_town.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Teleportar para cidade |
+| **Comando** | `/town <town_name\|town_id>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Nome ou ID da cidade |
+| **Separador** | Espaço |
+| **Busca** | Por nome (string) ou ID (número) |
+| **Localização Alvo** | Temple Position da Town |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/teleport_to_town.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que aceita nome ou ID de cidade. Tenta buscar via `Town(param)` (por nome) ou `Town(tonumber(param))` (por ID). Ambos retornam objeto Town se sucesso, nil se falha. Obtém temple position via `getTown():getTemplePosition()` e teleporta. Exemplo de programação defensiva com operador `or` para priorizar nome.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `teleport_to_town.lua` implementa um comando TalkAction (`/town`) que teleporta gamemasters para templo de qualquer cidade. O sistema aceita nome ou ID da cidade como parâmetro, tenta buscar por ambos via `Town()`, obtém posição de templo, e teleporta. Ferramenta simples de teletransportação por cidade.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local teleportToTown = TalkAction("/town")
+
+-- 2. Função Principal (onSay)
+function teleportToTown.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Tentar buscar por nome, depois por ID
+    -- Operador 'or' usa primeiro resultado não-nil
+    local town = Town(param) or Town(tonumber(param))
+    
+    -- Se encontrada: teleportar
+    if town then
+        player:teleportTo(town:getTemplePosition())
+    else
+        -- Se não encontrada: erro
+        player:sendCancelMessage("Town not found.")
+    end
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+teleportToTown:separator(" ")
+teleportToTown:groupType("gamemaster")
+teleportToTown:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **teleportToTown.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/town` é utilizado. Teleporta para templo de cidade.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando
+- `words` (string): Palavras do comando (`/town`)
+- `param` (string): **[OBRIGATÓRIO]** Nome ou ID da cidade
+
+**Formato de Comando:**
+```
+/town Carlin              -- Teleporta para templo de Carlin
+/town Thais              -- Teleporta para Thais
+/town 1                  -- Teleporta para cidade ID 1
+/town 5                  -- Teleporta para cidade ID 5
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Busca de Town (Dupla Tentativa):**
+   ```lua
+   local town = Town(param) or Town(tonumber(param))
+   ```
+   - Tenta por nome: `Town(param)`
+     - Se param = "Carlin", busca City "Carlin"
+   - Se falhar (nil), tenta por ID: `Town(tonumber(param))`
+     - Ex: param = "1", converte para 1, busca City ID 1
+   - Primeiro resultado não-nil é usado
+
+4. **Teleportação Condicional:**
+   ```lua
+   if town then
+       player:teleportTo(town:getTemplePosition())
+   else
+       player:sendCancelMessage("Town not found.")
+   end
+   ```
+
+**Exemplos de Nomes de Cidades Comuns:**
+
+| Nome | ID | Temple |
+|---|---|---|
+| Carlin | 1 | (125, 65, 7) |
+| Thais | 2 | (32, 32, 7) |
+| Venore | 3 | (257, 32, 7) |
+| Edron | 4 | (219, 40, 7) |
+
+**Busca de Prioridade:**
+```
+Tentativa 1: Town("Carlin")        -> retorna Town se existe
+             se nil, trata como:
+Tentativa 2: Town(tonumber("Carlin")) -> Town(nil) -> nil
+             Falha: "Town not found."
+
+Tentativa 1: Town("1")             -> nil (não é nome de city)
+Tentativa 2: Town(tonumber("1"))   -> Town(1) -> retorna Town ID 1
+             Sucesso: Teleporta
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Town(name\|id)` | Busca cidade por nome (string) ou ID (number) |
+| `town:getTemplePosition()` | Obtém Position do templo |
+| `player:teleportTo()` | Teleporta |
+| `tonumber(str)` | Converte string para número |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `teleport_to_town.lua` é ferramenta de teletransportação urbana. Implementação com busca dupla (nome/ID), operador `or` para fallback elegante, e validação simples. Essencial para GMs navegar entre cidades rapidamente por referência familiar (nome) ou técnica (ID). Design defensivo com priorização de nome sobre ID.

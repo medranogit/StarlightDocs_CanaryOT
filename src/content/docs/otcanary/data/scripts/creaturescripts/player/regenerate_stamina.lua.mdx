@@ -1,0 +1,333 @@
+---
+title: regenerate_stamina.lua
+description: CreatureEvent "RegenerateStamina" que regenera stamina offline com happy hour progression.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="regenerate_stamina.lua" icon="pencil">
+Listener de login que calcula regeneração de stamina offline.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/player/regenerate_stamina.lua`
+
+**Linhas:** 26 | **Event:** CreatureEvent "RegenerateStamina" | **Tipo:** onLogin Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener que regenera stamina offline. Valida se stamina system está ativado, obtém offlineTime (max 21 dias), deduz 10 minutos (penalty), valida mínimo 3 minutos. Calcula normal stamina regen (180s por ponto), compara com max normal (2340). Se overflow: regen restante em happy hour (360s por ponto, double rate). Aplicar stamina final respeitando máximos (2340 normal, 2520 happy hour). Padrão de duas-tier stamina regen.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT: "RegenerateStamina"
+  └─ onLogin(player)
+      ├─ Validação: STAMINA_SYSTEM enabled?
+      │   └─ NÃO → return true
+      │
+      ├─ lastLogout = getLastLogout()
+      ├─ offlineTime = min(now - lastLogout, 21 dias)
+      │
+      ├─ offlineTime -= 600s (10 min penalty)
+      │
+      ├─ offlineTime < 180s (3 min)?
+      │   └─ SIM → return true (sem regen)
+      │
+      ├─ staminaMinutes = player:getStamina()
+      ├─ maxNormalStaminaRegen = 2340 - min(2340, current)
+      │   └─ Espaço até max normal
+      │
+      ├─ regainStaminaMinutes = offlineTime / 180
+      │   └─ Normal rate: 1 min por 180s
+      │
+      ├─ regainStaminaMinutes > maxNormalStaminaRegen?
+      │   │
+      │   ├─ SIM (overflow para happy hour):
+      │   │   ├─ happyHourStaminaRegen = (offlineTime - normalCost) / 360
+      │   │   │   └─ Happy hour: 1 min por 360s (2x rate)
+      │   │   │
+      │   │   └─ staminaMinutes = min(2520, max(2340, current) + h_hour)
+      │   │       └─ Cap at 2520 (happy hour max)
+      │   │
+      │   └─ NÃO (normal regen apenas):
+      │       └─ staminaMinutes += regainStaminaMinutes
+      │           (sem cap, mas honra normal max)
+      │
+      └─ player:setStamina(staminaMinutes)
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| regenerateStamina | CreatureEvent | Listener de login |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| configManager | módulo | Configuration access |
+| configKeys.STAMINA_SYSTEM | key | Flag do sistema stamina |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Player fazendo login |
+
+### Stamina Constants
+
+| Constante | Valor | Descrição |
+|-----------|-------|-----------|
+| Normal max stamina | 2340 | Máximo de stamina normal |
+| Happy hour max | 2520 | Máximo com happy hour |
+| Normal regen rate | 180s | Tempo por 1 min stamina |
+| Happy hour rate | 360s | Tempo por 1 min (happy hour) |
+| Offline penalty | 600s (10 min) | Deduzido do tempo offline |
+| Min to process | 180s (3 min) | Mínimo para processar |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local regenerateStamina = CreatureEvent("RegenerateStamina")
+
+function regenerateStamina.onLogin(player)
+	-- Validação
+	if not configManager.getBoolean(configKeys.STAMINA_SYSTEM) then
+		return true
+	end
+
+	-- Cálculo de tempo offline
+	local lastLogout = player:getLastLogout()
+	local offlineTime = lastLogout ~= 0 and 
+		math.min(os.time() - lastLogout, 86400 * 21) or 0
+
+	-- Deduzir penalty (10 minutos)
+	offlineTime = offlineTime - 600
+
+	-- Validação: mínimo 3 minutos
+	if offlineTime < 180 then
+		return true
+	end
+
+	-- Stamina atual
+	local staminaMinutes = player:getStamina()
+	
+	-- Espaço disponível até max normal
+	local maxNormalStaminaRegen = 2340 - math.min(2340, staminaMinutes)
+	
+	-- Regen em rate normal (1 min per 180s)
+	local regainStaminaMinutes = offlineTime / 180
+
+	-- Overflow para happy hour?
+	if regainStaminaMinutes > maxNormalStaminaRegen then
+		-- Stamina consumida em normal regen
+		local normalCost = maxNormalStaminaRegen * 180
+		
+		-- Tempo restante em happy hour (1 min per 360s)
+		local happyHourStaminaRegen = (offlineTime - normalCost) / 360
+		
+		-- Aplicar ambos os regens
+		staminaMinutes = math.min(2520, 
+			math.max(2340, staminaMinutes) + happyHourStaminaRegen)
+	else
+		-- Apenas normal regen
+		staminaMinutes = staminaMinutes + regainStaminaMinutes
+	end
+
+	player:setStamina(staminaMinutes)
+	return true
+end
+
+regenerateStamina:register()
+```
+
+### Árvore de Decisão
+
+```
+Player faz login
+  │
+  ├─ STAMINA_SYSTEM enabled?
+  │   ├─ NÃO → return true (sem processar)
+  │   └─ SIM → Continua
+  │
+  ├─ lastLogout = getLastLogout()
+  ├─ offlineTime = min(now - lastLogout, 21 dias)
+  │
+  ├─ offlineTime -= 600s (10 min penalty)
+  │   └─ Deduzir tempo de penalty
+  │
+  ├─ offlineTime < 180s (3 min)?
+  │   ├─ SIM → return true (muito pouco tempo)
+  │   └─ NÃO → Continua (processa)
+  │
+  ├─ staminaMinutes = player:getStamina()
+  │   └─ Stamina atual
+  │
+  ├─ maxNormalStaminaRegen = 2340 - min(2340, current)
+  │   └─ Espaço até max normal (2340)
+  │
+  ├─ regainStaminaMinutes = offlineTime / 180
+  │   └─ Stamina regen em rate normal
+  │
+  ├─ regainStaminaMinutes > maxNormalStaminaRegen?
+  │   │
+  │   ├─ SIM (OVERFLOW PARA HAPPY HOUR):
+  │   │   │
+  │   │   ├─ normalCost = maxNormalRegen * 180s
+  │   │   │   └─ Tempo gasto em normal regen
+  │   │   │
+  │   │   ├─ happyHourTime = offlineTime - normalCost
+  │   │   │   └─ Tempo restante
+  │   │   │
+  │   │   ├─ happyHourGain = happyHourTime / 360s
+  │   │   │   └─ 1 min per 360s (2x rate)
+  │   │   │
+  │   │   ├─ staminaMinutes:
+  │   │   │   ├─ Começa: max(2340, current)
+  │   │   │   │   (garante min 2340)
+  │   │   │   └─ + happyHourGain
+  │   │   │
+  │   │   └─ staminaMinutes = min(2520, result)
+  │   │       (cap at happy hour max)
+  │   │
+  │   └─ NÃO (APENAS NORMAL REGEN):
+  │       └─ staminaMinutes += regainStaminaMinutes
+  │           (pode ficar abaixo de 2340)
+  │
+  └─ player:setStamina(staminaMinutes)
+```
+
+### Stamina Calculation Example
+
+```lua
+-- EXEMPLO 1: Sem overflow
+-- offlineTime = 3600s (1 hora), after penalty = 3000s
+-- staminaMinutes = 1000
+-- maxNormalRegen = 2340 - 1000 = 1340
+-- regain = 3000 / 180 = 16.67 min
+-- 16.67 < 1340? SIM → apenas normal
+-- staminaMinutes = 1000 + 16.67 = 1016.67
+
+-- EXEMPLO 2: Com overflow para happy hour
+-- offlineTime = 86400s (24 horas), after penalty = 85800s
+-- staminaMinutes = 2300
+-- maxNormalRegen = 2340 - 2300 = 40
+-- regain = 85800 / 180 = 476.67 min
+-- 476.67 > 40? SIM → overflow!
+-- normalCost = 40 * 180 = 7200s
+-- happyHourTime = 85800 - 7200 = 78600s
+-- happyHourGain = 78600 / 360 = 218.33 min
+-- staminaMinutes = max(2340, 2300) + 218.33 = 2558.33
+-- staminaMinutes = min(2520, 2558.33) = 2520 (capped)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onLogin**: Callback disparado ao fazer login
+- **STAMINA_SYSTEM**: Global config flag
+- **Offline Time**: math.min com cap de 21 dias
+- **Offline Penalty**: 10 minutos deduzidos
+- **Normal Regen Rate**: 180s por 1 min stamina
+- **Happy Hour Rate**: 360s por 1 min (2x slower = mais eficiente)
+- **Normal Max**: 2340 minutos
+- **Happy Hour Max**: 2520 minutos (overflow buffer)
+- **Overflow Logic**: Regen normal → happy hour
+- **Cost Calculation**: normalRegen * 180s = tempo consumido
+- **Remaining Time**: offlineTime - normalCost = happy hour time
+
+### Responsabilidades do Handler
+
+1. **Validate**: System enabled?
+2. **Get**: lastLogout + offlineTime
+3. **Deduct**: 10 min penalty
+4. **Check**: Mínimo 3 minutos?
+5. **Calculate**: maxNormalRegen
+6. **Calculate**: regainStaminaMinutes (normal rate)
+7. **Check**: Overflow?
+   - SIM: Apply normal + happy hour
+   - NÃO: Apply normal only
+8. **Apply**: setStamina()
+9. **Return**: true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Two-Tier Regen
+
+Regen normal com overflow para happy hour:
+
+```lua
+local maxNormalStaminaRegen = 2340 - math.min(2340, staminaMinutes)
+local regainStaminaMinutes = offlineTime / 180
+
+if regainStaminaMinutes > maxNormalStaminaRegen then
+	-- Overflow
+	local happyHourGain = (offlineTime - normalCost) / 360
+	staminaMinutes = math.min(2520, math.max(2340, staminaMinutes) + happyHourGain)
+else
+	-- Normal only
+	staminaMinutes = staminaMinutes + regainStaminaMinutes
+end
+```
+
+### Padrão Config-based Feature
+
+Validar sistema ativado:
+
+```lua
+if not configManager.getBoolean(configKeys.STAMINA_SYSTEM) then
+	return true
+end
+```
+
+### Padrão Time Penalty
+
+Deduzir penalty do offline time:
+
+```lua
+offlineTime = offlineTime - 600  -- 10 min penalty
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: regenerate_stamina.lua" icon="star">
+Análise de listener de stamina regeneration. Demonstra two-tier regen system com happy hour overflow.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Offline stamina regeneration with overflow | Complexidade: Média
+</Aside>

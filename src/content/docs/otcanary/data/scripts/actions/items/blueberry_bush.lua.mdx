@@ -1,0 +1,185 @@
+---
+title: blueberry_bush.lua
+description: Sistema de colheita de arbustos de mirtilo com achievement tracking
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="blueberry_bush.lua" icon="star">
+Script de ação Lua que implementa colheita de arbustos de mirtilo com tracking de achievement.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/blueberry_bush.lua`
+
+Script simples (10 linhas) que transforma arbusto usado, cria 3x mirtilo e avança achievement "Bluebarian". Item ID 3699.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `blueberry_bush.lua` implementa colheita de arbusto temático. Ao usar arbusto (ID 3699), transforma em estado colhido (ID 3700), coloca decay timer, gera 3x mirtilos (item 3588) na posição e progride achievement Bluebarian. Sem cooldown ou restrições.
+
+**Estrutura Fundamental**
+
+```
+[Create blueberryBush Action]
+    ↓
+[onUse function]
+    ├─ item:transform(3700) [colhido]
+    ├─ item:decay() [timer decay]
+    ├─ Game.createItem(3588, 3, position) [3x mirtilo]
+    ├─ addAchievementProgress("Bluebarian", 500)
+    └─ return true
+    ↓
+[Register Action on item ID 3699]
+```
+
+## Funções
+
+### blueberryBush.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback acionado ao usar arbusto.
+
+**Parâmetros:**
+- player: Creature player
+- item: Arbusto sendo colhido
+- fromPosition: Posição do arbusto
+- target: Target (pode ser nil)
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```
+1. item:transform(3700)
+   └─ Transforma arbusto em estado colhido
+
+2. item:decay()
+   └─ Inicia decay timer (volta ao normal após tempo)
+
+3. Game.createItem(3588, 3, fromPosition)
+   ├─ Cria 3x mirtilos (item 3588)
+   └─ Na posição original do arbusto
+
+4. player:addAchievementProgress("Bluebarian", 500)
+   └─ Progride achievement Bluebarian 500 pontos
+
+5. return true
+```
+
+**Implementação:**
+
+```lua
+function blueberryBush.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+  item:transform(3700)
+  item:decay()
+  Game.createItem(3588, 3, fromPosition)
+  player:addAchievementProgress("Bluebarian", 500)
+  return true
+end
+```
+
+Todos os passos em sequência simples.
+
+## Item IDs e Variáveis
+
+| ID | Tipo | Descrição |
+|----|------|-----------|
+| 3699 | Arbusto | Blueberry bush original (intacto) |
+| 3700 | Arbusto | Blueberry bush após colheita (vazio) |
+| 3588 | Item | Blueberry (mirtilo) |
+
+## Achievement Integration
+
+### Achievement: Bluebarian
+
+**Chave**: "Bluebarian"  
+**Progresso por uso**: 500 pontos  
+**Tipo**: Tracking de colheita  
+**Efeito**: Progride counter de berries colhidas
+
+**Sistema**:
+```lua
+player:addAchievementProgress("Bluebarian", 500)
+```
+
+Cada colheita vale 500 pontos para achievement temático.
+
+## Decay System
+
+### item:decay()
+
+Inicia timer de decay que restaura arbusto ao estado original (3699).
+
+**Parâmetros**: Usa configuração padrão de decay do item (arquivo items.xml)
+
+**Efeito**: Arbusto colhido volta ao normal automaticamente após tempo.
+
+## Fluxo de Operação
+
+```
+[Player usa arbusto 3699]
+    ↓
+[item:transform(3700)]
+    ├─ Muda visual para colhido
+    └─ State change
+    ↓
+[item:decay()]
+    ├─ Inicia timer
+    └─ Voltará a 3699 após expiração
+    ↓
+[Game.createItem(3588, 3, position)]
+    ├─ Cria 3 mirtilos
+    └─ Na mesma posição do arbusto
+    ↓
+[player:addAchievementProgress(..., 500)]
+    └─ Progride Bluebarian
+    ↓
+[return true]
+```
+
+## Padrão de Harvesting
+
+Este script segue padrão comum em MMOs:
+
+1. **Transform**: Item muda visual (intacto → colhido)
+2. **Decay**: Timer natural para regeneração
+3. **Rewards**: Itens criados na posição
+4. **Tracking**: Achievement progride com cada uso
+
+Aplicável a qualquer colheita (mushrooms, herbs, etc).
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Transform altera visual/estado do item
+2. Decay regenera automático item após tempo
+3. Game.createItem() gera múltiplos itens
+4. Achievement progress tracking per-use
+5. Sem validações (nível, cooldown, etc)
+
+**Responsabilidades:**
+1. Transformar arbusto para estado colhido
+2. Iniciar decay para regeneração
+3. Gerar items de recompensa na posição
+4. Atualizar achievement progress
+5. Retornar true (ação bem-sucedida)
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 10 linhas  
+**Funções**: 1 (onUse)  
+**Item ID**: 3699 (bush)  
+**Itens Gerados**: 3588 x3 (blueberries)  
+**Achievement**: Bluebarian (500 points)
+</Card>
+
+<Aside type="note">
+Script simples de colheita temática. Transforma arbusto, inicia decay para regeneração automática, cria 3 mirtilos e progride achievement. Sem cooldown, nível ou outras restrições. Padrão comum para harvesting resources em jogo.
+</Aside>

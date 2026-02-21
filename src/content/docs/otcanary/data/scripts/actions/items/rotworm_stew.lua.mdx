@@ -1,0 +1,249 @@
+---
+title: rotworm_stew.lua
+description: Item consumível que restaura 100% da vida máxima com cooldown compartilhado de 10 minutos.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="rotworm_stew.lua" icon="pencil">
+Comida especial que faz full heal com cooldown compartilhado e efeito visual de poder.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/rotworm_stew.lua`
+
+**Linhas:** 17 | **ID do Item:** 9079 | **Tipo:** Action Handler
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa consumível que restaura 100% da vida máxima do jogador. Utiliza cooldown compartilhado "special-foods-cooldown" (10 min) com outras comidas especiais. Inclui validação de cooldown antes de permitir uso, efeito visual, emote e mensagem customizada. Um poderoso item de healing com restrição temporal.
+
+### Estrutura de Funcionalidades
+
+```
+rotwormStew (Action)
+  ├─ onUse(player, item, fromPosition, target, toPosition, isHotkey)
+  │   ├─ hasExhaustion("special-foods-cooldown")? → bloqueia
+  │   ├─ addHealth(getMaxHealth()) → full restore
+  │   ├─ Mensagem: "Your health has been refilled."
+  │   ├─ Emote: "Gulp."
+  │   ├─ Efeito: CONST_ME_MAGIC_RED
+  │   ├─ setExhaustion(10 * 60) → cooldown
+  │   ├─ item:remove(1)
+  │   └─ return true
+  └─ register() → ID 9079
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| rotwormStew | Action | Objeto handler para o caldo de rotworm |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | Valor | Descrição |
+|------|-------|-----------|
+| Rotworm Stew | 9079 | ID do item para trigger |
+| Healing | 100% MaxHP | Restaura toda a vida |
+| Cooldown Compartilhado | special-foods-cooldown | Compartilhado com outras comidas |
+| Duração Cooldown | 10*60 | 600 segundos = 10 minutos |
+| Efeito Visual | CONST_ME_MAGIC_RED | Efeito mágico vermelho |
+| Emote | Gulp. | Fala do jogador |
+| Mensagem Healing | Your health has been refilled. | Notificação de cura total |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function rotwormStew.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação de cooldown
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true  -- Item NÃO removido
+	end
+
+	-- Full heal
+	player:addHealth(player:getMaxHealth())
+	
+	-- Feedback ao jogador
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your health has been refilled.")
+	player:say("Gulp.", TALKTYPE_MONSTER_SAY)
+	
+	-- Efeito visual
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	
+	-- Ativar cooldown compartilhado
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+	
+	-- Consumir item
+	item:remove(1)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa rotworm_stew (9079)
+  │
+  ├─ hasExhaustion("special-foods-cooldown")?
+  │   ├─ SIM → Bloqueado
+  │   │   ├─ Message: "You need to wait..."
+  │   │   ├─ Item NÃO removido
+  │   │   └─ return true
+  │   │
+  │   └─ NÃO → Continua...
+  │
+  ├─ Full Heal:
+  │   └─ addHealth(getMaxHealth())
+  │       └─ Restaura 100% da vida
+  │
+  ├─ Feedback:
+  │   ├─ Message: "Your health has been refilled."
+  │   └─ Emote: "Gulp."
+  │
+  ├─ Efeito:
+  │   └─ MAGIC_RED
+  │
+  ├─ Cooldown:
+  │   └─ setExhaustion(10 min = 600 seg)
+  │
+  ├─ Consumir:
+  │   └─ item:remove(1)
+  │
+  └─ return true
+```
+
+### Full Heal Mechanics
+
+```
+Antes de usar:
+  └─ player:getHealth() = X (qualquer valor)
+
+Após usar:
+  ├─ addHealth(getMaxHealth()) chamado
+  ├─ Health aumenta por MaxHealth
+  └─ Resultado: Health = min(current + MaxHealth, MaxHealth) = MaxHealth
+     (sempre resulta em 100%)
+```
+
+### Cooldown Timing
+
+```
+T0: Primeiro uso
+  ├─ Heal: +MaxHealth
+  ├─ Cooldown ativado (10 min)
+  └─ Item removido
+
+T0+600s: Cooldown expira
+  └─ Pode usar novamente (se houver mais items)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Full Heal Pattern**: `player:addHealth(player:getMaxHealth())` restaura 100% da vida
+- **Cooldown Compartilhado**: Múltiplos items especiais usam "special-foods-cooldown"
+- **Return True Sem Consumir**: Se cooldown bloqueia, return true MAS item não é removido
+- **hasExhaustion()**: Verifica se jogador está em cooldown
+- **setExhaustion()**: Ativa cooldown de X segundos
+- **getMaxHealth()**: Obtém HP máximo do jogador (dinâmico por level)
+- **Emote + Message**: Duplo feedback (visual + texto)
+- **MAGIC_RED Effect**: Efeito visual para comidas/potências especiais
+
+### Responsabilidades do Handler
+
+1. **Validar cooldown**: hasExhaustion("special-foods-cooldown")
+2. **Bloquear graciosamente**: Se em cooldown, return true sem remover item
+3. **Restaurar vida**: addHealth(getMaxHealth()) para full heal
+4. **Enviar mensagens**: Notificação de cura completa
+5. **Produzir emote**: "Gulp." audível a outros
+6. **Efeito visual**: MAGIC_RED na posição do jogador
+7. **Ativar cooldown**: setExhaustion(10 min)
+8. **Consumir item**: remove(1)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Full Heal com Cooldown Compartilhado
+
+Este script demonstra comida especial com pool de cooldown:
+
+```lua
+-- Validação de cooldown
+if player:hasExhaustion("special-foods-cooldown") then
+	-- Rejeitar sem consumir
+	return true
+end
+
+-- Aplicar healing
+player:addHealth(player:getMaxHealth())
+
+-- Ativar cooldown (afeta todas as foods com mesmo cooldown)
+player:setExhaustion("special-foods-cooldown", 10 * 60)
+```
+
+### Comparação: Rotworm Stew vs Roasted Dragon Wings
+
+| Aspecto | Rotworm Stew | Roasted Wings |
+|---------|---|---|
+| Tipo | Full Heal | Buff Condition |
+| Healing | +100% MaxHP | Nenhum |
+| Condition | Nenhuma | Shield +10 |
+| Duração | Instantâneo | 1 hora |
+| Cooldown | Compartilhado (food) | Compartilhado (food) |
+| Efeito | MAGIC_RED | MAGIC_RED |
+| Emote | Gulp. | Chomp. |
+
+### Consumo de Item
+
+```
+Sucesso (cooldown expirado):
+  ├─ Heal aplicado
+  ├─ item:remove(1) executado
+  └─ Item desaparece
+
+Bloqueado (cooldown ativo):
+  ├─ Heal NÃO aplicado
+  ├─ item:remove(1) NÃO executado
+  └─ Item permanece no inventário
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: rotworm_stew.lua" icon="star">
+Análise da comida especial com full heal (100% MaxHP) e cooldown compartilhado. Padrão de validação graciosa sem consumir item bloqueado.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Full heal com cooldown compartilhado | Complexidade: Baixa
+</Aside>

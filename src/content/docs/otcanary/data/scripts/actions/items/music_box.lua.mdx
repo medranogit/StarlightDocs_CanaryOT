@@ -1,0 +1,237 @@
+---
+title: music_box.lua
+description: Caixa de música que doma mobs para mount
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="music_box.lua" icon="star">
+Script de ação Lua que implementa caixa de música para domar 9 tipos de mobs diferentes.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/music_box.lua`
+
+Caixa (ID 16244) que doma 9 mobs específicos para mounts temáticos: dragonling (31), draptor (6), white deer (18), ironblight (29), magma crawler (30), midnight panther (5), wailing widow (1), wild horse (17), panda (19). Cada tem achievement temático, som único, mensagem customizada. Desbloquia "Natural Born Cowboy" global + achievement específico.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `music_box.lua` implementa caixa de música para domação de 9 mobs diferentes. Cada mob tem config: mount ID, achievement temático, mensagem tame customizada, som do mob. Validações: target deve ser creature/monster, sem master (wild), mount não duplicado. Ao sucesso: add mount, achievements (global + temático), mensagem e som player, som mob, remove mob.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define config com 9 mobs]
+    ├─ dragonling: mount 31, ach "Dragon Mimicry", som "FI?"
+    ├─ draptor: mount 6, ach "Scales and Tail", som "Screeeeeeeeech"
+    ├─ enraged white deer: mount 18, ach "Friend of Elves", som "*bell*"
+    ├─ ironblight: mount 29, ach "Magnetised", som "Plinngggg"
+    ├─ magma crawler: mount 30, ach "Way to Hell", som "ZzzZzzZzzzZz"
+    ├─ midnight panther: mount 5, ach "Starless Night", som "Purrrrrrr"
+    ├─ wailing widow: mount 1, ach "Spin-Off", som "Sssssssss"
+    ├─ wild horse: mount 17, ach "Lucky Horseshoe", som "*snort*"
+    └─ panda: mount 19, ach "Chequered Teddy", som "Rrrrr... Grrrr"
+
+[Create musicBox Action]
+    ↓
+[onUse function]
+    ├─ Validações
+    │   ├─ If not creature or not monster? return false
+    │   ├─ If has master (tamed)? return false
+    │   ├─ config = config[target:getName():lower()] 
+    │   ├─ Not found? return false
+    │   ├─ If already has mount? return false
+    │   └─ Pass → continuar
+    ├─ Ações
+    │   ├─ addMount(mountId)
+    │   ├─ addAchievement("Natural Born Cowboy") [global]
+    │   ├─ addAchievement(monsterConfig.achievement) [temático]
+    │   ├─ player:say(tameMessage)
+    │   ├─ sendMagicEffect(SOUND_RED)
+    │   ├─ target:say(monsterSound)
+    │   ├─ target:remove()
+    │   ├─ item:remove(1)
+    │   └─ return true
+    ↓
+[Register on item ID 16244]
+```
+
+## Variáveis Globais
+
+### config (local table - 9 mobs)
+
+Mapeamento de nome mob para config.
+
+**Estrutura**:
+```lua
+[mobName] = {
+  mountId = id,
+  achievement = "nome",
+  tameMessage = "mensagem",
+  sound = "som"
+}
+```
+
+Lookup por nome (case-insensitive).
+
+## Mobs e Mounts
+
+| Mob | Mount ID | Achievement | Som |
+|-----|----------|-------------|-----|
+| dragonling | 31 | Dragon Mimicry | FI? |
+| draptor | 6 | Scales and Tail | Screeeeeeeeech |
+| enraged white deer | 18 | Friend of Elves | *bell* |
+| ironblight | 29 | Magnetised | Plinngggg |
+| magma crawler | 30 | Way to Hell | ZzzZzzZzzzZz |
+| midnight panther | 5 | Starless Night | Purrrrrrr |
+| wailing widow | 1 | Spin-Off | Sssssssss |
+| wild horse | 17 | Lucky Horseshoe | *snort* |
+| panda | 19 | Chequered Teddy | Rrrrr... Grrrr |
+
+## Funções
+
+### musicBox.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que doma mob.
+
+**Parâmetros:**
+- player: Creature player (domador)
+- item: Caixa sendo usada
+- fromPosition: Posição original
+- target: Mob alvo
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. Validações
+   ├─ if not target:isCreature() or not target:isMonster() or target:getMaster()
+   │   └─ return false
+   ├─ monsterConfig = config[target:getName():lower()]
+   ├─ if not monsterConfig
+   │   └─ return false
+   ├─ if player:hasMount(mountId)
+   │   └─ return false
+   └─ continuar
+
+2. Domação
+   ├─ player:addMount(monsterConfig.mountId)
+   ├─ player:addAchievement("Natural Born Cowboy")
+   ├─ player:addAchievement(monsterConfig.achievement)
+   ├─ player:say(monsterConfig.tameMessage, TALKTYPE_MONSTER_SAY)
+   ├─ toPosition:sendMagicEffect(CONST_ME_SOUND_RED)
+   ├─ target:say(monsterConfig.sound, TALKTYPE_MONSTER_SAY)
+   ├─ target:remove()
+   ├─ item:remove(1)
+   └─ return true
+```
+
+**Implementação:**
+
+```lua
+function musicBox.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if not target:isCreature() or not target:isMonster() or target:getMaster() then
+		return false
+	end
+
+	local monsterConfig = config[target:getName():lower()]
+	if not monsterConfig then
+		return false
+	end
+
+	if player:hasMount(monsterConfig.mountId) then
+		return false
+	end
+
+	player:addMount(monsterConfig.mountId)
+	player:addAchievement("Natural Born Cowboy")
+	player:addAchievement(monsterConfig.achievement)
+	player:say(monsterConfig.tameMessage, TALKTYPE_MONSTER_SAY)
+	toPosition:sendMagicEffect(CONST_ME_SOUND_RED)
+
+	target:say(monsterConfig.sound, TALKTYPE_MONSTER_SAY)
+	target:remove()
+
+	item:remove(1)
+	return true
+end
+```
+
+## Validações Sequenciais
+
+### 1. Target é creature/monster wild
+
+```lua
+if not target:isCreature() or not target:isMonster() or target:getMaster() then
+	return false
+end
+```
+
+Target deve ser:
+- Creature (yes)
+- Monster (yes)
+- Sem master (wild, não tamed)
+
+### 2. Config encontrado
+
+```lua
+local monsterConfig = config[target:getName():lower()]
+if not monsterConfig then
+	return false
+end
+```
+
+Nome do mob (case-insensitive) deve estar em config.
+
+### 3. Mount não duplicado
+
+```lua
+if player:hasMount(monsterConfig.mountId) then
+	return false
+end
+```
+
+Player não pode ter mount duplicado.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Config table por nome (case-insensitive)
+2. Validação multiple (creature, monster, wild)
+3. Achievements dual (global + temático)
+4. Mensagem customizada por mob
+5. Som customizado do mob (not efeito)
+6. Mount bloqueia duplicação
+7. Remove mob após domar
+
+**Responsabilidades:**
+1. Validar target creature/monster/wild
+2. Lookup config por nome
+3. Validar mount não duplicado
+4. Add mount
+5. Add achievements (2)
+6. Emitir mensagens (player + mob)
+7. Remove mob + caixa
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 43 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 16244  
+**Mobs Domáveis**: 9 tipos  
+**Mounts**: IDs 1, 5, 6, 17, 18, 19, 29, 30, 31  
+**Achievements**: 1 global + 9 temáticos  
+**Sons**: Customizado por mob
+</Card>
+
+<Aside type="note">
+Caixa doma 9 mobs para mounts. Config por nome lookup (case-insensitive). Validações creature/monster/wild. Achievements global + temático. Sons customizados. Remove mob.
+</Aside>

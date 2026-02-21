@@ -1,0 +1,506 @@
+---
+title: "ondroploot_boosted.lua"
+description: "Sistema de loot drops para creature boosted com multiplicador de loot baseado em weekly boosted creature do servidor"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Event callback especializado que implementa **sistema de loot boosted** quando a criatura morta é a criatura boosted da semana. Valida se monstro é boosted creature (via `Game.getBoostedCreature()`), verifica se não é boss recompensado, confirma player válido, gera loot roll com factor 1.0 (sem multiplicador extra), e anexa mensagem "boosted loot" ao corpse. Padrão de **override específico** onde creature boosted ignora factor personalizador e sempre usa roll padrão.
+
+**Caminho Original**: `data/scripts/eventcallbacks/monster/ondroploot_boosted.lua`
+
+**Tipo**: EventCallback (monsterOnDropLoot trigger)
+
+**Dependências**:
+- EventCallback API (engine C++)
+- Monster/Player/Corpse objects (userdata)
+- Game.getBoostedCreature() API
+- MonsterType:isRewardBoss() API
+- Constants: `ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX`
+
+<Aside>
+Este callback é **específico e priorizado** - executado SOMENTE para boosted creatures. Ignora intentionalmente o system de factor personalizador do base callback, criando experiência uniforme para creature boosted. Sempre gera roll com factor=1.0 + mesma quantidade de items, mas garantindo que todo player recebe mesma quantidade.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `ondroploot_boosted.lua` implementa **gerador de loot específico para creature boosted** que intercepta `monsterOnDropLoot` apenas para monstros que correspondem ao boosted creature semanal do servidor. Executa série de early-return guards (null checks, boosted verification, boss exclusion, player validation), depois gera loot roll com factor=1.0 (ignorando bonuses de vocation/promotion), e anexa mensagem "boosted loot" ao corpse. Padrão de **callback overlayer** onde condições específicas ativam lógica customizada sem interferir com base callback.
+
+### Arquitetura de Componentes
+
+```
+Boosted Loot Handler
+│
+├─ EARLY GUARDS (4 validações)
+│  ├── monster and corpse null check
+│  ├── Monster name == Game.getBoostedCreature() (case-insensitive)
+│  ├── NOT boss rewards (exclude reward bosses)
+│  └── Player valid and canReceiveLoot()
+│
+├─ MONSTER TYPE VALIDATION (1)
+│  └── mType = monster:getType() (must exist)
+│
+├─ MESSAGE SUFFIX ASSEMBLY (2 operações)
+│  ├─ existingSuffix = corpse:getAttribute(...)
+│  ├─ msgSuffix = ", boosted loot" ou "boosted loot" (com/sem prefix)
+│
+├─ LOOT GENERATION (2 operações)
+│  ├── lootTable = mType:generateLootRoll({factor=1.0, gut=false}, {}, player)
+│  └── corpse:addLoot(lootTable)
+│
+└─ MESSAGE ATTRIBUTION (1)
+   └── corpse:setAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX, ...)
+```
+
+### Fluxo de Validação (Early Returns)
+
+```
+ondroploot_boosted(monster, corpse)
+    │
+    ├─ Guard 1: if not monster or not corpse → return (nil)
+    │
+    ├─ Guard 2: if monster:getName():lower() != Game.getBoostedCreature():lower() → return
+    │           (Garante que é a creature boosted da semana)
+    │
+    ├─ Guard 3: mType = monster:getType()
+    │           if mType:isRewardBoss() → return
+    │           (Exclude reward bosses de boosted bonus)
+    │
+    ├─ Guard 4: if not player or not player:canReceiveLoot() → return
+    │
+    └─ [Todas guards passaram: Execute loot generation]
+```
+
+---
+
+## Detalhes da Função Global
+
+### `callback.monsterOnDropLoot(monster, corpse)`
+
+**Tipo**: EventCallback hook
+
+**Descrição**: Função disparada quando monstro morre, mas **só executa lógica se é boosted creature**. Valida múltiplas condições antes de gerar loot boosted, garantindo que apenas creature boosted da semana recebe tratamento especial.
+
+**Parâmetros**:
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `monster` | userdata | Monstro que morreu |
+| `corpse` | userdata | Corpse aonde loot será adicionado |
+
+**Retorna**: 
+- `nil` (implícito, função não retorna nada)
+
+**Algoritmo de Validação**:
+
+```lua
+function callback.monsterOnDropLoot(monster, corpse)
+    -- GUARD 1: Null check
+    if not monster or not corpse then
+        return  -- Encerrar silenciosamente
+    end
+    
+    -- GUARD 2: Boosted creature check (case-insensitive)
+    if monster:getName():lower() ~= Game.getBoostedCreature():lower() then
+        return  -- Não é creature boosted: deixa outros callbacks processing
+    end
+    
+    -- GUARD 3: Exclude reward bosses
+    local mType = monster:getType()
+    if mType:isRewardBoss() then
+        return  -- Reward bosses não recebem boosted bonus
+    end
+    
+    -- GUARD 4: Player validation
+    local player = Player(corpse:getCorpseOwner())
+    if not player or not player:canReceiveLoot() then
+        return  -- Player offline ou não pode receber loot
+    end
+    
+    -- Precondição: mType já foi obtido em Guard 3
+    if not mType then
+        return
+    end
+
+    -- GENERATE LOOT
+    local factor = 1.0  -- Sem multiplicador
+    local existingSuffix = corpse:getAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX) or ""
+    local msgSuffix = string.len(existingSuffix) > 0 and ", boosted loot" or "boosted loot"
+    
+    -- Generate com factor=1.0 (padrão)
+    corpse:addLoot(mType:generateLootRoll({ factor = factor, gut = false }, {}, player))
+    
+    -- Append mensagem
+    corpse:setAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX, existingSuffix .. msgSuffix)
+end
+```
+
+**Características Principais**:
+
+| Característica | Valor | Notas |
+|---|---|---|
+| Validação | 4 guards criados | Early return pattern |
+| Nome Comparison | Case-insensitive | :lower() em ambos |
+| Factor Fixed | 1.0 | Sem personalização |
+| Boss Exclusion | isRewardBoss() | Reward bosses excluídos |
+| Message | Sufixo simples | "boosted loot" |
+| Early Exit | Múltiplas rotas | Deixa outro callback processar |
+
+---
+
+## Detalhes das Variáveis Locais
+
+### `factor` (number)
+
+**Tipo**: number
+
+**Escopo**: Local (função, apenas se guards passam)
+
+**Inicialização**: `local factor = 1.0`
+
+**Descrição**: Multiplicador de loot fixado em 1.0 para boosted creatures. Diferente do base callback que usa `player:calculateLootFactor()`, boosted sempre usa factor neutro para garantir uniformidade.
+
+**Significa**:
+- Sem bonus de vocation
+- Sem bonus de level
+- Sem bonus de promotion
+- **Todos jugadores recebem mesma quantidade** de items (balanceado)
+
+### `existingSuffix` (string)
+
+**Tipo**: string
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local existingSuffix = corpse:getAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX) or ""`
+
+**Descrição**: Mensagem de suffix já anexada ao corpse por callbacks anteriores. Recuperada para concatenar com nova msgSuffix.
+
+**Variações**:
+- Se vazio (`""`): msgSuffix = "boosted loot"
+- Se tem conteúdo (ex: "double loot"): msgSuffix = "double loot, boosted loot"
+
+### `msgSuffix` (string)
+
+**Tipo**: string
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local msgSuffix = string.len(existingSuffix) > 0 and ", boosted loot" or "boosted loot"`
+
+**Descrição**: Mensagem de feedback indicando que loot é de creature boosted. Construído com lógica de prefixo: se já tem suffix, adiciona `, boosted loot`, senão adiciona `boosted loot` direto.
+
+**Construção**:
+```lua
+-- Se existingSuffix vazio:
+msgSuffix = "boosted loot"
+
+-- Se existingSuffix = "double loot":
+msgSuffix = ", boosted loot"  -- Será concatenado como "double loot, boosted loot"
+```
+
+**Lógica Condicional**:
+```lua
+string.len(existingSuffix) > 0 and ", boosted loot" or "boosted loot"
+-- Equivalente a:
+-- if string.len(existingSuffix) > 0 then
+--     return ", boosted loot"
+-- else
+--     return "boosted loot"
+-- end
+```
+
+### `mType` (MonsterType | nil)
+
+**Tipo**: userdata (MonsterType object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local mType = monster:getType()` (em Guard 3)
+
+**Descrição**: Definição de tipo do monstro obtida em Guard 3 para validação de reward boss. Reutilizada depois para `generateLootRoll()`.
+
+**Dupla Responsabilidade**:
+1. Verificar `mType:isRewardBoss()` (Guard 3)
+2. Passar para `mType:generateLootRoll()` (Loot generation)
+
+### `player` (userdata | nil)
+
+**Tipo**: userdata (Player object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local player = Player(corpse:getCorpseOwner())`
+
+**Descrição**: Referência ao jogador que matou monstro. Validado em Guard 4 (`player:canReceiveLoot()`), depois passado para `generateLootRoll()` como contexto.
+
+---
+
+## Padrões & Implementação
+
+### 1. Padrão de Early Guard (Guard Clauses)
+
+Série de validações no topo que returnam imediatamente se falham:
+
+```lua
+-- ✅ Com guards
+function callback(monster, corpse)
+    if not monster or not corpse then return end
+    if not isValid(monster) then return end
+    if not checkCondition1() then return end
+    if not checkCondition2() then return end
+    
+    -- [Safe to process: todos guards passaram]
+    doActualWork()
+end
+
+-- ❌ Sem guards (nested ifs)
+function callback(monster, corpse)
+    if monster and corpse then
+        if isValid(monster) then
+            if checkCondition1() then
+                if checkCondition2() then
+                    doActualWork()
+                end
+            end
+        end
+    end
+end  -- Pyramid of doom (indentation crescente)
+```
+
+**Vantagens**:
+- Código mais plano (evita indentation pyramid)
+- Condições de falha óbvias no topo
+- Fácil adicionar nova guard
+- Melhor legibilidade
+
+**Aplicação no Boosted**:
+```lua
+if not monster or not corpse then return end          -- Null check
+if monster:getName():lower() != boosted then return end  -- Type check
+if mType:isRewardBoss() then return end               -- Exclusion check
+if not player:canReceiveLoot() then return end        -- Player check
+-- Todos passaram: execute
+```
+
+### 2. Padrão de Conditional Ternary Operator
+
+Usar `and`/`or` para substituir `if/else` em expressões:
+
+```lua
+-- ❌ Verbose
+local result
+if condition then
+    result = valueA
+else
+    result = valueB
+end
+
+-- ✅ Conciso
+local result = condition and valueA or valueB
+
+-- ⚠️ Caveat: Não funciona se valueA == false/nil
+-- Solução: usar parênteses
+local result = (condition) and valueA or valueB
+```
+
+**Aplicação no Boosted**:
+```lua
+-- Ternary para msgSuffix
+local msgSuffix = string.len(existingSuffix) > 0 and ", boosted loot" or "boosted loot"
+
+-- Equivalente a:
+if string.len(existingSuffix) > 0 then
+    msgSuffix = ", boosted loot"
+else
+    msgSuffix = "boosted loot"
+end
+```
+
+### 3. Padrão de Case-Insensitive Comparison
+
+Comparar strings ignorando case:
+
+```lua
+-- ❌ Case-sensitive (quebra com "Boosted Creature")
+if monsterName == boostedName then ... end
+
+-- ✅ Case-insensitive (robusto)
+if monsterName:lower() == boostedName:lower() then ... end
+```
+
+**Razão**:
+- Database pode armazenar com diferentes cases
+- User input pode ter typos de case
+- Game.getBoostedCreature() pode variar
+
+**Aplicação**:
+```lua
+if monster:getName():lower() ~= Game.getBoostedCreature():lower() then
+    return  -- Não é boosted: deixa outro callback
+end
+```
+
+### 4. Padrão de Callback Chainning
+
+Múltiplos callbacks executando em sequência:
+
+```
+monsterOnDropLoot event dispara
+    │
+    ├─ Callback 1 (ondroploot_base)
+    │  ├─ Valida player + factor
+    │  ├─ Gera loot main
+    │  └─ Append suffix
+    │
+    ├─ Callback 2 (ondroploot_boosted)
+    │  ├─ Se boosted: adiciona loot extra
+    │  ├─ Se não: early return
+    │  └─ Não interfere se outro processou
+    │
+    ├─ Callback 3 (ondroploot_gem_atelier)
+    │  ├─ Se gem atelier: adiciona gems
+    │  ├─ Se não: early return
+    │
+    └─ Callback 4 (ondroploot_hazard)
+       ├─ Se hazard: múltiplos rolls
+       └─ Se não: early return
+```
+
+**Vantagem**:
+- Callbacks são **independentes**
+- Boosted não quebra se base callback falha
+- Múltiplos boosts podem stackar
+
+---
+
+## Fluxo de Operação
+
+### Timeline de Execução
+
+```
+[Monster Death - Boosted Creature]
+    │
+    ├─ 1. Monster morre (é creature boosted da semana)
+    ├─ 2. Engine dispara EventCallback "MonsterOnDropLootBoosted"
+    │
+    ├─ ▶️ ondroploot_boosted.lua ativado
+    │    │
+    │    ├─ Guard 1: monster and corpse exist? ✓
+    │    ├─ Guard 2: monster name == "boar" (boosted)? ✓
+    │    ├─ Guard 3: mType:isRewardBoss()? ✗ Continue
+    │    ├─ Guard 4: player valid and canReceiveLoot()? ✓
+    │    │
+    │    ├─ [Todos guards passaram]
+    │    │
+    │    ├─ factor = 1.0 (fixo)
+    │    ├─ existingSuffix = corpse:getAttribute(...) → "double loot"
+    │    ├─ msgSuffix = ", boosted loot"
+    │    │
+    │    ├─ lootTable = mType:generateLootRoll(
+    │    │    {factor = 1.0, gut = false},
+    │    │    {},
+    │    │    player
+    │    └─)
+    │    │
+    │    ├─ corpse:addLoot(lootTable)
+    │    ├─ corpse:setAttribute(LOOTMESSAGE_SUFFIX, "double loot, boosted loot")
+    │    │
+    │    └─ return (nil implícito)
+    │
+    ├─ 3. Other callbacks continue (gem_atelier, hazard, etc)
+    ├─ 4. Corpse appears in world
+    ├─ 5. Player receives: "You received loot. [double loot, boosted loot]"
+    │
+    └─ [Loot Complete]
+```
+
+### Caso: Não é Boosted Creature
+
+```
+[Monster Death - Regular Creature]
+    │
+    ├─ 1. Monster morre (é normal creature, ex: troll)
+    │
+    ├─ ▶️ Guard 2: monster:getName():lower() = "troll"
+    │           Game.getBoostedCreature():lower() = "boar"
+    │           "troll" ~= "boar" → return (early exit)
+    │
+    ├─ [Callback para, outro callback continua (base, etc)]
+    │
+    └─ [Loot mantém processamento normal]
+```
+
+### Caso: Reward Boss (Boosted)
+
+```
+[Monster Death - Reward Boss (Boosted)]
+    │
+    ├─ 1. Monster = "Deathwing" (boosted reward boss)
+    │
+    ├─ ▶️ Guard 2: "deathwing":lower() == "deathwing":lower() ✓
+    │    Guard 3: mType:isRewardBoss() → true (bonus loot config)
+    │             → return (exclude reward bosses)
+    │
+    ├─ [Callback para - reward bosses usam próprio callback]
+    │
+    └─ [Loot mantém seu sistema de reward especial]
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+**Versão da Documentação**: 1.0
+
+**Última Atualização**: 2026-02-19
+
+**Tipo de Complexidade**: 🟡 **Trivial-Média**
+- Arquivo com 27 linhas de código
+- 1 função callback
+- 4 variáveis locais
+- Lógica: 4 early guards + loot generation + message assembly
+- Padrões: early guards, case-insensitive comparison, ternary operator
+- Tempo estimado de aprendizado: 15-20 minutos
+
+**Cobertura de Tópicos**:
+- ✅ Variáveis locais (4)
+- ✅ Função global
+- ✅ Padrões de implementação
+- ✅ Fluxo de operação
+- ✅ Guards vs chains
+
+**Referências Relacionadas**:
+- [ARQUITETURA_PROJETO.mdx](../../../ARQUITETURA_PROJETO.mdx) - Event callbacks
+- ondroploot_base.lua - Callback base que executa antes deste
+- ondroploot_gem_atelier.lua - Outro variant
+- ondroploot_hazard.lua - Outro variant
+- Game.getBoostedCreature() - API que retorna creature boosted
+
+**Status de Implementação**: ✅ **Completamente Implementado**
+- Guards funcionais
+- Boost detection operational
+- Message suffix correct
+- Loot generation delegada
+
+**Padrões Principais Implementados**:
+1. ✅ Early guard clauses
+2. ✅ Case-insensitive comparison
+3. ✅ Ternary operator (and/or)
+4. ✅ Early return pattern
+5. ✅ Callback independence
+
+**Notas para Futuros Desenvolvedores**:
+1. Guards no topo: sempre returna antes de mudar state
+2. Case-insensitive: `getName():lower()` necessário para DB variation
+3. Reward boss exclusion: intentional (reward bosses têm seu próprio callback)
+4. Factor fixo: garantir uniformidade de equipamento entre players
+5. Message concatenation: examinar existingSuffix para `, ` prefix
+6. Callbacks são **independentes** - cada um pode processar ou skip
+

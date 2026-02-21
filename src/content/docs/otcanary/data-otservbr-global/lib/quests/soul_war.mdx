@@ -1,0 +1,276 @@
+---
+title: Soul War - Epic Quest System
+description: Documentação técnica do arquivo soul_war.lua, que define a estrutura completa de Soul War Quest com 6 mini-bosses Goshnar, itens especiais, rewards e raids do Claustrophobic Inferno.
+sidebar:
+  order: 6
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **soul_war.lua** implementa a **quest épica Soul War** com sistema complexo de:
+- 6 mini-bosses progressivos (Goshnar variants)
+- Itens especiais e mécanicas de elemental/taint
+- 18 rewards únicos (weapons/armor)
+- 3 raid zones (Claustrophobic Inferno floors)
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/quests/soul_war.lua`
+</Card>
+
+<Aside type="caution">
+**Tipo**: Epic Quest System  
+**Arquivo Size**: 1581 linhas  
+**Mini-bosses**: 6 Goshnar variants  
+**Rewards**: 18 soul weapons únicos  
+**Raids**: 3 floors (Claustrophobic Inferno)  
+**Complexidade**: ⭐⭐⭐⭐⭐ (Máxima)
+</Aside>
+
+## 📄 Visão Geral
+
+Soul War é a **quest final/épica** do Canary com mecânicas avançadas:
+
+1. **6 Fases**: Cada Goshnar mini-boss tem mechanic único
+2. **Item Progression**: 25+ itens especiais (sorrow, mortal essence, etc)
+3. **Taint System**: 5 níveis de "taint" progressiva (~4.5% a 24.6% XP boost)
+4. **Raids Progressivas**: 3 floors de Claustrophobic Inferno
+5. **Weapons Épicas**: 18 soul weapons como reward final
+
+## 🔧 Estrutura Principal
+
+### Item IDs e Mecânicas
+
+```lua
+SoulWarQuest = {
+  -- Goshnar's Hatred
+  bagYouDesireItemId = 34109,          -- Random drop bag
+  goshnarsHatredSorrowId = 33793,      -- Sorrow item
+  condensedRemorseId = 33792,          -- Remorse item
+  
+  -- Goshnar's Spite
+  weepingSoulCorpseId = 33876,         -- Corpse type
+  searingFireId = 33877,               -- Fire item
+  
+  -- Goshnar's Cruelty
+  pulsatingEnergyId = 34005,           -- Energy mechanic
+  greedyMawId = 33890,                 -- Maw creature
+  someMortalEssenceId = 33891,         -- Essence for cruelty
+  theBloodOfCloakTerrorIds = { 33854, 34006, 34007 },  -- Pools
+  
+  -- Goshnar's Megalomania
+  deadAspectOfPowerCorpseId = 33949,   -- Power corpse
+  cleansedSanityItemId = 33950,        -- Sanity item
+  necromanticRemainsItemId = 33984,    -- Remains
+}
+```
+
+### Pool Damage Percentages
+
+```lua
+poolDamagePercentages = {
+  [33854] = 0.20,  -- 20% max health (largest pool)
+  [34006] = 0.15,  -- 15% (medium pool)
+  [34007] = 0.10,  -- 10% (smallest pool)
+}
+```
+
+Boss "Cloak of Terror" usa pools com damage baseado em tamanho.
+
+### Taint Experience Boost
+
+```lua
+taintExperienceBoostMap = {
+  [1] = { boost = 4.5 },    -- 1 taint = +4.5%
+  [2] = { boost = 9.2 },    -- 2 taint = +9.2%
+  [3] = { boost = 14.1 },   -- 3 taint = +14.1%
+  [4] = { boost = 19.2 },   -- 4 taint = +19.2%
+  [5] = { boost = 24.6 },   -- 5 taint = +24.6%
+}
+```
+
+Cada taint adiciona multiplicador de experience crescente (não-linear).
+
+### Goshnar Cruelty Mechanics
+
+```lua
+timeToIncreaseCrueltyDefense = 15,        -- Defense aumenta a cada 15 seg
+useGreedMawCooldown = 30,                 -- 30 seg cooldown pra usar item
+goshnarsCrueltyDefenseChange = 2,         -- +/- 2 defense por 15 seg
+goshnarsCrueltyWaveInterval = 7,          -- Waves a cada 7 seg
+
+timeToReturnImmuneMegalomania = 70,       -- After 70 seg, imune novamente
+```
+
+Cruelty é **boss progressivo** que:
+- Aumenta defense a cada 15 seg (se não usar mortal essence)
+- Pode ser reduzido com `someMortalEssenceId`
+- Spawna waves de creatures
+
+### Bag You Desire Drop
+
+```lua
+bagYouDesireChancePerTaint = 10,  -- +10% chance por taint (50% @ taint 5)
+
+bagYouDesireMonsters = {
+  "Bony Sea Devil",
+  "Brachiodemon",
+  "Branchy Crawler",
+  -- ... (25 creatures listadas)
+  "Goshnar's Cruelty",
+  "Goshnar's Spite",
+  "Goshnar's Malice",
+  "Goshnar's Hatred",
+  "Goshnar's Greed",
+  "Goshnar's Megalomania",
+}
+```
+
+"Bag You Desire" é drop raro de 25+ creatures com chance baseada em taint.
+
+## 🎯 Final Rewards (18 Weapons)
+
+```lua
+finalRewards = {
+  { id = 34082, name = "soulcutter" },
+  { id = 34083, name = "soulshredder" },
+  { id = 34084, name = "soulbiter" },
+  { id = 34085, name = "souleater" },
+  { id = 34086, name = "soulcrusher" },
+  { id = 34087, name = "soulmaimer" },
+  { id = 34088, name = "soulbleeder" },
+  { id = 34089, name = "soulpiercer" },
+  { id = 34090, name = "soultainter" },
+  { id = 34091, name = "soulhexer" },
+  { id = 34092, name = "soulshanks" },
+  { id = 34093, name = "soulstrider" },
+  { id = 34094, name = "soulshell" },
+  { id = 34095, name = "soulmantel" },
+  { id = 34096, name = "soulshroud" },
+  { id = 34097, name = "pair of soulwalkers" },
+  { id = 34098, name = "pair of soulstalkers" },
+  { id = 34099, name = "soulbastion" },
+}
+```
+
+Todos nomes começam com "soul" (tema épico).
+
+## 💾 Storage (KV System)
+
+```lua
+kvSoulWar = KV.scoped("quest"):scoped("soul-war")
+kvBurning = KV.scoped("quest"):scoped("soul-war"):scoped("burning-change-form")
+```
+
+Usa **KV (Key-Value store)** ao invés de player storage:
+- `quest:soul-war:*` - Dados globais da quest
+- `quest:soul-war:burning-change-form:*` - Burning mechanic
+
+## 🗺️ Shrine Locations (Rotten Wasteland)
+
+```lua
+rottenWastelandShrines = {
+  [33019] = { x = 33926, y = 31091, z = 13 },
+  [33021] = { x = 33963, y = 31078, z = 13 },
+  [33022] = { x = 33970, y = 30988, z = 13 },
+  [33024] = { x = 33970, y = 31012, z = 13 },
+}
+```
+
+4 shrines na região de Rotten Wasteland (Z13).
+
+## 🏢 Goshnar's Cruelty - Teleport Rooms (3 Floors)
+
+```lua
+goshnarsCrueltyTeleportRoomPositions = {
+  { from = Position(33889, 31873, 3), to = Position(33830, 31881, 4),
+    access = "first-floor-access", count = 40 },
+  { from = Position(33829, 31880, 4), to = Position(33856, 31889, 5),
+    access = "second-floor-access", count = 55 },
+  { from = Position(33856, 31884, 5), to = Position(33857, 31865, 6),
+    access = "third-floor-access", count = 70 },
+}
+```
+
+3 progressive teleports com requirement counters (40→55→70 kills).
+
+## 🔥 Claustrophobic Inferno Raids (3 Tiers)
+
+### Raid 1 (Floor 9)
+
+```lua
+[1] = {
+  zoneArea = {
+    { x = 33985, y = 31053, z = 9 },
+    { x = 34045, y = 31077, z = 9 },
+  },
+  sandTimerPositions = { 4 timers },
+  zone = Zone("raid.first-claustrophobic-inferno"),
+  spawns = { 12 creature spawn positions },
+  exitPosition = { x = 34009, y = 31083, z = 9 },
+}
+```
+
+**Area**: ~60x24 tiles  
+**Timers**: 4 sand timers para mechanic  
+**Spawns**: 12 locations para creatures  
+**Exit**: Posição de saída após vitória
+
+### Raid 2 (Floor 10)
+
+```lua
+[2] = {
+  zoneArea = {
+    { x = 33988, y = 31042, z = 10 },
+    { x = 34043, y = 31068, z = 10 },
+  },
+  sandTimerPositions = { 3 timers },
+  zone = Zone("raid.second-claustrophobic-inferno"),
+  spawns = { 11 creature spawn positions },
+  exitPosition = { x = 34011, y = 31028, z = 10 },
+}
+```
+
+**Area**: ~55x26 tiles  
+**Timers**: 3 sand timers (meio mais fácil)  
+**Spawns**: 11 locations  
+**Exit**: Diferente do raid 1
+
+### Raid 3 (Floor 11)
+
+```lua
+[3] = {
+  zoneArea = {
+    { x = 33987, y = 31043, z = 11 },
+    { x = 34044, y = 31076, z = 11 },
+  },
+  sandTimerPositions = { 6 timers },
+  zone = Zone("raid.third-claustrophobic-inferno"),
+  spawns = { mais spawns },
+  exitPosition = { x = 34011, y = 31045, z = 11 },
+}
+```
+
+**Area**: ~57x33 tiles  
+**Timers**: 6 sand timers (mais desafiador)  
+**Exit**: Acesso para terceiro raid
+
+## ⚠️ Goshnar Mini-bosses (6 Total)
+
+| Boss | Phase | Mechanic Principal | Item Key |
+|------|-------|-------------------|----------|
+| Goshnar's Hatred | 1 | Drops "Bag You Desire" | bagYouDesireItemId |
+| Goshnar's Spite | 2 | Weeping Soul corpse | weepingSoulCorpseId |
+| Goshnar's Cruelty | 3 | Defense scaling + waves | pulsatingEnergyId |
+| Goshnar's Greed | 4 | Pools damage | theBloodOfCloakTerrorIds |
+| Goshnar's Megalomania | 5 | Immunity phases (70 seg) | deadAspectOfPowerCorpseId |
+| Goshnar's Malice | 6 | Final variant | (não documentado neste chunk) |
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Documentado até linha 300/1581  
+**Quest Tier**: 🌟 EPIC (Final Quest)  
+**Recomendação**: Este é probablement a quest MAIS complexa do Canary

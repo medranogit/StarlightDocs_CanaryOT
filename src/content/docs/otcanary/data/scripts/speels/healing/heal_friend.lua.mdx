@@ -1,0 +1,383 @@
+---
+title: "Spell - heal_friend.lua"
+description: "Spell de cura com alvo específico para druids level 18 premium"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `heal_friend.lua` |
+| **Localização** | `data/scripts/spells/healing/` |
+| **Tipo de Script** | Spell (Instant) |
+| **Tipo** | Healing Combat (Target Friend) |
+| **Vocações** | Druid, Elder Druid |
+| **Level Requerido** | 18 |
+| **Mana Requerida** | 120 |
+| **Soul Requerida** | Nenhuma |
+| **Words** | exura sio |
+| **Grupo** | healing |
+| **Spell ID** | 84 |
+| **Cooldown** | 1s |
+| **GroupCooldown** | 1s |
+| **Premium** | Sim |
+| **Agressivo** | Não |
+| **Alvo Requerido** | Sim |
+| **Player Name Param** | Sim |
+| **Allow Self** | Não (amigos apenas!) |
+| **Tipo Combat** | Healing + Dispel CONDITION_PARALYZE |
+| **Efeito Visual** | CONST_ME_MAGIC_GREEN + CONST_ME_MAGIC_BLUE |
+| **Som de Casting** | SOUND_EFFECT_TYPE_SPELL_HEAL_FRIEND |
+| **Linhas de Código** | 42 |
+| **Complexidade** | Intermediária |
+
+**Descrição:**
+Spell premium de cura com alvo específico (friend healing) para druids nível 18 (early-mid). Sistema Combat com fórmula healing dinâmica. Remove CONDITION_PARALYZE. 120 mana. Cooldown 1s (rápido!). Spell ID 84. Requer alvo player específico + player name parameter. Não permite self-casting (amigos apenas!). Som especial heal friend. Druid exclusive premium. Spell de cura FRIEND TARGET premium EARLY-MID!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/healing/heal_friend.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:name("Heal Friend")
+spell:words("exura sio")
+spell:group("healing")
+spell:vocation("druid;true", "elder druid;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_HEAL_FRIEND)
+spell:id(84)
+spell:cooldown(1000)
+spell:groupCooldown(1000)
+spell:level(18)
+spell:mana(120)
+spell:needTarget(true)
+spell:hasParams(true)
+spell:hasPlayerNameParam(true)
+spell:allowOnSelf(false)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Cura Friend - Early-Mid Level 18 Druid Exclusive**
+
+Este spell implementa um sistema healing com alvo friend específico:
+
+1. **Cura Friend Target Early-Mid:**
+   - Level 18 (EARLY-MID!)
+   - 120 mana (moderado-alto!)
+   - Fórmula healing: (level * 0.2 + magicLevel * 10) + 3 até (level * 0.2 + magicLevel * 14) + 5
+   - Cura early-mid friend druid base!
+
+2. **Alvo Específico:**
+   - needTarget(true) - requer alvo
+   - hasPlayerNameParam(true) - nome de player
+   - allowOnSelf(false) - NÃO pode curar self!
+   - Amigos apenas healing!
+
+3. **Druid Exclusive Premium Early:**
+   - Druid + Elder Druid (2 vocações)
+   - Grupo healing
+   - Não agressivo
+   - Spell cura friend druid exclusive!
+
+4. **Tipo Combat:**
+   - Combat system com callback
+   - Efeito visual: CONST_ME_MAGIC_GREEN + CONST_ME_MAGIC_BLUE
+   - Som especial heal friend
+   - Paralyze dispel combo!
+
+**Uso Típico:**
+```
+Druid lvl 18+ (Premium)
+// Heal Friend = early-mid healing amigo específico
+// Remove paralyze e cura healing amigo
+// 120 mana = moderado-alto!
+// 1s cooldown = rápido!
+// needTarget + playerNameParam = alvo requerido
+// Healing skillpoint druid exclusive premium
+```
+
+**Diferencial:** Cura friend target early-mid druid com paralyze dispel!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `heal_friend` oferece cura healing com alvo friend específico:
+
+- **Tipo:** Healing Combat (Target Friend)
+- **Spell ID:** 84
+- **Dispel:** CONDITION_PARALYZE
+- **Mana:** 120 (moderado-alto)
+- **Level:** 18 (early-mid)
+- **Fórmula Healing:** (level * 0.2 + magicLevel * 10) + 3 até (level * 0.2 + magicLevel * 14) + 5
+- **Cooldown:** 1s (rápido!)
+- **Alvo:** Friend player ESPECÍFICO (não self!)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ setParameter(COMBAT_PARAM_TYPE, COMBAT_HEALING)
+├─ setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_GREEN)
+├─ setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+├─ setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+└─ setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+
+local spell = Spell("instant")
+├─ onCastSpell(creature, variant)
+│  ├─ creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+│  └─ return combat:execute(creature, variant)
+└─ Configuração spell
+   ├─ group: healing
+   ├─ mana: 120
+   ├─ needTarget: true
+   ├─ hasPlayerNameParam: true
+   ├─ allowOnSelf: false
+   └─ vocation: druid exclusive
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+```
+
+**Propósito:** Instância do sistema Combat para healing + dispel.
+
+**Tipo:** Combat
+
+**Parâmetros Configurados:**
+- COMBAT_PARAM_TYPE: COMBAT_HEALING
+- COMBAT_PARAM_EFFECT: CONST_ME_MAGIC_GREEN
+- COMBAT_PARAM_DISPEL: CONDITION_PARALYZE
+- COMBAT_PARAM_AGGRESSIVE: false
+
+---
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell de cura.
+
+**Tipo:** Instant (sem cast time)
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, magicLevel)
+	local min = (level * 0.2 + magicLevel * 10) + 3
+	local max = (level * 0.2 + magicLevel * 14) + 5
+	return min, max
+end
+```
+
+**Propósito:** Calcula valores de healing baseado em level + magic level.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Caster |
+| `level` | Integer | Level do player |
+| `magicLevel` | Integer | Magic level do player |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `min` | Healing mínimo |
+| `max` | Healing máximo |
+
+**Fórmula de Healing:**
+```
+min = level * 0.2 + magicLevel * 10 + 3
+max = level * 0.2 + magicLevel * 14 + 5
+Range = [min, max]
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, variant)
+	creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+	return combat:execute(creature, variant)
+end
+```
+
+**Propósito:** Executa sistema Combat healing + dispel com efeito visual adicional.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster |
+| `variant` | Variant | Target variant |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Healing + dispel executado |
+| `false` | Falha execução |
+
+**Lógica Adicional:**
+- Envia efeito visual CONST_ME_MAGIC_BLUE na posição do caster
+- Executa combat healing direcionado ao alvo
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância Combat healing |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Combat Healing + Dispel Friend
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_HEALING)
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+```
+
+**Benefício:** Combine healing + dispel em um único combat action!
+
+### Padrão 2: Druid Exclusive Premium Early-Mid
+
+```lua
+spell:vocation("druid;true", "elder druid;true")
+spell:level(18)
+spell:isPremium(true)
+spell:group("healing")
+```
+
+**Benefício:** Druid exclusive premium early-mid healing!
+
+### Padrão 3: Target Friend Específico
+
+```lua
+spell:needTarget(true)
+spell:hasParams(true)
+spell:hasPlayerNameParam(true)
+spell:allowOnSelf(false) -- Amigos apenas!
+```
+
+**Benefício:** Alvo friend específico com player name parameter!
+
+### Padrão 4: Callback Fórmula Dinâmica + Efeito Visual
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+```
+
+**Benefício:** Healing dinâmico + efeito visual adicional!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, magicLevel)
+
+**Descrição:** Calcula healing friend baseado em level + magic level.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Caster |
+| `level` | Integer | Level do player |
+| `magicLevel` | Integer | Magic level do player |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `min` | Healing mínimo: level * 0.2 + magicLevel * 10 + 3 |
+| `max` | Healing máximo: level * 0.2 + magicLevel * 14 + 5 |
+
+**Exemplo de Cálculo:**
+```lua
+-- Druid lvl 18, magic lvl 0
+-- min = 18 * 0.2 + 0 * 10 + 3 = 3.6 + 0 + 3 = 6.6 ≈ 6
+-- max = 18 * 0.2 + 0 * 14 + 5 = 3.6 + 0 + 5 = 8.6 ≈ 8
+
+-- Druid lvl 50, magic lvl 20
+-- min = 50 * 0.2 + 20 * 10 + 3 = 10 + 200 + 3 = 213
+-- max = 50 * 0.2 + 20 * 14 + 5 = 10 + 280 + 5 = 295
+```
+
+### spell.onCastSpell(creature, variant)
+
+**Descrição:** Executa healing friend + paralyze dispel com efeito visual.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druid ou Elder Druid |
+| `variant` | Variant | Target variant (friend player) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Healing + dispel executado |
+| `false` | Falha execução |
+
+**Requisitos:**
+- Level 18+
+- 120 mana
+- Premium account
+- Alvo: Friend player específico (não self!)
+
+**Exemplo de Uso:**
+```lua
+// Ao lançar "exura sio <friend_name>" (Premium)
+-- creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+-- combat:execute(creature, variant)
+-- Cura healing value baseado em fórmula
+-- Remove CONST_ME_MAGIC_PARALYZE
+-- Displays CONST_ME_MAGIC_GREEN + CONST_ME_MAGIC_BLUE effects
+-- Cooldown 1s aplicado
+```
+
+---
+
+## 📌 Resumo
+
+**Heal Friend** é um spell de cura friend target premium druid exclusive que oferece healing + remoção de paralyze. Com 120 mana (moderado-alto!) e level 18 (early-mid), implementa fórmula dinâmica healing (level * 0.2 + magicLevel * 10) + 3 até (level * 0.2 + magicLevel * 14) + 5. Cooldown rápido 1s, alvo friend específico (needTarget + hasPlayerNameParam, allowOnSelf false), grupo healing, sons especiais SOUND_EFFECT_TYPE_SPELL_HEAL_FRIEND. Usa Combat system com dispel CONDITION_PARALYZE - spell essencial para druids em healing friend early-mid premium!

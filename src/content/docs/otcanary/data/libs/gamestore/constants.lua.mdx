@@ -1,0 +1,611 @@
+---
+title: "constants.lua"
+description: "Constantes do sistema de loja Canary: OfferTypes (29 tipos), SubActions, ActionTypes, CoinTypes, Kv keys, ClientOfferTypes, HistoryTypes, States, StoreErrors, ServiceTypes, network packets (sending/receiving), ExpBoostValues, DefaultValues, DefaultDescriptions, ItemLimits. Central constants repository para gamestore."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que define **constants globais do sistema de loja do Canary**: 16 tabelas mapeando tipos de ofertas, ações, estados, packet IDs, valores padrão, e limites. Developed por Cjaker, metabob, Rick, Dudantas. Version 2.0 (atualizado 21-10-2025).
+
+**Caminho Original**: `data/libs/gamestore/constants.lua`
+
+<Aside type="tip">
+O arquivo `constants.lua` é **central constants repository** para todo sistema de loja. Define 29 tipos de ofertas, packet network IDs, estados de items, erros, defaults, e limites. Essencial para qualquer operação com gamestore.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **16 submaps de constants**:
+
+1. **OfferTypes** (29): Tipos de ofertas (items, outfits, mounts, bênçãos, etc)
+2. **SubActions** (16): Sub-ações especiais para itens (bênçãos, prey, hireling, etc)
+3. **ActionType** (6): Tipos de ação na loja (abrir categoria, oferta, etc)
+4. **CoinType** (2): Tipos de moeda (normal, transferível)
+5. **Kv** (2): Key-value pairs para storage
+6. **ConverType** (5): Tipos de conversão/visualização
+7. **ConfigureOffers** (2): Estados de configuração
+8. **ClientOfferTypes** (3): Tipos para protocol cliente
+9. **HistoryTypes** (3): Tipos de histórico de transações
+10. **States** (4): Estados de items (novo, venda, timed)
+11. **StoreErrors** (5): Tipos de erro
+12. **ServiceTypes** (4): Tipos de serviço
+13. **SendingPackets** (8): Packet IDs do servidor para cliente
+14. **RecivedPackets** (8): Packet IDs do cliente para servidor
+15. **ExpBoostValues** (5): Durações em minutos para XP boosts
+16. **ItemLimit** (4): Limites de quantidade por item
+17. **DefaultDescriptions** (8): Descrições padrão de items
+18. **DefaultValues** (1): Valores padrão da UI
+
+Todas constantes agrupadas em `GameStore` table. Total de 150+ constantes mapeadas.
+
+### Estrutura de Submaps
+
+```
+GameStore (Module)
+├── OfferTypes (29)
+│   ├── OFFER_TYPE_NONE (0)
+│   ├── OFFER_TYPE_ITEM (1-3, stackable, charges)
+│   ├── OFFER_TYPE_OUTFIT (4-5 + addons)
+│   ├── OFFER_TYPE_MOUNT (6)
+│   ├── OFFER_TYPE_SERVICES (7-15, namechange, sexchange, premium, blessings, etc)
+│   ├── OFFER_TYPE_SPECIAL (18-27, charms, hireling, hunting, beds)
+│   └── OFFER_TYPE_ALLBLESSINGS (17)
+├── SubActions (16)
+│   ├── PREY_* (0, 1, 15)
+│   ├── BLESSING_* (3-12, todas as bênçãos)
+│   ├── CHARM_EXPANSION (13)
+│   ├── TASK_HUNTING_THIRDSLOT (14)
+│   └── INSTANT_REWARD (2)
+├── ActionType (6) - Ações na loja
+├── CoinType (2) - Moeda types
+├── Network - SendingPackets + RecivedPackets (16 pacotes)
+├── UI/Config - ConverType, ConfigureOffers, DefaultValues
+├── Storage - Kv (exp-boost-count, purchase-cooldown)
+├── Limits - ItemLimit, ExpBoostValues
+├── Descriptions - DefaultDescriptions (8 tipos)
+└── Errors/History - StoreErrors, HistoryTypes, States, ServiceTypes
+```
+
+---
+
+## 🎭 OfferTypes (29 Tipos de Ofertas)
+
+### Categoria: Items
+
+| Constant | ID | Descrição |
+|----------|----|----|
+| OFFER_TYPE_NONE | 0 | Nenhuma oferta |
+| OFFER_TYPE_ITEM | 1 | Item simples |
+| OFFER_TYPE_STACKABLE | 2 | Item empilhável |
+| OFFER_TYPE_CHARGES | 3 | Item com carga |
+
+**Exemplo**:
+```lua
+if offer.type == GameStore.OfferTypes.OFFER_TYPE_ITEM then
+    -- Handle single item
+elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_STACKABLE then
+    -- Handle stackable item
+end
+```
+
+---
+
+### Categoria: Cosmetics
+
+| Constant | ID | Descrição |
+|----------|----|----|
+| OFFER_TYPE_OUTFIT | 4 | Outfit (visual) |
+| OFFER_TYPE_OUTFIT_ADDON | 5 | Addon de outfit |
+| OFFER_TYPE_MOUNT | 6 | Mount (montaria) |
+
+---
+
+### Categoria: Services
+
+| Constant | ID | Descrição |
+|----------|----|----|
+| OFFER_TYPE_NAMECHANGE | 7 | Mudança de nome |
+| OFFER_TYPE_SEXCHANGE | 8 | Mudança de sexo |
+| OFFER_TYPE_HOUSE | 9 | Casa |
+| OFFER_TYPE_EXPBOOST | 10 | Boost de experiência |
+| OFFER_TYPE_PREYSLOT | 11 | Slot adicional de Prey |
+| OFFER_TYPE_PREYBONUS | 12 | Reroll de bonus de Prey |
+| OFFER_TYPE_TEMPLE | 13 | Teleporte para temple |
+| OFFER_TYPE_BLESSINGS | 14 | Bênção singular |
+| OFFER_TYPE_PREMIUM | 15 | Membership premium |
+
+---
+
+### Categoria: Special (16-27)
+
+| Constant | ID | Descrição |
+|----------|----|----|
+| OFFER_TYPE_ALLBLESSINGS | 17 | Todas as bênçãos juntas |
+| OFFER_TYPE_INSTANT_REWARD_ACCESS | 18 | Acesso a recompensas instantâneas |
+| OFFER_TYPE_CHARMS | 19 | Sistema de charms |
+| OFFER_TYPE_HIRELING | 20 | NPC hireling |
+| OFFER_TYPE_HIRELING_NAMECHANGE | 21 | Mudança de nome hireling |
+| OFFER_TYPE_HIRELING_SEXCHANGE | 22 | Mudança de sexo hireling |
+| OFFER_TYPE_HIRELING_SKILL | 23 | Skill hireling |
+| OFFER_TYPE_HIRELING_OUTFIT | 24 | Outfit hireling |
+| OFFER_TYPE_HUNTINGSLOT | 25 | Slot adicional de hunting |
+| OFFER_TYPE_ITEM_BED | 26 | Item cama |
+| OFFER_TYPE_ITEM_UNIQUE | 27 | Item único |
+
+---
+
+## 🎯 SubActions (16 Sub-Ações Especiais)
+
+Ações especiais para items específicos (bênçãos, prey, etc):
+
+```lua
+GameStore.SubActions = {
+	PREY_THIRDSLOT_REAL = 0,           -- Slot real de prey
+	PREY_WILDCARD = 1,                  -- Wildcard de prey
+	INSTANT_REWARD = 2,                 -- Recompensa instantânea
+	BLESSING_TWIST = 3,                 -- Bênção Twist
+	BLESSING_SOLITUDE = 4,              -- Bênção Solitude
+	BLESSING_PHOENIX = 5,               -- Bênção Phoenix
+	BLESSING_SUNS = 6,                  -- Bênção Suns
+	BLESSING_SPIRITUAL = 7,             -- Bênção Spiritual
+	BLESSING_EMBRACE = 8,               -- Bênção Embrace
+	BLESSING_BLOOD = 9,                 -- Bênção Blood
+	BLESSING_HEART = 10,                -- Bênção Heart
+	BLESSING_ALL_PVE = 11,              -- Todas bênçãos PvE
+	BLESSING_ALL_PVP = 12,              -- Todas bênçãos PvP
+	CHARM_EXPANSION = 13,               -- Expansão de charm
+	TASKHUNTING_THIRDSLOT = 14,         -- Task hunting slot
+	PREY_THIRDSLOT_REDIRECT = 15,       -- Redirect de prey
+}
+```
+
+**Uso**:
+```lua
+local offer = getOffer(offerId)
+if offer.subAction == GameStore.SubActions.BLESSING_TWIST then
+    -- Apply Twist blessing
+end
+```
+
+---
+
+## ⚙️ Tipos e Configuração
+
+### ActionType (6 Tipos de Ação)
+
+```lua
+OPEN_HOME = 0,                  -- Abrir página inicial
+OPEN_PREMIUM_BOOST = 1,         -- Abrir boost premium
+OPEN_CATEGORY = 2,              -- Abrir categoria
+OPEN_USEFUL_THINGS = 3,         -- Abrir úteis
+OPEN_OFFER = 4,                 -- Abrir oferta específica
+OPEN_SEARCH = 5,                -- Abrir busca
+```
+
+---
+
+### CoinType (2 Tipos de Moeda)
+
+```lua
+Coin = 0,                       -- Moeda normal (não-transferível)
+Transferable = 1,              -- Moeda transferível (gift)
+```
+
+---
+
+### States (4 Estados de Item)
+
+```lua
+STATE_NONE = 0,                 -- Sem estado
+STATE_NEW = 1,                  -- Novo (badge NEW)
+STATE_SALE = 2,                 -- Venda (badge SALE)
+STATE_TIMED = 3,                -- Tempo limitado (badge timed)
+```
+
+---
+
+### ConverType (5 Tipos de Visibilidade)
+
+```lua
+SHOW_NONE = 0,                  -- Não mostrar
+SHOW_MOUNT = 1,                 -- Mostrar montaria
+SHOW_OUTFIT = 2,                -- Mostrar outfit
+SHOW_ITEM = 3,                  -- Mostrar item
+SHOW_HIRELING = 4,              -- Mostrar hireling
+```
+
+---
+
+## 🌐 Network Packets
+
+### SendingPackets (Servidor → Cliente) - 8 Packets
+
+| Nome | Hex | Dec | Propósito |
+|------|-----|-----|-----------|
+| S_CoinBalance | 0xDF | 223 | Saldo de moedas |
+| S_StoreError | 0xE0 | 224 | Erro da loja |
+| S_RequestPurchaseData | 0xE1 | 225 | Solicitar dados de compra |
+| S_CoinBalanceUpdating | 0xF2 | 242 | Atualizar saldo |
+| S_OpenStore | 0xFB | 251 | Abrir loja |
+| S_StoreOffers | 0xFC | 252 | Listar ofertas |
+| S_OpenTransactionHistory | 0xFD | 253 | Abrir histórico |
+| S_CompletePurchase | 0xFE | 254 | Compra completa |
+
+**Uso**:
+```lua
+-- Send coin balance to client
+local msg = NetworkMessage()
+msg:addByte(GameStore.SendingPackets.S_CoinBalance)
+msg:addU64(playerCoins)
+player:sendExtendedOpcode(0, msg:getString())
+```
+
+---
+
+### RecivedPackets (Cliente → Servidor) - 8 Packets
+
+| Nome | Hex | Dec | Propósito |
+|------|-----|-----|-----------|
+| C_StoreEvent | 0xE9 | 233 | Evento da loja |
+| C_TransferCoins | 0xEF | 239 | Transferir moedas |
+| C_ParseHirelingName | 0xEC | 236 | Parse nome hireling |
+| C_OpenStore | 0xFA | 250 | Abrir loja (request) |
+| C_RequestStoreOffers | 0xFB | 251 | Solicitar ofertas |
+| C_BuyStoreOffer | 0xFC | 252 | Comprar oferta |
+| C_OpenTransactionHistory | 0xFD | 253 | Abrir histórico |
+| C_RequestTransactionHistory | 0xFE | 254 | Solicitar histórico |
+
+---
+
+## 💾 Storage Keys
+
+### Kv (Key-Value Storage)
+
+```lua
+GameStore.Kv = {
+	expBoostCount = "exp-boost-count",           -- Contador de XP boosts
+	purchaseCooldown = "purchase-cooldown",      -- Cooldown de compra
+}
+```
+
+**Uso**:
+```lua
+-- Store XP boost count
+player:setStorageValue(GameStore.Kv.expBoostCount, count)
+
+-- Check purchase cooldown
+local lastPurchase = player:getStorageValue(GameStore.Kv.purchaseCooldown)
+```
+
+---
+
+## 💎 Valores Padrão
+
+### ExpBoostValues (Durações em Minutos)
+
+```lua
+GameStore.ExpBoostValues = {
+	[1] = 30,       -- 30 minutos
+	[2] = 45,       -- 45 minutos
+	[3] = 90,       -- 1.5 horas
+	[4] = 180,      -- 3 horas
+	[5] = 360,      -- 6 horas
+}
+```
+
+**Uso**:
+```lua
+local duration = GameStore.ExpBoostValues[boostLevel]  -- em minutos
+player:addExperienceBonus(duration)
+```
+
+---
+
+### DefaultValues (UI Padrão)
+
+```lua
+GameStore.DefaultValues = {
+	DEFAULT_VALUE_ENTRIES_PER_PAGE = 26,  -- 26 items por página
+}
+```
+
+---
+
+## 📝 Descrições Padrão
+
+### DefaultDescriptions (8 Templates)
+
+```lua
+OUTFIT = {
+	"This outfit looks nice. Only high-class people are able to wear it!",
+	"An outfit that was created to suit you. We are sure you'll like it.",
+	"Legend says only smart people should wear it, otherwise you will burn!"
+}
+
+MOUNT = {
+	"This is a fantastic mount that helps to become faster, try it!",
+	"The first rider of this mount became the leader of his country! legends say that."
+}
+
+NAMECHANGE = {
+	"Are you hunted? Tired of that? Get a new name, a new life!",
+	"A new name to suit your needs!"
+}
+
+SEXCHANGE = {
+	"Bored of your character's sex? Get a new sex for him now!!"
+}
+
+EXPBOOST = {
+	"Are you tired of leveling slow? try it!"
+}
+
+PREYSLOT = {
+	"It's hunting season! Activate a prey to gain a bonus when hunting a certain monster..."
+}
+
+PREYBONUS = {
+	"You activated a prey but do not like the randomly selected bonus? Roll for a new one!..."
+}
+
+TEMPLE = {
+	"Need a quick way home? Buy this transportation service to get instantly teleported..."
+}
+```
+
+**Uso**:
+```lua
+local descriptions = GameStore.DefaultDescriptions.OUTFIT
+local randomDesc = descriptions[math.random(#descriptions)]
+```
+
+---
+
+## ⚠️ Erros e Histórico
+
+### StoreErrors (5 Tipos)
+
+```lua
+STORE_ERROR_PURCHASE = 0,          -- Erro de compra
+STORE_ERROR_NETWORK = 1,           -- Erro de rede
+STORE_ERROR_HISTORY = 2,           -- Erro de histórico
+STORE_ERROR_TRANSFER = 3,          -- Erro de transferência
+STORE_ERROR_INFORMATION = 4,       -- Erro de informação
+```
+
+---
+
+### HistoryTypes (3 Tipos de Histórico)
+
+```lua
+HISTORY_TYPE_NONE = 0,             -- Nenhum
+HISTORY_TYPE_GIFT = 1,             -- Gift (presente)
+HISTORY_TYPE_REFUND = 2,           -- Refund (reembolso)
+```
+
+---
+
+### ServiceTypes (4 Tipos de Serviço)
+
+```lua
+SERVICE_STANDERD = 0,              -- Serviço padrão
+SERVICE_OUTFITS = 3,               -- Outfits
+SERVICE_MOUNTS = 4,                -- Mounts
+SERVICE_BLESSINGS = 5,             -- Bênçãos
+```
+
+---
+
+## 📊 Limites de Item
+
+### ItemLimit (4 Limites)
+
+```lua
+GameStore.ItemLimit = {
+	PREY_WILDCARD = 50,              -- Max 50 prey wildcards
+	INSTANT_REWARD_ACCESS = 90,      -- Max 90 instant rewards
+	EXPBOOST = 6,                    -- Max 6 XP boosts ativos
+	HIRELING = 10,                   -- Max 10 hirelings
+}
+```
+
+**Uso**:
+```lua
+function canPurchaseItem(itemType, currentCount)
+    local limit = GameStore.ItemLimit[itemType]
+    return limit == nil or currentCount < limit
+end
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Validar Tipo de Oferta
+
+```lua
+function isValidOfferType(offerType)
+    for _, type in pairs(GameStore.OfferTypes) do
+        if type == offerType then
+            return true
+        end
+    end
+    return false
+end
+
+if isValidOfferType(offer.type) then
+    -- Process offer
+end
+```
+
+---
+
+### Padrão 2: Get Randomized Description
+
+```lua
+function getOfferDescription(offer)
+    local descriptions = GameStore.DefaultDescriptions[offer.descKey]
+    if descriptions then
+        return descriptions[math.random(#descriptions)]
+    end
+    return "No description available"
+end
+
+local desc = getOfferDescription({descKey = "OUTFIT"})
+```
+
+---
+
+### Padrão 3: Check Item Purchase Limit
+
+```lua
+function canPurchaseMore(itemType, playerCount)
+    local limit = GameStore.ItemLimit[itemType]
+    if not limit then
+        return true  -- Sem limite
+    end
+    return playerCount < limit
+end
+
+if canPurchaseMore(GameStore.ItemLimit.HIRELING, playerHirelings) then
+    -- Allow purchase
+end
+```
+
+---
+
+### Padrão 4: Network Packet Sending
+
+```lua
+function sendCoinBalance(player, coins)
+    local msg = NetworkMessage()
+    msg:addByte(GameStore.SendingPackets.S_CoinBalance)
+    msg:addU64(coins)
+    player:sendExtendedOpcode(0, msg:getString())
+end
+
+sendCoinBalance(player, 1000)
+```
+
+---
+
+### Padrão 5: Process Offer by Type
+
+```lua
+function processOffer(offer)
+    local offerType = offer.type
+    
+    if offerType == GameStore.OfferTypes.OFFER_TYPE_OUTFIT then
+        -- Handle outfit
+    elseif offerType == GameStore.OfferTypes.OFFER_TYPE_BLESSINGS then
+        -- Handle blessing
+        local blessing = offer.subAction
+        -- Process by blessing type
+    elseif offerType == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST then
+        local duration = GameStore.ExpBoostValues[offer.level]
+        -- Apply XP boost for duration
+    end
+end
+```
+
+---
+
+### Padrão 6: Action Type Navigation
+
+```lua
+function handleStoreAction(actionType)
+    if actionType == GameStore.ActionType.OPEN_HOME then
+        openStoreHome()
+    elseif actionType == GameStore.ActionType.OPEN_CATEGORY then
+        openCategory()
+    elseif actionType == GameStore.ActionType.OPEN_OFFER then
+        openSpecificOffer()
+    end
+end
+```
+
+---
+
+### Padrão 7: Store Error Handling
+
+```lua
+function handleStoreError(errorType)
+    local messages = {
+        [GameStore.StoreErrors.STORE_ERROR_PURCHASE] = "Purchase failed",
+        [GameStore.StoreErrors.STORE_ERROR_NETWORK] = "Network error",
+        [GameStore.StoreErrors.STORE_ERROR_HISTORY] = "History error",
+        [GameStore.StoreErrors.STORE_ERROR_TRANSFER] = "Transfer error",
+        [GameStore.StoreErrors.STORE_ERROR_INFORMATION] = "Info error",
+    }
+    
+    local msg = messages[errorType] or "Unknown error"
+    player:say(msg)
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Exemplo |
+|----------|-----------|---------|
+| **OfferTypes** | 29 tipos de ofertas (items, services, cosmetics) | OFFER_TYPE_OUTFIT (4) |
+| **SubActions** | Ações especiais por type (bênçãos, prey) | BLESSING_TWIST (3) |
+| **ActionType** | 6 tipos de ação na loja (open home, category) | OPEN_CATEGORY (2) |
+| **Network Packets** | 16 packet IDs para cliente/servidor | S_CoinBalance (0xDF) |
+| **States** | Estados visuais (new, sale, timed) | STATE_NEW (1) |
+| **ItemLimit** | Limites de quantidade | HIRELING: 10 max |
+| **ExpBoostValues** | Durações em minutos | [1]=30, [2]=45 |
+| **CoinType** | Normal vs transferível | Coin (0) vs Transferable (1) |
+
+### Padrões Identificados
+
+1. **Constants Organization**: Submaps temáticos (OfferTypes, SubActions, Network)
+2. **Bitwise/Enum Pattern**: Valores 0-27 mapeando tipos de ofertas
+3. **Network Constants**: Packet IDs em hex e decimal
+4. **Default Collections**: Templates para descrições e valores
+5. **Limit Management**: Tabelas de máximos por tipo
+
+### Responsabilidades
+
+- **Offer Definition**: 29 tipos de ofertas para toda loja
+- **Network Protocol**: 16 packet IDs para comunicação
+- **Configuration**: Defaults, limits, valores
+- **Descriptions**: Templates para items
+- **Enums**: Tipos, states, erros, services
+
+---
+
+## 📚 Conclusão
+
+O arquivo `constants.lua` fornece **central constants repository** para todo sistema de gamestore do Canary. 29 tipos de ofertas (items, cosmetics, services, special), 16 sub-ações especiais, 16 packet IDs de rede, states, erros, limites de item, valores de boost, descrições padrão, e configurações. Essencial para qualquer operação com loja - define toda nominclatura e valores do sistema.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: 2.0 (21-10-2025)  
+**Linhas Documentadas**: 190/190 (100%)  
+**Desenvolvedores**: Cjaker, metabob, Rick, Dudantas  
+**Submaps**: 18 (OfferTypes, SubActions, ActionType, CoinType, Kv, ConverType, ConfigureOffers, ClientOfferTypes, HistoryTypes, States, StoreErrors, ServiceTypes, SendingPackets, RecivedPackets, ExpBoostValues, DefaultValues, DefaultDescriptions, ItemLimit)  
+**Constants Totais**: 150+ constantes mapeadas  
+**Exemplos Práticos**: 7  
+**Padrões de Uso**: Network packets, offer processing, error handling, limits  
+**Complexidade**: Baixo (constants only)
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Arquivo é pura constants/configuration. Nenhuma função ou lógica - apenas dados. Mudanças aqui afetam todo gamestore. Packet IDs devem ser sincronizados entre servidor e cliente. OfferTypes 1-27 são sequenciais mas type 16 está empty (evitar). ExpBoostValues keys são levels [1-5]. DefaultDescriptions keys devem corresponder a types válidos. ItemLimit aplica limites globais por tipo.
+
+**Novas Ofertas**: Ao adicionar novo OFFER_TYPE, incrementar número e adicionar subaction se necessário. Manter sincronizado com client protocol.
+</Aside>

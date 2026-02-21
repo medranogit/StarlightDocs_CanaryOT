@@ -1,0 +1,299 @@
+---
+title: roasted_dragon_wings.lua
+description: Item consumível que aplica buff de defesa (+10 shield) por 1 hora com cooldown compartilhado de 10 minutos.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="roasted_dragon_wings.lua" icon="pencil">
+Item consumível que aplica buff de defesa (+10 shield) por 1 hora com cooldown compartilhado de 10 minutos.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/roasted_dragon_wings.lua`
+
+**Linhas:** 25 | **ID do Item:** 9081 | **Tipo:** Action Handler com Condition
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa consumível de comida especial que concede buff de defesa (+10 shield) por 1 hora. Usa cooldown compartilhado "special-foods-cooldown" (10 min) com outras comidas especiais. Inclui condition pré-compilada, efeito visual, emote e mensagem customizada. Um exemplo de buff defensivo com parâmetros otimizados.
+
+### Estrutura de Funcionalidades
+
+```
+CONDITION PRÉ-COMPILADA:
+  └─ defenseCondition (CONDITION_ATTRIBUTES)
+      ├─ SUBID: JeanPierreDefense
+      ├─ BUFF_SPELL: 1
+      ├─ TICKS: 60*60*1000 (1 hora)
+      ├─ SKILL_SHIELD: +10
+      └─ FORCEUPDATE: true
+
+HANDLER:
+  └─ roastedDragonWings.onUse()
+      ├─ hasExhaustion("special-foods-cooldown")? → bloqueia
+      ├─ addCondition(defenseCondition)
+      ├─ sendTextMessage("You feel less vulnerable.")
+      ├─ say("Chomp.")
+      ├─ sendMagicEffect(CONST_ME_MAGIC_RED)
+      ├─ setExhaustion("special-foods-cooldown", 10*60)
+      ├─ item:remove(1)
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| defenseCondition | Condition | CONDITION_ATTRIBUTES pré-compilada para +10 shield |
+| roastedDragonWings | Action | Objeto handler para o item |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | Valor | Descrição |
+|------|-------|-----------|
+| Shield Boost | +10 | Aumento de skill de defesa |
+| Duração Buff | 60*60*1000 | 3.600.000 ticks = 1 hora |
+| SUBID Condition | JeanPierreDefense | ID único da condição (permite remover/atualizar) |
+| Cooldown Compartilhado | special-foods-cooldown | 10 min com outras food especiais |
+| Duração Cooldown | 10*60 | 600 segundos = 10 minutos |
+| Efeito Visual | CONST_ME_MAGIC_RED | Efeito mágico vermelho |
+| Emote | Chomp. | Fala do jogador |
+| Mensagem Buff | You feel less vulnerable. | Notificação de aplicação |
+| BUFF_SPELL | 1 (true) | Identifica como buff positivo |
+| FORCEUPDATE | true | Força atualização imediata de stats |
+| ID do Item | 9081 | Trigger para handler |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local defenseCondition = Condition(CONDITION_ATTRIBUTES)
+defenseCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreDefense)
+defenseCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+defenseCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+defenseCondition:setParameter(CONDITION_PARAM_SKILL_SHIELD, 10)
+defenseCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+
+function roastedDragonWings.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: cooldown compartilhado
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true  -- Item NÃO removido
+	end
+
+	-- Aplicar condition de defesa
+	player:addCondition(defenseCondition)
+	
+	-- Feedback ao jogador
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You feel less vulnerable.")
+	player:say("Chomp.", TALKTYPE_MONSTER_SAY)
+	
+	-- Efeito visual na posição do jogador
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	
+	-- Ativar cooldown
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+	
+	-- Consumir item
+	item:remove(1)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa roasted_dragon_wings (9081)
+  │
+  ├─ hasExhaustion("special-foods-cooldown")?
+  │   ├─ SIM → Bloqueado por cooldown
+  │   │   ├─ Message: "You need to wait..."
+  │   │   ├─ Item NÃO removido
+  │   │   └─ return true
+  │   │
+  │   └─ NÃO → Continua...
+  │
+  ├─ Aplicar condition:
+  │   └─ addCondition(defenseCondition)
+  │       └─ Shield +10 por 1 hora
+  │
+  ├─ Feedback ao jogador:
+  │   ├─ Message: "You feel less vulnerable."
+  │   └─ Emote: "Chomp."
+  │
+  ├─ Efeito visual:
+  │   └─ MAGIC_RED na posição
+  │
+  ├─ Aplicar cooldown:
+  │   └─ setExhaustion(10 min = 600 seg)
+  │
+  ├─ Consumir item:
+  │   └─ item:remove(1)
+  │
+  └─ return true (sucesso)
+```
+
+### Fluxo Temporal
+
+```
+T0: Jogador ativa item (9081)
+  ├─ T0+0: Validação de cooldown
+  ├─ T0+1: Condition adicionada (duração = 1 hora)
+  ├─ T0+2: Mensagem enviada
+  ├─ T0+3: Efeito visual
+  ├─ T0+4: Cooldown ativado (10 min)
+  └─ T0+5: Item removido
+
+T0+600s: Cooldown expira
+  └─ Pode usar novamente
+
+T0+3600s: Condition expira
+  └─ Shield +10 removido automaticamente
+```
+
+### Condition Pré-compilada
+
+A condition é declarada globalmente e reutilizada:
+
+```lua
+-- Declaração única no global scope:
+local defenseCondition = Condition(CONDITION_ATTRIBUTES)
+defenseCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreDefense)
+-- ... mais parâmetros ...
+
+-- Reutilizado a cada onUse:
+player:addCondition(defenseCondition)
+```
+
+Vantagem: Performance (não cria nova condition a cada uso, apenas aplica).
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Condition Pré-compilada**: Criada uma vez, reutilizada para cada jogador
+- **SUBID (Substitution ID)**: Identificador único que permite remover/substituir condições
+- **BUFF_SPELL**: Parâmetro boolean que marca condition como buff positivo (não debuff)
+- **FORCEUPDATE**: Força atualização imediata de atributos (aplicação instantânea)
+- **Cooldown Compartilhado**: Múltiplos items com mesmo cooldown ("special-foods-cooldown")
+- **TICKS vs Segundos**: Ticks = millisegundos (3.6M ticks = 1 hora)
+- **Return True Sem Consumir**: Se cooldown bloqueia, return true mas não remove item
+- **Efeito em getPosition()**: Efeito aplicado à posição atual do jogador
+- **JeanPierre Pattern**: SUBID naming convention (JeanPierreDefense, JeanPierreMelee, etc)
+
+### Responsabilidades do Handler
+
+1. **Validar cooldown**: hasExhaustion("special-foods-cooldown")
+2. **Bloquear se necessário**: Return true de forma graciosa se bloqueado
+3. **Aplicar condition**: addCondition(defenseCondition)
+4. **Enviar mensagem**: Notificar jogador do buff
+5. **Produzir emote**: say("Chomp.", ...)
+6. **Efeito visual**: sendMagicEffect(MAGIC_RED)
+7. **Atualizar cooldown**: setExhaustion(10 min)
+8. **Consumir item**: item:remove(1)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Condition Pré-compilada
+
+Este script usa condition global pré-compilada para performance:
+
+```lua
+-- Global scope: declaração única
+local defenseCondition = Condition(CONDITION_ATTRIBUTES)
+defenseCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreDefense)
+-- ... configuração ...
+
+-- Handler: reutilização
+function handler.onUse(player, ...)
+	player:addCondition(defenseCondition)
+end
+```
+
+Alternativa dinâmica (menos performance):
+```lua
+-- Criar nova condition A CADA USO
+local condition = Condition(CONDITION_ATTRIBUTES)
+-- ... configuração ...
+player:addCondition(condition)
+```
+
+### Comparação: Roasted Dragon Wings vs Lemon Cupcake
+
+| Aspecto | Roasted Wings | Lemon Cupcake |
+|---------|---|---|
+| Skill Boost | Shield +10 | Distance +10 |
+| Duração | 1 hora | 1 hora |
+| Ticks | 3.6M | 3.6M |
+| SUBID | JeanPierreDefense | (não especificado) |
+| Cooldown | Compartilhado (food) | Próprio (lemon-cupcake) |
+| Duração Cooldown | 10 min | 10 min |
+| BUFF_SPELL | true (1) | true (não mostrado) |
+| Efeito | MAGIC_RED | Não documentado |
+
+### Comparação: Cooldown Compartilhado vs Próprio
+
+```
+Roasted Dragon Wings:
+  ├─ Usa: "special-foods-cooldown"
+  ├─ Compartilha com: pot_of_blackjack + outras foods
+  └─ Uma comida a cada 10 min
+
+Lemon Cupcake:
+  ├─ Usa: "lemon-cupcake-cooldown" (próprio)
+  ├─ Compartilha com: nada (único)
+  └─ Seu próprio cooldown de 10 min
+```
+
+### Shield Boost Timing
+
+```
+Aplicação Instantânea (FORCEUPDATE):
+  T0: addCondition() chamado
+  T0+epsilon: Shield +10 aplicado imediatamente
+  └─ Sem delay de servidor
+
+Sem FORCEUPDATE:
+  T0: addCondition() chamado
+  T0+10ms (aprox): Shield +10 aplicado
+  └─ Com eventual delay
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: roasted_dragon_wings.lua" icon="star">
+Análise do buff defensivo com condition pré-compilada, cooldown compartilhado e FORCEUPDATE para aplicação instantânea. Padrão otimizado de condition reutilizável com JeanPierre SUBID naming.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Condition pré-compilada reutilizável | Complexidade: Média
+</Aside>

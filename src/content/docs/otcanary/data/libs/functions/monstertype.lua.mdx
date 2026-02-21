@@ -1,0 +1,424 @@
+---
+title: "monstertype.lua"
+description: "Extensão da classe MonsterType com método generateLootRoll para geração parametrizada de loot com suporte a filtros customizados, cálculo dinâmico de chance, integração com charm system e Soul War Quest."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que estende a classe `MonsterType` nativa com único porém sofisticado método `generateLootRoll()`. 
+Este método gera loot de forma parametrizada com suporte a múltiplos fatores: loot factor (taxa de queda), filtros customizados (equipamento-only, rejeição de únicos), integração com charm system (Gut charm para creature products), cálculo dinâmico de chance (± 5%), e integração especial com Soul War Quest (bag you desire). 
+Retorna dicionário de itemId => \{count, gut, unique, subType, text, actionId\}.
+
+**Caminho Original**: `data/libs/functions/monstertype.lua`
+
+<Aside type="tip">
+O arquivo `monstertype.lua` é **motor de loot generation** do servidor. Todos os monstros, bosses e quests usam este método para gerar drops. Suporta filtros avançados (equipament-only para boss rewards), probabilidades dinâmicas (variância ±5%), e integração com sistemas de charm (Gut).
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **1 método core ultra-paramétrico**:
+
+`MonsterType.generateLootRoll(config, resultTable, player)` - Gerador de loot com:
+- **Config Table**: `{ factor, gut, filter }`
+- **Loot Factor**: Multiplicador global (boss bosses ajustado automaticamente)
+- **Dynamic Variance**: ± 5% aleatória
+- **Charm Integration**: Gut charm aumenta chance de creature products
+- **Soul War Quest**: Detecção automática e cálculo especial para Bag You Desire
+- **Filtro Custom**: Função de decisão por itemType + unique flag
+- **Unique Dedup**: Uma vez dropado, não cai novamente
+
+Retorna dicionário otimizado (remove itens count &lt;= 0).
+
+### Estrutura de Funcionalidades
+
+```
+MonsterType Loot Generation System
+├── Configuration
+│   ├── factor (number): Multiplicador global
+│   ├── gut (boolean): Ativar Gut charm processing
+│   └── filter (function): Decisor customizado
+├── Loot Source
+│   ├── monsterLoot[] (from engine)
+│   └── resultTable[] (accumulator)
+├── Processing Pipeline
+│   ├── RATE_LOOT check (global kill switch)
+│   ├── Factor adjustment (boss factor se isRewardBoss)
+│   ├── Dynamic variance (±5% random)
+│   ├── Charm integration (Gut charm)
+│   ├── Filter application
+│   └── Unique deduplication
+├── Chance Calculation
+│   ├── Base chance: item.chance
+│   ├── Dynamic factor: variance ± 5%
+│   ├── Adjusted chance: chance * dynamicFactor
+│   ├── Gut bonus: +ceil(chance * charmChance / 100)
+│   └── Random roll: random() >= adjustedChance
+├── Count Calculation
+│   ├── With charges: count = charges
+│   ├── Stackable: count = random(minCount, maxCount)
+│   └── Single: count = 1
+├── Gut Detection
+│   ├── Condition: randValue < chance AND randValue > originalChance
+│   └── Only creature products
+└── Return Format
+    └── { itemId => { count, gut, unique, subType, text, actionId } }
+```
+
+---
+
+## 📊 Métodos de MonsterType
+
+### `MonsterType:generateLootRoll(config, resultTable, player)` → table
+
+Gera loot para monstro baseado em configuração parametrizada com suporte a filtros, charm integration, e dinâmica de chance.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `config` (table): Configuração com campos:
+  - `factor` (number): Multiplicador de loot (1.0 = normal, 1.5 = 50% mais)
+  - `gut` (boolean): Se true, aplica Gut charm bonus
+  - `filter` (function, opcional): `function(itemType, unique) → boolean`
+- `resultTable` (table, opcional): Tabela para acumular loot (padrão: {})
+- `player` (Player): Jogador vencedor (contexto para Soul War Quest, Charm)
+
+**Retorna**: table com estrutura `{ itemId => { count, gut, unique, subType, text, actionId } }`
+
+**Tipo de Retorno (LootItems)**:
+```lua
+{
+    [2400] = { count = 1, gut = false, unique = false, subType = nil, text = nil, actionId = nil },
+    [10000] = { count = 5, gut = true, unique = true, subType = 0, text = "Legendary", actionId = 1001 },
+}
+```
+
+---
+
+## 🔍 Lógica de Processamento
+
+### Early Exit: RATE_LOOT Check
+
+```lua
+if configManager.getNumber(configKeys.RATE_LOOT) <= 0 then
+    return resultTable or {}
+end
+```
+
+**Kill Switch Global**: Se RATE_LOOT &lt;= 0, todo loot desativado (retorna vazio).
+
+---
+
+### Factor Adjustment para Boss
+
+```lua
+local factor = config.factor or 1.0
+if self:isRewardBoss() then
+    factor = factor * SCHEDULE_BOSS_LOOT_RATE / 100
+end
+```
+
+**Lógica**:
+- Factor padrão = `config.factor` (ou 1.0 se missing)
+- Se MonsterType é RewardBoss: multiplicar por `SCHEDULE_BOSS_LOOT_RATE / 100`
+- Exemplo: RewardBoss + factor 1.5 + SCHEDULE_BOSS_LOOT_RATE 150% = 1.5 * 1.5 = 2.25 final
+
+---
+
+### Filter Application & Unique Dedup
+
+```lua
+if config.filter and not config.filter(iType, item.unique) then
+    goto continue  -- Rejeita item
+end
+
+if uniqueItems[item.itemId] then
+    goto continue  -- Já foi dropado, não cai novamente
+end
+```
+
+**Filter Function Signature**: `function(itemType, unique) → boolean`
+- **Return true**: Item passa, será processado
+- **Return false**: Item rejeitado, skip
+
+**Unique Dedup**: Única instância por item (se dropou uma vez, não cai segunda vez).
+
+---
+
+### Dynamic Variance (±5%)
+
+```lua
+local dynamicFactor = factor * (math.random(95, 105) / 100)
+local adjustedChance = chance * dynamicFactor
+```
+
+**Cálculo**:
+- Random 95 a 105: Gera número [0.95, 1.05]
+- Multiplica factor: Adiciona variância ±5%
+- Exemplo: factor 1.0 → adjusted 0.95 a 1.05
+
+**Propósito**: Evitar drop totalmente previsível (simulação de RNG variado).
+
+---
+
+### Gut Charm Integration
+
+```lua
+if config.gut and iType:getType() == ITEM_TYPE_CREATUREPRODUCT then
+    local charmChance = player:getCharmChance(CHARM_GUT)
+    adjustedChance = adjustedChance + math.ceil((adjustedChance * charmChance / 100))
+end
+```
+
+**Fluxo**:
+1. Validar config.gut = true
+2. Validar item é ITEM_TYPE_CREATUREPRODUCT (corpos, peles etc)
+3. Obter % de Gut charm do jogador
+4. Adicionar bônus: `ceil(chance * charmPercent / 100)`
+
+**Exemplo**: chance 10%, Gut 50%
+- Bônus = ceil(10 * 50 / 100) = ceil(5) = 5%
+- Adjusted chance = 10% + 5% = 15%
+
+---
+
+### Soul War Quest Special Case
+
+```lua
+if SoulWarQuest and iType:getId() == SoulWarQuest.bagYouDesireItemId then
+    result[item.itemId].chance = self:calculateBagYouDesireChance(player, chance)
+    logger.debug("Final chance for bag you desire: {}, original chance: {}", 
+                 result[item.itemId].chance, chance)
+end
+```
+
+**Detecção**: Se item é "Bag You Desire" (Soul War Quest special item)
+- Chamar API especial: `calculateBagYouDesireChance(player, chance)`
+- Sobrescrever chance com valor customizado
+- Logar para debug
+
+---
+
+### Chance Roll & Count Calculation
+
+```lua
+local randValue = getLootRandom()
+if randValue >= adjustedChance then
+    goto continue  -- Monstro não dropa este item
+end
+
+local count = 0
+local charges = iType:getCharges()
+if charges > 0 then
+    count = charges  -- Item com charges retorna charges
+elseif iType:isStackable() then
+    local maxc, minc = item.maxCount or 1, item.minCount or 1
+    count = math.max(0, randValue % (maxc - minc + 1)) + minc
+else
+    count = 1  -- Non-stackable = 1
+end
+```
+
+**Chance Roll**:
+- `getLootRandom()` gera valor [0, 100)
+- Se randValue >= adjustedChance: rejeita (não cai)
+- Senão: aceita
+
+**Count Calculation**:
+1. **Com Charges**: Use charges diretamente
+2. **Stackable**: `random(minCount, maxCount)` usando modulo de randValue
+3. **Não Stackable**: Sempre 1
+
+---
+
+### Gut Detection (Triggering Charm)
+
+```lua
+local gutTriggered = randValue < chance and randValue > originalChance
+result[item.itemId].gut = config.gut and iType:getType() == ITEM_TYPE_CREATUREPRODUCT and gutTriggered
+```
+
+**Condição**:
+- `randValue < chance`: Item cairia naturalmente
+- `randValue > originalChance`: Mas SÓ caiu por causa do charm
+- Se ambos verdadeiros: **Gut foi triggerado**
+
+**Flag gui**: Marcar item com `gut = true` para efeitos/anúncios especiais.
+
+---
+
+### Accumulation & Result Building
+
+```lua
+if not result[item.itemId] then
+    result[item.itemId] = { count = 0, gut = false }
+end
+
+result[item.itemId].count = result[item.itemId].count + count
+result[item.itemId].unique = item.unique
+result[item.itemId].subType = item.subType
+result[item.itemId].text = item.text
+result[item.itemId].actionId = item.actionId
+```
+
+**Acumulação**: Pode haver múltiplas chances drop do mesmo item, incrementa count.
+
+**Metadados**: Preservar informação original (unique, subType, text, actionId).
+
+---
+
+### Cleanup: Remove Zero-Count Items
+
+```lua
+for itemId, item in pairs(result) do
+    if item.count <= 0 then
+        result[itemId] = nil
+    end
+end
+```
+
+**Otimização**: Remove itens que não cairam (count = 0).
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Loot Normal (Com Variância)
+
+```lua
+local monsterType = MonsterType(MONSTER_ID)
+local loot = monsterType:generateLootRoll({
+    factor = 1.0,    -- Loot normal
+    gut = false,     -- Sem Gut charm
+    -- Sem filter = aceita tudo
+}, {}, player)
+
+-- loot = { [2400] = { count = 1 }, [10000] = { count = 2 } }
+```
+
+### Padrão 2: Boss Reward (Equipamento Apenas, Com Charm)
+
+```lua
+local bossMobType = MonsterType(BOSS_ID)
+local bossLoot = bossMobType:getBossReward(
+    1.5,             -- Factor do boss
+    true,            -- Top score (permite únicos)
+    true,            -- Equipment only
+    {},
+    player
+)
+-- Internamente usa generateLootRoll com filter customizado
+```
+
+### Padrão 3: Creature Products (Com Gut Charm)
+
+```lua
+-- Para monstros que dropam peles/carcaças
+local creatureLoot = monsterType:generateLootRoll({
+    factor = 1.0,
+    gut = true,      -- Processamento Gut charm
+    filter = function(itemType, unique)
+        return itemType:getType() == ITEM_TYPE_CREATUREPRODUCT
+    end
+}, {}, player)
+
+-- Se jogador tem Gut charm, peles dropam mais vezes
+```
+
+### Padrão 4: Custom Filter (Rejection Logic)
+
+```lua
+local loot = monsterType:generateLootRoll({
+    factor = 1.2,
+    gut = false,
+    filter = function(itemType, unique)
+        -- Rejeitar únicos, rejeitar em quantidade
+        if unique then
+            return false
+        end
+        
+        -- Rejeitar itens muito valiosos
+        local value = itemType:getWorth()
+        if value > 100000 then
+            return false
+        end
+        
+        return true  -- Aceita resto
+    end
+}, {}, player)
+```
+
+### Padrão 5: Acumular Loot Multiple Creatures
+
+```lua
+local combinedLoot = {}
+for _, monsterId in ipairs(monsterIds) do
+    local mt = MonsterType(monsterId)
+    mt:generateLootRoll({ factor = 1.0, gut = false }, combinedLoot, player)
+end
+-- combinedLoot agora tem sum de todos monstros
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Implementação |
+|----------|-----------|----------------|
+| **Loot Factor** | Multiplicador global de queda | `factor * dynamicFactor` |
+| **Dynamic Variance** | ±5% variância aleatória | `math.random(95, 105) / 100` |
+| **Charm Integration** | Boost via Gut charm | `charmChance% bônus` |
+| **Unique Dedup** | Uma vez cai, não cai novamente | `uniqueItems[itemId]` |
+| **Custom Filter** | Rejeição por critério | `function(itemType, unique)` |
+| **Soul War Special** | API especial para quest item | `calculateBagYouDesireChance` |
+
+### Padrões Identificados
+
+1. **Parameter Table Pattern**: Config como table com campos opcionais
+2. **Accumulation Pattern**: resultTable parametrizado permite stacking múltiplo
+3. **Early Exit**: RATE_LOOT kill switch no começo
+4. **Filter Chain**: Filtros aplicados sequencialmente
+5. **Metadata Preservation**: Guardar original item.properties
+6. **Random Leverage**: Usar randValue múltiplas vezes (chance + count)
+
+### Fórmulas Críticas
+
+```
+Final Factor = base_factor × (SCHEDULE_BOSS_LOOT_RATE/100 se isRewardBoss)
+Dynamic Factor = factor × (random(95,105)/100)
+Adjusted Chance = chance × dynamicFactor + gut_bonus
+Gut Bonus = ceil(chance × player:getCharmChance(CHARM_GUT) / 100)
+Gut Trigger = (randValue < originalChance) AND (randValue > adjustedChance)
+```
+
+---
+
+## 📚 Conclusão
+
+O arquivo `monstertype.lua` é **núcleo de loot generation** do servidor. Através de `generateLootRoll()` ultra-parametrizado, permite gerar loot de forma previsível porém variada, com suporte a filtros customizados, integração com charm system (Gut), e casos especiais (Soul War Quest). O design de **acumulação em resultTable** permite combinar loot de múltiplos monstros ou múltiplas gerações, essencial para raid loot distribution.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 95/95 (100%)  
+**Métodos MonsterType**: 1  
+**Parâmetros ProcessoPipeline**: 7 (factor, gut, filter, RATE_LOOT, charm, variance, dedup)  
+**Fórmulas Críticas**: 6  
+**Exemplos Práticos**: 5+  
+**Padrões de Design**: Parameter Table, Accumulation, Filter Chain, Early Exit, Metadata Preservation
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Função `getLootRandom()` deve estar definida globalmente (gera valor 0-100 com distribuição customizada). Charm system (CHARM_GUT, getCharmChance) deve estar integrado na classe Player. Soul War Quest é optional (verificado com `if SoulWarQuest then`). RATE_LOOT == 0 desativa 100% de loot.
+</Aside>

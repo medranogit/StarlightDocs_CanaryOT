@@ -1,0 +1,240 @@
+---
+title: foods.lua
+description: Sistema base de 60+ alimentos com saciedade
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="foods.lua" icon="star">
+Script de ação Lua que implementa sistema extenso de alimentos base com saciedade variável.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/foods.lua`
+
+Sistema de 60+ alimentos (ovos, carnes, frutas, bolos, etc.) cada com nível de saciedade (1-605) e emote único. Valida se player está "full" verificando REGENERATION condition. Usa player:feed() com multiplicador 12. Sound effect ao comer. Item IDs: 3606, 3250, 3577, 21145, etc.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `foods.lua` é extenso mapeamento de 60+ tipos de alimentos base do servidor. Cada alimento tem dois atributos: nível de saciedade (1-605) multiplicado por 12, e emote único (Gulp, Crunch, Munch, Yum, etc.). Ao usar, valida se player está "full" checando duração REGENERATION condition. Se não bloqueado, aplica saciedade via player:feed(), emite emote, sound effect e consome item.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define foods table com 60+ itens]
+    ├─ [3606] = { 6, "Gulp." } (egg)
+    ├─ [3250] = { 5, "Crunch." } (carrot)
+    ├─ [3577] = { 15, "Munch." } (meat)
+    ├─ [3600] = { 10, "Crunch." } (bread)
+    ├─ [3583] = { 60, "Chomp." } (dragon ham)
+    ├─ [48256] = { 605, "Yum." } (pastry dragon - maior)
+    └─ ... mais 54 itens com ranges variados (1-605)
+
+[Create food Action]
+    ↓
+[onUse function]
+    ├─ itemFood = foods[item.itemid]
+    ├─ Not found? return false
+    ├─ condition = player:getCondition(REGENERATION)
+    ├─ If condition and time >= 1200s
+    │   └─ "You are full." (return)
+    ├─ player:feed(itemFood[1] * 12)
+    ├─ player:say(itemFood[2])
+    ├─ player:updateSupplyTracker(item)
+    ├─ sendSoundEffect(EAT)
+    ├─ item:remove(1)
+    └─ return true
+    ↓
+[Register all items via loop]
+```
+
+## Variáveis Globais
+
+### foods (local table - 60+ itens)
+
+Mapeamento completo de alimentos com saciedade e emotes.
+
+**Estrutura**:
+```lua
+[itemId] = { saciedade, "emote" }
+```
+
+**Ranges**:
+- Mínimo: 1 (blueberry, cherry)
+- Máximo: 605 (pastry dragon)
+- Maioria: 5-60
+
+## Alimentos por Categoria
+
+### Proteínas e Carnes
+
+| ID | Item | Saciedade | Emote |
+|----|------|-----------|-------|
+| 3577 | meat | 15 | Munch. |
+| 3578 | fish | 12 | Munch. |
+| 3582 | ham | 30 | Chomp. |
+| 3583 | dragon ham | 60 | Chomp. |
+| 901 | marlin | 60 | Munch. |
+| 22187 | roasted meat | 25 | Chomp. |
+
+### Frutas e Vegetais
+
+| ID | Item | Saciedade | Emote |
+|----|------|-----------|-------|
+| 3584 | pear | 5 | Yum. |
+| 3585 | red apple | 6 | Yum. |
+| 3586 | orange | 13 | Yum. |
+| 3250 | carrot | 5 | Crunch. |
+| 3596 | tomato | 6 | Munch. |
+
+### Bolos e Doces
+
+| ID | Item | Saciedade | Emote |
+|----|------|-----------|-------|
+| 6277 | cake | 10 | Mmmm. |
+| 6278 | decorated cake | 15 | Mmmm. |
+| 8019 | chocolate cake | 11 | Yum. |
+| 48254 | churro heart | 65 | Yum. |
+| 48256 | pastry dragon | 605 | Yum. |
+
+### Bebidas e Itens Especiais
+
+| ID | Item | Saciedade | Emote |
+|----|------|-----------|-------|
+| 21145 | bottle of glooth wine | 15 | Burp. |
+| 21144 | bowl of glooth soup | 15 | Slurp. |
+| 9537 | headache pill | 0 | (cura headache) |
+| 15795 | stale mushroom beer | 0 | Phew! |
+
+## Funções
+
+### food.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que consome alimento.
+
+**Parâmetros:**
+- player: Creature player
+- item: Alimento sendo consumido
+- fromPosition: Posição original
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. itemFood = foods[item.itemid]
+   ├─ Não existe? return false
+   └─ Existe? continuar
+
+2. condition = player:getCondition(CONDITION_REGENERATION, CONDITIONID_DEFAULT)
+
+3. If condition and (ticks/1000 + saciedade*12) >= 1200
+   ├─ "You are full."
+   └─ return true
+
+4. player:feed(itemFood[1] * 12)
+   └─ Aplica saciedade com multiplicador
+
+5. player:say(itemFood[2], TALKTYPE_MONSTER_SAY)
+
+6. player:updateSupplyTracker(item)
+
+7. player:getPosition():sendSingleSoundEffect(EAT)
+
+8. item:remove(1) + return true
+```
+
+**Implementação:**
+
+```lua
+function food.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	local itemFood = foods[item.itemid]
+	if not itemFood then
+		return false
+	end
+
+	local condition = player:getCondition(CONDITION_REGENERATION, CONDITIONID_DEFAULT)
+	if condition and math.floor(condition:getTicks() / 1000 + (itemFood[1] * 12)) >= 1200 then
+		player:sendTextMessage(MESSAGE_FAILURE, "You are full.")
+		return true
+	end
+
+	player:feed(itemFood[1] * 12)
+	player:say(itemFood[2], TALKTYPE_MONSTER_SAY)
+	player:updateSupplyTracker(item)
+	player:getPosition():sendSingleSoundEffect(SOUND_EFFECT_TYPE_ACTION_EAT, player:isInGhostMode() and nil or player)
+	item:remove(1)
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| CONDITION_REGENERATION | constant | Tipo condição saciedade |
+| CONDITIONID_DEFAULT | constant | ID default condition |
+| 1200 | integer | Limite segundos full |
+| itemFood[1] | integer | Valor saciedade (1-605) |
+| itemFood[2] | string | Emote (Gulp, Munch, etc) |
+| SOUND_EFFECT_TYPE_ACTION_EAT | constant | Som comer |
+
+## Validação de "Full"
+
+```lua
+if condition and math.floor(condition:getTicks() / 1000 + (itemFood[1] * 12)) >= 1200 then
+```
+
+Bloqueia uso se:
+- Player tem condition de REGENERATION E
+- Duração restante + novo alimento >= 1200 segundos (20 min)
+
+Exemplo:
+- Player tem 600s de saciedade
+- Tenta comer +100s item
+- Total = 700s (< 1200) → OK
+- Tenta comer +700s item
+- Total = 1300s (>= 1200) → "You are full."
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Tabela extensa (60+ itens)
+2. Per-item saciedade variável
+3. Validação "full" via condition time
+4. Multiplicador 12 para saciedade
+5. Emote único por alimento
+6. Sound effect feedback
+7. Supply tracker para logging
+
+**Responsabilidades:**
+1. Validar item existe em table
+2. Verificar player não está full
+3. Aplicar saciedade
+4. Emitir emote visual
+5. Sound effect
+6. Atualizar supply tracker
+7. Consumir item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler - extenso)  
+**Tamanho**: 164 linhas  
+**Função**: 1 (onUse)  
+**Alimentos**: 60+  
+**Ranges Saciedade**: 1-605  
+**Multiplicador**: 12  
+**Limite Full**: 1200 segundos  
+**Categories**: Proteína, Frutas, Bolos, Bebidas, Especiais
+</Card>
+
+<Aside type="note">
+Sistema base de 60+ alimentos. Cada com saciedade (1-605) e emote. Valida "full" se saciedade total >= 1200s. Multiplicador 12 aplicado. Supply tracker para logging.
+</Aside>

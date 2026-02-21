@@ -1,0 +1,445 @@
+---
+title: "Spell - flame_strike.lua"
+description: "Spell de golpe fogo multi-vocação level 14 com escalabilidade magic"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `flame_strike.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 89 |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Vocações** | Sorcerer, Druid, Master Sorcerer, Elder Druid |
+| **Level Requerido** | 14 |
+| **Mana Requerida** | 20 |
+| **Words** | exori flam |
+| **Alcance** | 3 |
+| **Área** | Single target |
+| **Cooldown** | 2s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level based (1.403-2.203 MLvl) - ALTA! |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_FLAME_STRIKE |
+| **Requer Caster/Target/Direction** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Linhas de Código** | 31 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de golpe fogo premium para level 14 (early!). RARO: 4 vocações (Sorcerer + Druid + suas versões master!). Dano fogo escalável magic-level (1.403-2.203). Fórmula similar a death/energy strike. 20 mana (baato). Range 3. Targeting flexível. Cooldown rápido 2s. Efeito FIREATTACK.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/flame_strike.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(89)
+spell:name("Flame Strike")
+spell:words("exori flam")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_FLAME_STRIKE)
+spell:level(14)
+spell:mana(20)
+spell:isPremium(true)
+spell:range(3)
+spell:needCasterTargetOrDirection(true)
+spell:blockWalls(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("sorcerer;true", "druid;true", "master sorcerer;true", "elder druid;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Golpe de Chama - Multi-Vocação Fire Early!**
+
+Este spell implementa um **sistema MUITO RARO de spell fogo multi-vocação com escalabilidade MLvl alta**:
+
+1. **Multi-Vocação (MUITO RARO!):**
+   - Sorcerer + Master Sorcerer
+   - Druid + Elder Druid
+   - 4 vocações = MUITO RARO!
+   - Level 14 = acesso cedo TODAS!
+
+2. **Escalabilidade Muito Alta:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 1.403) + 8
+   - max = (level/5) + (maglevel × 2.203) + 13
+   - Coef MLvl MUITO ALTOS (1.4-2.2!)
+
+3. **Very Early Premium Multi:**
+   - Level 14 (MUITO CEDO!)
+   - 20 mana (baato)
+   - Premium only
+   - Cooldown 2s (rápido)
+
+4. **Tipo Fire:**
+   - COMBAT_FIREDAMAGE
+   - Efeito FIREATTACK
+   - Range 3 (ranged)
+   - Targeting flexível
+
+**Fórmula Visual:**
+```
+Sorcerer/Druid lvl 14, mlvl 5:
+  min = 2.8 + 7.015 + 8 = 17.8
+  max = 2.8 + 11.015 + 13 = 26.8
+
+Sorcerer/Druid lvl 40, mlvl 15:
+  min = 8 + 21.045 + 8 = 37.045
+  max = 8 + 33.045 + 13 = 54.045
+```
+
+**Diferencial:** Multi-vocação fogo acesso cedo nível 14!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `flame_strike` oferece dano fogo escalável MULTI-VOCAÇÃO:
+
+- **Dano:** COMBAT_FIREDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*1.403/2.203) + bônus (ALTA!)
+- **Mana:** 20 (baato)
+- **Level:** 14 (MUITO CEDO!)
+- **Vocações:** 4 (Sorcerer + Druid!)
+
+### Arquitetura
+
+Combat com callback magic-level:
+
+```
+local combat = Combat()
+├─ Type: FIREDAMAGE
+├─ Effect: FIREATTACK
+├─ Distance: FIRE
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max escalável muito alto
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_FIREATTACK)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_FIRE)
+```
+
+**Propósito:** Combat de dano fogo.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_FIREATTACK | Efeito fogo ataque |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_FIRE | Projétil fogo |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.403) + 8
+	local max = (level / 5) + (maglevel * 2.203) + 13
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano fogo escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 1.403) + 8
+max = (level / 5) + (maglevel * 2.203) + 13
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 1.403 (MUITO ALTO!)
+- Maglevel max: 2.203 (MUITO ALTO!)
+- Bônus: 8/13 (significativo)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 14 | 5 | 17 | 26 |
+| 30 | 10 | 28 | 43 |
+| 50 | 15 | 40 | 60 |
+| 80 | 25 | 65 | 97 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Flame strike ativado |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback magic |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Escalabilidade MLvl Muito Alta
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 1.403) + 8
+	local max = (level / 5) + (maglevel * 2.203) + 13
+	return -min, -max
+end
+```
+
+**Benefício:** Dano escala muito com magic level.
+
+### Padrão 2: Premium Early Multi-Vocação
+
+```lua
+spell:isPremium(true)
+spell:level(14)
+spell:vocation("sorcerer;true", "druid;true", "master sorcerer;true", "elder druid;true")
+```
+
+**Benefício:** Acesso CEDO level 14 para AMBAS vocações.
+
+### Padrão 3: Targeting Flexível
+
+```lua
+spell:needCasterTargetOrDirection(true)
+```
+
+**Benefício:** Target ou direction = flexível.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano fogo escalável muito alto.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(sorcerer, 30, 10)
+// min = 6 + 14.03 + 8 = 28.03
+// max = 6 + 22.03 + 13 = 41.03
+// Retorna: -28, -41
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura golpe fogo em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer ou Druid |
+| `var` | Variant | Target ou direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Flame strike ativado |
+| `false` | Target falhou |
+
+**Requisitos:**
+- Level 14+
+- 20 mana
+- Target ou direction
+- Premium account
+- Cooldown 2s
+
+**Efeito:**
+- Efeito fogo ataque
+- Projétil fogo
+- Dano magic-level escalável
+- Range 3 tiles
+- Bloqueia walls
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 30, MLvl 10
+spell.onCastSpell(sorcerer, targetVariant)
+// Validações:
+//   ✓ Level 30 >= 14
+//   ✓ Mana 20 disponível
+//   ✓ Target ou direction
+//   ✓ Premium account
+// Combat executa
+// Projétil fogo viaja
+// Impacto fogo ataque
+// Dano: -28 a -41
+// Range 3 tiles
+// Cooldown 2s
+// Resultado: Golpe fogo cedo!
+
+-- Druid lvl 30, MLvl 10
+spell.onCastSpell(druid, directionVariant)
+// Mesma validação
+// Mesma fórmula
+// Mesma duração (2s CD)
+// Resultado: Golpe fogo cedo para DRUID também!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Very Early Access
+
+```lua
+-- Sorcerer ou Druid lvl 14+ premium
+// Flame Strike = primeiros golpes fogo
+// Acesso CEDO nível 14
+// Escalabilidade forte MLvl
+```
+
+### Caso 2: Multi-Vocação Training
+
+```lua
+-- Hybrid sorcerer/druid farming
+// Flame Strike = opção AMBAS vocações
+// Level 14 = acesso sincronizado
+// Premium advantage
+```
+
+### Caso 3: Fire Leveling
+
+```lua
+-- Premium player farm fogo
+// Flame Strike level 14
+// Escalabilidade crescente
+// Quick fire training spell
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_FIREDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Effects:** CONST_ME_FIREATTACK, CONST_ANI_FIRE
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Golpe fogo escalável |
+| **Dano Type** | COMBAT_FIREDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*1.403)+8, max=(lvl/5)+(mlvl*2.203)+13 |
+| **Mana** | 20 |
+| **Range** | 3 |
+| **Level** | 14 (MUITO cedo!) |
+| **Cooldown** | 2s (rápido) |
+| **Premium** | Sim |
+| **Vocações** | Sorcerer, Druid, Master Sorcerer, Elder Druid (4!) |
+| **Padrão** | Magic-level alta escalável + multi-vocação + early access |

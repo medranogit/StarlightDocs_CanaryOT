@@ -1,0 +1,213 @@
+---
+title: filled_jalapeno_peppers.lua
+description: Pimenta jalapeño que aumenta velocidade
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="filled_jalapeno_peppers.lua" icon="star">
+Script de ação Lua que implementa comida especializada com buff de velocidade.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/filled_jalapeno_peppers.lua`
+
+Comida especial (ID 9085) que aumenta velocidade por 1 hora com efeito de haste. Compartilha cooldown global special-foods (10 min). Emote "Munch", efeito mágico vermelho. Sem validações de nível ou equipamento.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `filled_jalapeno_peppers.lua` implementa comida simples que aplica buff de velocidade (haste) por 1 hora. Usa cooldown compartilhado special-foods para sincronizar com outras special foods (10 minutos). Condition pré-compilada com velocidade 729 (boost significativo). Emote "Munch" e efeito mágico vermelho como feedback.
+
+**Estrutura de Funcionalidades**
+
+```
+[Pré-compile speedCondition]
+    ├─ CONDITION_HASTE type
+    ├─ CONDITION_PARAM_TICKS: 3.600.000ms (1h)
+    └─ CONDITION_PARAM_SPEED: 729
+
+[Create filledJalapenoPeppers Action]
+    ↓
+[onUse function]
+    ├─ Check exhaustion: special-foods-cooldown
+    │   ├─ SIM → reject + return true
+    │   └─ NÃO → continuar
+    ├─ addCondition(speedCondition)
+    ├─ sendTextMessage: "Your speed has been increased."
+    ├─ player:say("Munch.", TALKTYPE_MONSTER_SAY)
+    ├─ sendMagicEffect(CONST_ME_MAGIC_RED)
+    ├─ setExhaustion("special-foods-cooldown", 10min)
+    ├─ item:remove(1)
+    └─ return true
+    ↓
+[Register on item ID 9085]
+```
+
+## Variáveis Globais
+
+### speedCondition (local)
+
+```lua
+local speedCondition = Condition(CONDITION_HASTE)
+speedCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+speedCondition:setParameter(CONDITION_PARAM_SPEED, 729)
+```
+
+Condition pré-compilada para reutilização.
+
+**Parâmetros:**
+- CONDITION_HASTE: Tipo haste (velocidade)
+- CONDITION_PARAM_TICKS: 3.600.000ms = 1 hora
+- CONDITION_PARAM_SPEED: 729 = boost significativo
+
+**Valor 729**: Incremento de velocidade padrão para buffs (verificar if equivalent a +XX%).
+
+## Funções
+
+### filledJalapenoPeppers.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que aplica buff de velocidade.
+
+**Parâmetros:**
+- player: Creature player
+- item: Pimenta sendo consumida
+- fromPosition: Posição do uso
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. hasExhaustion("special-foods-cooldown")?
+   ├─ SIM → "You need to wait..."
+   └─ NÃO → continuar
+
+2. addCondition(speedCondition)
+   └─ Aplica buff 1 hora
+
+3. sendTextMessage: "Your speed has been increased."
+
+4. player:say("Munch.", TALKTYPE_MONSTER_SAY)
+
+5. sendMagicEffect(CONST_ME_MAGIC_RED)
+
+6. setExhaustion("special-foods-cooldown", 600s)
+   └─ Cooldown 10 min compartilhado
+
+7. item:remove(1) + return true
+```
+
+**Implementação:**
+
+```lua
+function filledJalapenoPeppers.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true
+	end
+
+	player:addCondition(speedCondition)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your speed has been increased.")
+	player:say("Munch.", TALKTYPE_MONSTER_SAY)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+	item:remove(1)
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| CONDITION_HASTE | constant | Tipo condition |
+| CONDITION_PARAM_TICKS | param | Duração ms |
+| CONDITION_PARAM_SPEED | param | Valor haste |
+| 3.600.000 | integer | 1 hora em ms |
+| 729 | integer | Speed boost value |
+| special-foods-cooldown | string | Cooldown key |
+| 600 | integer | 10 minutos |
+
+## Fluxo de Operação
+
+```
+[Player usa pimenta]
+    ↓
+[special-foods-cooldown ativo?]
+    ├─ SIM → "You need to wait..." (return)
+    └─ NÃO → continuar
+    ↓
+[addCondition(speedCondition)]
+    └─ +speed por 1 hora
+    ↓
+[sendTextMessage: "Your speed has been increased."]
+    ↓
+[player:say("Munch.")]
+    └─ Emote visível
+    ↓
+[sendMagicEffect(MAGIC_RED)]
+    └─ Efeito visual
+    ↓
+[setExhaustion("special-foods-cooldown", 600s)]
+    └─ Bloqueia outras special foods 10min
+    ↓
+[item:remove(1)]
+    └─ Consome pimenta
+    ↓
+[return true]
+```
+
+## Comparação com Outras Special Foods
+
+| Item | Efeito | Duração | Cooldown |
+|------|--------|---------|----------|
+| blessed_steak | Mana +max | Instant | 10min shared |
+| carrot_cake | Distance +10 | 1 hora | 10min shared |
+| coconut_shrimp_bake | Speed underwater | 24h | 10min + 24h exclusive |
+| filled_jalapeno | Speed haste | 1 hora | 10min shared |
+
+Todas compartilham special-foods-cooldown base.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Condition HASTE para velocidade
+2. Pré-compilação para reutilização
+3. Cooldown compartilhado entre special foods
+4. Ticks em milissegundos (duração)
+5. Speed param com valor específico
+6. Efeito mágico para feedback
+7. Emote para ambientação
+
+**Responsabilidades:**
+1. Verificar cooldown special-foods
+2. Aplicar condition speedCondition
+3. Enviar mensagem feedback
+4. Emitir emote
+5. Emitir efeito visual
+6. Setar cooldown 10 min
+7. Consumir item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 22 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 9085  
+**Condition Type**: HASTE  
+**Speed Boost**: 729  
+**Duration**: 1 hora  
+**Cooldown**: 10 minutos (shared)  
+**Efeito**: MAGIC_RED
+</Card>
+
+<Aside type="note">
+Comida simples de velocidade. Pré-compilação condition. Cooldown compartilhado com outras special foods (10 min). Efeito visual e emote "Munch" para feedback.
+</Aside>

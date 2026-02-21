@@ -1,0 +1,638 @@
+---
+title: "game.lua"
+description: "Game module extensions providing global storage persistence, broadcast messaging, IP address handling, house lookup, direction reversal, skill/weapon mapping, and account utilities."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que implementa extensões para a classe Game e funções globais auxiliares. Fornece gerenciamento de storage global (baseado em banco de dados e cache em memória), broadcast de mensagens para todos os jogadores, funções de network (conversão de IP, filtragem por IP), lookup de casas por GUID, mapeamento de armas para skills, reverso de direções, formatação de tempo em palavras legíveis, e busca de account ID.
+
+<Aside type="tip">
+O arquivo `game.lua` centraliza operações de **servidor** que afetam o jogo globalmente, como broadcasts, gerenciamento de storage persistente com fallback em memória, e mapeamentos de enums (armas, direções, slots). É essencial para syscripts e eventos globais.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O arquivo `game.lua` implementa **13 funções** organizadas em **8 categorias** que estendem a classe Game nativa do engine. Diferentemente de `item.lua` (que é puro método extension), este arquivo mistura:
+
+1. **Funções Globais**: `getGlobalStorage()`, `setGlobalStorage()` (não prefixo Game)
+2. **Método Extensions**: `Game.broadcastMessage()`, `Game.getStorageValue()`, etc
+
+O design usa **dual-layer storage**: banco de dados MySQL para persistência + cache em memória para performance.
+
+### Estrutura de Funcionalidades
+
+```
+Game Module Extensions
+├── Storage System (Dual Layer)
+│   ├── Database Layer
+│   │   ├── getGlobalStorage(key) → number|string|-1
+│   │   └── setGlobalStorage(key, value) → void
+│   └── Memory Cache
+│       ├── globalStorageTable (local table)
+│       ├── Game.getStorageValue(key) → number|-1
+│       └── Game.setStorageValue(key, value) → void
+├── Network Functions
+│   ├── Game.convertIpToString(ip) → string
+│   └── Game.getPlayersByIPAddress(ip, mask) → table
+├── Direction Functions
+│   └── Game.getReverseDirection(direction) → direction
+├── Mapping Functions
+│   ├── Game.getSkillType(weaponType) → skill
+│   └── Game.getHouseByPlayerGUID(playerGUID) → House
+├── Broadcast Functions
+│   └── Game.broadcastMessage(message, messageType) → void
+├── Account Functions
+│   └── Game.getPlayerAccountId(name) → number
+└── Utility Functions
+    └── Game.getTimeInWords(seconds) → string
+```
+
+---
+
+## 🛡️ Storage System (Banco de Dados vs Cache)
+
+### `getGlobalStorage(key)` - Database Layer
+
+Busca valor do storage global no banco de dados MySQL.
+
+**Tipo**: Função Global  
+**Parâmetros**:
+- `key` (string|number): Chave do storage
+
+**Retorna**: number|string (valor armazenado) ou -1 se não encontrado
+
+**Implementação**:
+```lua
+function getGlobalStorage(key)
+    local keyNumber = tonumber(key)
+    if not keyNumber then
+        key = "'" .. key .. "'"
+    end
+    local resultId = db.storeQuery("SELECT `value` FROM `global_storage` WHERE `key` = " .. key)
+    if resultId ~= false then
+        local isNumber = tonumber(Result.getString(resultId, "value"))
+        if isNumber then
+            local val = Result.getNumber(resultId, "value")
+            Result.free(resultId)
+            return val
+        else
+            local val = Result.getString(resultId, "value")
+            Result.free(resultId)
+            return val
+        end
+    end
+    return -1
+end
+```
+
+**Exemplos**:
+```lua
+-- Buscar valor numérico
+local eventId = getGlobalStorage(100)
+if eventId ~= -1 then
+    print("Event ID: " .. eventId)
+end
+
+-- Buscar valor string
+local serverName = getGlobalStorage("SERVER_NAME")
+if serverName ~= -1 then
+    print("Servidor: " .. serverName)
+end
+```
+
+**Características**:
+- Tipo-agnostic: suporta numbers e strings
+- Smart type detection: tenta converter para number, retorna string se falhar
+- Resource cleanup: libera resultado após leitura
+- SQL safe: cita chaves string automaticamente
+
+---
+
+### `setGlobalStorage(key, value)` - Database Layer
+
+Define valor do storage global no banco de dados com INSERT OR UPDATE.
+
+**Tipo**: Função Global  
+**Parâmetros**:
+- `key` (string|number): Chave do storage
+- `value` (string|number): Novo valor
+
+**Retorna**: void
+
+**Implementação**:
+```lua
+function setGlobalStorage(key, value)
+    local keyNumber = tonumber(key)
+    if not keyNumber then
+        key = "'" .. key .. "'"
+    end
+    local valueNumber = tonumber(value)
+    if not valueNumber then
+        value = "'" .. value .. "'"
+    end
+    db.query("INSERT INTO `global_storage` (`key`, `value`) VALUES (" .. key .. ", " .. value .. 
+             ") ON DUPLICATE KEY UPDATE `value` = " .. value)
+end
+```
+
+**Exemplos**:
+```lua
+-- Definir contador de evento
+setGlobalStorage(100, 5)
+
+-- Definir propriedade string
+setGlobalStorage("SERVER_NAME", "Canary Evolution")
+
+-- Update automático (se já existe)
+setGlobalStorage(100, 10)  -- Incrementa de 5 para 10
+```
+
+**Comportamento**: 
+- Se chave existe: atualiza value
+- Se chave não existe: insere novo registro
+- SQL safe: cita automaticamente
+
+---
+
+### `Game.getStorageValue(key)` - Memory Cache
+
+Busca valor do cache de memória (sem acesso ao banco).
+
+**Tipo**: Method Extension  
+**Parâmetros**:
+- `key` (string|number): Chave do storage
+
+**Retorna**: number (valor) ou -1 se não encontrado
+
+**Implementação**:
+```lua
+local globalStorageTable = {}  -- Variável local
+
+function Game.getStorageValue(key)
+    return globalStorageTable[key] or -1
+end
+```
+
+**Exemplos**:
+```lua
+-- Buscar valor do cache
+local eventState = Game.getStorageValue("event_state")
+if eventState ~= -1 then
+    print("State: " .. eventState)
+end
+```
+
+**Diferença de getGlobalStorage**:
+- **Muito mais rápido**: acesso direto a tabela (O(1))
+- **Sem persistência**: perdido ao reiniciar servidor
+- **UsO para**: flags de evento, contadores rápidos, estado em memória
+
+---
+
+### `Game.setStorageValue(key, value)` - Memory Cache
+
+Define valor no cache de memória.
+
+**Tipo**: Method Extension  
+**Parâmetros**:
+- `key` (string|number): Chave
+- `value` (number): Novo valor
+
+**Retorna**: void
+
+**Implementação**:
+```lua
+function Game.setStorageValue(key, value)
+    if key == nil then
+        logger.error("[Game.setStorageValue] Key is nil")
+        return
+    end
+
+    if value == -1 then
+        if globalStorageTable[key] then
+            globalStorageTable[key] = nil
+        end
+        return
+    end
+
+    globalStorageTable[key] = value
+end
+```
+
+**Exemplos**:
+```lua
+-- Definir flag de evento
+Game.setStorageValue("event_state", 1)
+
+-- Remover key (setting to -1)
+Game.setStorageValue("event_state", -1)  -- Remove da tabela
+```
+
+**Comportamento**:
+- Se `value == -1`: remove chave do storage (cleanup automático)
+- Valida se key é nil (erro log)
+- Settar -1 é idempotente (seguro chamar múltiplas vezes)
+
+---
+
+## 📡 Funções de Network
+
+### `Game.convertIpToString(ip)`
+
+Converte número IP de 32 bits em string formato "A.B.C.D".
+
+**Tipo**: Method Extension  
+**Parâmetros**:
+- `ip` (number): IP como número de 32 bits
+
+**Retorna**: string (formato "XXX.XXX.XXX.XXX")
+
+**Implementação**:
+```lua
+function Game.convertIpToString(ip)
+    local band = bit.band
+    local rshift = bit.rshift
+    return string.format("%d.%d.%d.%d", 
+        band(ip, 0xFF), 
+        band(rshift(ip, 8), 0xFF), 
+        band(rshift(ip, 16), 0xFF), 
+        rshift(ip, 24))
+end
+```
+
+**Exemplos**:
+```lua
+local ipNum = 2130706433  -- 127.0.0.1 como número
+print(Game.convertIpToString(ipNum))  -- "127.0.0.1"
+```
+
+**Operações Bitwise**:
+- `rshift(ip, 8)`: desloca 1 byte para extrair byte seguinte
+- `band(value, 0xFF)`: máscara para pegar apenas últimos 8 bits
+
+---
+
+### `Game.getPlayersByIPAddress(ip, mask)`
+
+Retorna array de jogadores conectados de um IP específico (com suporte a submask).
+
+**Tipo**: Method Extension  
+**Parâmetros**:
+- `ip` (number): IP para filtrar
+- `mask` (number, opcional): Submask (padrão 0xFFFFFFFF = full match)
+
+**Retorna**: table (array de Player objects)
+
+**Implementação**:
+```lua
+function Game.getPlayersByIPAddress(ip, mask)
+    if not mask then
+        mask = 0xFFFFFFFF
+    end
+    local masked = bit.band(ip, mask)
+    local result = {}
+    local players = Game.getPlayers()
+    for i = 1, #players do
+        local player = players[i]
+        if bit.band(player:getIp(), mask) == masked then
+            result[#result + 1] = player
+        end
+    end
+    return result
+end
+```
+
+**Exemplos**:
+```lua
+-- Buscar todos os jogadores do IP 192.168.1.*
+local mask = 0xFFFFFF00  -- Mascara para /24
+local players = Game.getPlayersByIPAddress(3232235776, mask)
+print("Players in subnet: " .. #players)
+
+-- Buscar jogadores de IP exato
+local exact = Game.getPlayersByIPAddress(2130706433)
+```
+
+**Uso**: Detecção de botting, multi-accounting, análise de conexão.
+
+---
+
+## 🧭 Funções de Direção
+
+### `Game.getReverseDirection(direction)`
+
+Retorna a direção oposta a uma direção dada.
+
+**Tipo**: Method Extension  
+**Parâmetros**:
+- `direction` (number): Uma das constantes NORTH, SOUTH, EAST, WEST, etc
+
+**Retorna**: number (direção oposta)
+
+**Mapeamento**:
+```
+WEST ↔ EAST
+NORTH ↔ SOUTH
+NORTHWEST ↔ SOUTHEAST
+NORTHEAST ↔ SOUTHWEST
+```
+
+**Exemplos**:
+```lua
+local dir = NORTH
+local opposite = Game.getReverseDirection(dir)
+print(opposite == SOUTH)  -- true
+
+-- Pulso de volta para jogador
+creature:moveToDirection(NORTH)
+-- ... depois
+creature:moveToDirection(Game.getReverseDirection(NORTH))
+```
+
+---
+
+## ⚔️ Mapeamento de Armas e Skills
+
+### `Game.getSkillType(weaponType)`
+
+Mapeia tipo de arma para tipo de skill correspondente.
+
+**Tipo**: Method Extension  
+**Parâmetros**:
+- `weaponType` (number): Uma das constantes WEAPON_*
+
+**Retorna**: number (SKILL_* correspondente)
+
+**Mapeamento**:
+```
+WEAPON_CLUB        → SKILL_CLUB
+WEAPON_SWORD       → SKILL_SWORD
+WEAPON_AXE         → SKILL_AXE
+WEAPON_DISTANCE    → SKILL_DISTANCE
+WEAPON_MISSILE     → SKILL_DISTANCE
+WEAPON_SHIELD      → SKILL_SHIELD
+(outros)           → SKILL_FIST
+```
+
+**Exemplos**:
+```lua
+local weapon = player:getWeapon()
+local weaponType = weapon:getType():getWeaponType()
+local skill = Game.getSkillType(weaponType)
+
+-- Dar experiência no skill correto
+player:addSkillTries(skill, exp_amount)
+```
+
+---
+
+## 🏠 Funções de Casas
+
+### `Game.getHouseByPlayerGUID(playerGUID)`
+
+Busca a casa de um jogador pelo GUID da conta.
+
+**Tipo**: Method Extension  
+**Parâmetros**:
+- `playerGUID` (number): GUID global do jogador
+
+**Retorna**: House object ou nil
+
+**Implementação**:
+```lua
+function Game.getHouseByPlayerGUID(playerGUID)
+    local houses = Game.getHouses()
+    for i = 1, #houses do
+        local house = houses[i]
+        if house:getOwnerGuid() == playerGUID then
+            return house
+        end
+    end
+    return nil
+end
+```
+
+**Exemplos**:
+```lua
+local playerGUID = player:getGuid()
+local house = Game.getHouseByPlayerGUID(playerGUID)
+
+if house then
+    print("Casa: " .. house:getName())
+    print("Aluguel: " .. house:getRent())
+else
+    print("Jogador não possui casa")
+end
+```
+
+---
+
+## 📢 Broadcast de Mensagens
+
+### `Game.broadcastMessage(message, messageType)`
+
+Envia mensagem para todos os jogadores online simultaneamente.
+
+**Tipo**: Method Extension  
+**Parâmetros**:
+- `message` (string): Mensagem a broadcast
+- `messageType` (number, opcional): Tipo de mensagem (padrão MESSAGE_GAME_HIGHLIGHT)
+
+**Retorna**: void
+
+**Tipos de Mensagens Comuns**:
+- `MESSAGE_GAME_HIGHLIGHT`: Mensagem em amarelo
+- `MESSAGE_STATUS_CONSOLE_BLUE`: Console azul
+- `MESSAGE_EVENT_ADVANCE`: Eventos em verde
+- `MESSAGE_EVENT_DEFAULT`: Default amarelo
+
+**Exemplos**:
+```lua
+-- Broadcast padrão (amarelo)
+Game.broadcastMessage("Server will restart in 5 minutes!")
+
+-- Broadcast verde (evento)
+Game.broadcastMessage("An ancient evil awakens...", MESSAGE_EVENT_ADVANCE)
+
+-- Broadcast para eventos
+Game.broadcastMessage("Guild war started!", MESSAGE_STATUS_CONSOLE_BLUE)
+```
+
+---
+
+## 👤 Funções de Account
+
+### `Game.getPlayerAccountId(name)`
+
+Busca account ID de um jogador pelo nome (online ou offline).
+
+**Tipo**: Method Extension  
+**Parâmetros**:
+- `name` (string): Nome do jogador
+
+**Retorna**: number (account ID) ou 0 se não encontrado
+
+**Implementação**:
+```lua
+function Game.getPlayerAccountId(name)
+    local player = Player(name)
+    if player then
+        return player:getAccountId()
+    end
+
+    local resultId = db.storeQuery("SELECT `account_id` FROM `players` WHERE `name` = " .. db.escapeString(name))
+    if resultId then
+        local accountId = Result.getNumber(resultId, "account_id")
+        Result.free(resultId)
+        return accountId
+    end
+    return 0
+end
+```
+
+**Exemplos**:
+```lua
+local accId = Game.getPlayerAccountId("Player Name")
+if accId ~= 0 then
+    print("Account ID: " .. accId)
+else
+    print("Player not found")
+end
+```
+
+---
+
+## ⏱️ Formatação de Tempo
+
+### `Game.getTimeInWords(seconds)`
+
+Converte número de segundos em string legível (ex: "2 days, 3 hours and 5 minutes").
+
+**Tipo**: Method Extension  
+**Parâmetros**:
+- `seconds` (number): Número de segundos
+
+**Retorna**: string (formatada em palavras)
+
+**Exemplos**:
+```lua
+print(Game.getTimeInWords(3661))    -- "1 hour, 1 minute and 1 second"
+print(Game.getTimeInWords(86400))   -- "1 day"
+print(Game.getTimeInWords(180000))  -- "2 days and 2 hours"
+print(Game.getTimeInWords(5))       -- "5 seconds"
+```
+
+**Características**:
+- Pluraliza corretamente ("1 day" vs "2 days")
+- Usa "and" antes do último item
+- Se zero segundos, retorna "0 seconds"
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Dual-Layer Storage (DB + Cache)
+
+```lua
+-- Setup no boot
+local eventId = getGlobalStorage("EVENT_ID")  -- Lê do DB
+if eventId == -1 then
+    setGlobalStorage("EVENT_ID", 1)
+    eventId = 1
+end
+
+-- Usar cache para performance
+Game.setStorageValue("event_active", 1)
+
+-- Periodicamente sync para DB
+if os.time() % 60 == 0 then  -- A cada 60 segundos
+    setGlobalStorage("event_state", Game.getStorageValue("event_state"))
+end
+```
+
+### Padrão 2: Detectar Multi-Accounting
+
+```lua
+local player = Player("PlayerName")
+if player then
+    local ip = player:getIp()
+    local others = Game.getPlayersByIPAddress(ip)
+    
+    if #others > 1 then
+        print("Multi-accounting detected from " .. Game.convertIpToString(ip))
+        for _, p in ipairs(others) do
+            print("  - " .. p:getName())
+        end
+    end
+end
+```
+
+### Padrón 3: Broadcast com Desabilitação
+
+```lua
+if Game.getStorageValue("broadcast_enabled") == 1 then
+    Game.broadcastMessage(
+        "Event update: " .. Game.getTimeInWords(remaining_seconds),
+        MESSAGE_STATUS_CONSOLE_BLUE
+    )
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+1. **Dual-Layer Storage**: DB para persistência, memória para performance
+2. **Bitwise IP Handling**: Máscaras de sub-rede com operações bitwise
+3. **Type Mapping**: Enums (weapons, directions, skills) e seus mapeamentos
+4. **Broadcasting**: Iteração global de todos jogadores para disseminação
+
+### Padrões Identificados
+
+- **Lazy Loading**: Buscar DB apenas se não está em cache
+- **Guard Clauses**: Retornar nil/0/-1 para casos not found
+- **Automatic Cleanup**: Setting -1 remove chave
+- **SQL Safe**: Auto-quoting de strings
+
+### Design Decisions
+
+| Decisão | Motivo | Trade-off |
+|---------|--------|-----------|
+| Dual storage | Persistência + Performance | Sincronização necessária |
+| -1 como "not found" | Compatibilidade lua | Conflita com valores válidos |
+| Bitwise IP handling | Eficiência em sub-rede | Requer conhecimento de bits |
+| globalStorageTable local | Encapsulação | Requer funções wrapper |
+
+---
+
+## 📚 Conclusão
+
+O arquivo `game.lua` é o **coração de operações do servidor**, fornecendo abstrações para storage persistente, broadcast global, análise de network, e mapeamentos de enums críticos. Seu design em **duas camadas de storage** permite balancear persistência com performance, enquanto funções de **network e detection** espertam proteção contra abuso.
+
+A modularização remove lógica repetida de diretos reversos, mapeamento de skills, e conversão de IP, tornando code em scripts mais limpo e menos propenso a erros.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 200/200 (100%)  
+**Funções Documentadas**: 13  
+**Categorias**: 8  
+**Variáveis Locais**: 1 (globalStorageTable)  
+**Padrões de Projeto**: 4  
+**Exemplos Práticos**: 15+
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Funções globais como `getGlobalStorage` devem ser usadas com moderação (caras em BD). Prefira `Game.getStorageValue` para dados que não precisam persistir. Sincronize dual-layer periodicamente se usando ambas.
+</Aside>

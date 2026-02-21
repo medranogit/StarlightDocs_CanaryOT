@@ -1,0 +1,282 @@
+---
+title: Custom Monster Loot
+description: Sistema de loot customizado com aplicação global a todos monstros ou específica por nome de monster
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `custom_monster_loot.lua` |
+| **Tipo de Sistema** | Loot event-based (GlobalEvent) |
+| **Tabelas Principais** | allLootConfig (global), customLootConfig (específico) |
+| **Trigger** | Startup (onStartup) |
+| **Aplicação Global** | Sim - todos monstros recebem allLootConfig se definido |
+| **Aplicação Específica** | Sim - por nome exato de monster type |
+| **Logging** | Debug (aplicação) + Error (monster não encontrado) |
+| **Format de Loot** | Padrão MonsterType:createLoot() |
+| **Validação** | Verifica existência de MonsterType antes de aplicar |
+
+## 📍 Caminho Original
+
+```
+data/scripts/systems/custom_monster_loot.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este sistema usa GlobalEvent de startup para registrar loots customizados. Há duas estratégias: (1) allLootConfig aplicado a TODOS os monsterType iterados em Game.getMonsterTypes(), (2) customLootConfig aplicado apenas a monstros nomeados especificamente. Cada loot é array de items com: id, chance (10000=100%), minCount, maxCount. O método mtype:createLoot(tabela) aplica diretamente. Se monsterName não existe, loga erro. Sistema executa apenas uma vez no startup, não em runtime.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `custom_monster_loot.lua` implementa sistema de loot customizado registrado em startup via GlobalEvent com duas estratégias de aplicação: (1) global (allLootConfig aplicado a todos MonsterTypes), (2) específica (customLootConfig aplicada por nome). É arquivo de registro puro que roda uma única vez no startup, iterando Game.getMonsterTypes() e chamando mtype:createLoot() com arrays de items. Suporta validação de MonsterType existência antes de aplicar, com logging de debug/error. Os items seguem formato padrão (id, chance em 10000ths, minCount, maxCount). Exemplo demonstra 100% chance de item 6526 (1-10 quantidade) global + Dragon específico com platinum coin 10% chance.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Tabela de Loot Global (TODOS os monstros)
+local allLootConfig = {
+    { id = 6526, chance = 100000, minCount = 1, maxCount = 10 },
+    -- Format: { id, chance (10000=100%, 5000=50%), minCount, maxCount }
+    -- Aplicado a TODOS os monstros se #allLootConfig > 0
+}
+
+-- 2. Tabela de Loot Específico (por nome de monster)
+local customLootConfig = {
+    ["Dragon"] = { items = {
+        { name = "platinum coin", chance = 1000, maxCount = 1 },
+    } },
+    -- Format: [monsterName] = { items = { ... } }
+    -- Aplicado apenas ao monster nomeado se existir
+}
+
+-- 3. GlobalEvent de Startup
+local customMonsterLoot = GlobalEvent("CreateCustomMonsterLoot")
+
+function customMonsterLoot.onStartup()
+    -- 3.1 Aplicação de Loot Específico
+    for monsterName, lootTable in pairs(customLootConfig) do
+        -- 3.1a Lookup de MonsterType
+        -- 3.1b Validação de existência
+        -- 3.1c Aplicação de loot se válido
+        -- 3.1d Logging debug/error
+    end
+    
+    -- 3.2 Aplicação de Loot Global
+    if #allLootConfig > 0 then
+        for monsterName, mtype in pairs(Game.getMonsterTypes()) do
+            -- 3.2a Aplicação de loot a todos
+            -- 3.2b Logging debug
+        end
+    end
+end
+
+customMonsterLoot:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `allLootConfig` | `table(array)` | Local (global no arquivo) | Items aplicados a TODOS monstros |
+| `customLootConfig` | `table(string|table)` | Local (global no arquivo) | Items específicos por nome monster |
+| `customMonsterLoot` | `GlobalEvent` | Local | Evento de startup |
+| `monsterName` | `string` | Loop (customConfig) | Nome específico do monster |
+| `lootTable` | `table` | Loop (customConfig) | Tabela com campo `items` |
+| `mtype` | `MonsterType` | Loop | Instância de tipo de monster |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão Global Loot Aplicação**
+
+```lua
+local allLootConfig = {
+    { id = 6526, chance = 100000, minCount = 1, maxCount = 10 },
+}
+
+if #allLootConfig > 0 then
+    for monsterName, mtype in pairs(Game.getMonsterTypes()) do
+        mtype:createLoot(allLootConfig)
+    end
+end
+```
+
+Aplica items idênticos a TODOS os monstros se tabela não vazia.
+
+### 2. **Padrão Loot Específico por Nome**
+
+```lua
+local customLootConfig = {
+    ["Dragon"] = { items = {
+        { name = "platinum coin", chance = 1000, maxCount = 1 },
+    } },
+}
+
+for monsterName, lootTable in pairs(customLootConfig) do
+    local mtype = Game.getMonsterTypeByName(monsterName)
+    if mtype then
+        if lootTable and lootTable.items and #lootTable.items > 0 then
+            mtype:createLoot(lootTable.items)
+        end
+    end
+end
+```
+
+Lookup por nome exato, validação, então aplicação.
+
+### 3. **Padrão Item Format Duplo**
+
+```lua
+-- Global: ID numérico
+{ id = 6526, chance = 100000, minCount = 1, maxCount = 10 }
+
+-- Específico: Nome string
+{ name = "platinum coin", chance = 1000, maxCount = 1 }
+```
+
+Dois formatos válidos: ID ou name.
+
+### 4. **Padrão Chance em 10000ths**
+
+```lua
+chance = 100000  -- 100% (10 × 10000)
+chance = 10000   -- 100% (1 × 10000)
+chance = 1000    -- 10% (0.1 × 10000)
+chance = 500     -- 5%
+```
+
+Escala de 10000 para 100%, 1000 para 10%, etc.
+
+### 5. **Padrão Logging Debug/Error**
+
+```lua
+if mtype then
+    logger.debug("[customMonsterLoot.onStartup] - Custom loot registered for: {}", mtype:getName())
+else
+    logger.error("[customMonsterLoot.onStartup] - Monster type not found: {}", monsterName)
+end
+```
+
+Diferencia entre aplicação bem-sucedida (debug) vs falha (error).
+
+## 🤖 Documentação das Funções
+
+### **customMonsterLoot.onStartup()**
+
+**Descrição:** Handler de startup que registra loot customizado em monstros.
+
+**Trigger:** GlobalEvent "CreateCustomMonsterLoot" no startup do servidor
+
+**Fluxo de Execução:**
+
+1. **Registração de Loot Específico**:
+   ```lua
+   for monsterName, lootTable in pairs(customLootConfig) do
+       local mtype = Game.getMonsterTypeByName(monsterName)
+   ```
+   - Itera customLootConfig (por nome)
+   - Lookup de MonsterType via Game.getMonsterTypeByName()
+   - Se não encontrado: loga erro `[customMonsterLoot.onStartup] - Monster type not found: {name}`
+
+2. **Validação de Loot Table**:
+   ```lua
+   if lootTable and lootTable.items and #lootTable.items > 0 then
+   ```
+   - Valida tabela não nil
+   - Valida campo `items` existe
+   - Valida items não vazio
+
+3. **Aplicação de Loot Específico**:
+   ```lua
+   mtype:createLoot(lootTable.items)
+   logger.debug("[customMonsterLoot.onStartup] - Custom loot registered for monster: {}", mtype:getName())
+   ```
+   - Chama mtype:createLoot() com array de items
+   - Loga debug se bem-sucedido
+
+4. **Registração de Loot Global**:
+   ```lua
+   if #allLootConfig > 0 then
+       for monsterName, mtype in pairs(Game.getMonsterTypes()) do
+   ```
+   - Valida allLootConfig não vazio
+   - Itera TODOS os MonsterTypes do servidor
+
+5. **Aplicação de Loot Global**:
+   ```lua
+   mtype:createLoot(allLootConfig)
+   logger.debug("[customMonsterLoot.onStartup] - Global loot registered for monster: {}", mtype:getName())
+   ```
+   - Aplica allLootConfig idêntico a todos
+   - Loga debug para cada monster
+
+**Ordem de Operação:**
+1. Primeiro: loot específico (customLootConfig)
+2. Depois: loot global (allLootConfig)
+
+**Exemplo Prático:**
+
+Se configs são:
+```lua
+allLootConfig = { { id = 6526, chance = 100000, minCount = 1, maxCount = 10 } }
+customLootConfig = { ["Dragon"] = { items = { { name = "platinum coin", chance = 1000, maxCount = 1 } } } }
+```
+
+Execução:
+1. Lookup Dragon (específico) → encontra → aplica platinum coin 10% chance
+2. Itera todos monstros → aplica item 6526 100% chance a todos
+
+**Resultado:**
+- Dragon: ambos loots (platinum coin 10% + item 6526 100%)
+- Outros monstros: apenas item 6526 100%
+
+---
+
+### **Game.getMonsterTypeByName(name)**
+
+**Descrição:** Engine function que faz lookup de MonsterType pelo nome.
+
+**Parâmetros:**
+- `name` (string): Nome exato do monster type (case-sensitive?)
+
+**Retorno:**
+- `MonsterType`: Se encontrado
+- `nil`: Se não encontrado
+
+---
+
+### **MonsterType:createLoot(lootTable)**
+
+**Descrição:** Engine method que cria loot para monster type.
+
+**Parâmetros:**
+- `lootTable` (table array): Array de items com campos `{id|name, chance, minCount, maxCount, ...}`
+
+**Comportamento:**
+- Aplicadirectamente à instância de MonsterType
+- Items são adicionados ao loot table do monster
+- No-op se lootTable vazio
+
+---
+
+### **Game.getMonsterTypes()**
+
+**Descrição:** Engine function que retorna iterador de todos MonsterTypes registrados.
+
+**Retorno:**
+- `table`: Iterável (pares key=name, value=MonsterType)
+
+**Uso:**
+```lua
+for monsterName, mtype in pairs(Game.getMonsterTypes()) do
+    -- mtype é MonsterType instance
+end
+```
+
+## 📌 Resumo
+
+**Custom Monster Loot** é sistema simples de registração de loot em startup com duas estratégias: (1) global (allLootConfig aplicado a todos MonsterTypes), (2) específica (customLootConfig por nome). Implementação via GlobalEvent "CreateCustomMonsterLoot" que roda onStartup. Suporta validação de MonsterType existência antes de aplicação com logging error/debug. Items seguem formato padrão (id|name, chance em 10000ths, minCount, maxCount). Aplicação dupla: primeiro específico por nome (Dragon→platinum coin), depois global (item 6526 a todos). Logger diferencia aplicação bem-sucedida vs erro de monster não encontrado.
+
+A implementação segue padrão de event-driven registration, diferenciando-se por: (1) dois níveis de aplicação (global + específica), (2) validação de MonsterType lookup, (3) logging duplo (debug vs error), (4) chance em 10000ths scale, (5) single-run startup (não runtime repeat).

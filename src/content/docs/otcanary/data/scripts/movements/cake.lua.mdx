@@ -1,0 +1,328 @@
+---
+title: "Movement - cake.lua"
+description: "Sistema de transformação de bolo ao adicionar ingrediente específico"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `cake.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (additem) |
+| **Event Name** | `cake.onAddItem` |
+| **Função Registrada** | `onAddItem(moveitem, tileitem, position)` |
+| **Linhas de Código** | 15 |
+| **Complexidade** | Trivial |
+| **Status** | Base implementation |
+
+**Descrição:**
+Implementação de um mecanismo de crafting/transformação onde adicionar um item específico (ID 2918) a um bolo (ID 6278) transforma-o em um novo bolo (ID 6279) com efeito visual.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/cake.lua
+```
+
+**Requisitos:**
+- Item a ser adicionado: `2918`
+- Item base (bolo): `6278`
+- Item resultado: `6279`
+- Sistema de transformação (transform)
+- Sistema de efeitos visuais
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Mecanismo de Transformação de Objeto**
+
+Este script implementa um **crafting visual simplificado**:
+
+1. **Precondição:** Bolo vazio (ID 6278) no chão
+2. **Ação:** Adicionar ingredients (ID 2918) sobre ele
+3. **Transformação:** Bolo vira boloRecheado (ID 6279)
+4. **Efeito:** Magia vermelha no local
+
+**Fluxo Simples:**
+```
+Jogador: "pega ingredients"
+Jogador: "coloca em bolo"
+  ├─ Item a adicionar = 2918? Sim
+  │  ├─ Remove item do jogador (moveitem:remove())
+  │  ├─ Transforma bolo (tileitem:transform())
+  │  └─ Efeito visual: magia vermelha
+  └─ Item ≠ 2918? Retorna true (ignora)
+```
+
+**Diferencial:** Validação de itemid previne transformações acidentais com items errados.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `cake.lua` implementa um mecanismo simples de transformação de objeto:
+
+- **Validação de Item:** Verifica se o item a adicionar é exatamente ID 2918
+- **Remoção:** Remove o item do inventário do jogador
+- **Transformação:** Converte o bolo de ID 6278 para ID 6279
+- **Efeito Visual:** Emite magia vermelha na posição do bolo
+
+### Arquitetura
+
+Callback único de additem com validação:
+
+```
+Jogador adiciona item a bolo
+  └─ onAddItem(item, bolo, posição)
+     ├─ if moveitem.itemid == 2918
+     │  ├─ remove moveitem
+     │  ├─ transform tileitem → 6279
+     │  ├─ sendMagicEffect(MAGIC_RED)
+     │  └─ return true (sucesso)
+     └─ else
+        └─ return true (ignora, sem erro)
+```
+
+### Fluxo Lógico Resumido
+
+| Condição | Ação | Resultado |
+|---|---|---|
+| **Item = 2918** | Transforma, remove, efeito | Bolo transformado ✅ |
+| **Item ≠ 2918** | Sem ação | Item não afeta ❌ |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Instanciação do MoveEvent
+
+```lua
+local cake = MoveEvent()
+```
+
+**Propósito:** Cria nova instância de MoveEvent para este sistema.
+
+---
+
+### Callback onAddItem
+
+```lua
+function cake.onAddItem(moveitem, tileitem, position)
+	if moveitem.itemid ~= 2918 then
+		return true
+	end
+
+	moveitem:remove()
+	tileitem:transform(6279)
+	position:sendMagicEffect(CONST_ME_MAGIC_RED)
+	return true
+end
+```
+
+**Propósito:** Executado quando jogador adiciona um item sobre o bolo. Se for o item correto, transforma.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `moveitem` | Item | Item sendo adicionado (do inventário do jogador) |
+| `tileitem` | Item | Item na tile (o bolo base) |
+| `position` | Position | Posição do bolo |
+
+**Fluxo Lógico:**
+
+1. **Validação de Item:** Verifica se `moveitem.itemid == 2918`
+   - Se não: Retorna true (ignora, sem erro)
+   - Se sim: Continua
+2. **Remove Item:** Executa `moveitem:remove()` (o ingrediente sai do jogo)
+3. **Transforma Bolo:** `tileitem:transform(6279)` (bolo vira nova versão)
+4. **Efeito Visual:** `position:sendMagicEffect(CONST_ME_MAGIC_RED)` (magia vermelha)
+5. **Retorna:** true (operação bem-sucedida)
+
+---
+
+### Registração do Evento
+
+```lua
+cake:type("additem")
+cake:id(6278)
+cake:register()
+```
+
+**Propósito:** Configurar e registrar o evento de movimento.
+
+| Método | Valor | Significado |
+|---|---|---|
+| `:type("additem")` | additem | Dispara ao adicionar item em tile |
+| `:id(6278)` | 6278 | ID do item base (bolo vazio) |
+| `:register()` | - | Registra o evento no servidor |
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `cake` | MoveEvent | Arquivo | Instância do evento |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Validação de ItemID
+
+```lua
+if moveitem.itemid ~= 2918 then
+	return true
+end
+```
+
+**Benefício:** Valida o item antes de processar. Items incorretos não causam erro, apenas retornam true (ignorados).
+
+### Padrão 2: Operações Sequenciais
+
+```lua
+moveitem:remove()
+tileitem:transform(6279)
+position:sendMagicEffect(CONST_ME_MAGIC_RED)
+return true
+```
+
+**Benefício:** Ordem clara:
+1. Remove o ingrediente
+2. Transforma o resultado
+3. Feedback visual
+4. Confirma sucesso
+
+### Padrão 3: Early Return para Falha
+
+```lua
+if moveitem.itemid ~= 2918 then
+	return true  -- Early return
+end
+```
+
+**Benefício:** Evita indentação profunda. Se condition falsa, já retorna.
+
+---
+
+## 🤖 Documentação das Funções
+
+### cake.onAddItem(moveitem, tileitem, position)
+
+Callback executado quando jogador adiciona um item sobre o bolo. Transforma o bolo se for o ingrediente correto.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `moveitem` | Item | Item sendo adicionado (do jogador) |
+| `tileitem` | Item | Item na tile (bolo base que será transformado) |
+| `position` | Position | Posição onde está o bolo |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre retorna true (sucesso ou item ignored) |
+
+**Validações:**
+
+- **Se itemid ≠ 2918:** Retorna true (item ignorado, sem ação)
+- **Se itemid = 2918:** Executa transformação completa
+
+**Execução:**
+
+| Passo | Operação | Descrição |
+|---|---|---|
+| 1 | `moveitem:remove()` | Remove ingrediente do jogo |
+| 2 | `tileitem:transform(6279)` | Transforma bolo em versão nova |
+| 3 | `position:sendMagicEffect()` | Emite efeito visual de magia vermelha |
+| 4 | `return true` | Confirma sucesso |
+
+**Exemplo:**
+
+```lua
+-- Jogador tem "ingrediente especial" (ID 2918)
+-- Coloca sobre "bolo vazio" (ID 6278) na tile
+
+cake.onAddItem(ingredient, emptyBolo, position)
+
+-- Validação: ingrediente.itemid = 2918?
+-- Sim! Continua...
+
+-- Ações:
+-- 1. ingredient:remove() → ingrediente desaparece
+-- 2. emptyBolo:transform(6279) → bolo vira boloRecheado
+-- 3. position:sendMagicEffect(MAGIC_RED) → magia vermelha no ar
+-- 4. return true → bem-sucedido
+
+-- Resultado: Bolo transformado, efeito visual
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Adicionar Ingrediente Correto
+
+```lua
+-- Jogador com "ingrediente" (2918)
+-- Tile tem "bolo vazio" (6278)
+-- moveitem.itemid = 2918
+-- Resultado: Bolo vira 6279 (completo), efeito visual
+```
+
+### Caso 2: Adicionar Item Errado
+
+```lua
+-- Jogador com "pão" (999)
+-- Tile tem "bolo vazio" (6278)
+-- moveitem.itemid = 999 (~= 2918)
+-- Resultado: Sem ação (ignora), item fica no inventário
+```
+
+### Caso 3: Tentar Adicionar a Item Errado
+
+```lua
+-- Jogador com "ingrediente" (2918)
+-- Tile tem "maçã" (123)
+-- Event não é acionado (listener só é para ID 6278)
+-- Resultado: Sem ação, evento não dispara
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **IDs de Items:**
+  - 6278 (Bolo vazio)
+  - 6279 (Bolo recheado/resultado)
+  - 2918 (Ingrediente especial)
+- **MoveEvent API:** [events/movements](../movements)
+- **Magic Effects:** CONST_ME_MAGIC_RED
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | MoveEvent (additem) |
+| **Item Base** | 6278 (bolo vazio) |
+| **Ingrediente** | 2918 (especial) |
+| **Resultado** | 6279 (bolo transformado) |
+| **Validação** | ItemID exato |
+| **Efeito** | CONST_ME_MAGIC_RED |
+| **Remoção** | Sim, ingrediente removido |
+| **Padrão** | Early return + operações sequenciais |

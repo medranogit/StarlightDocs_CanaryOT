@@ -1,0 +1,628 @@
+---
+title: "player.lua"
+description: "Módulo de extensão do jogador com métodos de validação de compra, gerenciamento de moedas e estado do gamestore"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo de extensão que adiciona **13 métodos novos** ao objeto jogador, focando em validações de compra, gerenciamento de dois tipos de moedas (normais e transferíveis), processamento de transações e manipulação de estado. Este é um módulo crucial de **policies and rules** (o que jogador pode/não pode comprar) e **state management** (saldo de moedas, transações histórico).
+
+**Caminho Original**: `data/libs/gamestore/player.lua`
+
+**Dependências**:
+- gamestore.senders (envio de pacotes)
+- GameStore global (constantes, helpers, inbox system)
+- Player object (extensão via mixins Lua)
+
+<Aside>
+Este módulo **estende o objeto Player nativo** com métodos gamestore, seguindo padrão de mixins Lua. Todas as funções definidas aqui são adicionadas como propriedades da tabela `player`, que é então retornada para integração no sistema core de jogadores.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `player.lua` encapsula **toda a lógica de validação e políticas** do gamestore no lado do servidor. Através de **13 funções exportadas**, oferece validações sofisticadas sobre o que jogadores podem comprar (verificando estado de items únicos, blessings, outfits, hireling slots), gerencia dois tipos de moedas distintos com operações simétricas (remover/adicionar normal e transferível), processa transações com cálculo dinâmico de preço para XP Boost, e mantém histórico de todas as operações monetárias.
+
+### Arquitetura de Funcionalidades
+
+```
+player (módulo de extensão)
+│
+├── VALIDAÇÕES DE COMPRA (6 funções)
+│   ├── canBuyOffer (20 tipos distintos)
+│   ├── canReceiveStoreItems (inbox capacity)
+│   └── canPayForOffer (genérico por tipo moeda)
+│
+├── GERENCIAMENTO DE MOEDAS NORMAIS (2 funções)
+│   ├── canRemoveCoins
+│   ├── removeCoinsBalance
+│   └── addCoinsBalance
+│
+├── GERENCIAMENTO DE MOEDAS TRANSFERÍVEIS (2 funções)
+│   ├── canRemoveTransferableCoins
+│   ├── removeTransferableCoinsBalance
+│   └── addTransferableCoinsBalance
+│
+├── PROCESSO TRANSACIONAL (2 funções)
+│   ├── makeCoinTransaction (com preço dinâmico)
+│   └── (integração com histórico)
+│
+└── UTILITÁRIOS (2 funções)
+    ├── sendButtonIndication (UI feedback)
+    ├── toggleSex (alteração de aparência)
+    └── openStore (abertura de UI)
+```
+
+### Variáveis Locais (Cache de Funções)
+
+O módulo utiliza cache de funções locais para **otimização de lookups**:
+
+| Variável Local | Função Original | Propósito |
+|---|---|---|
+| sendStoreBalanceUpdating | senders.sendStoreBalanceUpdating | Atualizar UI de saldo |
+| sendShowStoreOffers | senders.sendShowStoreOffers | Enviar lista de ofertas |
+| sendHomePage | senders.sendHomePage | Exibir página inicial |
+| openStorePacket | senders.openStore | Abrir pacote inicial |
+
+---
+
+## Detalhes das Funções Globais
+
+### 1. canBuyOffer(self, offer) - FUNÇÃO CRÍTICA
+
+Valida se jogador **pode legalmente comprar** uma oferta específica através de **20 tipos de validação** distintos. **Função mais complexa do módulo**.
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- offer (table): Dados da oferta (type, id, blessid, sexId, etc)
+
+**Retorna**: 
+- (table): `{ disabled (number): 0 ou 1, disabledReason (string): Mensagem explicativa }`
+
+**Lógica Base**:
+
+```lua
+local disabled, disabledReason = 0, ""
+-- Se desabilitado inicialmente, define disabled = 1
+-- Se válido, passa a validações específicas por tipo
+```
+
+**Árquívo de Validações por Tipo** (20 arquivos de lógica):
+
+| Tipo de Oferta | Validação | Mensagem de Erro |
+|---|---|---|
+| **OFFER_TYPE_ITEM_UNIQUE** | `getItemById(itemtype, true)` | "You already have a [item]." |
+| **OFFER_TYPE_BLESSINGS** | `getBlessingCount(blessid) >= 5` | "You reached maximum amount..." |
+| **OFFER_TYPE_ALLBLESSINGS** | Any blessing >= 5 | "You already have all Blessings." |
+| **OFFER_TYPE_OUTFIT** | `hasOutfit(lookType)` | "You already have this outfit." |
+| **OFFER_TYPE_OUTFIT_ADDON** | Outfit exists + addon | "You don't have the outfit..." ou "You already have this addon." |
+| **OFFER_TYPE_MOUNT** | `hasMount(id)` | "You already have this mount." |
+| **OFFER_TYPE_INSTANT_REWARD_ACCESS** | `getCollectionTokens() >= limit` | "You already have maximum reward tokens." |
+| **OFFER_TYPE_PREYBONUS** | `getPreyCards() >= 50` | "You already have maximum prey wildcards." |
+| **OFFER_TYPE_CHARMS** | `charmExpansion()` | "You already have charm expansion." |
+| **OFFER_TYPE_HUNTINGSLOT** | `taskHuntingThirdSlot()` | "You already have 3 slots released." |
+| **OFFER_TYPE_PREYSLOT** | `preyThirdSlot()` | "You already have 3 slots released." |
+| **OFFER_TYPE_EXPBOOST** | `getXpBoostTime() > 0` AND `expBoostCount == 6` | "You can't buy XP Boost for today." ou "You already have active boost." |
+| **OFFER_TYPE_HIRELING** | `getHirelingsCount() >= 10` | "You already have max hirelings." |
+| **OFFER_TYPE_HIRELING_SKILL** | Skill unlocked + has hireling | "This skill already unlocked." ou "You need a hireling." |
+| **OFFER_TYPE_HIRELING_OUTFIT** | Outfit unlocked + has hireling | "This outfit already unlocked." ou "You need a hireling." |
+| **OFFER_TYPE_HIRELING_NAMECHANGE** | Has hireling | "You need to have a hireling." |
+| **OFFER_TYPE_HIRELING_SEXCHANGE** | Has hireling | "You need to have a hireling." |
+| **OFFER_TYPE_NAMECHANGE** | (sem validação) | - |
+| **OFFER_TYPE_SEXCHANGE** | (sem validação) | - |
+| **OFFER_TYPE_TEMPLE** | (sem validação) | - |
+
+**Sexo do Outfit**: Detecta PLAYERSEX_MALE (offer.sexId.male) vs PLAYERSEX_FEMALE (offer.sexId.female)
+
+**Fallback de Desabilitado**:
+
+```lua
+if disabled == 1 and offer.disabledReason then
+    -- Permite disabledReason dinâmica na oferta
+    disabledReason = offer.disabledReason
+end
+```
+
+---
+
+### 2. canReceiveStoreItems(self, offerId, offerCount)
+
+Valida se jogador **possui capacidade** para receber items na store inbox (espaço + weight).
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- offerId (number): ID do item (ItemType)
+- offerCount (number, opcional): Quantidade; padrão = 1
+
+**Retorna**: 
+- (boolean, string): true + "" ou false + mensagem de erro
+
+**Lógica**:
+
+1. **Obter Store Inbox**: `self:getStoreInbox()`
+2. **Calcular Slots Necessários**:
+   - Se stackável: `ceil(count / stackSize)`
+   - Se não: 1 slot por item
+3. **Verificar Espaço na Inbox**:
+   - slots_occupied + slots_needed &lt;= max_capacity
+   - Erro: "Not enough free slots... You need X more slot(s). Currently: Y/Z"
+4. **Verificar Capacidade do Jogador**:
+   - `getFreeCapacity() >= totalWeight`
+   - Erro: "Please make sure you have enough free capacity..."
+
+**Exemplo**:
+
+```lua
+local canReceive, msg = player:canReceiveStoreItems(2148, 50)
+-- 2148 = ItemType (stackável: até 100)
+-- 50 unidades necessitam ceil(50/100) = 1 slot
+if not canReceive then
+    player:sendCancelMessage(msg)
+end
+```
+
+---
+
+### 3. canRemoveCoins(self, coins)
+
+Simples verificação: jogador possui coins suficientes?
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- coins (number): Quantidade a verificar
+
+**Retorna**: 
+- (boolean): true se `getTibiaCoins() >= coins`, false caso contrário
+
+---
+
+### 4. removeCoinsBalance(self, coins)
+
+Remove coins normais do jogador e atualiza UI.
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- coins (number): Quantidade a remover
+
+**Retorna**: 
+- (boolean): true se remoção bem-sucedida, false caso contrário
+
+**Efeito**:
+
+```lua
+if self:canRemoveCoins(coins) then
+    sendStoreBalanceUpdating(self:getId(), true)  -- UI update
+    self:removeTibiaCoins(coins)                  -- Remove
+    return true
+end
+return false
+```
+
+---
+
+### 5. addCoinsBalance(self, coins, update)
+
+Adiciona coins normais ao jogador, com atualização UI opcional.
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- coins (number): Quantidade a adicionar
+- update (boolean, opcional): Se true, envia atualização UI
+
+**Retorna**: 
+- (boolean): Sempre true (adicionar não pode falhar)
+
+---
+
+### 6. canRemoveTransferableCoins(self, coins)
+
+Verifica se jogador possui coins transferíveis suficientes.
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- coins (number): Quantidade a verificar
+
+**Retorna**: 
+- (boolean): true se `getTransferableCoins() >= coins`, false caso contrário
+
+---
+
+### 7. removeTransferableCoinsBalance(self, coins)
+
+Remove coins transferíveis do jogador (versão de canRemoveCoins mas para transferíveis).
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- coins (number): Quantidade a remover
+
+**Retorna**: 
+- (boolean): true se remoção bem-sucedida, false caso contrário
+
+---
+
+### 8. addTransferableCoinsBalance(self, coins, update)
+
+Adiciona coins transferíveis ao jogador.
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- coins (number): Quantidade a adicionar
+- update (boolean, opcional): Se true, envia atualização UI
+
+**Retorna**: 
+- (boolean): Sempre true
+
+---
+
+### 9. makeCoinTransaction(self, offer, desc) - FUNÇÃO IMPORTANTE
+
+Processa a **transação monetária real**, com suporte a preço dinâmico para XP Boost e registro em histórico.
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- offer (table): Dados da oferta (price, coinType, name, type)
+- desc (string, opcional): Descrição adicional para histórico
+
+**Retorna**: 
+- (boolean): true se transação bem-sucedida, false caso contrário
+
+**Lógica de Preço Dinâmico (EXPBOOST)**:
+
+```lua
+if offer.type == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST then
+    local playerKV = self:kv()
+    local expBoostCount = playerKV:get(GameStore.Kv.expBoostCount) or 0
+    -- Normalizar: 1-5 válidas, fora disso = 1
+    if expBoostCount <= 0 or expBoostCount > 5 then
+        expBoostCount = 1
+    end
+    
+    -- Usar custom prices se definirem, senão padrão
+    local priceTable = GameStore.ExpBoostValuesCustom or GameStore.ExpBoostValues
+    offer.price = priceTable[expBoostCount] or priceTable[1]
+    
+    -- Incrementar contador para próxima compra
+    playerKV:set(GameStore.Kv.expBoostCount, expBoostCount + 1)
+end
+```
+
+**Descrição de Histórico**:
+
+```lua
+desc = desc and (offer.name .. " (" .. desc .. ")") or offer.name
+-- Ex: "Premium Time (31 days)" ou simplesmente "Outfit"
+```
+
+**Roteamento por Tipo de Moeda**:
+
+```lua
+local op = false
+if offer.coinType == GameStore.CoinType.Coin then
+    op = self:removeCoinsBalance(offer.price)
+elseif offer.coinType == GameStore.CoinType.Transferable then
+    op = self:removeTransferableCoinsBalance(offer.price)
+end
+```
+
+**Registro em Histórico**:
+
+```lua
+if op then
+    GameStore.insertHistory(self:getAccountId(), 
+                           GameStore.HistoryTypes.HISTORY_TYPE_NONE,
+                           desc,
+                           offer.price * -1,  -- Negativo = gasto
+                           offer.coinType)
+end
+```
+
+---
+
+### 10. canPayForOffer(self, coinsToRemove, coinType)
+
+Validação genérica: jogador pode pagar oferta com tipo de moeda especificado?
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- coinsToRemove (number): Quantidade de coins necessários
+- coinType (number): Tipo de moeda (CoinType.Coin ou .Transferable)
+
+**Retorna**: 
+- (boolean): true se pode pagar, false caso contrário
+
+**Lógica**:
+
+```lua
+if coinType == GameStore.CoinType.Coin then
+    return self:canRemoveCoins(coinsToRemove)
+elseif coinType == GameStore.CoinType.Transferable then
+    return self:canRemoveTransferableCoins(coinsToRemove)
+end
+return false
+```
+
+---
+
+### 11. sendButtonIndication(self, value1, value2)
+
+Envia pacote de controle baixo nível para indicação visual de botões na UI.
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- value1 (number): Primeiro byte de indicação
+- value2 (number): Segundo byte de indicação
+
+**Efeito**: Cria NetworkMessage com opcode 0x19, adiciona valores, envia ao jogador
+
+**Notas**: Função especializada de UI, raramente usada publicamente
+
+---
+
+### 12. toggleSex(self)
+
+Alterna o sexo do jogador e ajusta outfit correspondente.
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+
+**Efeito**:
+
+1. Obtém sexo atual: `getSex()`
+2. Obtém outfit atual: `getOutfit()`
+3. Remove addons: `lookAddons = 0`
+4. Se FEMALE → MALE (lookType 128):
+   ```lua
+   self:setSex(PLAYERSEX_MALE)
+   playerOutfit.lookType = 128
+   ```
+5. Se MALE → FEMALE (lookType 136):
+   ```lua
+   self:setSex(PLAYERSEX_FEMALE)
+   playerOutfit.lookType = 136
+   ```
+6. Aplica outfit: `setOutfit(playerOutfit)`
+
+---
+
+### 13. openStore(self, serviceName)
+
+Abre interface de loja principal ou serviço específico.
+
+**Parâmetros**:
+- self (Player): Objeto jogador
+- serviceName (string, opcional): Nome de serviço ("home", "Premium Time", "Blessings", etc)
+
+**Retorna**: 
+- (void)
+
+**Lógica**:
+
+1. **Abrir packet inicial**: `openStorePacket(playerId)`
+2. **Determinar categoria**:
+   - Se serviceName == "home": envia Home Page (especial)
+   - Se serviceName corresponde categoria: carrega aquela
+   - Senão: carrega primeira categoria padrão
+3. **Popular ofertas**: Agenda `sendShowStoreOffers` com delay 50ms
+
+**Exemplo**:
+
+```lua
+player:openStore()                  -- Abre loja na primeira categoria
+player:openStore("home")            -- Abre home page
+player:openStore("Premium Time")    -- Abre categoria Premium
+```
+
+---
+
+## Padrões de Integração
+
+### Padrão 1: Validar antes de Comprar
+
+```lua
+local player = require("gamestore.player")
+local offer = GameStore.getOfferById(offerId)
+
+local validation = player.canBuyOffer(playerObj, offer)
+if validation.disabled == 1 then
+    player.sendButtonIndication(playerObj, 0, 1)  -- Desabilitar botão
+    return false, validation.disabledReason
+end
+```
+
+### Padrão 2: Gerenciar Duas Moedas
+
+```lua
+local player = require("gamestore.player")
+
+function processPurchase(playerObj, offer)
+    if offer.coinType == GameStore.CoinType.Coin then
+        if not player.removeCoinsBalance(playerObj, offer.price) then
+            return false, "Insufficient coins"
+        end
+    else
+        if not player.removeTransferableCoinsBalance(playerObj, offer.price) then
+            return false, "Insufficient transferable coins"
+        end
+    end
+    return true
+end
+```
+
+### Padrão 3: Transação com Histórico
+
+```lua
+local player = require("gamestore.player")
+
+function completePurchase(playerObj, offer)
+    local success = player.makeCoinTransaction(playerObj, offer, "Purchase")
+    
+    if success then
+        player.openStore(playerObj)  -- Reabrir loja
+        return true
+    end
+    
+    return false
+end
+```
+
+### Padrão 4: Validar Capacidade de Recebimento
+
+```lua
+local player = require("gamestore.player")
+
+function grantItem(playerObj, itemId, count)
+    local canReceive, msg = player.canReceiveStoreItems(playerObj, itemId, count)
+    
+    if not canReceive then
+        player.sendButtonIndication(playerObj, 1, 0)
+        playerObj:sendCancelMessage(msg)
+        return false
+    end
+    
+    -- Prosseguir com doação de item
+    return true
+end
+```
+
+### Padrão 5: Validação Genérica por Tipo Moeda
+
+```lua
+local player = require("gamestore.player")
+
+function validatePayment(playerObj, amount, coinType)
+    if not player.canPayForOffer(playerObj, amount, coinType) then
+        return false, "Couldn't verify payment ability"
+    end
+    return true
+end
+```
+
+### Padrão 6: Preços Dinâmicos com Histórico
+
+```lua
+local player = require("gamestore.player")
+
+function buyExpBoost(playerObj, offer)
+    -- makeCoinTransaction cuida do cálculo dinâmico
+    -- Se expBoostCount = 2, preço = ExpBoostValues[2]
+    -- Se expBoostCount = 6, falha em canBuyOffer
+    
+    local success = player.makeCoinTransaction(
+        playerObj, 
+        offer, 
+        "Daily Purchase #" .. (playerKV:get(GameStore.Kv.expBoostCount) or 1)
+    )
+    
+    -- Histórico recebe: "XP Boost (Daily Purchase #2)"
+    return success
+end
+```
+
+### Padrão 7: Alteração de Sexo com UI
+
+```lua
+local player = require("gamestore.player")
+
+function buySexChange(playerObj, offer)
+    if player.makeCoinTransaction(playerObj, offer) then
+        player.toggleSex(playerObj)  -- Altera sexo e outfit
+        player.openStore(playerObj)  -- Recarrega loja
+        return true
+    end
+    return false
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Exemplo |
+|---|---|---|
+| **Mixins Lua** | Estender objeto existente com novos métodos | funções adicionadas à tabela player |
+| **Validação Por Tipo** | Cada tipo oferta tem lógica validação | canBuyOffer com 20 branches |
+| **Duais Moedas** | Sistema com dois tipos (normal + transferível) | removeCoins + removeTransferableCoins |
+| **Preço Dinâmico** | Preço muda baseado em estado | EXPBOOST com multiplicador por dia |
+| **Historização** | Registrar todas as transações | makeCoinTransaction insere histórico |
+| **State Management** | Player Key-Value para dados persistentes | expBoostCount, purchaseCooldown |
+| **Capacity Check** | Validar espaço antes de item | canReceiveStoreItems com slots + weight |
+| **UI Feedback** | Indicações visuais de estado | sendButtonIndication, openStore |
+
+### Padrões Arquiteturais
+
+1. **Guard Patterns**: Validações antes de ação (can* functions)
+2. **Symmetry Pattern**: Remover/adicionar implementados iguais para ambos tipos moeda
+3. **Fallback Pattern**: Uso de || em cálculos (expBoostCount normalize)
+4. **History Pattern**: Todas transações registradas bilateralmente
+5. **Optional Parameter Pattern**: update parameter em addCoinsBalance
+6. **Getter Pattern**: Verificações de estado antes de operações
+7. **Mixin Pattern**: Funções retornadas adicionam-se ao Player object
+
+### Responsabilidades do Módulo
+
+- ✅ Validar integridade de todas as compras (20 tipos)
+- ✅ Gerenciar dois tipos de moedas com simetria
+- ✅ Processar transações com preço dinâmico
+- ✅ Manter histórico completo de operações
+- ✅ Verificar capacidade física de recebimento
+- ✅ Fornecer UI feedback através de packets
+- ✅ Suportar múltiplos estados de jogador (outfit, sexo, hirelings)
+- ✅ Integrar com sistema key-value de jogador
+
+### Casos de Uso Principais
+
+1. **Compra Simples**: Item stackável padrão (validação básica)
+2. **Compra de Item Único**: Única unidade permitida (outfit, mount)
+3. **Compra com Limite Diário**: XP Boost com preço variável por dia
+4. **Compra de Upgrade**: Req item anterior (addon requer outfit)
+5. **Compra de Serviço**: Sem item (namechange, sexchange)
+6. **Transferência Inter-Conta**: Usa moedas transferíveis
+7. **Recebimento com Verificação**: Espaço + weight validados
+
+---
+
+## 📚 Conclusão
+
+O módulo `player.lua` encapsula **toda a filosofia de negócios** do gamestore através de camada de validação sofisticada e gerenciamento de estado. A função `canBuyOffer()` é exemplo magistral de padrão discriminado por tipo, implementando 20 lógicas diferentes em estrutura legível; `makeCoinTransaction()` demonstra tratamento de preços dinâmicos e integração com sistema de histórico; e os pares simétricos de moedas (normal/transferível) mostram design escalável para futuros tipos monetários.
+
+O módulo segue padrão Lua de mixins, expandindo o objeto Player nativo sem modificar seu core, permitindo manutenção isolada de lógica gamestore. Estudando este módulo, compreende-se como sistemas de monetização complexos (múltiplos tipos de oferta, múltiplas moedas, preços dinâmicos, restrições de estado) podem ser organizados em código legível e testável. A simetria entre removing/adding coins é particular valiosa para evitar bugs de inconsistência.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadados do Documento">
+- **Versão do Módulo**: Conforme constants.lua v2.0
+- **Data da Documentação**: 19 de Fevereiro, 2026
+- **Cobertura**: 100% (13 funções globais, 4 variáveis cache, 400+ linhas)
+- **Complexidade**: Alta (20 tipos de validação, 2 tipos moeda, preço dinâmico)
+- **Autor**: Documentação Canary Server Libs
+- **Padrão**: 7 seções MDX/Astro
+- **Exemplos Inclusos**: 7 padrões de integração completos
+</Card>
+
+<Aside type="tip">
+**Dica de Integração**: Este módulo não é importado diretamente. Suas funções devem ser adicionadas ao Player object através de mecanismo de extensão no core do servidor. A estrutura retorna tabela `player` que são propriedades do Player userdata. Sempre validar com `canBuyOffer()` antes de processar transações.
+</Aside>
+
+<Aside type="caution">
+**Atenção Crítica**: A função `canBuyOffer()` é **whitelist de validações** - novos tipos deve ser adicionados aqui. Sem validação apropriada, jogadores exploram compras inválidas. As validações de outfit (sexo, addon) são particularmente complexas - testar exhaustivamente. EXPBOOST multiplicador dinâmico é crítico para economia - sincronizar com constants.lua.
+</Aside>
+
+<Aside type="note">
+**Notas de Manutenção**:
+- canBuyOffer retorna table `{ disabled, disabledReason }` - não booleano
+- Inbox check usa container capacity + player weight - ambos obrigatórios
+- makeCoinTransaction cria histórico com amount negativo (gasto)
+- toggleSex remove addons automaticamente (design choice)
+- openStore pode ser chamado sem serviceName (abre primeira categoria)
+- Preços EXPBOOST verificar em GameStore.ExpBoostValuesCustom antes de padrão
+- sendButtonIndication é low-level UI - documentar opcode 0x19 em protocol
+</Aside>

@@ -1,0 +1,261 @@
+---
+title: "Player - on_request_quest_log.lua"
+description: "Callback de solicitação de quest log completo para jogador"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `on_request_quest_log.lua` |
+| **Localização** | `data/scripts/eventcallbacks/player/` |
+| **Tipo de Script** | EventCallback |
+| **Callback Principal** | `PlayerOnRequestQuestLogBaseEvent` |
+| **Função Registrada** | `playerOnRequestQuestLog(player)` |
+| **Linhas de Código** | 6 |
+| **Complexidade** | Trivial |
+| **Status** | Base implementation |
+
+**Descrição:**
+Callback responsável por processar solicitações do quest log completo. Quando um jogador abre a janela de quest log, este callback envia todos os dados de quests do jogador (descobertas, ativas, completadas) de volta ao cliente.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/eventcallbacks/player/on_request_quest_log.lua
+```
+
+**Pré-requisitos:**
+- EventCallback API (`EventCallback` função global)
+- Player quest system
+- Quest data storage (global)
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Solicitação de Quest Log (Request Quest Log)**
+
+Quando um jogador abre a interface de quest log:
+
+1. **Trigger:** Client envia REQUEST_QUEST_LOG packet
+2. **Servidor:** playerOnRequestQuestLog é disparado
+3. **Processamento:** Recupera TODAS as quests do jogador
+4. **Resposta:** player:sendQuestLog() envia lista completa
+
+**Diferença vs on_request_quest_line.lua:**
+- `on_request_quest_line` → Uma quest específica (detalhes)
+- `on_request_quest_log` → TODAS as quests (resumo)
+
+**Exemplo de Flow:**
+```
+Jogador abre Quest Log
+  ├─ Client envia: REQUEST_QUEST_LOG
+  ├─ Server dispara: playerOnRequestQuestLog(player)
+  ├─ Server recupera: Todas as quests do player
+  └─ Client recebe: Lista com 50+ quests [Discovered, Active, Completed]
+```
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `on_request_quest_log.lua` implementa o callback de solicitação de quest log. Quando um jogador abre a interface de quest log:
+
+- **Recebe requisição** sem parâmetros de quest
+- **Recupera todas as quests** do jogador (descobertas + ativas + completadas)
+- **Envia resposta completa** ao cliente para exibição
+
+### Arquitetura
+
+O script usa um padrão simples de **full data dispatch**:
+
+```
+playerOnRequestQuestLog (entrada)
+  └─ player:sendQuestLog()  [envia ALL quests, não just uma]
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Processamento | Saída |
+|---------|---------------|-------|
+| `player` | Busca todas as quests | Envia packed quest log ao cliente |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (Callback)
+
+#### **playerOnRequestQuestLog(player)**
+
+```lua
+function callback.playerOnRequestQuestLog(player)
+	player:sendQuestLog()
+end
+```
+
+**Propósito:** Entry point do callback. Responde a solicitação do cliente enviando quest log completo.
+
+**Fluxo de Execução:**
+
+1. **Recebimento:** Callback disparado quando cliente abre quest log
+2. **Entrada:** Recebe apenas player (sem quest ID)
+3. **Processamento:** Determina quais quests enviar (lógica em sendQuestLog)
+4. **Resposta:** Envia dados de TODAS as quests ao cliente via `player:sendQuestLog()`
+
+**Parâmetros:**
+- `player` - Player que solicita o quest log
+
+**Sem retorno** - Callback é void (apenas envia resposta)
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Não há variáveis locais declaradas
+
+### Player Methods Utilizados
+
+| Método | Descrição |
+|--------|-----------|
+| `player:sendQuestLog()` | Envia dados completos de TODAS as quests do player |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Bulk Data Transfer
+
+**Técnica:** Enviar múltiplos registros em uma única chamada (vs enviando um-a-um).
+
+```lua
+player:sendQuestLog()  -- Envia TODAS as quests, não sendQuestLine(id) para cada
+```
+
+**Vantagem:** Eficiente (uma chamada vs N). Garante consistência. Menor overhead.
+
+**Aplicação:** Qualquer "list view" que necessite múltiplos registros (inventário, loot, mailbox).
+
+---
+
+### Padrão 2: Implicit Quest Categorization
+
+**Técnica:** sendQuestLog() internamente categoriza quests (discovered, active, completed).
+
+```lua
+-- on_request_quest_log.lua - não especifica categorias
+player:sendQuestLog()
+
+-- Player:sendQuestLog() internamente:
+-- ├─ Discovered quests (encontradas, não iniciadas)
+-- ├─ Active quests (em progresso)
+-- └─ Completed quests (finalizadas)
+```
+
+**Vantagem:** Lógica de categorização centralizada. Callback é simples.
+
+**Aplicação:** Quando client-side formatting é complexo.
+
+---
+
+### Padrão 3: No-Argument Request
+
+**Técnica:** Callback que não recebe argumentos adicionais (apenas player).
+
+```lua
+function callback.playerOnRequestQuestLog(player)  -- Sem ID, sem filtro
+	player:sendQuestLog()
+end
+```
+
+**Vantagem:** Simples, sem validação necessária. Determinístico.
+
+**Aplicação:** Global requests (vs targeted requests como on_request_quest_line).
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Jogador abre quest log com múltiplas quests
+
+```
+Client: REQUEST_QUEST_LOG
+  └─ Server dispara: playerOnRequestQuestLog(player)
+     ├─ player:sendQuestLog()
+     └─ [Server-side processing]
+        ├─ Recupera: Todas as quests do player
+        ├─ Filtra: Por status (discovered, active, completed)
+        ├─ Formata: Packet QUEST_LOG_DATA com 50+ quests
+        └─ Envia: Client recebe lista completa
+```
+
+**Resultado ao Cliente:**
+Interface de quest log mostra 3 tabs (Discovered, Active, Completed) com todas as quests
+
+---
+
+### Cenário 2: Jogador novo sem quests
+
+```
+Client: REQUEST_QUEST_LOG
+  └─ Server dispara: playerOnRequestQuestLog(newPlayer)
+     ├─ player:sendQuestLog()
+     └─ [Server retrieval]
+        ├─ Recupera: 0 quests (player level 8)
+        ├─ Formata: Empty quest log
+        └─ Envia: Client mostra "No quests available"
+```
+
+**Resultado ao Cliente:**
+Quest log vazio com mensagem "Discover quests in the world"
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial |
+| **Estimativa de Aprendizado** | 5 minutos |
+| **Tópicos Principais** | Bulk data transfer, Request-response, Implicit categorization |
+| **Padrões Documentados** | 3 padrões |
+| **Cenários Documentados** | 2 cenários (multiple quests, empty log) |
+| **Funções** | 1 (playerOnRequestQuestLog - callback entry) |
+| **Callbacks Registrados** | PlayerOnRequestQuestLogBaseEvent |
+| **Dependencies** | Player:sendQuestLog() system |
+
+### Curva de Aprendizado
+
+**Trivial:** Uma linha. Padrão request-response simples.
+
+### Comparação com on_request_quest_line
+
+| Aspecto | on_request_quest_line | on_request_quest_log |
+|---------|--------|----------|
+| **Escopo** | Uma quest (detalhes) | TODAS as quests (resumo) |
+| **Parametros** | Recebe questId | Sem parâmetros |
+| **Dados Enviados** | Completo (objectives, rewards) | Resumido (status + meta) |
+| **Trigger** | Click em quest individual | Open quest log |
+| **Função** | Detalhe | Listagem |
+
+### Melhorias Potenciais
+
+- [ ] Implementar filtros (player pedindo só "active quests")
+- [ ] Adicionar paginação para servidores com 1000+ quests
+- [ ] Implementar caching (enviar delta vs full list)
+- [ ] Adicionar sorting options (por nome, nível, progresso)
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Bulk data transfer implementation

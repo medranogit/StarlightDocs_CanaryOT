@@ -1,0 +1,464 @@
+---
+title: "Spell/Rune - desintegrate_rune.lua"
+description: "Runa que remove itens movíveis em uma tile com limite de remoção, exceto corpses"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `desintegrate_rune.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 78 |
+| **ID do Item (runeId)** | 3197 |
+| **Level Requerido** | 21 |
+| **Magic Level Requerido** | 4 |
+| **Grupo** | support |
+| **Cooldown** | 2s |
+| **Cargas** | 3 |
+| **Range** | 1 (adjacente) |
+| **Permite Far Use** | Não |
+| **Linhas de Código** | 32 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa que desintegra (remove) itens na tile alvo. Remove apenas itens movíveis, ignora corpses por lista exclusão, e limita remoção a 500 itens por conjuração para evitar lag.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/desintegrate_rune.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(78)
+rune:runeId(3197)
+rune:level(21)
+rune:magicLevel(4)
+rune:range(1)
+rune:allowFarUse(false)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Remoção de Itens com Proteção e Limite**
+
+Esta runa implementa um **sistema de limpeza com salvaguardas**:
+
+1. **Validações:**
+   - Item deve ser movable
+   - Unique ID > 65535 (itens gerados, não hardcoded)
+   - Action ID = 0 (sem associação de quest)
+   - Corpses excluídos por lista (7 IDs protegidos)
+
+2. **Limite de 500:** Previne lag ao remover muitos itens
+3. **Sem Feedback Visual:** Sempre retorna true (mesmo sem remove)
+4. **Range 1:** Apenas adjacente, não far use
+
+**Fluxo:**
+```
+Aponta runa em tile
+├─ Pega todos itens na tile
+├─ Loop com limite 500
+│  ├─ Valida movable?
+│  ├─ Valida unique ID > 65535?
+│  ├─ Valida actionid = 0?
+│  ├─ Valida não é corpse?
+│  └─ Remove se passa
+└─ Sempre retorna true
+```
+
+**Diferencial:** Protege corpses e itens "especiais" (quest, hardcoded).
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `desintegrate_rune` oferece limpeza controlada:
+
+- **Alvo:** Itens em tile (range 1)
+- **Critérios:** Movable + unique ID + sem actionid
+- **Exclusões:** Corpses (7 IDs) + hardcoded items
+- **Limite:** 500 itens por conjuração
+
+### Arquitetura
+
+Iteração com 4 validações em cascata + limite:
+
+```
+onCastSpell(creature, variant, isHotkey)
+├─ Pega position (variant)
+├─ Pega tile (position)
+├─ Pega items array
+├─ Loop com limite 500:
+│  ├─ Valida movable
+│  ├─ Valida unique ID > 65535
+│  ├─ Valida actionid = 0
+│  ├─ Valida não é corpse
+│  └─ Remove se passar
+└─ Sempre retorna true
+```
+
+### Fluxo Lógico Resumido
+
+| Etapa | Descrição |
+|---|---|
+| **Pega Position** | Tile alvo |
+| **Pega Items** | Array de todos itens |
+| **Loop com Limite** | Até 500 itens |
+| **Validação** | 4 critérios |
+| **Remove** | Se passar validação |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Tabela Global: corpseIds
+
+```lua
+local corpseIds = { 4240, 4241, 4242, 4243, 4246, 4247, 4248 }
+```
+
+**Propósito:** Lista de IDs de corpses protegidos contra remoção.
+
+| ID | Tipo |
+|---|---|
+| 4240 | Corpse (player/creature) |
+| 4241 | Corpse variant |
+| 4242 | Corpse variant |
+| 4243 | Corpse variant |
+| 4246 | Corpse variant |
+| 4247 | Corpse variant |
+| 4248 | Corpse variant |
+
+**Uso:** `table.contains(corpseIds, item:getId())`
+
+---
+
+### Variável Global: removalLimit
+
+```lua
+local removalLimit = 500
+```
+
+**Propósito:** Limite de itens removidos por conjuração.
+
+**Razão:** Previne lag ao desintegrar muitos itens simultaneamente.
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, variant, isHotkey)
+	local position = variant:getPosition()
+	local tile = Tile(position)
+	if tile then
+		local items = tile:getItems()
+		if items then
+			for i, item in ipairs(items) do
+				if item:getType():isMovable() and item:getUniqueId() > 65535 and item:getActionId() == 0 and not table.contains(corpseIds, item:getId()) then
+					item:remove()
+				end
+
+				if i == removalLimit then
+					break
+				end
+			end
+		end
+	end
+
+	creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+	position:sendMagicEffect(CONST_ME_POFF)
+	return true
+end
+```
+
+**Propósito:** Handler principal da runa ao conjuração.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Jogador conjurando |
+| `variant` | Variant | Position alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre (remoção feita ou não) |
+
+**Fluxo Detalhado:**
+
+1. **Extrai Position:** `variant:getPosition()`
+2. **Pega Tile:** `Tile(position)`
+3. **Validação Tile Existente:**
+   ```lua
+   if tile then
+       -- Continua
+   end
+   ```
+
+4. **Pega Items Array:** `tile:getItems()`
+5. **Validação Items Existem:**
+   ```lua
+   if items then
+       -- Loop
+   end
+   ```
+
+6. **Loop com Índice:**
+   ```lua
+   for i, item in ipairs(items) do
+   ```
+   - `i`: Índice (1, 2, 3, ...)
+   - `item`: Item atual
+
+7. **Validação em Cascata:**
+   ```lua
+   if item:getType():isMovable() and 
+      item:getUniqueId() > 65535 and 
+      item:getActionId() == 0 and 
+      not table.contains(corpseIds, item:getId()) then
+       item:remove()
+   end
+   ```
+
+   **Sub-validações:**
+   - `isMovable()`: Item não é wall/static
+   - `getUniqueId() > 65535`: Item é gerado (não hardcoded)
+     - Unique IDs 0-65535: items fixos do mapa
+     - Unique IDs > 65535: items criados em runtime
+   - `getActionId() == 0`: Item não tem quest association
+   - `not table.contains(corpseIds, id)`: Não é corpse protegido
+
+8. **Remove se Passa:**
+   ```lua
+   item:remove()
+   ```
+
+9. **Verifica Limite:**
+   ```lua
+   if i == removalLimit then
+       break
+   end
+   ```
+   - Para loop após 500 itens
+
+10. **Feedback (sempre executado):**
+    ```lua
+    creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+    position:sendMagicEffect(CONST_ME_POFF)
+    return true
+    ```
+    - Mensagem: "não foi possível"
+    - Efeito: POFF
+    - Nota: Mensagem é genérica mesmo com sucesso
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `corpseIds` | table | Arquivo | IDs protegidos |
+| `removalLimit` | number | Arquivo | Limite 500 |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onCastSpell):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `position` | Position | Tile alvo |
+| `tile` | Tile | Tile object |
+| `items` | table | Array de items |
+| `i` | number | Índice no loop |
+| `item` | Item | Item atual |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Validações em Cascata Compacta
+
+```lua
+if item:getType():isMovable() and 
+   item:getUniqueId() > 65535 and 
+   item:getActionId() == 0 and 
+   not table.contains(corpseIds, item:getId()) then
+	item:remove()
+end
+```
+
+**Benefício:** 4 validações em uma linha com lógica AND.
+
+### Padrão 2: Limite com Break
+
+```lua
+for i, item in ipairs(items) do
+	-- Validação e remoção
+	
+	if i == removalLimit then
+		break
+	end
+end
+```
+
+**Benefício:** Previne lag em tiles com milhares de itens.
+
+### Padrão 3: Lista de Proteção
+
+```lua
+local corpseIds = { 4240, 4241, ... }
+-- Depois
+if not table.contains(corpseIds, item:getId()) then
+	-- Remove
+end
+```
+
+**Benefício:** Fácil adicionar/remover IDs protegidos.
+
+### Padrão 4: Feedback Incondicional
+
+```lua
+-- Após loop
+creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+position:sendMagicEffect(CONST_ME_POFF)
+return true
+```
+
+**Benefício:** Sempre retorna true (não bloqueia movimento).
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, variant, isHotkey)
+
+**Descrição:** Remove itens movíveis em tile alvo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `variant` | Variant | Position alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Sempre |
+
+**Validações:**
+- **Movable:** Item tipo não-wall
+- **Unique ID > 65535:** Item gerado, não hardcoded
+- **ActionID = 0:** Sem quest association
+- **Não corpse:** Não em lista protegida
+
+**Limite:** 500 itens por conjuração
+
+**Efeito:**
+- POFF na tile
+- Mensagem genérica "não foi possível"
+- Itens removidos (ou nenhum se não passam validação)
+
+**Exemplo:**
+
+```lua
+-- Tile com 10 items lixo
+rune.onCastSpell(player, tileVariant, false)
+// Valida cada item
+// 7 são movable -> removidos
+// 3 são corpse ou não-movable -> mantidos
+// POFF effect na tile
+// Resultado: 7 itens desintegrados
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Limpeza de Items Lixo
+
+```lua
+-- Tile com items drops (gold, loot)
+-- Jogador aponta runa
+// Itera items
+// Remove apenas movable + gerado + sem actionid
+// Corpses mantidos
+// Resultado: Piso limpo, corpos intactos
+```
+
+### Caso 2: Proteção de Quest Items
+
+```lua
+-- Item com actionid != 0 (quest item)
+-- Em tile alvo
+// Cascata valida actionid = 0
+// Falha, item não removido
+// Resultado: Quest items protegidos
+```
+
+### Caso 3: Muitos Items (>500)
+
+```lua
+-- Tile com 1000+ items (lag risk)
+// Loop para em i == 500
+// Pode convocar runa novamente
+// Resultado: Remoção em lotes, sem lag
+```
+
+### Caso 4: Corpse Protegido
+
+```lua
+-- Corpse ID 4240 na tile
+// table.contains(corpseIds, 4240) = true
+// not true = false
+// Cascata falha, corpse mantido
+// Resultado: Corpo preservado
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Item API:** Item, ItemType
+- **Tile API:** Tile, getItems()
+- **Unique IDs:** 0-65535 (hardcoded) vs > 65535 (gerado)
+- **Action IDs:** Quest association
+- **Corpse IDs:** 4240-4248
+- **Magic Effects:** CONST_ME_POFF
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Remove itens movíveis |
+| **Validações** | 4 (movable, unique ID, actionid, corpse) |
+| **Limite** | 500 itens |
+| **Range** | 1 (adjacente) |
+| **Exclusões** | Corpses (7 IDs) + hardcoded |
+| **Efeito** | POFF (sempre) |
+| **Retorno** | Sempre true |
+| **Padrão** | Cascata compacta + limite + proteção |

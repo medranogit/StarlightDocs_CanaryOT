@@ -1,0 +1,193 @@
+---
+title: Avatar of Storm
+description: Transformação visual premium Sorcerer que ativa aparência de Avatar da Tempestade por 15 segundos com verificação de Revelation WOD
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `avatar_of_storm.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Sorcerer / Master Sorcerer |
+| **Spell ID** | 266 |
+| **Mana Requerida** | 2200 |
+| **Level Requerido** | 300 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração do Avatar** | 15 segundos (15.000 ms) |
+| **Cooldown Individual** | 2 horas (2 * 60 * 60 * 1000 ms) |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `uteta res ven` |
+| **Efeito Visual** | `CONST_ME_AVATAR_APPEAR` |
+| **LookType do Avatar** | 1595 |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/avatar_of_storm.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell requer que o jogador tenha completado pelo menos o stage 1 da Revelation WOD para Sorcerer. O sistema verifica `revelationStageWOD("Avatar of Storm")` antes de permitir o cast. Se a verificação falhar, o jogador recebe mensagem `"You cannot cast this spell"` e efeito de erro `CONST_ME_POFF`. A mana de 2200 é a máxima entre os avatars (compartilhada com Nature), refletindo a potência elemental da transformação.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `avatar_of_storm.lua` implementa uma transformação visual premium exclusiva para Sorcerer e Master Sorcerer. É um dos quatro spells de Avatar (Light, Nature, Steel, Storm) que compartilham estrutura idêntica. O spell verifica se o jogador possui a Revelation WOD necessária, aplica uma condição de outfit que muda a aparência visual para o Avatar da Tempestade (lookType 1595), e programa um evento automático de recarregamento de dados após 15 segundos. A mana requerida de 2200 é a máxima do grupo, compartilhada apenas com Nature, refletindo a potência cósmica da transformação. O sistema utiliza callbacks de avatar timer e reloadData para garantir sincronização visual.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Criação da Condição de Outfit
+local condition = Condition(CONDITION_OUTFIT)
+condition:setOutfit({ lookType = 1595 })
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 3.1 Validação de Creature
+    -- 3.2 Verificação de Revelation WOD
+    -- 3.3 Configuração de Duration
+    -- 3.4 Aplicação de Outfit Condition
+    -- 3.5 Efeito Visual e Avatar Timer
+    -- 3.6 Evento Agendado de ReloadDataEvent
+    -- 3.7 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:group("support")
+spell:id(266)
+spell:name("Avatar of Storm")
+spell:words("uteta res ven")
+spell:level(300)
+spell:mana(2200)
+spell:isPremium(true)
+spell:cooldown(2 * 60 * 60 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:hasParams(true)
+spell:isAggressive(false)
+spell:needLearn(true)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `condition` | `Condition` | Local | Objeto que encapsula a transformação visual do outfit (lookType 1595) para Avatar da Tempestade |
+| `spell` | `Spell` | Local | Instância do spell instantâneo que define comportamento e propriedades |
+| `creature` | `Creature/Player` | Parâmetro | Entidade que executa o cast (validada como Player) |
+| `variant` | `Variant` | Parâmetro | Parametrização do spell (não utilizada neste caso) |
+| `grade` | `Number` | Local | Resultado da verificação `revelationStageWOD("Avatar of Storm")`, onde 0 = sem acesso |
+| `duration` | `Number` | Local | Duração fixa de 15.000 ms (15 segundos) da transformação |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Verificação de Revelation WOD - Sorcerer Specific**
+```lua
+local grade = creature:revelationStageWOD("Avatar of Storm")
+if grade == 0 then
+    creature:sendCancelMessage("You cannot cast this spell")
+    creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+    return false
+end
+```
+Validação exclusiva para "Avatar of Storm" que bloqueia Sorcerers sem progresso Revelation.
+
+### 2. **Padrão de Condition de Outfit Elemental**
+```lua
+local condition = Condition(CONDITION_OUTFIT)
+condition:setOutfit({ lookType = 1595 })
+condition:setTicks(duration)
+creature:addCondition(condition)
+```
+Aplicação de outfit que transforma o Sorcerer em forma elemental de tempestade.
+
+### 3. **Padrão de Mana Premium**
+```
+Escalação de Mana Completa por Avatar:
+- Avatar of Steel (Knight): 800 (economia melee)
+- Avatar of Light (Paladin): 1500 (balanceado)
+- Avatar of Nature (Druid): 2200 (máximo)
+- Avatar of Storm (Sorcerer): 2200 (máximo)
+```
+Storm compartilha custo máximo com Nature, ambos representando vocações de suporte clerical premium.
+
+### 4. **Padrão de Sincronização Temporal Completa**
+```lua
+creature:avatarTimer((os.time() * 1000) + duration)
+creature:reloadData()
+addEvent(ReloadDataEvent, duration, creature:getId())
+```
+Sincronização em tripla camada: timer servidor, reload imediato, evento agendado.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Realiza validações, aplica a condição de outfit visual de tempestade e agenda o evento de recarga.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Criatura que executa o spell. DEVE ser um Player válido.
+- `variant` (Variant): Dados variáveis do spell (não utilizados neste spell).
+
+**Fluxo de Execução:**
+
+1. **Validação de Criatura** (`if not creature or not creature:isPlayer()`):
+   - Verifica se `creature` existe e é um Player
+   - Retorna `false` se validação falhar
+
+2. **Verificação de Revelation WOD** (`creature:revelationStageWOD("Avatar of Storm")`):
+   - Consulta o stage de Revelation WOD do jogador para "Avatar of Storm"
+   - Se `grade == 0` (sem acesso):
+     - Envia mensagem `"You cannot cast this spell"`
+     - Aplica efeito visual de erro `CONST_ME_POFF`
+     - Retorna `false`
+
+3. **Configuração de Duration**:
+   - Define `duration` como 15.000 ms (15 segundos)
+   - Aplica duração à condition com `condition:setTicks(duration)`
+
+4. **Aplicação de Efeitos**:
+   - Envia efeito visual `CONST_ME_AVATAR_APPEAR` na posição do jogador
+   - Adiciona condition de outfit (lookType 1595) ao jogador
+
+5. **Avatar Timer e Recarregamento**:
+   - Executa `creature:avatarTimer()` com timestamp futuro (agora + duration em ms)
+   - Executa `creature:reloadData()` para sincronização imediata
+   - Agenda `ReloadDataEvent` para executar após `duration` ms com ID do jogador
+
+6. **Retorno**:
+   - Retorna `true` (cast bem-sucedido)
+
+**Valores de Retorno:**
+- `true`: Spell executado com sucesso, mana consumida
+- `false`: Spell cancelado (falha de validação ou Revelation WOD insuficiente)
+
+**Lógica Detalhada:**
+
+O spell aplica uma condition de outfit que transforma o Sorcerer visualmente em um Avatar da Tempestade (lookType 1595) durante 15 segundos. A verificação de `revelationStageWOD("Avatar of Storm")` garante que apenas Sorcerers que completaram os requisitos de Revelation possam executar o spell.
+
+A mana de 2200 é a máxima do grupo, igualando-se apenas a Nature, refletindo potência elemental similar à primal natural do Druid. Ambas as vocações de suporte (Druid clerical e Sorcerer elemental) requisitam investimento máximo de recursos para ativar transformações cósmicas.
+
+O `avatarTimer()` registra no servidor o timestamp exato de expiração. O `reloadData()` força sincronização imediata do cliente com outfit transformado. O `addEvent(ReloadDataEvent)` agenda remoção visual ao final da duração.
+
+O cooldown de 2 horas entre usos, apesar do custo alto de mana, mantém a transformação como recurso estratégico raro. A tempestade é invocada somente em momentos de máxima necessidade.
+
+**Efeitos Visuais:**
+- Sucesso: `CONST_ME_AVATAR_APPEAR` (manifestação de avatar elemental)
+- Falha: `CONST_ME_POFF` (dissipação de magia)
+
+**Mensagens ao Jogador:**
+- Se sem Revelation WOD: `"You cannot cast this spell"`
+
+## 📌 Resumo
+
+**Avatar of Storm** é um spell de suporte premium exclusivo para Sorcerer (level 300+) que transforma visualmente o jogador em um Avatar da Tempestade (lookType 1595) por 15 segundos. A transformação requer Revelation WOD completada e consome 2200 de mana - o custo máximo entre todos os 4 avatars, compartilhado apenas com Nature. Com cooldown de 2 horas entre usos, o spell funciona como transformação estratégica de grande poder. O sistema sincroniza o avatar através de timer, reloadData e evento agendado para garantir consistência visual entre cliente e servidor.
+
+Implementação idêntica aos demais avatars, diferenciando-se na vocação (Sorcerer), mana máxima (2200), lookType visual (1595), words (`uteta res ven`) e Revelation stage ("Avatar of Storm").

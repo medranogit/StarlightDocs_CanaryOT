@@ -1,0 +1,352 @@
+---
+title: Attributes (Attr)
+description: Comando GOD para modificar atributos de itens, criaturas e jogadores próximos
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `attributes.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Modificar atributos de entidades |
+| **Comando** | `/attr <attribute>, <value>` |
+| **Requisito** | Acesso de God |
+| **Alvo** | 1 passo na frente do GM (frontal) |
+| **Tipos de Alvo** | Item, Criatura, Jogador |
+| **Tabelas de Funções** | itemFunctions, creatureFunctions, playerFunctions |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/attributes.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Sistema avançado com 3 tabelas (item/creature/player) contendo mapas de atributos e funções aninhadas. Usa `Tile(position):getTopVisibleThing(player)` para obter item, ou `Tile():getTopCreature()` para criatura/jogador. Detecta tipo automaticamente (isItem, isCreature, isPlayer). Chama targetFunction(entity, split[2]) dinamicamente. Feedback MAGIC_GREEN se sucesso. 40+ atributos diferentes.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `attributes.lua` implementa um comando TalkAction (`/attr`) que modifica dinamicamente atributos de entidades (itens/criaturas/jogadores) 1 passo à frente. O sistema com 3 tabelas de referência, detecção automática de tipo, execução de função aninhada, e feedback visual via MAGIC_GREEN. Ferramenta avançada de manipulação de propriedades.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Tabelas de Atributos (3 estruturas)**
+
+```lua
+-- Atributos de Item (~20)
+local itemFunctions = {
+    ["actionid"] = { isActive = true, targetFunction = function(item, target) return item:setActionId(target) end },
+    ["action"] = { isActive = true, targetFunction = function(item, target) return item:setActionId(target) end },
+    ["aid"] = { isActive = true, targetFunction = function(item, target) return item:setActionId(target) end },
+    ["uniqueid"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_UNIQUEID, target) end },
+    ["unique"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_UNIQUEID, target) end },
+    ["uid"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_UNIQUEID, target) end },
+    ["description"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_DESCRIPTION, target) end },
+    ["desc"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_DESCRIPTION, target) end },
+    ["name"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_NAME, target) end },
+    ["remove"] = { isActive = true, targetFunction = function(item, target) return item:remove() end },
+    ["decay"] = { isActive = true, targetFunction = function(item, target) return item:decay() end },
+    ["transform"] = { isActive = true, targetFunction = function(item, target) return item:transform(target) end },
+    ["clone"] = { isActive = true, targetFunction = function(item, target) return item:clone() end },
+    ["attack"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_ATTACK, target) end },
+    ["defense"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_DEFENSE, target) end },
+    ["extradefense"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_EXTRADEFENSE, target) end },
+    ["charges"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_CHARGES, target) end },
+    ["armor"] = { isActive = true, targetFunction = function(item, target) return item:setAttribute(ITEM_ATTRIBUTE_ARMOR, target) end },
+}
+
+-- Atributos de Criatura (~7)
+local creatureFunctions = {
+    ["health"] = { isActive = true, targetFunction = function(creature, target) return creature:addHealth(target) end },
+    ["mana"] = { isActive = true, targetFunction = function(creature, target) return creature:addMana(target) end },
+    ["speed"] = { isActive = true, targetFunction = function(creature, target) return creature:changeSpeed(target) end },
+    ["droploot"] = { isActive = true, targetFunction = function(creature, target) return creature:setDropLoot(target) end },
+    ["skull"] = { isActive = true, targetFunction = function(creature, target) return creature:setSkull(target) end },
+    ["direction"] = { isActive = true, targetFunction = function(creature, target) return creature:setDirection(target) end },
+    ["maxHealth"] = { isActive = true, targetFunction = function(creature, target) return creature:setMaxHealth(target) end },
+    ["say"] = { isActive = true, targetFunction = function(creature, target) creature:say(target, TALKTYPE_SAY) end },
+}
+
+-- Atributos de Jogador (~20)
+local playerFunctions = {
+    ["fyi"] = { isActive = true, targetFunction = function(player, target) return player:popupFYI(target) end },
+    ["tutorial"] = { isActive = true, targetFunction = function(player, target) return player:sendTutorial(target) end },
+    ["guildnick"] = { isActive = true, targetFunction = function(player, target) return player:setGuildNick(target) end },
+    ["group"] = { isActive = true, targetFunction = function(player, target) return player:setGroup(Group(target)) end },
+    ["vocation"] = { isActive = true, targetFunction = function(player, target) return player:setVocation(Vocation(target)) end },
+    ["stamina"] = { isActive = true, targetFunction = function(player, target) return player:setStamina(target) end },
+    ["town"] = { isActive = true, targetFunction = function(player, target) return player:setTown(Town(target)) end },
+    ["balance"] = { isActive = true, targetFunction = function(player, target) return player:setBankBalance(target + player:getBankBalance()) end },
+    ["save"] = { isActive = true, targetFunction = function(player, target) return player:save() end },
+    ["type"] = { isActive = true, targetFunction = function(player, target) return player:setAccountType(target) end },
+    ["skullTime"] = { isActive = true, targetFunction = function(player, target) return player:setSkullTime(target) end },
+    ["maxMana"] = { isActive = true, targetFunction = function(player, target) return player:setMaxMana(target) end },
+    ["maxHealth"] = { isActive = true, targetFunction = function(player, target) return player:setMaxHealth(target) end },
+    ["addItem"] = { isActive = true, targetFunction = function(player, target) return player:addItem(target, 1) end },
+    ["removeItem"] = { isActive = true, targetFunction = function(player, target) return player:removeItem(target, 1) end },
+    ["premium"] = { isActive = true, targetFunction = function(player, target) return player:addPremiumDays(target) end },
+}
+
+local attributes = TalkAction("/attr")
+
+function attributes.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    -- Validação: parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Obter posição 1 passo à frente (alvo frontal)
+    local position = player:getPosition()
+    position:getNextPosition(player:getDirection(), 1)
+    
+    -- Parse: atributo, valor
+    local split = param:split(",")
+    local itemFunction = itemFunctions[split[1]:lower()]
+    local creatureFunction = creatureFunctions[split[1]:lower()]
+    local playerFunction = playerFunctions[split[1]:lower()]
+    
+    -- Modo 1: Item (frente do GM)
+    if itemFunction and itemFunction.isActive then
+        local item = Tile(position):getTopVisibleThing(player)
+        if not item or not item:isItem() then
+            player:sendCancelMessage("Item not found.")
+            return true
+        end
+        
+        if itemFunction.targetFunction(item, split[2]) then
+            position:sendMagicEffect(CONST_ME_MAGIC_GREEN)
+        else
+            player:sendCancelMessage("You cannot add that attribute to this item.")
+        end
+    
+    -- Modo 2: Criatura/NPC (frente do GM)
+    elseif creatureFunction and creatureFunction.isActive then
+        local creature = Tile(position):getTopCreature()
+        if not creature or not creature:isCreature() then
+            player:sendCancelMessage("Creature not found.")
+            return true
+        end
+        
+        if creatureFunction.targetFunction(creature, split[2]) then
+            position:sendMagicEffect(CONST_ME_MAGIC_GREEN)
+        else
+            player:sendCancelMessage("You cannot add that attribute to this creature.")
+        end
+    
+    -- Modo 3: Jogador (frente do GM)
+    elseif playerFunction and playerFunction.isActive then
+        local targetPlayer = Tile(position):getTopCreature()
+        if not targetPlayer or not targetPlayer:getPlayer() then
+            player:sendCancelMessage("Player not found.")
+            return true
+        end
+        
+        if playerFunction.targetFunction(targetPlayer, split[2]) then
+            position:sendMagicEffect(CONST_ME_MAGIC_GREEN)
+        else
+            player:sendCancelMessage("You cannot add that attribute to this player.")
+        end
+    
+    -- Atributo não encontrado
+    else
+        player:sendCancelMessage("Unknown attribute.")
+    end
+    
+    return true
+end
+
+attributes:separator(" ")
+attributes:groupType("god")
+attributes:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **attributes.onSay(player, words, param)**
+
+**Descrição:** Função callback que modifica atributos de item/criatura/jogador 1 passo à frente.
+
+**Parâmetros:**
+- `param` (string): `<attribute>, <value>`
+
+**Formato de Comando:**
+```
+/attr actionid, 5000           -- Set action ID do item
+/attr health, 100              -- Add 100 health à criatura
+/attr town, 2                  -- Set town do jogador (ID 2)
+/attr vocation, Knight         -- Set vocação
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Obter Posição Alvo:**
+   ```lua
+   local position = player:getPosition()
+   position:getNextPosition(player:getDirection(), 1)
+   ```
+   - 1 passo na frente do GM
+   - Direction do GM define alvo
+
+4. **Parse de Atributo:**
+   ```lua
+   local split = param:split(",")
+   local itemFunction = itemFunctions[split[1]:lower()]
+   local creatureFunction = creatureFunctions[split[1]:lower()]
+   local playerFunction = playerFunctions[split[1]:lower()]
+   ```
+
+5. **Modo 1: Item Detection**
+   ```lua
+   if itemFunction and itemFunction.isActive then
+       local item = Tile(position):getTopVisibleThing(player)
+       if itemFunction.targetFunction(item, split[2]) then
+           position:sendMagicEffect(CONST_ME_MAGIC_GREEN)
+   ```
+
+6. **Modo 2: Creature Detection**
+   ```lua
+   elseif creatureFunction and creatureFunction.isActive then
+       local creature = Tile(position):getTopCreature()
+       if creatureFunction.targetFunction(creature, split[2]) then
+   ```
+
+7. **Modo 3: Player Detection**
+   ```lua
+   elseif playerFunction and playerFunction.isActive then
+       local targetPlayer = Tile(position):getTopCreature()
+       if playerFunction.targetFunction(targetPlayer, split[2]) then
+   ```
+
+8. **Feedback:**
+   - Sucesso: MAGIC_GREEN effect na posição
+   - Falha: mensagem "You cannot add that attribute to this X."
+   - Não encontrado: "X not found."
+   - Desconhecido: "Unknown attribute."
+
+---
+
+### **Estrutura de Tabelas**
+
+**itemFunctions - Atributos de Item:**
+
+| Atributo | Aliases | Função |
+|---|---|---|
+| actionid | action, aid | setActionId() |
+| uniqueid | unique, uid | setAttribute(UNIQUEID) |
+| description | desc | setAttribute(DESCRIPTION) |
+| name | - | setAttribute(NAME) |
+| remove | - | remove() |
+| decay | - | decay() |
+| transform | - | transform() |
+| clone | - | clone() |
+| attack | - | setAttribute(ATTACK) |
+| defense | - | setAttribute(DEFENSE) |
+| extradefense | - | setAttribute(EXTRADEFENSE) |
+| charges | - | setAttribute(CHARGES) |
+| armor | - | setAttribute(ARMOR) |
+
+**creatureFunctions - Atributos de Criatura:**
+
+| Atributo | Função |
+|---|---|
+| health | addHealth(value) |
+| mana | addMana(value) |
+| speed | changeSpeed(value) |
+| droploot | setDropLoot(bool) |
+| skull | setSkull(value) |
+| direction | setDirection(value) |
+| maxHealth | setMaxHealth(value) |
+| say | say(text, TALKTYPE_SAY) |
+
+**playerFunctions - Atributos de Jogador:**
+
+| Atributo | Função |
+|---|---|
+| fyi | popupFYI(text) |
+| tutorial | sendTutorial(id) |
+| guildnick | setGuildNick(nick) |
+| group | setGroup(Group(id)) |
+| vocation | setVocation(Vocation(name)) |
+| stamina | setStamina(value) |
+| town | setTown(Town(id)) |
+| balance | setBankBalance(value) |
+| save | save() |
+| type | setAccountType(type) |
+| skullTime | setSkullTime(time) |
+| maxMana | setMaxMana(value) |
+| maxHealth | setMaxHealth(value) |
+| addItem | addItem(itemId, 1) |
+| removeItem | removeItem(itemId, 1) |
+| premium | addPremiumDays(days) |
+
+---
+
+### **Exemplos de Uso**
+
+**Modificar Item:**
+```
+GM está de frente para item no chão
+/attr actionid, 5000
+
+Resultado:
+- Item ID 1234 recebe action ID 5000
+- Green magic effect na posição
+```
+
+**Modificar Criatura:**
+```
+GM está de frente para monstro
+/attr health, 100
+
+Resultado:
+- Monstro recebe +100 health
+- Green magic effect
+```
+
+**Modificar Jogador:**
+```
+GM está de frente para jogador
+/attr vocation, Knight
+
+Resultado:
+- Jogador vocação muda para Knight
+- Green magic effect
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `param:split(sep)` | Divide por separador |
+| `split[n]:lower()` | Minúsculas |
+| `player:getPosition()` | Posição atual |
+| `position:getNextPosition(dir, steps)` | Próxima posição |
+| `Tile(position):getTopVisibleThing()` | Obtém item |
+| `Tile(position):getTopCreature()` | Obtém criatura/jogador |
+| `item:isItem()` | Valida item |
+| `creature:isCreature()` | Valida criatura |
+| `targetPlayer:getPlayer()` | Valida jogador |
+| `targetFunction(entity, value)` | Executa função aninhada |
+| `position:sendMagicEffect(CONST_ME_MAGIC_GREEN)` | Feedback visual |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `attributes.lua` é ferramenta avançada de manipulação dinâmica. Implementação com 3 tabelas (~45 atributos), detecção automática de tipo, execução via função aninhada, feedback visual GREEN. Essencial para GMs modificar propriedades sem scripting. Design modular permite adicionar novos atributos facilmente expandindo tabelas.

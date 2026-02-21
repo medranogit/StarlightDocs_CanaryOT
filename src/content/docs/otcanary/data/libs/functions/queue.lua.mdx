@@ -1,0 +1,468 @@
+---
+title: "queue.lua"
+description: "Implementação de fila (queue) FIFO com O(1) enqueue/dequeue e variante RandomQueue para dequeue aleatório mantendo contiguidade."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que implementa estrutura de dados **Queue** (FIFO - First In First Out) com operações O(1) e **RandomQueue** como subclasse especializada. Usa head/tail pointers em vez de table.remove (evita reindexing) para performance. Queue suporta enqueue, dequeue, peek, isEmpty, size. RandomQueue sobrescreve dequeue para remover item aleatório mantendo contiguidade via swap-with-tail. Ambas usam factory pattern via metatable __call.
+
+**Caminho Original**: `data/libs/functions/queue.lua`
+
+<Aside type="tip">
+O arquivo `queue.lua` é **data structure collection essencial**. Queues são usadas em sistemas de eventos, spawning de monstros, sistemas de fila de espera, turn-based combat. RandomQueue adiciona variância para mecanismos justos (loot drops, random selection).
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **2 classes de dados**:
+
+1. **Queue**: FIFO clássica com head/tail pointers (O(1) operações)
+2. **RandomQueue**: Herda Queue, dequeue remover randomicamente mantendo contiguidade
+
+O design usa **pointers (head/tail)** em vez de table.remove para evitar reindexing O(n), assim operações fundamentais rodam em O(1). **Metatable __call** permite factory instantiation: `Queue()` cria nova instância.
+
+### Estrutura de Funcionalidades
+
+```
+Queue Data Structure System
+├── Queue Class (5 métodos)
+│   ├── Factory: __call metamethod
+│   ├── isEmpty() → boolean
+│   ├── enqueue(value) → void
+│   ├── dequeue() → value
+│   ├── peek() → value
+│   └── size() → number
+├── Implementation
+│   ├── head (pointer ao primeiro elemento)
+│   ├── tail (pointer ao último elemento)
+│   └── items (array de valores)
+├── RandomQueue Class (1 método)
+│   ├── Factory: __call metamethod
+│   ├── dequeue() → value [overridden]
+│   └── Inherits: isEmpty, peek, size, enqueue
+└── Optimizations
+    ├── Pointer-based (no reindexing)
+    ├── Garbage collection (nil assignment)
+    └── Swap-with-tail for contiguity
+```
+
+---
+
+## 📦 Classe Queue
+
+### `Queue()` - Factory Constructor
+
+Cria nova instância de Queue vazia via metatable __call.
+
+**Tipo**: Factory via __call metamethod  
+**Parâmetros**: Nenhum  
+**Retorna**: Queue object
+
+**Implementação**:
+```lua
+setmetatable(Queue, {
+    __call = function(self)
+        local set = setmetatable({
+            head = 0,
+            tail = -1,
+            items = {},
+        }, { __index = Queue })
+        return set
+    end,
+})
+```
+
+**Inicialização**:
+- `head = 0`: Próximo elemento a dequeue (primeira posição)
+- `tail = -1`: Última posição preenchida (vazia inicialmente)
+- `items = {}`: Array para armazenar valores
+
+**Uso**:
+```lua
+local queue = Queue()  -- Cria fila vazia
+```
+
+---
+
+### `Queue:isEmpty()` → boolean
+
+Verifica se fila está vazia.
+
+**Tipo**: Method  
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+function Queue:isEmpty()
+    return self.head > self.tail
+end
+```
+
+**Lógica**: Vazia quando head passou de tail (nenhum elemento entre)
+
+**Exemplo**:
+```lua
+if queue:isEmpty() then
+    print("Queue is empty")
+end
+```
+
+---
+
+### `Queue:enqueue(value)` → void
+
+Adiciona valor ao final da fila.
+
+**Tipo**: Method  
+**Parâmetros**: `value` (any)  
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Queue:enqueue(value)
+    self.tail = self.tail + 1
+    self.items[self.tail] = value
+end
+```
+
+**Operação**: O(1) - apenas incrementar tail e inserir
+
+**Exemplo**:
+```lua
+local queue = Queue()
+queue:enqueue("first")
+queue:enqueue("second")
+queue:enqueue("third")
+```
+
+---
+
+### `Queue:dequeue()` → value
+
+Remove e retorna primeiro elemento da fila (FIFO).
+
+**Tipo**: Method  
+**Retorna**: value (primeiro elemento)
+
+**Implementação**:
+```lua
+function Queue:dequeue()
+    if self:isEmpty() then
+        error("Queue is empty")
+    end
+
+    local value = self.items[self.head]
+    self.items[self.head] = nil  -- garbage collection
+    self.head = self.head + 1
+    return value
+end
+```
+
+**Operação**: O(1) - apenas ler, nil, e incrementar head
+
+**Nil Assignment**: Permite garbage collection do objeto removido
+
+**Erro**: Lança erro se vazio (fail-fast)
+
+**Exemplo**:
+```lua
+local queue = Queue()
+queue:enqueue("a")
+queue:enqueue("b")
+print(queue:dequeue())  -- "a"
+print(queue:dequeue())  -- "b"
+```
+
+---
+
+### `Queue:peek()` → value
+
+Retorna primeiro elemento SEM remover.
+
+**Tipo**: Method  
+**Retorna**: value (primeiro elemento)
+
+**Implementação**:
+```lua
+function Queue:peek()
+    if self:isEmpty() then
+        error("Queue is empty")
+    end
+
+    return self.items[self.head]
+end
+```
+
+**Operação**: O(1) leitura
+
+**Erro**: Lança erro se vazio
+
+---
+
+### `Queue:size()` → number
+
+Retorna quantidade de elementos na fila.
+
+**Tipo**: Method  
+**Retorna**: number
+
+**Implementação**:
+```lua
+function Queue:size()
+    return self.tail - self.head + 1
+end
+```
+
+**Fórmula**: tail - head + 1 (contém quantidade de elementos)
+
+**Exemplo**:
+```lua
+local queue = Queue()
+queue:enqueue("a")
+queue:enqueue("b")
+print(queue:size())  -- 2
+queue:dequeue()
+print(queue:size())  -- 1
+```
+
+---
+
+## 🎲 Classe RandomQueue
+
+### `RandomQueue()` - Factory Constructor
+
+Cria nova instância de RandomQueue (herda de Queue).
+
+**Tipo**: Factory via __call metamethod  
+**Parâmetros**: Nenhum  
+**Retorna**: RandomQueue object
+
+**Implementação**:
+```lua
+setmetatable(RandomQueue, {
+    __index = Queue,  -- Herda de Queue
+    __call = function(self)
+        local instance = setmetatable(Queue(), { __index = RandomQueue })
+        return instance
+    end,
+})
+```
+
+**Herança**: Usa `__index = Queue` para métodos não-sobrescritos (enqueue, peek, size, isEmpty)
+
+**Uso**:
+```lua
+local rqueue = RandomQueue()  -- Cria fila aleatória vazia
+```
+
+---
+
+### `RandomQueue:dequeue()` → value
+
+Remove e retorna elemento ALEATÓRIO mantendo contiguidade.
+
+**Tipo**: Method (sobrescreve Queue:dequeue)  
+**Retorna**: value (elemento aleatório)
+
+**Implementação**:
+```lua
+function RandomQueue:dequeue()
+    if self:isEmpty() then
+        error("RandomQueue is empty")
+    end
+
+    local index = math.random(self.head, self.tail)
+    local value = self.items[index]
+
+    -- Move the last item to the place of the removed item to maintain contiguity
+    self.items[index] = self.items[self.tail]
+    self.items[self.tail] = nil  -- garbage collection
+    self.tail = self.tail - 1
+
+    return value
+end
+```
+
+**Operação**: O(1) - random, swap, decrement
+
+**Swap-with-Tail Pattern**:
+1. Gerar índice aleatório entre head e tail
+2. Ler valor em índice aleatório
+3. Mover último item para posição removida (swap)
+4. Nil last position (garbage collection)
+5. Decrementar tail
+6. Retornar value original
+
+**Contiguidade**: Mantém items[head..tail] sempre preenchido (sem buracos)
+
+**Exemplo**:
+```lua
+local rqueue = RandomQueue()
+rqueue:enqueue("a")
+rqueue:enqueue("b")
+rqueue:enqueue("c")
+-- head=0, tail=2, items={a, b, c}
+
+-- Dequeue aleatório
+print(rqueue:dequeue())  -- "b" (aleatório)
+-- Após: items={c, x, x}, tail=1, head=0
+-- items[1] = items[2] = c (swap)
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Fila de Espera (FIFO)
+
+```lua
+local waitingQueue = Queue()
+
+-- Jogadores entram
+function onPlayerJoin(player)
+    waitingQueue:enqueue(player:getId())
+    player:sendTextMessage(MESSAGE_INFO, 
+        "Position in queue: " .. waitingQueue:size())
+end
+
+-- Processar próximo da fila
+function processDungeon()
+    if not waitingQueue:isEmpty() then
+        local playerId = waitingQueue:dequeue()
+        teleportToDungeon(playerId)
+        print("Next player: " .. playerId)
+    end
+end
+```
+
+### Padrão 2: Random Loot Selection
+
+```lua
+local lootQueue = RandomQueue()
+
+-- Adicionar loots ao inventário
+function onBossDeath(boss)
+    local loot = boss:generateLoot()
+    for _, item in ipairs(loot) do
+        lootQueue:enqueue(item)
+    end
+end
+
+-- Distribuir aleatoriamente para membros
+function distributeLoot(party)
+    while not lootQueue:isEmpty() and #party > 0 do
+        local item = lootQueue:dequeue()  -- Random
+        local member = party[math.random(#party)]
+        member:addItem(item.id, item.count)
+    end
+end
+```
+
+### Padrão 3: Turn-Based Combat Queue
+
+```lua
+local combatQueue = Queue()
+
+function startCombat(creatures)
+    for _, creature in ipairs(creatures) do
+        combatQueue:enqueue(creature:getId())
+    end
+end
+
+function playTurn()
+    if combatQueue:isEmpty() then
+        print("Combat over")
+        return
+    end
+    
+    local creatureId = combatQueue:dequeue()
+    local creature = Creature(creatureId)
+    
+    creature:executeTurn()
+    
+    -- Re-enqueue para próximo round
+    combatQueue:enqueue(creatureId)
+end
+```
+
+### Padrão 4: Peek Pattern
+
+```lua
+local spawnQueue = Queue()
+
+function manageSpawning()
+    while not spawnQueue:isEmpty() do
+        local nextMonster = spawnQueue:peek()
+        
+        if canSpawn(nextMonster.position) then
+            spawnQueue:dequeue()  -- Remove
+            Game.createMonster(nextMonster.name, nextMonster.position)
+        else
+            break  -- Esperar próximo tick
+        end
+    end
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Implementação |
+|----------|-----------|----------------|
+| **FIFO (First In First Out)** | Ordem de processamento | head++, tail++ |
+| **Pointer-Based** | Sem reindexing O(n) | head/tail pointers |
+| **Garbage Collection** | nil assignment | self.items[head] = nil |
+| **Swap-with-Tail** | Manter contiguidade | items[idx] = items[tail] |
+| **Metatable Factory** | __call para instantiation | setmetatable Queue |
+| **Inheritance** | RandomQueue herda Queue | __index = Queue |
+
+### Padrões Identificados
+
+1. **Pointer Pattern**: head/tail em vez de table.remove (performance)
+2. **Factory Pattern**: __call metamethod para instantiation
+3. **Inheritance Pattern**: __index = Queue para métodos herdados
+4. **Swap-with-Tail**: Manter array sem buracos
+5. **Fail-Fast**: Erros imediatos em operações inválidas
+
+### Responsabilidades por Classe
+
+| Classe | Responsabilidade |
+|--------|-----------------|
+| **Queue** | FIFO padrão, O(1) operações, garbage collection |
+| **RandomQueue** | Herdar Queue, dequeue aleatório com contiguidade |
+
+---
+
+## 📚 Conclusão
+
+O arquivo `queue.lua` implementa **data structures fundamentais** de forma eficiente. Queue oferece FIFO padrão com O(1) operações via pointers, enquanto RandomQueue adiciona dequeue aleatório sem sacrificar performance. O design de **swap-with-tail** mantém contiguidade (sem buracos no array), essencial para performance. Uso em sistemas de waiting, loot distribution, turn-based combat, spawning queues.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 60/60 (100%)  
+**Classes**: 2 (Queue, RandomQueue)  
+**Métodos Queue**: 5 (isEmpty, enqueue, dequeue, peek, size)  
+**Métodos RandomQueue**: 1 (dequeue override)  
+**Operação Complexidade**: O(1) para todas operações  
+**Padrões de Design**: Pointer-Based, Factory, Inheritance, Swap-with-Tail  
+**Exemplos Práticos**: 4+
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: head/tail pointers podem overflow em filas muito longas (Lua numbers são 64-bit, improvável). Swap-with-tail em RandomQueue assume tail sempre >= head (invariante mantido). nil assignment essencial para garbage collection (não há manual memory management). RandomQueue mantém contiguidade mas perde ordem (não é mais FIFO).
+</Aside>

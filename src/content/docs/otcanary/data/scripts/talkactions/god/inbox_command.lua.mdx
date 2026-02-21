@@ -1,0 +1,245 @@
+---
+title: Inbox Command
+description: Comando GOD para adicionar/remover items da store inbox de jogadores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | inbox_command.lua |
+| **Tipo de Sistema** | Store Inbox Management (GOD) |
+| **Funcionalidade Principal** | Gerenciar store inbox |
+| **Comando** | /inbox PlayerName, add\|remove, itemId |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Sistema** | Store Inbox (items de compra) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/inbox_command.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando simples que manipula store inbox. Parse 3 parâmetros (creature name, action, itemId). Busca creature, obtém inbox via getStoreInbox(). Valida inbox size > 0. Se action="remove": itera inbox buscando item com getId() == tonumber(param[3]), remove via Item(uid):remove(). Se action="add": target:addItemStoreInbox(itemId, 1, true, false). Feedback via player:say().
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo inbox_command.lua implementa comando TalkAction (/inbox) para gerenciar store inbox de jogadores. O sistema valida creature, obtém inbox, oferece modos add/remove, itera items para busca, utiliza Item UID para delete, logging via say(). Ferramenta de store inbox management.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local inboxCommand = TalkAction("/inbox")
+
+function inboxCommand.onSay(player, words, param)
+	-- Parse dos parâmetros
+	param = param:split(",")
+	
+	-- Magic effect visual
+	player:getPosition():sendMagicEffect(CONST_ME_TUTORIALSQUARE)
+	
+	-- Buscar creature
+	local target = Creature(param[1])
+	if target then
+		-- Obter inbox
+		local inbox = target:getStoreInbox()
+		local inboxSize = inbox:getSize()
+		
+		if inbox and inboxSize > 0 then
+			-- Modo 1: Remover item
+			if param[2] == "remove" then
+				for i = 0, inboxSize do
+					local item = inbox:getItem(i)
+					if item and item:getId() == tonumber(param[3]) then
+						local itemToDelete = Item(item.uid)
+						if itemToDelete then
+							itemToDelete:remove()
+							player:say(item:getId() .. " removed")
+						end
+					end
+				end
+			-- Modo 2: Adicionar item
+			elseif param[2] == "add" then
+				target:addItemStoreInbox(tonumber(param[3]), 1, true, false)
+				player:say(tonumber(param[3]) .. " added")
+			end
+		end
+	else
+		player:sendCancelMessage("Creature not found.")
+	end
+	
+	return true
+end
+
+inboxCommand:separator(" ")
+inboxCommand:setDescription("[Usage]: /inbox {PlayerName},{add|remove},{itemId}")
+inboxCommand:groupType("god")
+inboxCommand:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **inboxCommand.onSay(player, words, param)**
+
+**Descrição:** Função callback que gerencia store inbox de jogadores.
+
+**Parâmetros:**
+- `param` (string): `PlayerName, add|remove, itemId`
+
+**Formato de Comando:**
+```
+/inbox TestPlayer, add, 2160           -- Adiciona gold coin
+/inbox TestPlayer, remove, 2457        -- Remove spear
+```
+
+**Fluxo de Execução:**
+
+1. **Parse de Parâmetros:**
+   ```lua
+   param = param:split(",")
+   -- param[1] = "TestPlayer"
+   -- param[2] = "add" ou "remove"
+   -- param[3] = itemId (número)
+   ```
+
+2. **Magic Effect Visual:**
+   ```lua
+   player:getPosition():sendMagicEffect(CONST_ME_TUTORIALSQUARE)
+   ```
+
+3. **Buscar Creature:**
+   ```lua
+   local target = Creature(param[1])
+   if target then
+   ```
+   - Busca por nome (case-sensitive)
+   - Se não encontrado: "Creature not found."
+
+4. **Obter Inbox:**
+   ```lua
+   local inbox = target:getStoreInbox()
+   local inboxSize = inbox:getSize()
+   ```
+
+5. **Validação de Inbox:**
+   ```lua
+   if inbox and inboxSize > 0 then
+   ```
+
+6. **Modo 1: Remover Item**
+   ```lua
+   if param[2] == "remove" then
+       for i = 0, inboxSize do
+           local item = inbox:getItem(i)
+           if item and item:getId() == tonumber(param[3]) then
+               local itemToDelete = Item(item.uid)
+               if itemToDelete then
+                   itemToDelete:remove()
+                   player:say(item:getId() .. " removed")
+               end
+           end
+       end
+   ```
+
+   - Itera índice 0 até inboxSize
+   - Busca item com ID correspondente
+   - Obtém Item por UID (Unique ID)
+   - Remove via Item:remove()
+   - Feedback: "2457 removed"
+
+7. **Modo 2: Adicionar Item**
+   ```lua
+   elseif param[2] == "add" then
+       target:addItemStoreInbox(tonumber(param[3]), 1, true, false)
+       player:say(tonumber(param[3]) .. " added")
+   ```
+
+   - Adiciona 1 cópia do item
+   - Parâmetros: itemId, quantity, bool1, bool2
+   - Feedback: "2160 added"
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /inbox TestPlayer, add, 2160
+
+Resultado:
+- Gold coin (2160) adicionado ao inbox do TestPlayer
+- Broadcast: "2160 added"
+- Magic effect TUTORIALSQUARE
+
+---
+
+GM: /inbox TestPlayer, remove, 2457
+
+Resultado:
+- Busca spear (2457) no inbox
+- Se encontrado: remove do inbox
+- Broadcast: "2457 removed"
+- Se não encontrado: silencioso
+
+---
+
+GM: /inbox OfflinePlayer, add, 5461
+
+Resultado:
+- "Creature not found."
+```
+
+---
+
+**Tabela de Modos**
+
+| Modo | Param[2] | Efeito |
+|---|---|---|
+| Adicionar | "add" | Adiciona item ao inbox |
+| Remover | "remove" | Remove item do inbox |
+
+---
+
+**Estrutura de Parâmetros**
+
+```
+/inbox {PlayerName}, {action}, {itemId}
+
+Exemplo:
+/inbox TestPlayer, add, 2160
+       ^^^^^^^^^^  ^^^  ^^^^
+       param[1]   [2]  [3]
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Creature(name)` | Busca creature por nome |
+| `player:getPosition()` | Posição do GM |
+| `position:sendMagicEffect(effect)` | Efeito visual |
+| `param:split(sep)` | Divide string |
+| `target:getStoreInbox()` | Obtém store inbox |
+| `inbox:getSize()` | Obtém quantidade items |
+| `inbox:getItem(index)` | Obtém item por índice |
+| `item:getId()` | Obtém item ID |
+| `item.uid` | UID do item |
+| `Item(uid)` | Busca item por UID |
+| `itemToDelete:remove()` | Remove item |
+| `target:addItemStoreInbox(id, qty, ?, ?)` | Adiciona ao inbox |
+| `player:say(text)` | Broadcast mensagem |
+| `player:sendCancelMessage(msg)` | Mensagem erro |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo inbox_command.lua é ferramenta de store inbox management. Implementação minimalista com parse 3 parâmetros, 2 modos (add/remove), iteração simples de inbox, UID-based deletion. Essencial para GMs gerenciar items de store (compras). Design simples focado em eficiência, feedback via say() (broadcast).

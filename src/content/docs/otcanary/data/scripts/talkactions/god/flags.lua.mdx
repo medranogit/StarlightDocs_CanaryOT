@@ -1,0 +1,394 @@
+---
+title: Player Flags System
+description: Comando GOD para gerenciar 40+ flags de permissão de jogadores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | flags.lua |
+| **Tipo de Sistema** | Player Flag Management (GOD) |
+| **Funcionalidade Principal** | Gerenciar flags de permissão |
+| **Comandos** | /hasflag, /setflag, /removeflag |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Total de Flags** | 40+ flags de permissão |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/flags.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Sistema completo com tabela PlayerFlags_t (40+ constantes), 3 helper functions (sendValidKeys, getFlagNumberOrName, getFlagNameByType), e 3 extensões Player (talkactionHasFlag, talkactionSetFlag, talkactionRemoveFlag). TalkActions registram os 3 comandos usando essas extensões. Validações: HasValidTalkActionParams, busca de flag por nome/número (case-insensitive), logging via logger.info.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo flags.lua implementa sistema completo de gerenciamento de 40+ flags de permissão. Dispõe de tabela centralizada (PlayerFlags_t), helper functions para conversão e busca, extensions Player para validar/set/remove flags, 3 TalkActions (/hasflag, /setflag, /removeflag), logging automático, validações rigorosas, e interface visual (showTextDialog). Ferramenta essencial de permission management.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Variáveis Globais**
+
+```lua
+local PlayerFlags_t = {
+	["CannotUseCombat"] = CannotUseCombat,
+	["CannotAttackPlayer"] = CannotAttackPlayer,
+	["CannotAttackMonster"] = CannotAttackMonster,
+	["CannotBeAttacked"] = CannotBeAttacked,
+	["CanConvinceAll"] = CanConvinceAll,
+	["CanSummonAll"] = CanSummonAll,
+	["CanIllusionAll"] = CanIllusionAll,
+	["CanSenseInvisibility"] = CanSenseInvisibility,
+	["IgnoredByMonsters"] = IgnoredByMonsters,
+	["NotGainInFight"] = NotGainInFight,
+	["HasInfiniteMana"] = HasInfiniteMana,
+	["HasInfiniteSoul"] = HasInfiniteSoul,
+	["HasNoExhaustion"] = HasNoExhaustion,
+	["CannotUseSpells"] = CannotUseSpells,
+	["CannotPickupItem"] = CannotPickupItem,
+	["CanAlwaysLogin"] = CanAlwaysLogin,
+	["CanBroadcast"] = CanBroadcast,
+	["CanEditHouses"] = CanEditHouses,
+	["CannotBeBanned"] = CannotBeBanned,
+	["CannotBePushed"] = CannotBePushed,
+	["HasInfiniteCapacity"] = HasInfiniteCapacity,
+	["CanPushAllCreatures"] = CanPushAllCreatures,
+	["CanTalkRedPrivate"] = CanTalkRedPrivate,
+	["CanTalkRedChannel"] = CanTalkRedChannel,
+	["TalkOrangeHelpChannel"] = TalkOrangeHelpChannel,
+	["NotGainExperience"] = NotGainExperience,
+	["NotGainMana"] = NotGainMana,
+	["NotGainHealth"] = NotGainHealth,
+	["NotGainSkill"] = NotGainSkill,
+	["SetMaxSpeed"] = SetMaxSpeed,
+	["SpecialVIP"] = SpecialVIP,
+	["NotGenerateLoot"] = NotGenerateLoot,
+	["CanTalkRedChannelAnonymous"] = CanTalkRedChannelAnonymous,
+	["IgnoreProtectionZone"] = IgnoreProtectionZone,
+	["IgnoreSpellCheck"] = IgnoreSpellCheck,
+	["IgnoreWeaponCheck"] = IgnoreWeaponCheck,
+	["CannotBeMuted"] = CannotBeMuted,
+	["IsAlwaysPremium"] = IsAlwaysPremium,
+	["CanMapClickTeleport"] = CanMapClickTeleport,
+	["IgnoredByNpcs"] = IgnoredByNpcs,
+}
+```
+
+## 🤖 Documentação das Funções
+
+### **Funções Locais**
+
+#### **sendValidKeys(player)**
+
+**Descrição:** Envia diálogo com lista de flags válidas ao jogador.
+
+```lua
+local function sendValidKeys(player)
+	local flagsList = {}
+	for flagName, _ in pairs(PlayerFlags_t) do
+		table.insert(flagsList, flagName)
+	end
+	local text = "Invalid flag. Valid flags are: " .. table.concat(flagsList, "\n")
+	player:showTextDialog(2019, text)
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador que recebe a mensagem
+
+**Funcionamento:**
+- Extrai todos os nomes de flags da tabela
+- Concatena em string com quebras de linha
+- Mostra em dialog com ID 2019
+
+---
+
+#### **getFlagNumberOrName(flagType)**
+
+**Descrição:** Converte flag por nome ou número para valor enum.
+
+```lua
+local function getFlagNumberOrName(flagType)
+	for flagName, flagEnum in pairs(PlayerFlags_t) do
+		if tonumber(flagEnum) == tonumber(flagType) then
+			return flagEnum
+		end
+		if type(flagType) == "string" and string.lower(flagType) == string.lower(flagName) then
+			return flagEnum
+		end
+	end
+	return nil
+end
+```
+
+**Parâmetros:**
+- `flagType` (number|string): Flag ID ou nome
+
+**Retorno:**
+- Enum value se encontrado
+- nil se não encontrado
+
+**Exemplos:**
+```lua
+getFlagNumberOrName("CannotUseCombat")  -- retorna enum
+getFlagNumberOrName(1)                  -- retorna enum
+getFlagNumberOrName("invalid")          -- retorna nil
+```
+
+---
+
+#### **getFlagNameByType(flagType)**
+
+**Descrição:** Obtém nome textual da flag pelo número.
+
+```lua
+local function getFlagNameByType(flagType)
+	for flagName, flagEnum in pairs(PlayerFlags_t) do
+		if tonumber(flagEnum) == tonumber(flagType) then
+			return flagName
+		end
+	end
+	return nil
+end
+```
+
+**Parâmetros:**
+- `flagType` (number): Flag ID
+
+**Retorno:**
+- Nome string se encontrado
+- nil se não encontrado
+
+---
+
+### **Extensões Player**
+
+#### **Player.talkactionHasFlag(self, param, flagType)**
+
+**Descrição:** Verifica se jogador tem determinada flag.
+
+**Parâmetros:**
+- `param` (string): "PlayerName, flagname|number"
+- `flagType` (number): Flag enum
+
+**Validações:**
+```lua
+if not HasValidTalkActionParams(self, param, "Usage: /hasflag <playerName>, <flagnumber or name>") then
+	return true
+end
+```
+
+**Fluxo:**
+1. Valida parâmetros
+2. Parse "PlayerName, flag"
+3. Busca jogador
+4. Busca flag
+5. Verifica `targetPlayer:hasGroupFlag(flagValue)`
+6. Mensagem de resultado
+
+**Mensagens:**
+```
+"Player <name> have flag type: <flagname>."       (tem)
+"Player <name> not have flag type: <flagname>."   (não tem)
+```
+
+---
+
+#### **Player.talkactionSetFlag(self, param, flagType)**
+
+**Descrição:** Adiciona flag ao jogador.
+
+**Validações:**
+- Parâmetros válidos
+- Jogador existe
+- Flag válida
+- Jogador não tem flag já
+
+**Fluxo:**
+```lua
+if targetPlayer:hasFlag(flagValue) then
+	self:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Player " .. playerName .. " already has flag " .. getFlagNameByType(flagValue) .. ".")
+	return true
+end
+
+targetPlayer:setGroupFlag(flagValue)
+```
+
+**Logging:**
+```lua
+logger.info("[Player.talkactionSetFlag] Added flag {} to {} character by {}.", getFlagNameByType(flagValue), targetPlayer:getName(), self:getName())
+```
+
+---
+
+#### **Player.talkactionRemoveFlag(self, param, flagType)**
+
+**Descrição:** Remove flag de jogador.
+
+**Validações:**
+- Jogador existe
+- Flag é válida
+- Jogador tem flag
+
+**Fluxo:**
+```lua
+if not targetPlayer:hasFlag(flagValue) then
+	self:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Player " .. playerName .. " not have flag " .. getFlagNameByType(flagValue) .. ".")
+	return true
+end
+
+targetPlayer:removeGroupFlag(flagValue)
+```
+
+---
+
+### **TalkActions**
+
+#### **TalkAction /hasflag**
+
+```lua
+local hasFlag = TalkAction("/hasflag")
+
+function hasFlag.onSay(player, words, param)
+	logCommand(player, words, param)
+	return player:talkactionHasFlag(param)
+end
+
+hasFlag:separator(" ")
+hasFlag:groupType("god")
+hasFlag:register()
+```
+
+**Comando:** `/hasflag PlayerName, CannotUseCombat`
+
+---
+
+#### **TalkAction /setflag**
+
+```lua
+local setFlag = TalkAction("/setflag")
+
+function setFlag.onSay(player, words, param)
+	logCommand(player, words, param)
+	return player:talkactionSetFlag(param)
+end
+
+setFlag:separator(" ")
+setFlag:groupType("god")
+setFlag:register()
+```
+
+**Comando:** `/setflag PlayerName, HasInfiniteMana`
+
+---
+
+#### **TalkAction /removeflag**
+
+```lua
+local removeFlag = TalkAction("/removeflag")
+
+function removeFlag.onSay(player, words, param)
+	logCommand(player, words, param)
+	return player:talkactionRemoveFlag(param)
+end
+
+removeFlag:separator(" ")
+removeFlag:groupType("god")
+removeFlag:register()
+```
+
+**Comando:** `/removeflag PlayerName, CannotUseCombat`
+
+---
+
+## **Tabela de Flags Disponíveis**
+
+| Flag | Descrição |
+|---|---|
+| CannotUseCombat | Não pode atacar |
+| CannotAttackPlayer | Não pode atacar players |
+| CannotAttackMonster | Não pode atacar monstros |
+| CannotBeAttacked | Imune a dano |
+| CanConvinceAll | Pode convidar todos |
+| CanSummonAll | Pode somar todos |
+| CanIllusionAll | Pode criar ilusões |
+| CanSenseInvisibility | Vê invisíveis |
+| IgnoredByMonsters | Monstros ignoram |
+| NotGainInFight | Sem exp/loot em fight |
+| HasInfiniteMana | Mana infinito |
+| HasInfiniteSoul | Soul infinito |
+| HasNoExhaustion | Sem exaustão |
+| CannotUseSpells | Não pode usar spells |
+| CannotPickupItem | Não pode pegar items |
+| CanAlwaysLogin | Sempre pode logar |
+| CanBroadcast | Pode fazer broadcast |
+| CanEditHouses | Pode editar casas |
+| CannotBeBanned | Não pode ser banido |
+| CannotBePushed | Não pode ser empurrado |
+| HasInfiniteCapacity | Cap infinito |
+| CanPushAllCreatures | Pode empurrar tudo |
+| CanTalkRedPrivate | Chat privado vermelho |
+| CanTalkRedChannel | Chat channel vermelho |
+| TalkOrangeHelpChannel | Chat help laranja |
+| NotGainExperience | Sem exp |
+| NotGainMana | Sem mana gain |
+| NotGainHealth | Sem hp gain |
+| NotGainSkill | Sem skill gain |
+| SetMaxSpeed | Speed máximo |
+| SpecialVIP | Status VIP especial |
+| NotGenerateLoot | Sem loot generation |
+| CanTalkRedChannelAnonymous | Chat anônimo |
+| IgnoreProtectionZone | Pode atacar em PZ |
+| IgnoreSpellCheck | Ignora spell checks |
+| IgnoreWeaponCheck | Ignora weapon checks |
+| CannotBeMuted | Não pode ser mutado |
+| IsAlwaysPremium | Premium permanente |
+| CanMapClickTeleport | Teleport click mapa |
+| IgnoredByNpcs | NPCs ignoram |
+
+---
+
+**Exemplos de Uso:**
+
+```
+/hasflag TestPlayer, HasInfiniteMana
+Resultado: "Player TestPlayer have flag type: HasInfiniteMana."
+
+/setflag TestPlayer, CannotUseCombat
+Resultado: "Flag CannotUseCombat set for player TestPlayer."
+
+/removeflag TestPlayer, CannotUseCombat
+Resultado: "Flag CannotUseCombat removed from player TestPlayer."
+
+/setflag TestPlayer, IgnoreProtectionZone
+Resultado: Flag adicionado para atacar em PZ
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `HasValidTalkActionParams(player, param, usage)` | Valida parâmetros |
+| `Player(name)` | Busca jogador online |
+| `player:hasGroupFlag(flag)` | Verifica flag |
+| `player:hasFlag(flag)` | Verifica flag |
+| `player:setGroupFlag(flag)` | Adiciona flag |
+| `player:removeGroupFlag(flag)` | Remove flag |
+| `param:split(sep)` | Divide string |
+| `player:showTextDialog(id, text)` | Mostra dialog |
+| `logger.info(fmt, ...)` | Log de informação |
+| `logCommand(player, words, param)` | Log do comando |
+
+---
+
+## 📌 Resumo
+
+O arquivo flags.lua é sistema completo de permission management. Implementação com tabela centralizada (40+ flags), helper functions (conversion, lookup), player extensions (has/set/remove), 3 TalkActions, logging automático, validações rigorosas. Essencial para GMs controlar permissões, criar ranks customizados, testar restrições. Design flexível suporta busca por nome ou ID.

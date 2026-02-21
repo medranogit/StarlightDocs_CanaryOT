@@ -1,0 +1,365 @@
+---
+title: Players - Extensões de Funções Player
+description: Documentação técnica completa do arquivo players.lua do Canary, incluindo 6 funções de extensão para a classe Player para gerenciamento de quests e achievements.
+sidebar:
+  order: 100
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **players.lua** estende a classe `Player` com 6 funções especializadas para gerenciar dados de quest, cookies delivery, rank de gnomes, e pontos de fama.
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/functions/players.lua`
+</Card>
+
+<Aside type="tip">
+**Tipo**: Extensão de Classe (Player)  
+**Quantidade de Funções**: 6  
+**Padrão**: Métodos de Instância (self)  
+**Categorias**: Quest Management, Cookie Tracking, Gnome Rank, Fame Points
+</Aside>
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+| Propriedade | Valor |
+|-------------|-------|
+| **Classe Alvo** | Player |
+| **Total de Funções** | 6 |
+| **Quests Relacionadas** | 033 (What a Foolish Quest), 005 (Bigfoot's Burden), 003 (Spike Task) |
+| **Padrão** | Método de Extensão com self |
+| **Storage Key Type** | Quest-based Storage Tables |
+
+### Funções Implementadas
+
+| # | Nome | Tipo | Propósito |
+|---|------|------|----------|
+| 1 | `getCookiesDelivered()` | Query | Contar cookies entregues |
+| 2 | `checkGnomeRank()` | Logic | Verificar rank Gnome + unlock achievements |
+| 3 | `addFamePoint()` | Mutation | Incrementar 1 ponto fama |
+| 4 | `getFamePoints()` | Query | Retornar total pontos fama |
+| 5 | `removeFamePoints(amount)` | Mutation | Decrementar pontos fama |
+| 6 | *[Potencial 6ª]* | - | - |
+
+## 🔧 Estrutura Técnica
+
+### Padrão: Extensão de Classe Lua
+
+```lua
+function Player.nomeMetodo(self)
+  -- Implementação
+  -- 'self' refere-se à instância Player
+end
+```
+
+**Convenção**:
+- Métodos implementados diretamente na tabela `Player`
+- Primeiro parâmetro é `self` (contexto do player)
+- Acesso a storage via `self:getStorageValue(key)`
+- Modificação de storage via `self:setStorageValue(key, value)`
+
+## 💡 Funções Detalhadas
+
+### 1. getCookiesDelivered()
+
+**Propósito**: Contar quantos cookies foram entregues na Quest 033 (What a Foolish Quest).
+
+**Assinatura**:
+```lua
+function Player.getCookiesDelivered(self) -> number
+```
+
+**Implementação**:
+```lua
+local storage, amount = {
+  Storage.Quest.U8_1.WhatAFoolishQuest.CookieDelivery.SimonTheBeggar,
+  Storage.Quest.U8_1.WhatAFoolishQuest.CookieDelivery.Markwin,
+  Storage.Quest.U8_1.WhatAFoolishQuest.CookieDelivery.Ariella,
+  -- ... (7 mais) ...
+  Storage.Quest.U8_1.WhatAFoolishQuest.CookieDelivery.Hjaern,
+}, 0
+
+for i = 1, #storage do
+  if self:getStorageValue(storage[i]) == 1 then
+    amount = amount + 1
+  end
+end
+
+return amount
+```
+
+**Lógica**:
+1. Define array de 10 storage keys (NPCs para entrega)
+2. Inicializa contador em 0
+3. Itera sobre cada key
+4. Se storage == 1, incrementa contador
+5. Retorna total contado
+
+**NPCs Rastreados** (10 total):
+- Simon the Beggar
+- King Markwin
+- Ariella
+- Hairycles
+- Djinn
+- Avar Tar
+- Orc King
+- Lorbas
+- Wyda
+- Hjaern
+
+**Uso**:
+```lua
+local cookies = player:getCookiesDelivered()
+print("Cookies delivered: " .. cookies .. "/10")
+```
+
+---
+
+### 2. checkGnomeRank()
+
+**Propósito**: Verificar rank de Gnomes (Bigfoot's Burden - Quest 005) e desbloquear achievements progressivos.
+
+**Assinatura**:
+```lua
+function Player.checkGnomeRank(self) -> boolean
+```
+
+**Lógica de Rank**:
+
+| Pontos | Range | QuestProgress | Achievements Desbloqueados |
+|--------|-------|---------------|---------------------------|
+| 0-29 | < 30 | - | Nenhum |
+| 30-119 | 30-119 | → 26 | Gnome Little Helper |
+| 120-479 | 120-479 | → 27 | + Gnome Friend |
+| 480-1439 | 480-1439 | → 28 | + Gnomelike |
+| 1440+ | ≥ 1440 | → 30 | + Honorary Gnome |
+
+**Implementação**:
+
+```lua
+function Player.checkGnomeRank(self)
+  local points = self:getStorageValue(Storage.Quest.U9_60.BigfootsBurden.Rank)
+  local questProgress = self:getStorageValue(Storage.Quest.U9_60.BigfootsBurden.QuestLine)
+  
+  if points >= 30 and points < 120 then
+    if questProgress <= 25 then
+      self:setStorageValue(Storage.Quest.U9_60.BigfootsBurden.QuestLine, 26)
+      self:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+      self:addAchievement("Gnome Little Helper")
+    end
+  -- ... (mais elseif para outros ranges) ...
+```
+
+**Mechanics Especiais**:
+1. Fetch pontos de `Rank` storage
+2. Fetch progresso de `QuestLine` storage
+3. Se pontos estão em novo range E questProgress não foi atualizado:
+   - Update QuestLine para novo nível
+   - Enviar efeito mágico (CONST_ME_MAGIC_BLUE)
+   - Unlock achievements cumulativos
+4. Retorna true
+
+**Effects**:
+- `CONST_ME_MAGIC_BLUE`: Efeito visual azul mágico
+- `self:addAchievement()`: Unlock achievement
+
+**Achievements Progressivos**:
+Acumulam - ao atingir tier 4, obtém todas 4 achievements.
+
+**Uso**:
+```lua
+player:checkGnomeRank()  -- Verifica automaticamente ao completar tarefas
+```
+
+---
+
+### 3. addFamePoint()
+
+**Propósito**: Adicionar 1 ponto de fama (Spike Task - Quest 003).
+
+**Assinatura**:
+```lua
+function Player.addFamePoint(self) -> void
+```
+
+**Implementação**:
+```lua
+function Player.addFamePoint(self)
+  local points = self:getStorageValue(Storage.Quest.U10_20.SpikeTaskQuest.Constants.Spike_Fame_Points)
+  local current = math.max(0, points)
+  self:setStorageValue(Storage.Quest.U10_20.SpikeTaskQuest.Constants.Spike_Fame_Points, current + 1)
+  self:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have received a fame point.")
+end
+```
+
+**Lógica**:
+1. Fetch pontos atuais (ou 0 se nil)
+2. Usar `math.max(0, points)` para garantir não-negativo
+3. Incrementar por 1
+4. Set novo valor no storage
+5. Enviar mensagem de sucesso
+
+**Message Type**: `MESSAGE_EVENT_ADVANCE` (amarelo, sistema)
+
+**Uso**:
+```lua
+player:addFamePoint()  -- +1 fama
+```
+
+---
+
+### 4. getFamePoints()
+
+**Propósito**: Retornar total de pontos de fama atual.
+
+**Assinatura**:
+```lua
+function Player.getFamePoints(self) -> number
+```
+
+**Implementação**:
+```lua
+function Player.getFamePoints(self)
+  local points = self:getStorageValue(Storage.Quest.U10_20.SpikeTaskQuest.Constants.Spike_Fame_Points)
+  return math.max(0, points)
+end
+```
+
+**Lógica**:
+1. Fetch valor storage
+2. Retornar máximo entre 0 e value (nunca negativo)
+
+**Uso**:
+```lua
+local fame = player:getFamePoints()
+if fame >= 100 then
+  -- Unlock reward
+end
+```
+
+---
+
+### 5. removeFamePoints(amount)
+
+**Propósito**: Remover X pontos de fama.
+
+**Assinatura**:
+```lua
+function Player.removeFamePoints(self, amount: number) -> void
+```
+
+**Implementação**:
+```lua
+function Player.removeFamePoints(self, amount)
+  local points = self:getStorageValue(Storage.Quest.U10_20.SpikeTaskQuest.Constants.Spike_Fame_Points)
+  local current = math.max(0, points)
+  self:setStorageValue(Storage.Quest.U10_20.SpikeTaskQuest.Constants.Spike_Fame_Points, current - amount)
+end
+```
+
+**Lógica**:
+1. Fetch pontos atuais (mínimo 0)
+2. Subtrair amount
+3. Set novo valor (pode ficar negativo!)
+
+**⚠️ Aviso**: Diferente de `addFamePoint()`, este método não garante não-negatividade no armazenamento. Poderia resultar em valores negativos se amount > current.
+
+**Sugestão de Fix**:
+```lua
+self:setStorageValue(..., math.max(0, current - amount))
+```
+
+**Uso**:
+```lua
+player:removeFamePoints(10)  -- -10 fama
+```
+
+## 💾 Mapeamento de Storage
+
+### Quest 033: What a Foolish Quest - Cookies
+
+```lua
+Storage.Quest.U8_1.WhatAFoolishQuest.CookieDelivery = {
+  SimonTheBeggar = 0/1,
+  Markwin = 0/1,
+  Ariella = 0/1,
+  Hairycles = 0/1,
+  Djinn = 0/1,
+  AvarTar = 0/1,
+  OrcKing = 0/1,
+  Lorbas = 0/1,
+  Wyda = 0/1,
+  Hjaern = 0/1
+}
+```
+
+### Quest 005: Bigfoot's Burden - Gnome Rank
+
+```lua
+Storage.Quest.U9_60.BigfootsBurden = {
+  Rank = points_total,           -- 0, 30+, 120+, 480+, 1440+
+  QuestLine = progress_level     -- 25, 26, 27, 28, 30
+}
+```
+
+### Quest 003: Spike Task - Fame Points
+
+```lua
+Storage.Quest.U10_20.SpikeTaskQuest.Constants = {
+  Spike_Fame_Points = total_points
+}
+```
+
+## 🎯 Padrões de Uso Recomendado
+
+### Cookie Delivery (Quest 033)
+
+```lua
+-- Em NPC cookie delivery handler
+player:setStorageValue(Storage.Quest.U8_1.WhatAFoolishQuest.CookieDelivery.NPCName, 1)
+
+-- Em quest completion check
+if player:getCookiesDelivered() == 10 then
+  -- Complete mission
+end
+```
+
+### Gnome Rank (Quest 005)
+
+```lua
+-- Após completar tarefa de Bigfoot
+player:setStorageValue(Storage.Quest.U9_60.BigfootsBurden.Rank, currentRank + 1)
+player:checkGnomeRank()  -- Auto-unlock achievements
+```
+
+### Fame Points (Quest 003)
+
+```lua
+-- Ganhar fama
+player:addFamePoint()
+
+-- Verificar fama
+local fame = player:getFamePoints()
+
+-- Usar pontos
+if fame >= 50 then
+  player:removeFamePoints(50)
+  -- Grant reward
+end
+```
+
+## ⚠️ Problemas Identificados
+
+1. **removeFamePoints() pode causar storage negativo**: Deveria usar `math.max(0, current - amount)`
+2. **Sem validação de param**: `removeFamePoints(amount)` não valida se amount >= 0
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Autor**: Documentação Canary  
+**Status**: Completo

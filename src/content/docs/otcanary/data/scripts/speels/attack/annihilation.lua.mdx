@@ -1,0 +1,451 @@
+---
+title: "Spell - annihilation.lua"
+description: "Spell de aniquilação física para knights em alcance melee com dano escalável"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `annihilation.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 62 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Knight, Elite Knight |
+| **Level Requerido** | 110 |
+| **Mana Requerida** | 300 |
+| **Words** | exori gran ico |
+| **Alcance** | 1 (melee) |
+| **Área** | Single target |
+| **Cooldown** | 30s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Requer Weapon** | Sim |
+| **Requer Target** | Sim |
+| **Bloqueia Walls** | Sim |
+| **Fórmula** | Skill-based (skillTotal com multiplicador 1.28) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_ANNIHILATION |
+| **Bloqueio Armor** | Sim (BLOCKARMOR) |
+| **Usa Charges** | Sim |
+| **Linhas de Código** | 43 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de aniquilação física para knights nível 110 (end-game). Dano baseado em skill com multiplicador de defesa (blockarmor). Fórmula scalável com weapon attack. Alcance melee (1). Requer target + weapon. 300 mana custoso. Cooldown longo 30s. Premium only. Efeito HITAREA.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/annihilation.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(62)
+spell:name("Annihilation")
+spell:words("exori gran ico")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+spell:impactSound(SOUND_EFFECT_TYPE_SPELL_ANNIHILATION)
+spell:level(110)
+spell:mana(300)
+spell:isPremium(true)
+spell:range(1)
+spell:needTarget(true)
+spell:blockWalls(true)
+spell:needWeapon(true)
+spell:cooldown(30 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("knight;true", "elite knight;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Aniquilação Física End-Game**
+
+Este spell implementa um **sistema de dano físico escalável com weapon**:
+
+1. **Skill-Based Damage:**
+   - Usa CALLBACK_PARAM_SKILLVALUE
+   - Depende de skill + attack weapon
+   - skillTotal = skill × attack
+   - Multiplicador final × 1.28
+
+2. **Fórmula Complexa:**
+   - min = (skillTotal × 0.17 + 13 + levelTotal) × 1.28
+   - max = (skillTotal × 0.20 + 34 + levelTotal) × 1.28
+   - TODO: comentário sugere nova fórmula
+
+3. **End-Game Premium:**
+   - Level 110 (máximo)
+   - 300 mana (custoso)
+   - Premium only
+   - Cooldown longo 30s
+
+4. **Melee Physical:**
+   - Alcance 1 (melee close)
+   - Requer weapon
+   - Bloqueia parede
+   - BlockArmor (considera defesa)
+   - Usa charges weapon
+
+**Fórmula Visual:**
+```
+Knight lvl 110, skill 100, attack 15:
+  skillTotal = 100 × 15 = 1500
+  levelTotal = 110 / 5 = 22
+  min = (1500×0.17 + 13 + 22) × 1.28 = 347.2
+  max = (1500×0.20 + 34 + 22) × 1.28 = 421.8
+```
+
+**Diferencial:** Weapon-based skill magic + armor block!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `annihilation` oferece dano físico devastador:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE skill-based escalável
+- **Fórmula:** Depende skill × attack weapon
+- **Target:** Obrigatório
+- **Range:** 1 (melee)
+- **Mana:** 300
+
+### Arquitetura
+
+Combat com callback skill:
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ Effect: HITAREA
+├─ Distance: WEAPONTYPE
+├─ BlockArmor: sim
+├─ UseCharges: sim
+└─ Callback: onGetFormulaValues (SKILL)
+
+onGetFormulaValues(player, skill, attack, factor)
+└─ min/max baseado skill×attack
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITAREA)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_WEAPONTYPE)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+```
+
+**Propósito:** Combat de dano físico.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITAREA | Efeito hit área |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_WEAPONTYPE | Projétil weapon |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Bloqueia armor |
+| `COMBAT_PARAM_USECHARGES` | 1 | Usa charges arma |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local skillTotal = skill * attack
+	local levelTotal = player:getLevel() / 5
+	return -(((skillTotal * 0.17) + 13) + levelTotal) * 1.28, -(((skillTotal * 0.20) + 34) + levelTotal) * 1.28
+end
+```
+
+**Propósito:** Calcula dano físico skill-based.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `skill` | number | Weapon skill |
+| `attack` | number | Attack weapon |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+skillTotal = skill × attack
+levelTotal = level / 5
+
+min = (skillTotal × 0.17 + 13 + levelTotal) × 1.28
+max = (skillTotal × 0.20 + 34 + levelTotal) × 1.28
+```
+
+**Variáveis Locais:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `skillTotal` | number | skill × attack |
+| `levelTotal` | number | level / 5 |
+
+**Exemplos:**
+
+| Level | Skill | Attack | Min | Max |
+|---|---|---|---|---|
+| 110 | 100 | 15 | 347 | 422 |
+| 120 | 120 | 20 | 635 | 774 |
+| 150 | 150 | 25 | 996 | 1209 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Aniquilação ativada |
+| `false` | Target/weapon falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback skill |
+| `spell` | Spell | Arquivo | Instância do spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `skillTotal` | number | skill × attack |
+| `levelTotal` | number | level / 5 |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Skill-Based Damage
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local skillTotal = skill * attack
+	local levelTotal = player:getLevel() / 5
+	return -(((skillTotal * 0.17) + 13) + levelTotal) * 1.28, -(((skillTotal * 0.20) + 34) + levelTotal) * 1.28
+end
+```
+
+**Benefício:** Dano escala com weapon attack.
+
+### Padrão 2: Block Armor
+
+```lua
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+```
+
+**Benefício:** Defesa reduz dano.
+
+### Padrão 3: Use Charges
+
+```lua
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+```
+
+**Benefício:** Weapon charges reduzem.
+
+### Padrão 4: Cooldown Longo
+
+```lua
+spell:cooldown(30 * 1000)
+```
+
+**Benefício:** Spell poderoso = espera longa.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, skill, attack, factor)
+
+**Descrição:** Calcula dano aniquilação skill-based.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Weapon attack |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(knight, 100, 15, 0)
+// skillTotal = 100 × 15 = 1500
+// levelTotal = 110 / 5 = 22
+// min = (1500×0.17 + 13 + 22) × 1.28 = 347.2
+// max = (1500×0.20 + 34 + 22) × 1.28 = 421.8
+// Retorna: -347, -421
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura aniquilação em target.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight conjurador |
+| `var` | Variant | Target (obrigatório) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Aniquilação ativada |
+| `false` | Target/weapon inválido |
+
+**Requisitos:**
+- Level 110+
+- 300 mana
+- Weapon equipado
+- Target próximo (range 1)
+- Premium account
+- Cooldown 30s
+
+**Efeito:**
+- Efeito HITAREA
+- Projétil weapon type
+- Dano skill-based
+- Bloqueia armor
+- Usa charges weapon
+
+**Exemplo:**
+
+```lua
+-- Knight lvl 120, skill 120, attack 20
+spell.onCastSpell(knight, targetVariant)
+// Validações:
+//   ✓ Level 120 >= 110
+//   ✓ Mana 300 disponível
+//   ✓ Weapon equipado
+//   ✓ Target próximo
+//   ✓ Premium account
+// Combat executa
+// skillTotal = 120 × 20 = 2400
+// Dano calculado
+// Armor bloqueia parcial
+// Weapon charges reduzem
+// Resultado: Devastação física!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Boss Melee
+
+```lua
+-- Knight vs boss single target
+// Aniquilação = dano máximo
+// Weapon skill escalável
+// Precisa skill alta
+```
+
+### Caso 2: PvP Knights
+
+```lua
+-- Duelo premium knights
+// 30s cooldown = estratégico
+// 300 mana = timing
+// Skill matters!
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callback:** CALLBACK_PARAM_SKILLVALUE
+- **Effects:** CONST_ME_HITAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Dano aniquilação física |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | Skill-based com multiplicador 1.28 |
+| **Range** | 1 (melee) |
+| **Mana** | 300 |
+| **Level** | 110 (end-game) |
+| **Cooldown** | 30s (longo) |
+| **Premium** | Sim |
+| **Vocações** | Knight, Elite Knight |
+| **Padrão** | Skill-based + blockarmor + usecharges |

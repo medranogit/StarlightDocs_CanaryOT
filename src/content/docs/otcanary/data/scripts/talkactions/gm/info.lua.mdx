@@ -1,0 +1,222 @@
+---
+title: Info
+description: Comando GM para consultar informações detalhadas de jogadores online com habilidades, IP, e detecção de multiclient
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `info.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Consultar informações detalhadas do jogador |
+| **Comando** | `/info <playername>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Nome do jogador |
+| **Separador** | Espaço |
+| **Saída** | Popup FYI com informações |
+| **Detecção** | Multiclient (mesma IP) |
+| **Detalhes Inclusos** | 7 skills, estatísticas, acesso GPU |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/info.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando robusto que busca jogador e constrói relatório detalhado. Obtém IP via `getIp()`, converte para string com `Game.convertIpToString()`, extrai 7 skills (SKILL_AXE, CLUB, DISTANCE, FIST, SHIELD, SWORD) e nível mágico, formata posição com `string.format()` de 5 dígitos coordenadas/andar. Detecta multiclient iterando todos os jogadores com mesma IP (excluindo o próprio). Envia alertas em MESSAGE_EVENT_ADVANCE se encontrar múltiplas contas na mesma IP.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `info.lua` implementa um comando TalkAction (`/info`) que permite gamemasters consultar informações completas de jogadores online. O sistema busca o jogador pelo nome, valida existência, extrai dados pessoais (nome, IP, posição, nível de acesso), consulta 7 habilidades distintas (Axe, Club, Distance, Fist, Shield, Sword, Magic), formata informações estruturadas em popup FYI, e detecta multiclient iterando todos jogadores com mesma IP reportando contas suspeitas.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instanciação do TalkAction
+local info = TalkAction("/info")
+
+-- 2. Função Principal (onSay)
+function info.onSay(player, words, param)
+    -- Buscar jogador pelo nome
+    local target = Player(param)
+    
+    -- Validação de jogador não encontrado
+    if not target then
+        player:sendCancelMessage("Player not found.")
+        return true
+    end
+    
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Validação de parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Obter IP da criatura
+    local targetIp = target:getIp()
+    
+    -- Construir mensagem de informações
+    local text = "Player Info: \n\n"
+    
+    -- Seção 1: Informações Pessoais
+    text = text .. "Name: " .. target:getName() .. "\n"
+    text = text .. "Access: " .. (target:getGroup():getAccess() and "1" or "0") .. "\n"
+    text = text .. "Speed: " .. target:getSpeed() .. "\n"
+    
+    -- Seção 2: Posição (formatada com 5 dígitos X/Y, 3 dígitos Z)
+    text = text .. "Position: " .. string.format("(%0.5d / %0.5d / %0.3d)", 
+                    target:getPosition().x, target:getPosition().y, 
+                    target:getPosition().z) .. "\n"
+    
+    -- Seção 3: IP
+    text = text .. "IP: " .. Game.convertIpToString(targetIp) .. "\n\n"
+    
+    -- Seção 4: Habilidades
+    text = text .. "Skills: \n\n"
+    text = text .. "* Level: " .. target:getLevel() .. "\n"
+    text = text .. "* Skill Axe: " .. target:getSkillLevel(SKILL_AXE) .. "\n"
+    text = text .. "* Skill Club: " .. target:getSkillLevel(SKILL_CLUB) .. "\n"
+    text = text .. "* Skill Distance: " .. target:getSkillLevel(SKILL_DISTANCE) .. "\n"
+    text = text .. "* Skill Fist: " .. target:getSkillLevel(SKILL_FIST) .. "\n"
+    text = text .. "* Skill Magic: " .. target:getMagicLevel() .. "\n"
+    text = text .. "* Skill Shield: " .. target:getSkillLevel(SKILL_SHIELD) .. "\n"
+    text = text .. "* Skill Sword: " .. target:getSkillLevel(SKILL_SWORD) .. "\n"
+    
+    -- Exibir popup com informações
+    player:popupFYI(text)
+    
+    -- Detecção de Multiclient
+    local players = {}
+    for _, targetPlayer in ipairs(Game.getPlayers()) do
+        -- Verificar se mesmo IP e não o mesmo jogador
+        if targetPlayer:getIp() == targetIp and targetPlayer ~= target then
+            table.insert(players, targetPlayer:getName() .. " [" .. targetPlayer:getLevel() .. "]")
+        end
+    end
+    
+    -- Alertar sobre multiclient
+    if #players > 0 then
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+                               "Other players on same IP: " .. table.concat(players, ", ") .. ".")
+    end
+    
+    return true
+end
+
+-- 3. Configuração de Registro
+info:separator(" ")
+info:groupType("gamemaster")
+info:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **info.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/info` é utilizado. Consulta e exibe informações detalhadas de jogador.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavras do comando (`/info`)
+- `param` (string): **[OBRIGATÓRIO]** Nome do jogador a consultar
+
+**Fluxo de Execução:**
+
+1. **Busca de Jogador:**
+   - `target = Player(param)` - Busca por nome
+   - Se não encontrado: retorna "Player not found."
+
+2. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+3. **Validação de Parâmetro:**
+   - Se param vazio: retorna "Command param required."
+
+4. **Construção de Informações Pessoais:**
+   - Nome: `target:getName()`
+   - Acesso: `target:getGroup():getAccess()` (1 se admin, 0 se jogador)
+   - Speed: `target:getSpeed()` (velocidade atual)
+   - Posição: Formatada com printf-style
+     ```lua
+     string.format("(%0.5d / %0.5d / %0.3d)", x, y, z)
+     -- Exemplo: (00100 / 00200 / 007)
+     ```
+   - IP: Convertido de inteiro para string via `Game.convertIpToString()`
+
+5. **Extração de Habilidades:**
+   | Skill | Método | Valor |
+   |---|---|---|
+   | Level | `getLevel()` | Nível total (10-150) |
+   | Axe | `getSkillLevel(SKILL_AXE)` | 10-120 |
+   | Club | `getSkillLevel(SKILL_CLUB)` | 10-120 |
+   | Distance | `getSkillLevel(SKILL_DISTANCE)` | 10-120 |
+   | Fist | `getSkillLevel(SKILL_FIST)` | 10-120 |
+   | Shield | `getSkillLevel(SKILL_SHIELD)` | 10-120 |
+   | Sword | `getSkillLevel(SKILL_SWORD)` | 10-120 |
+   | Magic | `getMagicLevel()` | 0-120 |
+
+6. **Exibição de Popup:**
+   - `player:popupFYI(text)` - Abre interface com informações
+
+7. **Detecção de Multiclient:**
+   - Itera todos os jogadores: `Game.getPlayers()`
+   - Filtra: mesma IP e não o próprio jogador
+   - Agrupa em tabela: `{nome [level], ...}`
+   - Se encontrar: envia mensagem em MESSAGE_EVENT_ADVANCE
+
+**Exemplo de Saída:**
+```
+Player Info: 
+
+Name: Vinicius
+Access: 1
+Speed: 150
+Position: (00100 / 00200 / 007)
+IP: 192.168.1.100
+
+Skills: 
+
+* Level: 50
+* Skill Axe: 75
+* Skill Club: 80
+* Skill Distance: 85
+* Skill Fist: 60
+* Skill Magic: 90
+* Skill Shield: 70
+* Skill Sword: 82
+
+---
+
+Other players on same IP: Player2 [35], Player3 [40].
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Player(name)` | Busca jogador online por nome |
+| `target:getIp()` | Obtém IP em formato numérico |
+| `Game.convertIpToString(ip)` | Converte IP numérico para formato XXX.XXX.XXX.XXX |
+| `target:getGroup():getAccess()` | Retorna booleano se tem nivel de acesso (admin) |
+| `string.format()` | Formata string com printf-style |
+| `target:getPosition()` | Retorna table Position com x, y, z |
+| `target:getSkillLevel(SKILL_*)` | Obtém nível de skill específica |
+| `target:getMagicLevel()` | Obtém nível mágico |
+| `Game.getPlayers()` | Obtém array de todos jogadores online |
+| `player:popupFYI()` | Exibe popup de informação |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `info.lua` é ferramenta completa de auditoria e monitoramento GM. Implementação que integra busca de jogador, extração de múltiplos dados pessoais/habilidades, formatação estruturada de saída, e detecção automática de suspeitas de multiclient. Essencial para administração de servidor, identify abuse, monitoramento de economia, e garantir fair play. Design UX com popup FYI para informações organziadas e alerta em chat para multiclient suspeito.

@@ -1,0 +1,298 @@
+---
+title: Find Fiend
+description: Spell de localização que encontra o Fiend (monstro forge) mais próximo e fornece direção, distância e dificuldade estimated
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `find_fiend.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Todas (Druid/Elder Druid, Knight/Elite Knight, Paladin/Royal Paladin, Sorcerer/Master Sorcerer, Monk/Exalted Monk) |
+| **Spell ID** | 248 |
+| **Mana Requerida** | 20 |
+| **Level Requerido** | 25 |
+| **Status Premium** | Não (acesso livre) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exiva moe res` |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Alvo** | Fiend mais próximo (ForgeMonster system) |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (suporte informativo) |
+| **Tipo de Mensagem** | MESSAGE_LOOK (informação)|
+| **Sistema Consulta** | ForgeMonster:pickClosestFiendish |
+| **Bestiário Requerido** | Sim (apenas se creature está no bestiário desbloqueado) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/find_fiend.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell utiliza sistema ForgeMonster que gerencia monstros especiais na arena de combate. O `ForgeMonster:pickClosestFiendish(creature)` retorna ID do fiend mais próximo. O spell calcula diferença de posição, determina direção via cálculo de tangente e ângulo, classifica distância (beside/close/far/veryfar), valida se criatura está no bestiário desbloqueado do player, e fornece informação de dificuldade estimada. A mensagem combina direção + nível relativo + dificuldade estimada + tempo restante até próxima mudança. Sistema é puramente informativo, não afeta gameplay.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `find_fiend.lua` implementa localizador informativo para todos os players (level 25+) que encontra o Fiend (monstro da forge) mais próximo e fornece inteligência tática sobre localização, direção, distância relativa e dificuldade estimada. É um dos spells mais complexos em termos de cálculo matemático para determinar direção via trigonometria. O spell consulta ForgeMonster para ID mais próximo, cria Creature object, calcula diferença de posição, determina direção via atan tangente, classifica distância em 4 categorias, valida bestiary unlock do player, retorna mensagem formatada com direção+nível+dificuldade+tempo. A implementação demonstra padrão avançado de cálculo geométrico e sistema de informação integrada.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Constantes de Nível Vertical
+local LEVEL_LOWER = 1
+local LEVEL_SAME = 2
+local LEVEL_HIGHER = 3
+
+-- 2. Constantes de Distância
+local DISTANCE_BESIDE = 1
+local DISTANCE_CLOSE = 2
+local DISTANCE_FAR = 3
+local DISTANCE_VERYFAR = 4
+
+-- 3. Mapa de Direções
+local directions = {
+    [DIRECTION_NORTH] = "north",
+    [DIRECTION_SOUTH] = "south",
+    ... (8 direções total)
+}
+
+-- 4. Mapa de Mensagens (aninhado por distância e nível)
+local messages = {
+    [DISTANCE_BESIDE] = {...},
+    [DISTANCE_CLOSE] = {...},
+    [DISTANCE_FAR] = "is far to the",
+    [DISTANCE_VERYFAR] = "is very far to the",
+}
+
+-- 5. Instância do Spell
+local spell = Spell("instant")
+
+-- 6. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 6.1 Lookup do Fiend Mais Próximo
+    -- 6.2 Validação de ID
+    -- 6.3 Criação de Creature Object
+    -- 6.4 Cálculo de Posição Relativa
+    -- 6.5 Cálculo de Direção via Trigonometria
+    -- 6.6 Classificação de Distância
+    -- 6.7 Classificação de Nível Vertical
+    -- 6.8 Construção de Mensagem
+    -- 6.9 Validação de Bestiário
+    -- 6.10 Adição de Informação de Dificuldade
+    -- 6.11 Adição de Tempo até Próxima Mudança
+    -- 6.12 Send Mensagem ao Player
+    -- 6.13 Efeito Visual
+    -- 6.14 Retorno de Status
+end
+
+-- 7. Configuração de Propriedades do Spell
+spell:name("Find Fiend")
+spell:words("exiva moe res")
+spell:group("support")
+spell:vocation(...todas vocações...)
+spell:id(248)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(25)
+spell:mana(20)
+spell:isAggressive(false)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `LEVEL_LOWER`, `LEVEL_SAME`, `LEVEL_HIGHER` | `number` | Constante | Indicadores de nível vertical relativo (1,2,3) |
+| `DISTANCE_BESIDE`, `DISTANCE_CLOSE`, `DISTANCE_FAR`, `DISTANCE_VERYFAR` | `number` | Constante | Indicadores de distância relativa (1,2,3,4) |
+| `directions` | `table` | Constante | Mapa de DIRECTION_* para strings "north", "east", etc |
+| `messages` | `table` | Constante | Mapa aninhado de mensagens por (distância, nível) |
+| `creature` | `Creature/Player` | Parâmetro | Player que executa o spell |
+| `variant` | `Variant` | Parâmetro | Dados variáveis (não utilizados) |
+| `targetId` | `number` | Local | ID do fiend mais próximo (retorno ForgeMonster) |
+| `target` | `Creature` | Local | Object do fiend encontrado |
+| `targetPosition` | `Position` | Local | Posição do fiend |
+| `creaturePosition` | `Position` | Local | Posição do player |
+| `positionDifference` | `table` | Local | Tabela com x, y, z differences |
+| `maxPositionDifference` | `number` | Local | max(|x|, |y|) - distância máxima |
+| `direction` | `number` | Local | DIRECTION_* calculado |
+| `positionTangent` | `number` | Local | Razão y/x para cálculo de ângulo |
+| `level` | `number` | Local | LEVEL_LOWER/SAME/HIGHER |
+| `distance` | `number` | Local | DISTANCE_BESIDE/CLOSE/FAR/VERYFAR |
+| `message` | `string` | Local | Mensagem formatada |
+| `monsterType` | `MonsterType` | Local | Tipo do monstro para validação bestiary |
+| `stringLevel` | `string` | Local | Dificuldade estimada: "Harmless", "Trivial", etc |
+| `bestiaryKillsAmount` | `number` | Local | Kills necessários para unlock no bestiary |
+| `timeLeft` | `number` | Local | Tempo em minutos até próxima mudança de fiend |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Lookup via ForgeMonster**
+```lua
+local targetId = ForgeMonster:pickClosestFiendish(creature)
+if not targetId then
+    creature:sendCancelMessage("No creatures around")
+    return false
+end
+local target = Creature(targetId)
+```
+Consulta sistema ForgeMonster para criatura mais próxima, valida resultado.
+
+### 2. **Padrão de Cálculo de Direção via Trigonometria**
+```lua
+local maxPositionDifference, direction = math.max(math.abs(positionDifference.x), math.abs(positionDifference.y))
+if maxPositionDifference >= 5 then
+    local positionTangent = positionDifference.x ~= 0 and positionDifference.y / positionDifference.x or 10
+    if math.abs(positionTangent) < 0.4142 then
+        direction = positionDifference.x > 0 and DIRECTION_WEST or DIRECTION_EAST
+```
+Calcula ângulo via razão tangente, usa thresholds (0.4142 ≈ tan(22.5°), 2.4142 ≈ tan(67.5°)) para determinar 8 direções.
+
+### 3. **Padrão de Classificação Binária Simples**
+```lua
+local level = positionDifference.z > 0 and LEVEL_HIGHER or positionDifference.z < 0 and LEVEL_LOWER or LEVEL_SAME
+local distance = maxPositionDifference < 5 and DISTANCE_BESIDE or maxPositionDifference < 101 and DISTANCE_CLOSE or ...
+```
+Classificações usando ternary operators aninhados para elegância.
+
+### 4. **Padrão de Validação Bestiário com Fallback**
+```lua
+local stringLevel = "Unknown"
+if monsterType and creature:isMonsterBestiaryUnlocked(monsterType:raceId()) then
+    local bestiaryKillsAmount = monsterType:BestiarytoKill()
+    if bestiaryKillsAmount >= 5 and bestiaryKillsAmount <= 25 then
+        stringLevel = "Harmless"
+```
+Se monsterType não desbloqueado no bestiário: "Unknown". Se desbloqueado: escalona dificuldade.
+
+### 5. **Padrão de Construção de Mensagem Condicional**
+```lua
+local message = messages[distance][level] or messages[distance]
+if distance ~= DISTANCE_BESIDE then
+    message = message .. " " .. directions[direction]
+end
+```
+Se beside: usa mensagem direto. Se distante: adiciona string de direção após.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Localiza fiend mais próximo via ForgeMonster e fornece informação tática sobre localização, distância, direção e dificuldade.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Player que executa o spell.
+- `variant` (Variant): Dados variáveis (não utilizados - é search system).
+
+**Fluxo de Execução:**
+
+1. **Lookup do Fiend Mais Próximo**:
+   - Chama `targetId = ForgeMonster:pickClosestFiendish(creature)`
+   - Retorna ID do fiend + próximo (null se nenhum)
+   - Se null:
+     - Envia `"No creatures around"`
+     - Aplica efeito visual erro `CONST_ME_POFF`
+     - Retorna `false`
+
+2. **Criação de Creature Object**:
+   - `target = Creature(targetId)`
+   - Valida se object é válido
+   - Se inválido: erro e retorna `false`
+
+3. **Cálculo de Diferença de Posição**:
+   - `targetPosition = target:getPosition()`
+   - `creaturePosition = creature:getPosition()`
+   - `positionDifference = {x: diff_x, y: diff_y, z: diff_z}`
+
+4. **Cálculo de Distância Máxima**:
+   - `maxPositionDifference = max(|diff_x|, |diff_y|)`
+   - Distância em quadrados (1 quad = 32 pixels genéricamente, mas aqui é abstrata)
+
+5. **Cálculo de Direção (se distante >= 5)**:
+   - Se `maxPositionDifference >= 5` (não é beside):
+     - Calcula tangente: `positionTangent = diff_y / diff_x` (com fallback 10 se diff_x == 0)
+     - Usa 3 thresholds de ângulo:
+       - `|tan| < 0.4142` (~22.5°): EAST/WEST
+       - `|tan| < 2.4142` (~67.5°): NE/SE/NW/SW
+       - Senão: NORTH/SOUTH
+
+6. **Classificação de Nível Vertical**:
+   - Se `z > 0`: LEVEL_HIGHER ("above")
+   - Se `z < 0`: LEVEL_LOWER ("below")
+   - Senão: LEVEL_SAME ("standing next")
+
+7. **Classificação de Distância**:
+   - Se `maxDiff < 5`: DISTANCE_BESIDE ("next to you")
+   - Se `< 101`: DISTANCE_CLOSE ("close to the [direction]")
+   - Se `< 275`: DISTANCE_FAR ("far to the [direction]")
+   - Senão: DISTANCE_VERYFAR ("very far to the [direction]")
+
+8. **Construção de Mensagem Base**:
+   - Obtém `messages[distance][level]` se existe
+   - Se não (distance >= CLOSE): usa `messages[distance]` (string genérica)
+   - Se não beside: concatena `directions[direction]` depois
+
+9. **Validação de Bestiário para Dificuldade**:
+   - Obtém `monsterType = target:getType()`
+   - Se player NÃO tem bestiário desbloqueado:
+     - `stringLevel = "Unknown"`
+   - Se SIM:
+     - Obtém `bestiaryKillsAmount = monsterType:BestiarytoKill()` (kills necessários para unlock)
+     - Escalona dificuldade:
+       - 5-25 kills: "Harmless"
+       - 26-250: "Trivial"
+       - 251-500: "Easy"
+       - 501-1000: "Medium"
+       - 1001-2500: "Hard"
+       - 2501-5000: "Challenging"
+
+10. **Formatação de Mensagem Final**:
+    - `message = "The monster [direction message]. Be prepared to find a creature of difficulty level '[dificuldade]'."`
+
+11. **Adição de Informação de Tempo**:
+    - `timeLeft = (target:getTimeToChangeFiendish() - os.time()) / 60` (em minutos)
+    - Se `timeLeft < 15`:
+      - Adiciona: `ForgeMonster:getTimeLeftToChangeMonster(target)` (formatação de tempo)
+
+12. **Envio de Mensagem**:
+    - `creature:sendTextMessage(MESSAGE_LOOK, message)`
+    - Efeito visual: `creaturePosition:sendMagicEffect(CONST_ME_MAGIC_BLUE)`
+
+13. **Retorno**:
+    - Retorna `true` (localização bem-sucedida)
+
+**Valores de Retorno:**
+- `true`: Fiend encontrado, informação enviada, mana de 20 consumida
+- `false`: Nenhum fiend encontrado ou erro de validação
+
+**Lógica Detalhada:**
+
+O spell implementa sistema informativo complexo para forgeMonster (arena de combate especial em Canary). A trigonometria para direção usa arctangent aproximada via thresholds para evitar operação custosa de cálculo real.
+
+Os valores 0.4142 ≈ tan(22.5°) e 2.4142 ≈ tan(67.5°) são pontos de decisão para determinar quais das 8 direções fiend está. O ternary operator permite calculo compacto sem if/else verbose.
+
+A validação de bestiário é sofisticada - se player desbloqueou a raça, acessa kills necessários para unlock. Kills necessários aumentam com dificuldade (5 para Harmless, 5000 para Challenging). Se não desbloqueado: dificuldade é "Unknown" - previne metagame knowledge.
+
+O cálculo de timeLeft permite player saber se fiend vai mudar em breve (menos de 15 minutos) - útil para tática de timing.
+
+A mana de apenas 20 é mínima, permitindo uso frequente. Level 25 é acesso muito cedo (mesmo nível que muitos spells iniciais). Cooldown de 2 segundos permite spam se necessário mapear vários fiends.
+
+**Sound Effect:**
+- Nenhum som especial registrado (apenas padrão)
+
+**Mensagens ao Jogador:**
+- Sucesso: Mensagem detalhada via MESSAGE_LOOK com direção, nível, dificuldade estimada, tempo até mudança (se < 15m)
+- Falha: `"No creatures around"` (sem fiend disponível)
+
+## 📌 Resumo
+
+**Find Fiend** é um spell informativo gratuito para todos (level 25+) que localiza o Fiend (monstro da forge) mais próximo e fornece inteligência tática detalhada incluindo direção (8 pontos cardeais), distância relativa (beside/close/far/veryfar), nível vertical (above/same/below), e dificuldade estimada baseada em bestiário. O spell requer apenas 20 de mana e cooldown de 2 segundos, permitindo uso frequente. A implementação utiliza cálculo trigonométrico sofisticado (via tangente com thresholds) para determinar direção, validação de bestiário para escalonar dificuldade, e integração com ForgeMonster system. É ferramenta estratégica essencial para forge challenges, permitindo players localizar e avaliar threat de próximo fiend antes de engajar.
+
+A implementação segue padrão informativo com cálculo geométrico avançado, diferenciando-se por: (1) trigonometria para 8-direções, (2) classificação dinâmica de distância, (3) validação de bestiário para escalagem, (4) integração ForgeMonster, (5) mensagem formatada com múltiplas dimensões de informação.

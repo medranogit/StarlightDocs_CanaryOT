@@ -1,0 +1,359 @@
+---
+title: "Spell/Rune - animate_dead_rune.lua"
+description: "Runa que anima cadáveres em esqueletos, criando summons controláveis com limite de 2"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `animate_dead_rune.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 83 |
+| **ID do Item (runeId)** | 3203 |
+| **Level Requerido** | 27 |
+| **Magic Level Requerido** | 4 |
+| **Grupo** | support |
+| **Cooldown** | 2s |
+| **Cargas** | 1 |
+| **Linhas de Código** | 41 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa de invocação que anima cadáveres (corpses) em esqueletos (Skeleton), transformando-os em summons controláveis. Valida limite de summons (máximo 2) e proíbe conjuração para criaturas com Skull Black.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/animate_dead_rune.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(83)
+rune:runeId(3203)
+rune:level(27)
+rune:magicLevel(4)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Invocação de Esqueletos via Cadáveres**
+
+Esta runa implementa um **sistema de animação temporária de cadáveres**:
+
+1. **Detecção de Corpse:** Busca item corpse na posição
+2. **Validação:** Verifica se player pode ter mais summons (máx 2)
+3. **Criação:** Spawna Skeleton no ponto do corpse
+4. **Limpeza:** Remove corpse original
+
+**Fluxo Visual:**
+```
+Jogador aponta runa no cadáver
+├─ Valida corpse (movable + tipo correto)
+├─ Valida limite summons (< 2)
+├─ Valida skull (≠ BLACK)
+├─ Cria Skeleton
+├─ Remove corpse
+└─ Efeito MAGIC_BLUE
+```
+
+**Caso Especial:** Skull Black bloqueia invocação (PvP hardcore).
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `animate_dead_rune` oferece invocação controlada:
+
+- **Alvo:** Cadáveres (corpse) num raio
+- **Efeito:** Cria esqueleto permanente até morte
+- **Límite:** Máximo 2 summons por jogador
+- **Restrições:** Proíbe Skull Black, requer corpse movable
+
+### Arquitetura
+
+Fluxo com 4 validações → conversão corpse em summon:
+
+```
+onCastSpell(player, variant)
+├─ Pega posição (variant)
+├─ Busca tile + corpse (top-down)
+├─ Validação 1: corpse existe + é corpse + movable
+├─ Validação 2: < 2 summons + ≠ SKULL_BLACK
+├─ Cria summon Skeleton
+├─ Remove corpse
+├─ Efeito MAGIC_BLUE
+└─ Retorna true/false
+```
+
+### Fluxo Lógico Resumido
+
+| Etapa | Tipo | Resultado |
+|---|---|---|
+| **Pega Posição** | Validação | Position do corpse |
+| **Busca Corpse** | Validação | Item corpse ou nil |
+| **Valida Corpse** | Validação | É movable e tipo corpse |
+| **Valida Limit** | Validação | < 2 summons |
+| **Valida Skull** | Validação | ≠ SKULL_BLACK |
+| **Cria Skeleton** | Ação | Game.createMonster retorna summon |
+| **Remove Corpse** | Ação | corpse:remove() |
+| **Efeito** | Feedback | MAGIC_BLUE sucesso ou POFF falha |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(player, variant)
+	local position = variant:getPosition()
+	local tile = Tile(position)
+	if tile then
+		local corpse = tile:getTopDownItem()
+		if corpse then
+			local itemType = corpse:getType()
+			if itemType:isCorpse() and itemType:isMovable() then
+				if #player:getSummons() < 2 and player:getSkull() ~= SKULL_BLACK then
+					local summon = Game.createMonster("Skeleton", position, true, true)
+					if summon then
+						corpse:remove()
+						player:setSummon(summon)
+						position:sendMagicEffect(CONST_ME_MAGIC_BLUE)
+						return true
+					end
+				else
+					player:sendCancelMessage("You cannot control more creatures.")
+					player:getPosition():sendMagicEffect(CONST_ME_POFF)
+					return false
+				end
+			end
+		end
+	end
+
+	player:getPosition():sendMagicEffect(CONST_ME_POFF)
+	player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+	return false
+end
+```
+
+**Propósito:** Handler principal da runa ao conjuração.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Jogador conjurando a runa |
+| `variant` | Variant | Posição do alvo (position) |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Summon criado com sucesso |
+| `false` | Falha na invocação (corpse inválido, limite, skull) |
+
+**Fluxo Detalhado:**
+
+1. **Extrai Posição:** `variant:getPosition()`
+2. **Pega Tile:** `Tile(position)` - valida existência
+3. **Busca Corpse:** `tile:getTopDownItem()` - top-down (item mais visível)
+4. **Valida Tipo:**
+   - `itemType:isCorpse()` - é cadáver
+   - `itemType:isMovable()` - pode ser movido/removido
+5. **Valida Summons:** `#player:getSummons() < 2`
+   - Usa operador `#` (tamanho da array)
+   - Máximo 2 summons
+6. **Valida Skull:** `player:getSkull() ~= SKULL_BLACK`
+   - Skull Black bloqueia invocação
+7. **Cria Summon:**
+   - `Game.createMonster("Skeleton", position, true, true)`
+   - 3º param: `true` (summon)
+   - 4º param: `true` (hideHealth?)
+8. **Remove Corpse:** `corpse:remove()`
+9. **Associa ao Player:** `player:setSummon(summon)`
+10. **Efeito Sucesso:** `CONST_ME_MAGIC_BLUE` na posição
+11. **Fallback:** Se criar monster falha, retorna false
+
+**Tratamento de Erros:**
+
+- **Tile inválida:** Ignora, segue para POFF
+- **Corpse não encontrado:** POFF + mensagem NOTPOSSIBLE
+- **Limit atingido:** Mensagem "cannot control more creatures" + POFF
+- **Skull Black:** Mensagem limit (mesmo que limit real) + POFF
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `position` | Position | Função | Posição do corpse |
+| `tile` | Tile | Função | Tile na posição |
+| `corpse` | Item | Função | Item corpse encontrado |
+| `itemType` | ItemType | Função | Tipo do item (corpse) |
+| `summon` | Monster | Função | Skeleton criado |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Validação em Cascata
+
+```lua
+if tile then
+	if corpse then
+		if itemType:isCorpse() and itemType:isMovable() then
+			if #player:getSummons() < 2 and player:getSkull() ~= SKULL_BLACK then
+				-- Lógica
+			end
+		end
+	end
+end
+```
+
+**Benefício:** Early return não necessário, validações claras aninhadas.
+
+### Padrão 2: Try-Create com Validação
+
+```lua
+local summon = Game.createMonster("Skeleton", position, true, true)
+if summon then
+	corpse:remove()
+	player:setSummon(summon)
+	-- Sucesso
+end
+```
+
+**Benefício:** Verifica sucesso de criação antes de modificar estado.
+
+### Padrão 3: Efeitos Condicionais
+
+```lua
+-- Sucesso
+position:sendMagicEffect(CONST_ME_MAGIC_BLUE)
+
+-- Falha
+player:getPosition():sendMagicEffect(CONST_ME_POFF)
+```
+
+**Benefício:** Feedback visual diferente para sucesso/falha.
+
+### Padrão 4: Limite de Summons
+
+```lua
+if #player:getSummons() < 2 and player:getSkull() ~= SKULL_BLACK then
+	-- Permite
+end
+```
+
+**Benefício:** Array length check para conto dinâmico.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(player, variant)
+
+**Descrição:** Anima corpse em esqueleto (summon).
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição | Obrigatório |
+|---|---|---|---|
+| `player` | Player | Conjurador | Sim |
+| `variant` | Variant | Alvo (position) | Sim |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Skeleton criado, corpse removido |
+| `false` | Falha (corpse inválido, limite, skull black) |
+
+**Efeitos:**
+- **Sucesso:** Magic Blue em posição corpse, skeleton aparece
+- **Falha:** Poof (POFF) em posição jogador, mensagem
+
+**Exemplo:**
+
+```lua
+-- Jogador conjura runa apontando corpse
+rune.onCastSpell(player, variant_position)
+-- Valida corpse
+-- Cria Skeleton naquela position
+-- Remove corpse original
+// Resultado: Skeleton summon apareça, pronto para combate
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Invocação Bem-Sucedida
+
+```lua
+-- Jogador está no dungeon, vê corpse
+-- Aponta runa nos corpse
+-- Level/Magic Level suficiente, corpse movable
+// Sistema cria Skeleton naquela position
+// Corpse desaparece (removido)
+// Skeleton agora luta ao lado do jogador
+```
+
+### Caso 2: Limite de Summons Atingido
+
+```lua
+-- Jogador já tem 2 Skeletons
+-- Tenta invocar 3º corpse
+// Sistema bloqueia com mensagem
+// "You cannot control more creatures."
+```
+
+### Caso 3: Skull Black
+
+```lua
+-- Jogador com Skull Black (PvP hardcore)
+// Sistema bloqueia invocação
+// Mesmo que tenha corpse e < 2 summons
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Spell API:** Engine Canary Spell/Rune
+- **Monster Types:** "Skeleton" (criado via Game.createMonster)
+- **Player Summons:** player:getSummons(), player:setSummon()
+- **Skull System:** SKULL_BLACK (PvP indicator)
+- **Item Types:** isCorpse(), isMovable()
+- **Magic Effects:** CONST_ME_MAGIC_BLUE, CONST_ME_POFF
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função Principal** | Anima corpse em skeleton |
+| **Limite Summons** | 2 por jogador |
+| **Restrição Skull** | Bloqueia SKULL_BLACK |
+| **Efeito Sucesso** | MAGIC_BLUE + skeleton |
+| **Efeito Falha** | POFF + mensagem |
+| **Validações** | Corpse + limit + skull + movable |
+| **Padrão** | Cascata + try-create |

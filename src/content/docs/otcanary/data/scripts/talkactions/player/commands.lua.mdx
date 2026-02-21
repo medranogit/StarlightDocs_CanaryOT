@@ -1,0 +1,168 @@
+---
+title: Commands
+description: "Comando PLAYER para listar todos os comandos disponíveis no servidor"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+# 🛠️ Documentação: commands.lua
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Arquivo** | `commands.lua` |
+| **Tipo** | TalkAction (Comando de Jogador) |
+| **Acesso** | normal (PLAYER) |
+| **Comando** | `!commands` |
+| **Descrição** | Lista todos os comandos disponíveis ao jogador baseado no seu grupo |
+| **Parâmetro** | Nenhum |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/player/commands.lua
+```
+
+## 💡 Utilidade
+
+Este comando fornece ao jogador uma lista filtrada de todos os comandos TalkAction disponíveis para seu nível de acesso. A lista é apresentada em um diálogo de texto organizadamente, mostrando o nome e a descrição de cada comando.
+
+## 📄 Visão Geral do Código Resumo Executivo
+
+O script `commands.lua` implementa um sistema de listagem dinâmica de comandos:
+
+- **Recuperação de Comandos**: Obtém todos os TalkActions registrados do jogo
+- **Filtragem por Acesso**: Filtra comandos baseado no nível de grupo do jogador
+- **Construção de Lista**: Monta uma lista personalizada com nomes e descrições
+- **Apresentação Visual**: Exibe a lista em um diálogo de texto interativo (ID 639)
+
+### Fluxo Lógico Resumido
+
+1. Recupera todos os TalkActions do servidor
+2. Obtém o ID do grupo do jogador
+3. Itera através dos comandos, verificando se o jogador tem acesso (groupType &lt;= playerGroupId)
+4. Constrói string com nomes e descrições dos comandos disponíveis
+5. Exibe a lista em diálogo de texto
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal: `commands.onSay()`
+
+```lua
+function commands.onSay(player, words, param)
+    local allTalkActions = Game.getTalkActions()
+    local playerGroupId = player:getGroup():getId()
+    local text = "Available commands:\n\n"
+
+    for _, talkaction in pairs(allTalkActions) do
+        if talkaction:getGroupType() ~= 0 then
+            if talkaction:getGroupType() <= playerGroupId then
+                text = text .. talkaction:getName()
+
+                description = talkaction:getDescription()
+
+                if description ~= "" then
+                    text = text .. " " .. talkaction:getDescription()
+                end
+
+                text = text .. "\n\n"
+            end
+        end
+    end
+
+    player:showTextDialog(639, text)
+    return true
+end
+```
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavra-chave do comando
+- `param` (string): Parâmetros vazios (sem uso)
+
+**Retorno:**
+- `true`: Comando executado com sucesso
+
+#### Lógica Detalhada
+
+1. **`Game.getTalkActions()`**: Recupera tabela com todos os TalkActions do servidor
+2. **`player:getGroup():getId()`**: Obtém o ID numérico do grupo do jogador
+3. **Loop de Filtragem**: 
+   - Ignorar comandos com groupType = 0 (sem restrição? ou sem registro)
+   - Incluir comando se `talkaction:getGroupType() <= playerGroupId`
+     - Exemplos: groupType=2 (GOD) só visto por GOD+ (playerGroupId >= 2)
+4. **Construção de String**:
+   - Adiciona nome do comando
+   - Se houver descrição, adiciona " " + descrição
+   - Adiciona "\n\n" para separação visual
+5. **Exibição**: `showTextDialog(639, text)` abre janela com ID 639 mostrando lista
+
+### Funções Globais Utilizadas
+
+| Função | Origem | Descrição |
+|--------|--------|-----------|
+| `Game.getTalkActions()` | Core do Jogo | Retorna tabela com todos os TalkActions registrados |
+| `player:getGroup()` | Object Player | Retorna object Group do jogador |
+| `:getId()` | Object Group | Retorna ID numérico do grupo |
+| `player:showTextDialog(dialogId, text)` | Object Player | Exibe diálogo de texto para o jogador |
+
+### Métodos da Classe TalkAction
+
+| Método | Retorno | Descrição |
+|--------|---------|-----------|
+| `:getGroupType()` | number | Retorna tipo de grupo (0=nenhum, 1=normal, 2=gamemaster, 3=god) |
+| `:getName()` | string | Retorna nome/palavra-chave do TalkAction |
+| `:getDescription()` | string | Retorna descrição registrada do comando |
+
+## 🤖 Informações da Documentação
+
+| Info | Detalhe |
+|------|---------|
+| **Versão Documentada** | Build Canary - Estrutura Completa |
+| **Tipo de Documento** | Documentação Técnica de TalkAction |
+| **Completude** | Análise Completa do Código-Fonte |
+| **Últimas Verificações** | Validação de Sintaxe Lua, Fluxo Lógico |
+
+---
+
+## 📋 Resumo de Implementação
+
+**Padrão de Registro:**
+
+```lua
+commands:setDescription("[Usage]: !commands to see each command with its description")
+commands:groupType("normal")
+commands:register()
+```
+
+**Uso Prático:**
+
+Quando um jogador digita `!commands`, o script:
+
+1. Recupera sua tabela de TalkActions
+2. Filtra apenas comandos que ele tem acesso
+3. Monta uma lista formatada com nomes + descrições
+4. Abre diálogo visual com a lista completa
+
+**Exemplo de Saída:**
+
+```
+Available commands:
+
+!aol Comprar Amuleto da Perda
+!bank Gerenciar banco
+!bless Comprar bênçãos
+!commands Ver todos os comandos
+
+[etc...]
+```
+
+---
+
+## 🔗 Relacionados
+
+- **Arquivo de Padrão**: `data/npclib/npc_system/custom_modules.lua.mdx`
+- **Sistema**: TalkActions (Comandos de Conversa)
+- **Acesso**: PLAYER (normal)
+- **Detalhe Arquitetura**: Ver `ARQUITETURA_PROJETO.mdx` para contexto completo

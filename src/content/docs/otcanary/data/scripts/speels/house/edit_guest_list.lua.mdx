@@ -1,0 +1,299 @@
+---
+title: "Spell - edit_guest_list.lua"
+description: "Spell de edição de lista de convidados para casas"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `edit_guest_list.lua` |
+| **Localização** | `data/scripts/spells/house/` |
+| **Tipo de Script** | Spell (Instant) |
+| **Tipo** | House Management (Guest List) |
+| **Alvo** | Current Tile/House |
+| **Mana Requerida** | Nenhuma |
+| **Words** | aleta sio |
+| **Spell ID** | Nenhum (house spell) |
+| **Cooldown** | Nenhum |
+| **Agressivo** | Não |
+| **Agressor Precisa Target ou Direção** | Não |
+| **Efeito Visual Erro** | CONST_ME_POFF |
+| **Som de Casting** | SOUND_EFFECT_TYPE_SPELL_INVITE_GUESTS |
+| **Linhas de Código** | 18 |
+| **Complexidade** | Simples |
+
+**Descrição:**
+Spell de edição de lista de convidados. Permite ao dono da casa editar lista de players convidados. Busca casa no tile do player. Validação: canEditAccessList(GUEST_LIST). Abre window de edição com sendHouseWindow. Constante GUEST_LIST para type. Words: "aleta sio". Som: SOUND_EFFECT_TYPE_SPELL_INVITE_GUESTS. Spell gerenciamento de casa convidados lista edição!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/house/edit_guest_list.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:name("House Guest List")
+spell:words("aleta sio")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_INVITE_GUESTS)
+spell:isAggressive(false)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Edição de Lista de Convidados - Gerenciamento de Casa**
+
+Este spell oferece interface para editar convidados da casa:
+
+1. **Busca de Casa Simples:**
+   - getTile():getHouse()
+   - Obtém casa do tile atual
+   - Sem necessidade de target!
+
+2. **Validação de Permissões:**
+   - canEditAccessList(GUEST_LIST, player)
+   - Apenas owner/co-owners podem editar
+   - Segurança house garantida!
+
+3. **Interface de Convidados:**
+   - sendHouseWindow(house, GUEST_LIST)
+   - Abre janela native client
+   - Edição intuitiva de convidados!
+
+4. **Feedback do Usuário:**
+   - Mensagem de erro se não pode editar
+   - Efeito visual CONST_ME_POFF
+   - Som especial SOUND_EFFECT_TYPE_SPELL_INVITE_GUESTS
+
+**Uso Típico:**
+```
+House Owner lvl any
+// Cast "aleta sio"
+// Dentro da casa ou no tile da casa
+// Sistema obtém casa do tile
+// Se válido: abre janela de edição
+// Se inválido: mensagem erro + efeito poff
+// Spell edição convidados casa!
+```
+
+**Diferencial:** Simples, direto, sem target necessário, gerenciamento convidados!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `edit_guest_list` oferece gerenciamento de convidados em casas através de interface nativa:
+
+- **Tipo:** House Management (Guest Access)
+- **Função Principal:** Editar lista de convidados
+- **Busca de Casa:** Tile do player (getTile)
+- **Validação:** canEditAccessList(GUEST_LIST, player)
+- **Interface:** sendHouseWindow(house, GUEST_LIST)
+- **Mensagem Erro:** RETURNVALUE_NOTPOSSIBLE
+- **Efeito Erro:** CONST_ME_POFF
+- **Requer Target:** Não
+
+### Arquitetura
+
+```
+local spell = Spell("instant")
+├─ onCastSpell(player, variant)
+│  ├─ getTile():getHouse()
+│  ├─ Validação: canEditAccessList(GUEST_LIST, player)
+│  └─ sendHouseWindow(house, GUEST_LIST) ou erro
+│
+└─ Configuração spell
+   ├─ name: "House Guest List"
+   ├─ words: "aleta sio"
+   ├─ isAggressive: false
+   └─ castSound: SOUND_EFFECT_TYPE_SPELL_INVITE_GUESTS
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell de edição de convidados.
+
+**Tipo:** Instant (sem cast time)
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(player, variant)
+	local house = player:getTile():getHouse()
+	if not house then
+		return false
+	end
+
+	if house:canEditAccessList(GUEST_LIST, player) then
+		player:setEditHouse(house, GUEST_LIST)
+		player:sendHouseWindow(house, GUEST_LIST)
+	else
+		player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		player:getPosition():sendMagicEffect(CONST_ME_POFF)
+	end
+	return true
+end
+```
+
+**Propósito:** Abre editor de convidados da casa.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Caster (house owner/co-owner) |
+| `variant` | Variant | Não utilizado |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Always (sucesso ou erro informado) |
+| `false` | Não está em casa |
+
+**Lógica Detalhada:**
+
+1. **Busca de Casa:**
+   - getTile() do player
+   - getHouse() do tile
+   - Se não existe: return false
+
+2. **Validação Permissões:**
+   - canEditAccessList(GUEST_LIST, player)
+   - Constante GUEST_LIST para tipo
+
+3. **Sucesso:**
+   - setEditHouse(house, GUEST_LIST)
+   - sendHouseWindow(house, GUEST_LIST)
+   - Abre interface nativa
+
+4. **Erro:**
+   - sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+   - sendMagicEffect(CONST_ME_POFF)
+   - Retorna true (spell executado)
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `spell` | Spell | Arquivo | Instância spell |
+
+### Variáveis Locais (onCastSpell)
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `house` | House | Casa obtida do tile do player |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Busca de Casa Simples
+
+```lua
+local house = player:getTile():getHouse()
+if not house then
+	return false
+end
+```
+
+**Benefício:** Early exit se não está em casa!
+
+### Padrão 2: Validação + Ação Condicional
+
+```lua
+if house:canEditAccessList(GUEST_LIST, player) then
+	-- Sucesso
+else
+	-- Erro com feedback
+end
+```
+
+**Benefício:** Clear branching entre acesso permitido/negado!
+
+### Padrão 3: Constante GUEST_LIST
+
+```lua
+house:canEditAccessList(GUEST_LIST, player)
+player:sendHouseWindow(house, GUEST_LIST)
+```
+
+**Benefício:** Especifica tipo de acesso (guestlist vs door vs subowner)!
+
+### Padrão 4: Feedback Completo
+
+```lua
+sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+getPosition():sendMagicEffect(CONST_ME_POFF)
+```
+
+**Benefício:** Mensagem + efeito visual = feedback claro!
+
+---
+
+## 🤖 Documentação das Funções
+
+### spell.onCastSpell(player, variant)
+
+**Descrição:** Abre editor de convidados da casa.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Caster (house owner/co-owner) |
+| `variant` | Variant | Não utilizado |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Janela editora aberta ou erro enviado |
+| `false` | Player não está em casa |
+
+**Requisitos:**
+- Estar dentro de uma casa
+- Ser owner ou co-owner da casa
+- Validação canEditAccessList(GUEST_LIST) positiva
+
+**Exemplo de Uso:**
+```lua
+-- Player em casa como owner
+-- Cast "aleta sio"
+-- Sistema obtém house do tile
+-- Se válido: abre sendHouseWindow(..., GUEST_LIST)
+-- Se inválido: sendCancelMessage + efeito erro
+-- Spell edição convidados casa!
+```
+
+---
+
+## 📌 Resumo
+
+**Edit Guest List** é um spell de gerenciamento de casa que permite editar lista de convidados. Com busca simples getTile():getHouse(), validação canEditAccessList(GUEST_LIST), interface nativa sendHouseWindow, feedback erro com CONST_ME_POFF, words "aleta sio", som SOUND_EFFECT_TYPE_SPELL_INVITE_GUESTS, isAggressive false, sem requerimento de target. Spell house convidados lista edição gerenciamento interface nativa!

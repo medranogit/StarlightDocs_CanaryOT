@@ -1,0 +1,241 @@
+---
+title: Chat Channels Scripts
+description: "Índice completo dos handlers de chat channels - 8 módulos com diferentes acessos e funcionalidades"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 📚 Chat Channels Scripts
+
+Biblioteca de **8 handlers de chat channels** que implementam diferentes canais de comunicação do servidor Canary, com variedade de access controls, moderação e type normalization.
+
+<Card title="Localização">
+  data/chatchannels/scripts/
+</Card>
+
+<Aside type="note">
+  Cada script implementa um canal específico com suas próprias regras de acesso, moderação e type conversion para TALKTYPE_CHANNEL_Y, TALKTYPE_CHANNEL_O, e TALKTYPE_CHANNEL_R1.
+</Aside>
+
+---
+
+## 📋 Todos os Handlers (8 total)
+
+### 1. World Chat - Channel 3
+
+[world_chat.lua](world_chat.lua)
+
+**Tipo**: Public Channel  
+**Acesso**: Open (level 1 blocked, except GMs)  
+**Comandos**: Nenhum  
+**Funções**: onSpeak (validação level + type conversion)
+
+```lua
+Bloqueado: Level 1 non-GMs
+Permitido: Level 2+ or GMs
+Orange: GMs apenas
+```
+
+---
+
+### 2. Tutor - Channel 2
+
+[tutor.lua](tutor.lua)
+
+**Tipo**: Private Staff Channel  
+**Acesso**: GROUP_TYPE_TUTOR+  
+**Comandos**: Nenhum  
+**Funções**: canJoin, onSpeak
+
+```lua
+Entrada: GROUP_TYPE_TUTOR or higher
+Orange: GROUP_TYPE_SENIORTUTOR or higher
+Red: GROUP_TYPE_GAMEMASTER+ or flag
+```
+
+---
+
+### 3. English Chat - Channel 4
+
+[english_chat.lua](english_chat.lua)
+
+**Tipo**: Semi-Restricted Channel  
+**Acesso**: Level 20+ OR Premium  
+**Comandos**: Nenhum  
+**Funções**: onSpeak (sem canJoin)
+
+```lua
+Bloqueado: Level < 20 AND non-Premium
+Permitido: Level 20+ OR Premium
+Orange: GROUP_TYPE_GAMEMASTER+ or flag
+```
+
+---
+
+### 4. Advertising - Channel 5
+
+[advertising.lua](advertising.lua)
+
+**Tipo**: Semi-Public Trading Channel  
+**Acesso**: !VOCATION_NONE (level 20+ or premium)  
+**Comandos**: Nenhum  
+**Funções**: canJoin, onSpeak
+
+```lua
+Entrada: Vocação != NONE AND (level 20 OR premium)
+Cooldown: 2 minutos entre offers
+Mute: 120000 ms
+```
+
+---
+
+### 5. Advertising Rookgaard - Channel 6
+
+[advertising-rook.lua](advertising-rook.lua)
+
+**Tipo**: Semi-Public Rookgaard Trading  
+**Acesso**: VOCATION_NONE (Rookgaard players)  
+**Comandos**: Nenhum  
+**Funções**: canJoin, onSpeak
+
+```lua
+Entrada: VOCATION_NONE OR GROUP_TYPE_SENIORTUTOR+
+Bloqueado: Level 1 check
+Cooldown: 2 minutos entre offers
+```
+
+---
+
+### 6. Help - Channel 7
+
+[help.lua](help.lua)
+
+**Tipo**: Moderated Support Channel  
+**Acesso**: Open (level 1 non-tutors bloqueado)  
+**Comandos**: !mute, !unmute (Tutor+)  
+**Funções**: onSpeak (no canJoin)
+
+```lua
+Bloqueado: Level 1 + non-Tutor
+Moderação: Tutor+ !mute/!unmute
+Mute: 1 hora (3600000 ms)
+Exhaustion: KV store tracking
+```
+
+---
+
+### 7. Gamemaster - Channel 8
+
+[gamemaster.lua](gamemaster.lua)
+
+**Tipo**: Private Admin Channel  
+**Acesso**: ACCOUNT_TYPE_GAMEMASTER+  
+**Comandos**: Nenhum  
+**Funções**: canJoin, onSpeak
+
+```lua
+Entrada: ACCOUNT_TYPE_GAMEMASTER or higher
+Orange: ACCOUNT_TYPE_GOD apenas
+Red: ACCOUNT_TYPE_GOD or flag
+```
+
+---
+
+### 8. Guild Leaders - Channel 11
+
+[guild_leaders.lua](guild_leaders.lua)
+
+**Tipo**: Private Guild Channel  
+**Acesso**: Guild level 3 OR Staff  
+**Comandos**: Nenhum  
+**Funções**: canJoin, onSpeak (custom format)
+
+```lua
+Entrada: Guild level 3 OR Staff access
+Format: PlayerName [Staff/GuildName]: message
+Staff: Orange, Non-Staff: Yellow
+```
+
+---
+
+## 📊 Matriz de Comparação
+
+| Channel | ID | Tipo | Access | Commands | Cooldown |
+|---------|----|----|--------|----------|----------|
+| world_chat | 3 | Public | Open | - | Não |
+| tutor | 2 | Private | TUTOR+ | - | Não |
+| english_chat | 4 | Semi | L20+Prem | - | Não |
+| advertising | 5 | Semi | !NONE L20 | - | 2 min |
+| advertising_rook | 6 | Semi | NONE | - | 2 min |
+| help | 7 | Moderated | Open | !mute/unmute | 1 hr |
+| gamemaster | 8 | Private | GM+ | - | Não |
+| guild_leaders | 11 | Private | GL3+Staff | - | Não |
+
+---
+
+## 🔐 Access Hierarchy
+
+```
+ACCOUNT_TYPE_GOD (99)
+    ← Gamemaster channel orange
+    
+ACCOUNT_TYPE_GAMEMASTER (3)
+    ← Gamemaster channel access
+    ← Can use orange in world/help
+    ← Can use red channel
+    
+GROUP_TYPE_GAMEMASTER
+    ← Tutor promote to orange
+    
+GROUP_TYPE_SENIORTUTOR (2)
+    ← Tutor orange access
+    ← Staff in guild_leaders
+    
+GROUP_TYPE_TUTOR (1)
+    ← Tutor channel access
+    ← Help moderator (!mute)
+    
+Players (0)
+    ← Level 20/Premium: english_chat
+    ← !VOCATION_NONE L20: advertising
+    ← VOCATION_NONE: advertising_rook
+    ← Open: world_chat (level 2+)
+    ← Open: help (level 2+)
+```
+
+---
+
+## 🎯 Funcionalidades Especiais
+
+### Moderação
+
+**help.lua**: !mute (1 hr) / !unmute commands via Tutor+
+
+### Cooldown
+
+- **advertising.lua**: 2 minutos entre offers
+- **advertising-rook.lua**: 2 minutos entre offers
+
+### Custom Message Format
+
+**guild_leaders.lua**: `PlayerName [Staff/GuildName]: message`
+
+### KV Store Persistence
+
+**help.lua**: "channel-help-exhaustion" tracking
+
+---
+
+## 🤖 Documentação Status
+
+<Card title="Chat Channels Índice">
+  **Total Scripts**: 8 documentados  
+  **Completude**: 100%  
+  **Padrão**: Custom Modules Astro Starlight  
+  **Canais Suportados**: IDs 2, 3, 4, 5, 6, 7, 8, 11  
+  **Funcionalidades**: Access control, Type conversion, Moderation, Custom format
+</Card>
+
+<Aside type="tip">
+  Cada script segue padrão consistente com documentação em 7 seções: Informações, Visão Geral, Validação, Fluxo Completo, Padrões, Checkpoint, and Documentação Status.
+</Aside>

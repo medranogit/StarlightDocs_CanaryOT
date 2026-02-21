@@ -1,0 +1,364 @@
+---
+title: "Global Event - encounters.lua"
+description: "Global event de tick para processar stages de encounters"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `encounters.lua` |
+| **Localização** | `data/scripts/globalevents/` |
+| **Tipo de Script** | GlobalEvent |
+| **Event Name** | `encounters.tick.onThink` |
+| **Função Registrada** | `onThink(interval, lastExecution)` |
+| **Linhas de Código** | 11 |
+| **Intervalo** | 1000ms (1 segundo) |
+| **Complexidade** | Trivial-Médium |
+| **Status** | Base implementation |
+
+**Descrição:**
+Global event que processa o tick de todos os encounters registrados no servidor. A cada segundo, itera pela registry de encounters e executa o método `stage.tick` para cada encounter que possui uma stage com tick implementado.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/globalevents/encounters.lua
+```
+
+**Pré-requisitos:**
+- GlobalEvent API (`GlobalEvent` função global)
+- Encounter.registry (table global)
+- Encounter object com métodos: getStage()
+- Stage object com método: tick(encounter, interval, lastExecution)
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Tick do Encounter (Encounter Tick)**
+
+A cada segundo, o server executa este event:
+
+1. **Trigger:** GlobalEvent fires a cada 1000ms
+2. **Iteração:** Loop por todos encounters em Encounter.registry
+3. **Validação:** Verifica se encounter tem stage com tick implementado
+4. **Processamento:** Chama stage.tick(encounter, interval, lastExecution)
+5. **Resultado:** Encounter state é atualizado
+
+**Exemplo: Boss Fight Countdown**
+```
+Jogadores entram em encounter com Boss
+  ├─ encounters.lua:onThink() executa
+  ├─ Verifica: stage.tick existe? 
+  ├─ Sim → stage.tick(boss_encounter, 1000, lastTime)
+  │  └─ Boss AI atualiza, debuffs tick, phase check
+  └─ Próximo tick em 1s
+
+Cada segundo isso repete (continuous state machine)
+```
+
+**Diferença de Outros Systems:**
+- Não é event-driven (fire and forget)
+- É **tick-based** (atualização contínua a cada intervalo)
+- Usa lastExecution para delta-time calculations
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `encounters.lua` implementa o sistema de tick contínuo para encounters. A cada segundo:
+
+- **Itera pela registry** de todos os encounters ativos
+- **Valida existência de stage e tick** para cada encounter
+- **Executa callback de tick** com contexto de tempo
+- **Permite state machine** de encounters (fases, AI, eventos)
+
+### Arquitetura
+
+O script usa um padrão de **centralized tick dispatcher**:
+
+```
+GlobalEvent (1s interval)
+  └─ onThink()
+     ├─ for _, encounter in Encounter.registry
+     │  ├─ getStage() → validate
+     │  └─ stage.tick() → process
+     └─ return true (continue)
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Processamento | Saída |
+|---------|---------------|-------|
+| `interval=1000, lastExecution=timestamp` | Iterar encounters | Executa stage.tick para cada |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (GlobalEvent)
+
+#### **onThink(interval, lastExecution)**
+
+```lua
+function encounterTick.onThink(interval, lastExecution)
+	for _, encounter in pairs(Encounter.registry) do
+		local stage = encounter:getStage()
+		if stage and stage.tick then
+			stage.tick(encounter, interval, lastExecution)
+		end
+	end
+	return true
+end
+```
+
+**Propósito:** Entry point do global event. Processa tick de todos os encounters.
+
+**Fluxo de Execução:**
+
+1. **Iteração:** Loop sobre `Encounter.registry` (table de todos os encounters ativos)
+2. **Validação:** Para cada encounter:
+   - Obtém stage via `encounter:getStage()`
+   - Verifica se stage existe E tem método `tick`
+3. **Processamento:** Se validado, chama `stage.tick(encounter, interval, lastExecution)`
+4. **Retorno:** Retorna `true` para continuar o global event
+
+**Parâmetros:**
+- `interval` - Intervalo entre ticks (1000ms)
+- `lastExecution` - Timestamp da última execução (para delta calculations)
+
+**Retorno:**
+- `true` - GlobalEvent continua ativo
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `encounterTick` | GlobalEvent | Global | GlobalEvent object criado |
+
+### Constantes/Valores Utilizados
+
+| Valor | Tipo | Descrição |
+|-------|------|-----------|
+| `1000` | number | Intervalo em milliseconds (1 segundo) |
+
+### Objetos Externos Referenciados
+
+| Objeto | Propriedade/Método | Descrição |
+|--------|-------------------|-----------|
+| `Encounter` | `registry` | Table de todos os encounters ativos |
+| `encounter` | `getStage()` | Retorna stage object atual |
+| `stage` | `tick()` | Função de processamento do stage |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Centralized Tick Dispatcher
+
+**Técnica:** GlobalEvent centralizado que dispara tick para múltiplas entidades.
+
+```lua
+for _, encounter in pairs(Encounter.registry) do
+	-- Dispatch tick para cada
+	stage.tick(encounter, interval, lastExecution)
+end
+```
+
+**Vantagem:** Simplifica sincronização. Uma fonte de verdade para timing. Reduz overhead.
+
+**Aplicação:** Qualquer sistema que necessite update contínuo (creatures, projectiles, effects).
+
+---
+
+### Padrão 2: Registry-Based Iteration
+
+**Técnica:** Usar table registry para manter coleção de entidades ativas.
+
+```lua
+for _, encounter in pairs(Encounter.registry) do
+	-- Processa cada entidade na registry
+end
+```
+
+**Vantagem:** Dinâmico. Adicionar/remover entidades não afeta loop. Escalável.
+
+**Aplicação:** Qualquer coleção de entidades (players, creatures, summons, encounters).
+
+---
+
+### Padrão 3: Nil-Safe Stage Tick
+
+**Técnica:** Validar existência antes de chamar método (pattern defensivo).
+
+```lua
+if stage and stage.tick then
+	stage.tick(encounter, interval, lastExecution)
+end
+```
+
+**Vantagem:** Evita nil reference errors. Permite encounters sem stage/tick.
+
+**Aplicação:** Qualquer sistem com step de inicialização ou cleanup variable.
+
+---
+
+### Padrão 4: Time Delta Tracking
+
+**Técnica:** Passar timestamp anterior para cálculo de delta time.
+
+```lua
+stage.tick(encounter, interval, lastExecution)
+-- Permite: deltaTime = currentTime - lastExecution
+```
+
+**Vantagem:** Permite stage:tick implementar próprio delta-time logic. Frame-independent.
+
+**Aplicação:** Qualquer sistema com timing variável (movimento, animações, cooldowns).
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Boss fight com 3 fases
+
+```
+Boss Encounter registrado em Encounter.registry
+  └─ setInterval(1000ms) GlobalEvent
+
+Tick 1:
+  ├─ onThink(1000, timestamp1)
+  ├─ encounter:getStage() → Stage 1 (Intro)
+  ├─ stage.tick(encounter, 1000, timestamp1)
+  │  └─ Boss spawns, animação começa
+  └─ return true
+
+Tick 2 (1s depois):
+  ├─ onThink(1000, timestamp2)
+  ├─ encounter:getStage() → Stage 1 (Intro)
+  ├─ stage.tick(encounter, 1000, timestamp2)
+  │  └─ Boss lifespan -1s, check: 50% health?
+  └─ return true
+
+... (muitos ticks depois)
+
+Tick N:
+  ├─ onThink(1000, timestampN)
+  ├─ encounter:getStage() → Stage 2 (Combat)
+  ├─ stage.tick(encounter, 1000, timestampN)
+  │  └─ Boss casta spell, spawn adds
+  └─ return true
+
+... (boss vencido)
+
+Tick M:
+  ├─ onThink(1000, timestampM)
+  ├─ encounter:getStage() → nil (encounter finalizado)
+  ├─ if stage and stage.tick → FALSE (stage is nil)
+  └─ Nada executado para este encounter
+```
+
+**Resultado:** Boss AI é atualizado a cada segundo contínuamente
+
+---
+
+### Cenário 2: Evento com múltiplos encounters simultâneos
+
+```
+Encounter A (Dragon) em registry
+Encounter B (Puzzle) em registry
+Encounter C (Miniboss) em registry
+
+onThink(1000, timestamp)
+  ├─ for _, encounter in pairs(Encounter.registry)
+  │  ├─ encounter A:
+  │  │  ├─ getStage() → Stage 2 (Combat)
+  │  │  └─ stage.tick() → Dragon AI update
+  │  ├─ encounter B:
+  │  │  ├─ getStage() → Stage 1 (Puzzle)
+  │  │  └─ stage.tick() → Puzzle timer -1s
+  │  └─ encounter C:
+  │     ├─ getStage() → Stage 3 (Defeat)
+  │     └─ stage.tick() → Despawn miniboss
+  └─ return true
+
+Próximo tick (1s depois):
+  └─ Repete para todas 3 encounters
+```
+
+**Resultado:** Múltiplos encounters processados em paralelo (contexto de um mesmo server tick)
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial-Médium |
+| **Estimativa de Aprendizado** | 15 minutos |
+| **Tópicos Principais** | Tick dispatcher, Registry iteration, Nil-safe callbacks, Time delta tracking |
+| **Padrões Documentados** | 4 padrões |
+| **Cenários Documentados** | 2 cenários (boss fight phases, multiple encounters) |
+| **Funções** | 1 (onThink - globalEvent entry) |
+| **GlobalEvents Registrados** | encounters.tick.onThink |
+| **Dependencies** | Encounter.registry, Stage.tick() system |
+
+### Curva de Aprendizado
+
+**Trivial:** Entender iteração em registry (~5 min)
+
+**Médium:** Compreender stage.tick lifecycle (~10 min)
+
+### Encounter State Machine
+
+Este callback é essencial para o encounter state machine:
+
+```
+Encounter Creation
+    ↓
+Encounter registered em Encounter.registry
+    ↓
+onThink fires (cada 1s)
+    ↓
+stage.tick() executar (process current stage)
+    ↓
+stage pode transicionar para próxima stage
+    ↓
+ou remover encounter quando completo
+    ↓
+Próximo tick não processa (stage == nil)
+```
+
+### Integração com Modules
+
+Este script trabalha com:
+- ✅ **Encounter system** - Sistema de boss fights
+- ✅ **Stage system** - State machine de fases
+- ✅ **Boss AI** - Inteligência artificial por stage
+- ✅ **Events/Puzzles** - Sistemas baseados em encounters
+
+### Melhorias Potenciais
+
+- [ ] Implementar profiling (log slow ticks)
+- [ ] Adicionar count de encounters ativos
+- [ ] Implementar priority queue para ticks críticos
+- [ ] Suportar dynamic interval (variable tick rate por stage)
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Centralized tick dispatcher pattern

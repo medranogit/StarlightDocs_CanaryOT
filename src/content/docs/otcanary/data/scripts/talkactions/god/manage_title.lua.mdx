@@ -1,0 +1,191 @@
+---
+title: Title Management
+description: Comando GOD para gerenciar títulos de jogadores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | manage_title.lua |
+| **Tipo de Sistema** | Title Management (GOD) |
+| **Funcionalidade Principal** | Adicionar/setar títulos |
+| **Comandos** | /addtitle, /settitle |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Sistema** | Player Titles (cosmética) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/manage_title.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /addtitle: 2 parâmetros (playerName, titleID), parse, busca player, trimSpace e tonumber ID, player:addTitle(id) se sucesso. /settitle: 2 parâmetros (playerName, titleID), busca player, setCurrentTitle(id). Ambos com feedback personalizado (executor + target).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo manage_title.lua implementa 2 comandos de title management. Dispõe de adder (player:addTitle), setter (player:setCurrentTitle), validações de parâmetros, feedback personalizado (executor + alvo). Ferramenta cosmética de title management.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **TalkAction /addtitle**
+
+```lua
+local addTitle = TalkAction("/addtitle")
+
+function addTitle.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Command param required.")
+		return true
+	end
+	
+	local split = param:split(",")
+	if not split[2] then
+		player:sendCancelMessage("Insufficient parameters. Usage: /addtitle playerName, badgeID")
+		return true
+	end
+	
+	-- Buscar jogador
+	local target = Player(split[1])
+	if not target then
+		player:sendCancelMessage("A player with that name is not online.")
+		return true
+	end
+	
+	-- Parse e adicionar
+	split[2] = split[2]:trimSpace()
+	local id = tonumber(split[2])
+	if target:addTitle(id) then
+		-- Feedback executor
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format('You added a title with ID "%i" to player "%s".', id, target:getName()))
+		-- Feedback alvo
+		target:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("%s added a title to you.", player:getName()))
+	end
+	
+	return true
+end
+
+addTitle:separator(" ")
+addTitle:groupType("god")
+addTitle:register()
+```
+
+**Comando:** `/addtitle TestPlayer, 5`
+
+**Fluxo:**
+1. Valida param não vazio
+2. Parse 2 parâmetros
+3. Busca player
+4. Converte ID para número
+5. Adiciona via addTitle(id)
+6. Feedback duplo (executor + alvo)
+
+---
+
+### **TalkAction /settitle**
+
+```lua
+local setTitle = TalkAction("/settitle")
+
+function setTitle.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Command param required.")
+		return true
+	end
+	
+	local split = param:split(",")
+	if not split[2] then
+		player:sendCancelMessage("Insufficient parameters. Usage: /settitle playerName, badgeID")
+		return true
+	end
+	
+	-- Buscar jogador
+	local target = Player(split[1])
+	if not target then
+		player:sendCancelMessage("A player with that name is not online.")
+		return true
+	end
+	
+	-- Parse e setar
+	split[2] = split[2]:trimSpace()
+	local id = tonumber(split[2])
+	target:setCurrentTitle(id)
+	return true
+end
+
+setTitle:separator(" ")
+setTitle:groupType("god")
+setTitle:register()
+```
+
+**Comando:** `/settitle TestPlayer, 5`
+
+**Fluxo:**
+1. Parse 2 parâmetros
+2. Busca player
+3. Seta current title via setCurrentTitle(id)
+4. Silencioso (sem feedback)
+
+---
+
+**Diferenças**
+
+| Comando | Função | Feedback |
+|---|---|---|
+| /addtitle | Adiciona nova title (collection) | Duplo (executor + alvo) |
+| /settitle | Define title atual ativa | Silencioso |
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /addtitle TestPlayer, 1
+
+Resultado:
+- Executor: 'You added a title with ID "1" to player "TestPlayer".'
+- TestPlayer: "AdminName added a title to you."
+- Título 1 adicionado à coleção do TestPlayer
+
+---
+
+GM: /settitle TestPlayer, 1
+
+Resultado:
+- Título 1 ativado/visível do TestPlayer
+- Silencioso
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `string:trimSpace()` | Remove espaços |
+| `tonumber(str)` | Converte número |
+| `Player(name)` | Busca player online |
+| `player:addTitle(id)` | Adiciona title |
+| `player:setCurrentTitle(id)` | Seta title atual |
+| `player:getName()` | Obtém nome |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+| `string.format(fmt, ...)` | Formata string |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo manage_title.lua é ferramenta simples de title management. Implementação com add/set, validações parâmetros, feedback personalizado, silent setter. Essencial para GMs gerenciar cosmética de títulos. Design minimalista focado em títulos cosmética.

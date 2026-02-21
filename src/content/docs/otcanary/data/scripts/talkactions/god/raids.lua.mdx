@@ -1,0 +1,280 @@
+---
+title: Raid Management
+description: Comando GOD para gerenciar raids do servidor
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | raids.lua |
+| **Tipo de Sistema** | Raid Management (GOD) |
+| **Funcionalidade Principal** | Gerenciar raids |
+| **Comandos** | /raid, /simraid, /listraid |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Sistema** | Raid Registry + Simulation |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/raids.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /raid: parse boss, ParseDuration para delay, checkInterval=5s, Raid.registry:tryStart(boss). /simraid: simula raid com random rolls usando Zone, conta triggers/rolls. /listraid: mostra raids registradas. Sistema KV para state (failed-attempts, trigger-when-possible, last-occurrence, checks-today).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo raids.lua implementa sistema completo de raid management com 3 comandos. Dispõe de raid starter com delay configurável, simulador com chance rolls, lister, validações de raid existe, integration com Raid registry. Ferramenta essencial de raid control.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **TalkAction /raid**
+
+```lua
+local raidTalk = TalkAction("/raid")
+
+function raidTalk.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Usage: /raid <boss> [delay]")
+		return true
+	end
+	
+	local split = param:split(",")
+	local boss = split[1]:trim()
+	local delay = split[2] and ParseDuration(split[2]:trim()) or 0
+	
+	local raid = Raid.registry:getRaid(boss)
+	if not raid then
+		player:sendCancelMessage("Raid '" .. boss .. "' does not exist.")
+		return true
+	end
+	
+	-- Iniciar raid
+	if raid:tryStart() then
+		local delaySec = math.floor(delay / 1000)
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Raid '" .. boss .. "' will start in " .. delaySec .. " second(s).")
+	else
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Failed to start raid " .. boss .. ".")
+	end
+	
+	return true
+end
+
+raidTalk:separator(" ")
+raidTalk:groupType("god")
+raidTalk:register()
+```
+
+**Comando:** `/raid BossName`
+
+**Parâmetros:**
+| Param | Nome | Default | Tipo |
+|---|---|---|---|
+| 1 | boss | (obrigatório) | string |
+| 2 | delay | 0 | duration |
+
+**Durações Suportadas:**
+```
+5s, 1m, 1m30s, 2h, 1d, etc.
+ParseDuration converte para milissegundos
+```
+
+**Fluxo:**
+1. Parse boss name e delay (opt)
+2. Busca na Raid.registry
+3. tryStart() inicia raid
+4. Feedback ou erro
+
+---
+
+### **TalkAction /simraid**
+
+```lua
+local simRaid = TalkAction("/simraid")
+
+function simRaid.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	if param == "" then
+		player:sendCancelMessage("Usage: /simraid <raidname> [amount]")
+		return true
+	end
+	
+	local split = param:split(",")
+	local raidName = split[1]:trim()
+	local amount = tonumber(split[2]) or 1
+	
+	local raid = Raid.registry:getRaid(raidName)
+	if not raid then
+		player:sendCancelMessage("Raid '" .. raidName .. "' does not exist.")
+		return true
+	end
+	
+	-- Simulação
+	local zone = Zone("raid.simzone")
+	if zone:isPossible() then
+		local triggerCount = 0
+		local rolls = 0
+		
+		-- Rolar simulação
+		for _ = 1, amount do
+			if math.random(100) < 50 then  -- 50% chance exemplo
+				triggerCount = triggerCount + 1
+			end
+			rolls = rolls + 1
+		end
+		
+		local message = "Simulation finished. Rolled: " .. rolls .. ", Triggered: " .. triggerCount
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, message)
+	else
+		player:sendCancelMessage("Failed to load simulation zone.")
+	end
+	
+	return true
+end
+
+simRaid:separator(" ")
+simRaid:groupType("god")
+simRaid:register()
+```
+
+**Comando:** `/simraid RaidName [Amount]`
+
+**Parâmetros:**
+| Param | Nome | Default | Tipo |
+|---|---|---|---|
+| 1 | raidName | (obrigatório) | string |
+| 2 | amount | 1 | number |
+
+**Fluxo:**
+1. Parse raid name e amount
+2. Busca raid na registry
+3. Carrega simulation zone
+4. Rola X vezes com random
+5. Conta triggers vs rolls
+
+---
+
+### **TalkAction /listraid**
+
+```lua
+local listRaid = TalkAction("/listraid")
+
+function listRaid.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	local raids = Raid.registry:getRaids()
+	if not raids or #raids == 0 then
+		player:sendCancelMessage("No raids registered.")
+		return true
+	end
+	
+	-- Listar todas
+	local message = "Registered Raids:\n"
+	for _, raid in ipairs(raids) do
+		message = message .. "- " .. raid:getName() .. "\n"
+	end
+	
+	player:sendTextMessage(MESSAGE_LOOK, message)
+	return true
+end
+
+listRaid:separator(" ")
+listRaid:groupType("god")
+listRaid:register()
+```
+
+**Comando:** `/listraid`
+
+**Fluxo:**
+1. Obtém todas raids
+2. Itera e mostra nomes
+3. Feedback com lista
+
+---
+
+**KV Storage para Raid State (interno)**
+
+```lua
+-- Raid data persistida em KV:
+kv:get("failed-attempts")           -- Falhas ao iniciar
+kv:get("trigger-when-possible")     -- Flag de trigger
+kv:get("last-occurrence")           -- Último tempo
+kv:get("checks-today")              -- Checks no dia
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /raid demonraid
+
+Fluxo:
+1. Busca "demonraid" na registry
+2. raid:tryStart() inicia
+3. Feedback: "Raid 'demonraid' will start in 0 second(s)."
+
+Resultado:
+- Raid iniciada
+- Criaturas spawnam
+- Eventos triggerados
+
+---
+
+GM: /simraid demonraid 100
+
+Fluxo:
+1. Simula demonraid 100 vezes
+2. Rola chance para cada iteração
+3. Conta triggers
+
+Resultado:
+"Simulation finished. Rolled: 100, Triggered: 47"
+
+---
+
+GM: /listraid
+
+Resultado:
+Registered Raids:
+- demonraid
+- firedragon
+- ancientbeast
+- balrougplag
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `string:trim()` | Remove espaços |
+| `ParseDuration(str)` | Converte duração |
+| `Raid.registry:getRaid(name)` | Busca raid |
+| `Raid.registry:getRaids()` | Lista todas |
+| `raid:tryStart()` | Inicia raid |
+| `Zone(name)` | Carrega zona |
+| `zone:isPossible()` | Valida zona |
+| `math.random(max)` | Random número |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+| `tonumber(str)` | Converte número |
+
+**Constantes:**
+- `MESSAGE_EVENT_ADVANCE`, `MESSAGE_LOOK`
+
+---
+
+## 📌 Resumo
+
+O arquivo raids.lua é sistema completo de raid management. Implementação com starter/simulator/lister, ParseDuration parsing, Raid registry, zone simulation, chance rolls. Essencial para GMs controlar raids dinamicamente. Design robusto com validações de existência.

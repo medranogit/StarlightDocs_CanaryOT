@@ -1,0 +1,572 @@
+---
+title: "ondroploot__base.lua"
+description: "Sistema base de loot drops com cálculo de factor, charm gut integration e suporte a player-specific loot multipliers"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Event callback que implementa **sistema base de geração de loot** quando um monstro morre. Calcula loot factor baseado em player (vocation, level, rewards), integra charm gut para multiplicadores extras, gera tabela de loot via `mType:generateLootRoll()`, adiciona ao corpse, e anexa mensagens de suffix informando boosts aplicados. Padrão **multi-layer** onde factor calculation é delegado a player object, charm checking isolado, e roll generation customizável.
+
+**Caminho Original**: `data/scripts/eventcallbacks/monster/ondroploot__base.lua`
+
+**Tipo**: EventCallback (monsterOnDropLoot trigger)
+
+**Dependências**:
+- EventCallback API (engine C++)
+- Monster/Player objects (userdata)
+- Corpse object (userdata)
+- MonsterType:generateLootRoll() API
+- Keys: `CHARM_GUT`, `ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX`
+- Logger utility
+
+<Aside>
+Este callback é **foundation** - todos os outros ondroploot_*.lua dependem dele (ou patterns similares). Implementa a lógica de factor calculation e charm integration que é reutilizada em boosted, gem atelier e hazard variants.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `ondroploot__base.lua` implementa **gerador de loot customizado** que intercepta `monsterOnDropLoot` quando monstro morre. Realiza 3 operações sequenciais: (1) calcula loot factor via `player:calculateLootFactor()` que retorna struct com `factor` e `msgSuffix`, (2) verifica se player possui charm gut ativo e monstro matches charm target, (3) gera loot roll com factor e gut flag, adiciona ao corpse, e anexa mensagens de suffix ao corpse. Implementa **deacoplamento** entre cálculo de factor (delegado ao player object) e geração de loot (delegado ao monsterType object).
+
+### Arquitetura de Componentes
+
+```
+Base Loot Drop System
+│
+├─ FACTOR CALCULATION (3 operações)
+│  ├── player:canReceiveLoot() → Validação básica
+│  ├── player:calculateLootFactor(monster) → Retorna {factor, msgSuffix}
+│  └── Default: factor=1.0, msgSuffix=""
+│
+├─ CHARM GUT INTEGRATION (2 operações)
+│  ├── player:getCharmMonsterType(CHARM_GUT) → Obtém charm target
+│  ├── Compara mTypeCharm:raceId() == mType:raceId() → É target?
+│  └── Set gut flag = true se match
+│
+├─ LOOT GENERATION (4 operações)
+│  ├── mType:generateLootRoll({factor, gut}, {}, player) → Gera array loot
+│  ├── corpse:addLoot(lootTable) → Adiciona items ao corpse
+│  ├── Loop lootTable: detecta items com gut flag
+│  └── Append msgSuffix com charm names
+│
+└─ MESSAGE ATTRIBUTION (2 operações)
+   ├── corpse:getAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX) → Obtém suffix existente
+   └── corpse:setAttribute(..., existingSuffix .. msgSuffix) → Concatena nova msg
+```
+
+### Fluxo de Loot Generation
+
+```
+Monster morre
+    │
+    ├─ Engine dispara EventCallback "MonsterOnDropLootBaseEvent"
+    │  └─ params: monster, corpse
+    │
+    ▼
+Step 1: Factor Calculation
+    │
+    ├─ Player(corpse:getCorpseOwner()) → Obtém player
+    ├─ Initialize: factor=1.0, msgSuffix=""
+    │
+    ├─ if player and player:canReceiveLoot()
+    │  └─ config = player:calculateLootFactor(monster)
+    │     ├─ config.factor (ex: 2.5 para double loot)
+    │     └─ config.msgSuffix (ex: "double loot" ou "promotion bonus")
+    │
+    ▼
+Step 2: Charm Gut Detection
+    │
+    ├─ mType = monster:getType()
+    ├─ mTypeCharm = player:getCharmMonsterType(CHARM_GUT)
+    │
+    ├─ if mTypeCharm and mTypeCharm:raceId() == mType:raceId()
+    │  └─ gut = true (charmGut ativo e target matches)
+    │
+    ▼
+Step 3: Loot Roll Generation
+    │
+    ├─ lootTable = mType:generateLootRoll(
+    │  │  { factor = factor, gut = gut },
+    │  │  {},
+    │  │  player
+    │  └─)
+    │  └─ Retorna array de items com chance rolls aplicadas
+    │
+    ├─ corpse:addLoot(lootTable) → Adiciona items corpse
+    │
+    ├─ Loop lootTable: detect gut items
+    │  └─ if item.gut then
+    │     └─ msgSuffix append ", gut charm"
+    │
+    ▼
+Step 4: Message Attribution
+    │
+    ├─ existingSuffix = corpse:getAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX) or ""
+    ├─ Final msgSuffix = existingSuffix .. (novo suffix)
+    └─ corpse:setAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX, finalSuffix)
+        │
+        └─ Client mostra mensagem ao jogador
+```
+
+---
+
+## Detalhes da Função Global
+
+### `callback.monsterOnDropLoot(monster, corpse)`
+
+**Tipo**: EventCallback hook
+
+**Descrição**: Função disparada quando um monstro morre e seu loot precisa ser gerado. Calcula loot factor baseado em player (considerando vocation, level, rewards), integra charm gut, gera roll de loot customizado, e anexa mensagens de feedback.
+
+**Parâmetros**:
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `monster` | userdata | Monstro que morreu |
+| `corpse` | userdata | Corpse container aonde loot será adicionado |
+
+**Retorna**: 
+- `nil` (implícito, função não retorna nada)
+
+**Algoritmo Detalhado**:
+
+```lua
+function callback.monsterOnDropLoot(monster, corpse)
+    -- 1. FACTOR CALCULATION
+    local player = Player(corpse:getCorpseOwner())
+    local factor = 1.0
+    local msgSuffix = ""
+    
+    if player and player:canReceiveLoot() then
+        -- Delega ao player para calcular factor (vocation, level, etc)
+        local config = player:calculateLootFactor(monster)
+        factor = config.factor      -- ex: 1.5, 2.0 etc
+        msgSuffix = config.msgSuffix  -- ex: "150% loot", "double loot"
+    end
+
+    -- 2. MONSTER TYPE VALIDATION
+    local mType = monster:getType()
+    if not mType then
+        -- Erro: monstro sem tipo definido (corruption check)
+        logger.warn("monsterOnDropLoot: monster '{}' has no type", monster:getName())
+        return
+    end
+
+    -- 3. CHARM GUT DETECTION
+    local mTypeCharm = player and player:getCharmMonsterType(CHARM_GUT)
+    local gut = mTypeCharm and mTypeCharm:raceId() == mType:raceId()
+    -- gut = true SOMENTE SE:
+    --   a) player có charm gut ativo
+    --   b) charm target race == monster race
+
+    -- 4. LOOT ROLL GENERATION
+    local lootTable = mType:generateLootRoll(
+        { factor = factor, gut = gut },  -- Flags para roll
+        {},                              -- Existing loot (empty)
+        player                           -- Player context
+    )
+    -- lootTable = [
+    --   {itemId=x, count=y, gut=false},
+    --   {itemId=z, count=w, gut=true},  -- Marcado por charm
+    --   ...
+    -- ]
+
+    -- 5. ADD LOOT TO CORPSE
+    corpse:addLoot(lootTable)
+
+    -- 6. GUT CHARM MESSAGE PROCESSING
+    local charmMessage = false
+    local existingSuffix = corpse:getAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX) or ""
+    
+    for _, item in pairs(lootTable) do
+        -- Detecta se algum item foi criado por gut charm
+        if item.gut and not charmMessage then
+            -- Adiciona "gut charm" ao suffix UMA VEZ
+            charmMessage = true
+            msgSuffix = msgSuffix .. (string.len(msgSuffix) > 0 and ", gut charm" or "gut charm")
+        end
+    end
+
+    -- 7. ATTRIBUTE MESSAGE TO CORPSE
+    corpse:setAttribute(
+        ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX,
+        existingSuffix .. msgSuffix
+    )
+end
+```
+
+**Características Principais**:
+
+| Característica | Valor | Notas |
+|---|---|---|
+| Factor Source | player:calculateLootFactor() | Deacoplado, player decide |
+| Charm Support | GUT (race-based) | Integrado no roll |
+| Message Format | Concatenated suffixes | Suporta múltiplos boosts |
+| Error Handling | Logger warn na absence | Log mas não crash |
+| Async | Síncrono | Executa imediatamente |
+
+---
+
+## Detalhes das Variáveis Locais
+
+### `player` (userdata | nil)
+
+**Tipo**: userdata (Player object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local player = Player(corpse:getCorpseOwner())`
+
+**Descrição**: Referência ao jogador que tem direito ao loot do corpse. Obtido via método `Player()` constructor que procura player by ID. Pode ser `nil` se corpse pertence a player offline.
+
+**Uso**:
+- `player:canReceiveLoot()` - Valida se pode receber
+- `player:calculateLootFactor(monster)` - Calcula factor
+- `player:getCharmMonsterType(CHARM_GUT)` - Obtém charm target
+- Passado para `generateLootRoll()` para context
+
+### `factor` (number)
+
+**Tipo**: number (float >= 1.0)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local factor = 1.0`
+
+**Descrição**: Multiplicador de loot que afeta quantidade de items gerados. Calculado por `player:calculateLootFactor()` baseado em:
+- Vocation do player (ex: warriors recebem mais armor loot)
+- Level (ex: bonus em level milestones)
+- Promotion rewards
+- Event bonuses
+- Valor padrão: `1.0` (sem multiplicação)
+
+**Valores Típicos**:
+```lua
+factor = 1.0   -- Normal
+factor = 1.5   -- 50% bonus
+factor = 2.0   -- Double loot
+factor = 2.5   -- 250% loot
+```
+
+### `msgSuffix` (string)
+
+**Tipo**: string
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local msgSuffix = ""`
+
+**Descrição**: Mensagem de feedback anexada ao corpse indicando quais boosts foram aplicados. Construída em cascata: factor message + charm message. Concatenada com suffix existentes no corpse.
+
+**Variações**:
+```lua
+msgSuffix = ""                      -- Sem boost
+msgSuffix = "double loot"           -- Factor bonus
+msgSuffix = "gut charm"             -- Charm active
+msgSuffix = "double loot, gut charm"  -- Ambos
+```
+
+**Construção**:
+```lua
+-- Inicia vazia ou com existingSuffix
+msgSuffix = msgSuffix .. (string.len(msgSuffix) > 0 and ", gut charm" or "gut charm")
+-- Adiciona `, ` se já tinha conteúdo, senão direto
+```
+
+### `mType` (MonsterType | nil)
+
+**Tipo**: userdata (MonsterType object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local mType = monster:getType()`
+
+**Descrição**: Definição de tipo do monstro (BD), contendo estatísticas, skills, loot table base, etc. Pode ser `nil` se monstro corrupted.
+
+**Uso**:
+- `mType:raceId()` - ID da race (comparado com charm target)
+- `mType:generateLootRoll()` - Gera loot roll
+
+### `mTypeCharm` (MonsterType | nil)
+
+**Tipo**: userdata (MonsterType object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local mTypeCharm = player and player:getCharmMonsterType(CHARM_GUT)`
+
+**Descrição**: Definição de tipo de monstro que é alvo do charm GUT ativo do player. Obtido via `player:getCharmMonsterType(CHARM_GUT)` - nil se sem charm ativo.
+
+**Uso**:
+```lua
+local gut = mTypeCharm and mTypeCharm:raceId() == mType:raceId()
+-- true SOMENTE se:
+--   a) mTypeCharm não é nil (charm ativo)
+--   b) race do charm matches race do monstro
+```
+
+### `gut` (boolean)
+
+**Tipo**: boolean
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local gut = mTypeCharm and mTypeCharm:raceId() == mType:raceId()`
+
+**Descrição**: Flag indicando se charm GUT está ativo e monstro é target. Passado para `generateLootRoll()` para aplicar bonus de charm.
+
+**Valores**:
+```lua
+gut = true   -- Charm ativo E monstro é target
+gut = false  -- Charm inativo OU monstro não é target
+```
+
+### `lootTable` (table)
+
+**Tipo**: `table<number, {itemId, count, gut, ...}>`
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local lootTable = mType:generateLootRoll({...}, {}, player)`
+
+**Descrição**: Array de items gerados pelo roll de loot. Cada entrada é table com itemId, count, e flags como `gut` (se criado por charm).
+
+**Estrutura**:
+```lua
+lootTable = {
+    {itemId = 3001, count = 1, gut = false},
+    {itemId = 3088, count = 5, gut = true},  -- Extra item from gut
+    {itemId = 2149, count = 10, gut = false}
+}
+```
+
+### `charmMessage` (boolean)
+
+**Tipo**: boolean
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local charmMessage = false`
+
+**Descrição**: Flag para adicionar "gut charm" ao suffix UMA VEZ mesmo que múltiplos items tiveram gut flag. Previne ", gut charm, gut charm, gut charm".
+
+### `existingSuffix` (string)
+
+**Tipo**: string
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local existingSuffix = corpse:getAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX) or ""`
+
+**Descrição**: Mensagem de suffix já anexada ao corpse por callbacks anteriores. Recuperada para concatenar junto com nova msgSuffix (permitindo múltiplos boosts aparecerem).
+
+---
+
+## Padrões & Implementação
+
+### 1. Padrão de Deacoplamento via Delegate
+
+Separar **cálculo** de **aplicação**:
+
+```lua
+-- ❌ ACOPLADO: Callback faz tudo
+if player:isVocation(KNIGHT) then
+    factor = 2.0
+elseif player:isVocation(SORCERER) then
+    factor = 1.5
+end
+
+-- ✅ DEACOPLADO: Player decide
+local config = player:calculateLootFactor(monster)
+factor = config.factor
+```
+
+**Vantagens**:
+- Player object centraliza lógica de factor
+- Múltiplos callbacks podem usar mesmo método
+- Fácil adicionar/remover boosts sem alterar callback
+
+**Aplicação**:
+```lua
+-- player.lua é responsible por toda factor logic
+function Player:calculateLootFactor(monster)
+    local factor = 1.0
+    local msgSuffix = ""
+    
+    -- Vocation-specific
+    -- Level-specific
+    -- Promotion-specific
+    -- Event-specific
+    
+    return {factor = factor, msgSuffix = msgSuffix}
+end
+
+-- ondroploot_base.lua apenas consume
+local config = player:calculateLootFactor(monster)
+```
+
+### 2. Padrão de Flag Propagation
+
+Passar flags através de layers:
+
+```
+Player choice (charm GUT) 
+    │
+    └─→ callback detects gut=true
+        │
+        └─→ passa {factor, gut} para generateLootRoll()
+            │
+            └─→ MonsterType marks items com gut flag
+                │
+                └─→ callback detects item.gut em loop
+                    │
+                    └─→ append "gut charm" ao message
+```
+
+**Implementação**:
+```lua
+local gut = mTypeCharm and mTypeCharm:raceId() == mType:raceId()
+local lootTable = mType:generateLootRoll({factor = factor, gut = gut}, {}, player)
+
+-- Depois verifica resultado
+for _, item in pairs(lootTable) do
+    if item.gut then
+        charmMessage = true
+        -- append charm name
+    end
+end
+```
+
+### 3. Padrão de Message Concatenation
+
+Múltiplos boosts em uma única mensagem:
+
+```lua
+local msgSuffix = ""  -- Inicia vazio
+
+-- Append factor message
+msgSuffix = "double loot"
+
+-- Append charm message
+if charmMessage then
+    msgSuffix = msgSuffix .. (string.len(msgSuffix) > 0 and ", gut charm" or "gut charm")
+end
+-- Result: "double loot, gut charm"
+
+-- Append ao corpse
+local existingSuffix = corpse:getAttribute(...) or ""
+corpse:setAttribute(..., existingSuffix .. msgSuffix)
+```
+
+---
+
+## Fluxo de Operação
+
+### Timeline Completo
+
+```
+[Monster Death]
+    │
+    ├─ 1. Monster's health reaches 0
+    ├─ 2. Engine dispara EventCallback "MonsterOnDropLootBaseEvent"
+    │
+    ├─ ▶️ ondroploot_base.lua ativado
+    │    │
+    │    ├─ Step 1: Get player e calculate factor
+    │    │  ├─ player = Player(corpse:getCorpseOwner())
+    │    │  ├─ if player:canReceiveLoot()
+    │    │  │  └─ config = player:calculateLootFactor(monster)
+    │    │  │     └─ factor = 2.0, msgSuffix = "double loot"
+    │    │
+    │    ├─ Step 2: Validate monster type
+    │    │  └─ mType = monster:getType()
+    │    │     └─ if not mType: logger.warn + return
+    │    │
+    │    ├─ Step 3: Check charm GUT
+    │    │  ├─ mTypeCharm = player:getCharmMonsterType(CHARM_GUT)
+    │    │  └─ gut = (mTypeCharm and mTypeCharm:raceId() == mType:raceId()) → true/false
+    │    │
+    │    ├─ Step 4: Generate loot roll
+    │    │  ├─ lootTable = mType:generateLootRoll(
+    │    │  │  {factor = 2.0, gut = true},
+    │    │  │  {},
+    │    │  │  player
+    │    │  └─)
+    │    │  └─ lootTable = [{itemId=3001, count=2, gut=false}, ...]
+    │    │
+    │    ├─ Step 5: Add loot to corpse
+    │    │  └─ corpse:addLoot(lootTable)
+    │    │
+    │    ├─ Step 6: Process charm messages
+    │    │  ├─ for _, item in pairs(lootTable)
+    │    │  │  └─ if item.gut and not charmMessage
+    │    │  │     └─ msgSuffix .. ", gut charm"
+    │    │
+    │    └─ Step 7: Attach message to corpse
+    │       ├─ existingSuffix = corpse:getAttribute(LOOTMESSAGE_SUFFIX) or ""
+    │       └─ corpse:setAttribute(LOOTMESSAGE_SUFFIX, existingSuffix .. msgSuffix)
+    │
+    ├─ 3. Other callbacks continue
+    ├─ 4. Corpse appears in world
+    ├─ 5. Player receives: "You received loot. [double loot, gut charm]"
+    │
+    └─ [Loot Complete]
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+**Versão da Documentação**: 1.0
+
+**Última Atualização**: 2026-02-19
+
+**Tipo de Complexidade**: 🟡 **Média**
+- Arquivo com 38 linhas de código
+- 1 função callback
+- 6 variáveis locais
+- Lógica: factor calculation + charm detection + loot generation + message building
+- Padrões: deacoplamento, flag propagation, message concatenation
+- Tempo estimado de aprendizado: 20-25 minutos
+
+**Cobertura de Tópicos**:
+- ✅ Variáveis locais (7 variáveis)
+- ✅ Função global
+- ✅ Padrões de implementação
+- ✅ Fluxo de operação
+- ✅ Casos de uso
+
+**Referências Relacionadas**:
+- [ARQUITETURA_PROJETO.mdx](../../../ARQUITETURA_PROJETO.mdx) - Event callbacks overview
+- ondroploot_boosted.lua - Variant com boosted creature
+- ondroploot_gem_atelier.lua - Variant com gem atelier
+- ondroploot_hazard.lua - Variant com hazard system
+- Player:calculateLootFactor() - Implementação de factor
+- MonsterType:generateLootRoll() - Implementação de loot roll
+
+**Status de Implementação**: ✅ **Completamente Implementado**
+- Factor calculation delegado ao player
+- Charm gut integration operacional
+- Message concatenation funcional
+- Error handling (logger) em place
+
+**Padrões Principais Implementados**:
+1. ✅ Deacoplamento de cálculo vs aplicação
+2. ✅ Flag propagation através de layers
+3. ✅ Message concatenation
+4. ✅ Error validation (mType nil check)
+5. ✅ Charm detection com race comparison
+
+**Notas para Futuros Desenvolvedores**:
+1. `calculateLootFactor()` é delegado - mudanças ali afetam here
+2. Always check `player:canReceiveLoot()` antes de aplicar factor
+3. Charm gut é integrado no roll - loop depois verifica item.gut flag
+4. Message suffix concatena com `, ` se não vazio
+5. Logger warning se mType não existe (data corruption check)
+6. Este callback é BASE - boosted/gem/hazard seguem padrão similar
+

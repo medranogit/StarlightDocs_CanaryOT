@@ -1,0 +1,183 @@
+---
+title: Set Light
+description: Comando GM para ajustar iluminação (cor e intensidade) do jogador
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `set_light.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Ajustar cor e intensidade de luz |
+| **Comando** | `/setlight <color>, <intensity>` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | color (0-1500) |
+| **Parâmetro Opcional** | intensity (1-32, padrão 4) |
+| **Separador** | Vírgula e espaço |
+| **Codificação de Cores** | 0-1500 (IDs mapeados) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/set_light.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando de iluminação que valida dois parâmetros: cor (0-1500) e intensidade (1-32). Usa `param:split(",")` para separar argumentos. Intensidade tem padrão de 4 se não fornecida. Aplica via `player:setLight(color, intensity)`. Arquivo contém comentários com exemplos de cores (verde 30, azul 1065, vermelho 1020, roxo 375, etc). Validação estrita de ranges para evitar valores inválidos.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `set_light.lua` implementa um comando TalkAction (`/setlight`) que permite gamemasters ajustar cor e intensidade de iluminação pessoal. O sistema realiza parse de dois parâmetros separados por vírgula, valida ranges (cor 0-1500, intensidade 1-32), aplica valor padrão de intensidade 4 se omitido, e executa via `setLight()`. Inclui mapeamento comentado de cores predefinidas para referência.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Mapeamento de Cores Predefinidas (comentado)
+--[[
+green: 30
+blue: 1065 or 809 or 17
+red: 1020
+purple: 375 or 845 or 667 or 155 or 917
+]]
+
+-- 2. Instanciação do TalkAction
+local set_light = TalkAction("/setlight")
+
+-- 3. Função Principal (onSay)
+function set_light.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Parse: separar por vírgula
+    local split = param:split(",")
+    
+    -- Extrair cores
+    local color = split[1]
+    if color == nil then
+        player:sendCancelMessage("You need to specify the light color.")
+        return true
+    end
+    
+    -- Extrair intensidade (padrão 4)
+    local intensity = tonumber(split[2]) or 4  -- Default: 4
+    
+    -- Validações
+    if tonumber(color) and 
+       tonumber(color) <= 1500 and 
+       intensity >= 0 and 
+       intensity < 33 then
+        -- Aplicar luz
+        -- tonumber(color) >= 0 retorna color ou 0 se negativo
+        player:setLight(tonumber(color) >= 0 and tonumber(color) or 0, intensity)
+    else
+        -- Erro: parâmetros inválidos
+        player:sendCancelMessage(
+            "Use like this: /setlight color (0-1500), (1-32). " ..
+            "The first param is color and the second is intensity."
+        )
+    end
+    
+    return true
+end
+
+-- 4. Configuração de Registro
+set_light:separator(" ")
+set_light:groupType("gamemaster")
+set_light:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **set_light.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/setlight` é utilizado. Ajusta iluminação pessoal.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executará o comando
+- `words` (string): Palavras do comando (`/setlight`)
+- `param` (string): **[OBRIGATÓRIO]** `color, intensity` (separado por vírgula)
+
+**Formato de Comando:**
+```
+/setlight 30                  -- Verde com intensidade padrão (4)
+/setlight 1065, 8             -- Azul com intensidade 8
+/setlight 1020, 16            -- Vermelho com intensidade 16
+/setlight 375, 32             -- Roxo com intensidade máxima
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Parse de Parâmetros:**
+   ```lua
+   local split = param:split(",")
+   local color = split[1]
+   local intensity = tonumber(split[2]) or 4
+   ```
+   - Split por vírgula: `{ "30", " 8" }`
+   - Cor: primeira parte (obrigatória)
+   - Intensidade: segunda parte (padrão 4)
+
+3. **Validação de Cor:**
+   - Se color == nil: retorna "You need to specify the light color."
+
+4. **Validações de Range:**
+   ```lua
+   if tonumber(color) and 
+      tonumber(color) <= 1500 and 
+      intensity >= 0 and 
+      intensity < 33 then
+   ```
+   - Cor deve ser numérica
+   - Cor deve ser menor ou igual a 1500
+   - Intensidade deve ser maior ou igual a 0
+   - Intensidade deve ser menor que 33 (0-32)
+
+5. **Aplicação:**
+   ```lua
+   player:setLight(tonumber(color) >= 0 and tonumber(color) or 0, intensity)
+   ```
+   - Converte color para número
+   - Se negativo: usa 0
+   - Caso contrário: usa color
+   - Aplica com intensidade
+
+**Mapeamento de Cores Predefinidas:**
+
+| Cor | ID | Alternativas |
+|---|---|---|
+| Verde | 30 | - |
+| Azul | 1065 | 809, 17 |
+| Vermelho | 1020 | - |
+| Roxo | 375 | 845, 667, 155, 917 |
+
+**Mensagens de Erro:**
+
+```
+"You need to specify the light color."
+
+"Use like this: /setlight color (0-1500), (1-32). 
+The first param is color and the second is intensity."
+```
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `param:split(sep)` | Divide string por separador |
+| `tonumber(str)` | Converte string para número |
+| `player:setLight(color, intensity)` | Aplica iluminação |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `set_light.lua` é utilitário de iluminação atmosférica. Implementação que valida parâmetros em múltiplas camadas, oferece padrão inteligente de intensidade, e inclui mapeamento comentado de cores para referência. Útil para criar ambientes específicos, testes visuais, ou efeitos atmosféricos temporários. Design simples com validação rigorosa de ranges para evitar valores problemáticos.

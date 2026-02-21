@@ -1,0 +1,276 @@
+---
+title: Close Server
+description: Comando GOD para fechar, salvar ou manter servidor em manutenção
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `close_server.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Controlar estado do servidor |
+| **Comando** | `/closeserver [shutdown\|save\|maintainance]` |
+| **Requisito** | Acesso de God |
+| **Separador** | Espaço |
+| **Parâmetro Opcional** | Modo (padrão: CLOSED) |
+| **Estados** | SHUTDOWN, SAVE, MAINTAIN, CLOSED |
+| **Integração** | Webhook Discord + Auditoria |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/close_server.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que altera game state via `Game.setGameState()`. Parse param para 4 modos: "shutdown" (encerrar), "save" (salvar com opcóes config), "maintainance" (manutenção), default (fechado). Modo "save" lê 3 configs (CLEAN_MAP, CLOSE, SHUTDOWN) com ternário para cada. Webhook de diferentes cores (red para shutdown, yellow para close, ambos com player:getName()).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `close_server.lua` implementa um comando TalkAction (`/closeserver`) que controla estado do servidor (shutdown/save/maintain/closed). O sistema oferece 4 modos, modo "save" respeitando 3 configurações, envia webhook Discord com cores diferenciadas, fornece feedback ao executor. Ferramenta crítica de administração de servidor.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local closeServer = TalkAction("/closeserver")
+
+function closeServer.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    -- Modo 1: SHUTDOWN
+    if param == "shutdown" then
+        Game.setGameState(GAME_STATE_SHUTDOWN)
+        Webhook.sendMessage(":red_circle: Server was shutdown by: **" .. player:getName() .. "**", 
+                           announcementChannels["serverAnnouncements"])
+    
+    -- Modo 2: SAVE (com opções de config)
+    elseif param == "save" then
+        if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLEAN_MAP) then
+            cleanMap()
+        end
+        if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLOSE) then
+            Game.setGameState(GAME_STATE_CLOSED, true)
+        end
+        if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_SHUTDOWN) then
+            Game.setGameState(GAME_STATE_SHUTDOWN, true)
+        end
+    
+    -- Modo 3: MAINTAINANCE
+    elseif param == "maintainance" then
+        Game.setGameState(GAME_STATE_MAINTAIN)
+        player:sendTextMessage(MESSAGE_ADMINISTRATOR, "Server is set to maintenance mode.")
+    
+    -- Modo 4: CLOSED (default)
+    else
+        Game.setGameState(GAME_STATE_CLOSED)
+        player:sendTextMessage(MESSAGE_ADMINISTRATOR, "Server is now closed.")
+        Webhook.sendMessage(":yellow_square: Server was closed by: **" .. player:getName() .. "**", 
+                           announcementChannels["serverAnnouncements"])
+    end
+    
+    return true
+end
+
+closeServer:separator(" ")
+closeServer:groupType("god")
+closeServer:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **closeServer.onSay(player, words, param)**
+
+**Descrição:** Função callback que controla estado do servidor (fechar, salvar, manutenção, shutdown).
+
+**Parâmetros:**
+- `param` (string): Modo (opcional): "shutdown", "save", "maintainance", ou vazio (default CLOSED)
+
+**Formato de Comando:**
+```
+/closeserver                    -- Fecha servidor (CLOSED)
+/closeserver shutdown           -- Shutdown (fecha application)
+/closeserver save              -- Save (respeita config)
+/closeserver maintainance      -- Maintenance mode
+```
+
+**Fluxo de Execução (por modo):**
+
+---
+
+### **Modo 1: SHUTDOWN**
+
+```lua
+if param == "shutdown" then
+    Game.setGameState(GAME_STATE_SHUTDOWN)
+    Webhook.sendMessage(":red_circle: Server was shutdown by: **" .. player:getName() .. "**", 
+                       announcementChannels["serverAnnouncements"])
+```
+
+**Efeito:**
+- Define servidor em estado SHUTDOWN
+- Application será encerrada
+- Webhook vermelho (:red_circle:) notifica administradores
+- Mensagem: "Server was shutdown by: GMNAME"
+
+**Uso:**
+```
+/closeserver shutdown
+```
+
+---
+
+### **Modo 2: SAVE**
+
+```lua
+elseif param == "save" then
+    if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLEAN_MAP) then
+        cleanMap()
+    end
+    if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLOSE) then
+        Game.setGameState(GAME_STATE_CLOSED, true)
+    end
+    if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_SHUTDOWN) then
+        Game.setGameState(GAME_STATE_SHUTDOWN, true)
+    end
+```
+
+**Operações Opcionais (respeitam config):**
+
+| Config Key | Ação se True | Descrição |
+|---|---|---|
+| GLOBAL_SERVER_SAVE_CLEAN_MAP | cleanMap() | Remove itens não salvos do mapa |
+| GLOBAL_SERVER_SAVE_CLOSE | GAME_STATE_CLOSED | Fecha servidor após save |
+| GLOBAL_SERVER_SAVE_SHUTDOWN | GAME_STATE_SHUTDOWN | Shutdown após save |
+
+**Fluxo:**
+1. Se config CLEAN_MAP true: executa `cleanMap()`
+2. Se config CLOSE true: seta GAME_STATE_CLOSED (com save automático)
+3. Se config SHUTDOWN true: seta GAME_STATE_SHUTDOWN após save
+
+**Uso:**
+```
+/closeserver save
+```
+
+**Exemplo (com todas configs true):**
+```
+Executar: /closeserver save
+
+Resultado:
+- cleanMap() executa
+- GAME_STATE_CLOSED seta (dados salvos)
+- GAME_STATE_SHUTDOWN seta (application fecha após save)
+```
+
+---
+
+### **Modo 3: MAINTAINANCE**
+
+```lua
+elseif param == "maintainance" then
+    Game.setGameState(GAME_STATE_MAINTAIN)
+    player:sendTextMessage(MESSAGE_ADMINISTRATOR, "Server is set to maintenance mode.")
+```
+
+**Efeito:**
+- Define servidor em estado MAINTAIN (manutenção)
+- Jogadores recebem mensagem que servidor está em manutenção
+- Sem novo login, apenas online já permanecem
+- Executor recebe confirmação
+
+**Uso:**
+```
+/closeserver maintainance
+```
+
+---
+
+### **Modo 4: DEFAULT (CLOSED)**
+
+```lua
+else
+    Game.setGameState(GAME_STATE_CLOSED)
+    player:sendTextMessage(MESSAGE_ADMINISTRATOR, "Server is now closed.")
+    Webhook.sendMessage(":yellow_square: Server was closed by: **" .. player:getName() .. "**", 
+                       announcementChannels["serverAnnouncements"])
+```
+
+**Efeito:**
+- Define servidor em estado CLOSED (fechado)
+- Novos logins bloqueados, jogadores online permanecem
+- Webhook amarelo (:yellow_square:) notifica
+- Executor recebe confirmação
+
+**Uso:**
+```
+/closeserver
+/closeserver <qualquer outra coisa>
+```
+
+---
+
+### **Estados de Servidor**
+
+| Estado | Constante | Efeito |
+|---|---|---|
+| CLOSED | GAME_STATE_CLOSED | Novos logins bloqueados, online permanece |
+| SHUTDOWN | GAME_STATE_SHUTDOWN | Application encerra (todos desconectam) |
+| MAINTAIN | GAME_STATE_MAINTAIN | Modo manutenção (novos logins bloqueados) |
+
+---
+
+### **Webhooks e Auditoria**
+
+| Modo | Webhook | Cor | Mensagem |
+|---|---|---|---|
+| shutdown | serverAnnouncements | :red_circle: (vermelho) | "Server was shutdown by: GMNAME" |
+| closed | serverAnnouncements | :yellow_square: (amarelo) | "Server was closed by: GMNAME" |
+| save | - | - | Nenhum webhook |
+| maintainance | - | - | Chat message apenas |
+
+---
+
+### **Funcionalidades Config**
+
+**Modo SAVE respeitando configurações:**
+```
+Se GLOBAL_SERVER_SAVE_CLEAN_MAP = true:
+    - cleanMap() remove todos itens temporários
+
+Se GLOBAL_SERVER_SAVE_CLOSE = true:
+    - Fecha servidor após save
+
+Se GLOBAL_SERVER_SAVE_SHUTDOWN = true:
+    - Shutdown application após save
+```
+
+**Ordem de Execução:**
+1. cleanMap() (se config)
+2. CLOSED state (se config)
+3. SHUTDOWN state (se config)
+4. Fim (estados finais impedem novas operações)
+
+---
+
+### **Funções Globais Utilizadas**
+
+| Função | Descrição |
+|---|---|
+| `Game.setGameState(state)` | Seta estado do servidor |
+| `Game.setGameState(state, bool)` | Seta com flag (ex: save automático) |
+| `configManager.getBoolean(key)` | Lê config boolean |
+| `cleanMap()` | Remove itens temporários |
+| `Webhook.sendMessage(text, channel)` | Envia webhook Discord |
+| `player:getName()` | Nome do executor |
+| `player:sendTextMessage(type, msg)` | Notifica executor |
+
+---
+
+## 📌 Resumo
+
+O arquivo `close_server.lua` é ferramenta crítica de administração. Implementação com 4 modos (shutdown/save/maintain/closed), respeito de configurações em modo SAVE, webhooks coloridos para auditoria Discord, feedback ao executor. Essencial para GMs controlar servidor graciosamente (save vs shutdown), modo manutenção, ou encerramento. Design defensivo com estado padrão CLOSED para segurança.

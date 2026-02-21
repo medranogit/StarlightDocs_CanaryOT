@@ -1,0 +1,318 @@
+---
+title: spiritual_horseshoe.lua
+description: Sistema cumulativo com KV storage que acumula 4 horseshoes para desbloquear mount Spirit of Purity com achievement.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="spiritual_horseshoe.lua" icon="pencil">
+Sistema de acúmulo com KV storage para ativar mount através de coletas progressivas.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/spiritual_horseshoe.lua`
+
+**Linhas:** 35 | **ID do Item:** 44048 | **Mount ID:** 217 | **Tipo:** Action Handler com KV Storage
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema onde jogador precisa coletar 4 spiritual horseshoes para desbloquear o mount "Spirit of Purity". Usa KV storage para rastrear quantidade acumulada por jogador. Cada horseshoe consumida incrementa contador. Quando atinge 4 horseshoes, o mount é concedido automaticamente junto com achievement. Dynamic registration por config table permite fácil adição de novos items.
+
+### Estrutura de Funcionalidades
+
+```
+CONFIG TABLE:
+  ├─ requiredItems[44048]
+  │   ├─ key: "spiritual-horseshoe"
+  │   └─ count: 4 (horseshoes necessárias)
+  │
+  └─ mountId: 217
+
+HANDLER:
+  └─ spiritualHorseshoe.onUse()
+      ├─ Validação: itemInfo = config[item:getId()]?
+      ├─ Guard: player:hasMount(mountId)?
+      ├─ Increment: kv():set(key, currentCount+1)
+      ├─ Effect: HOLYDAMAGE
+      ├─ Check: Todas as items somaram count total?
+      │   ├─ NÃO → return true (aguardar próximas)
+      │   └─ SIM → addMount + achievement
+      └─ item:remove(1)
+
+REGISTRATION:
+  └─ Loop pairs(requiredItems) para registrar dinamicamente
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| config | table | Configuração com requiredItems e mountId |
+| spiritualHorseshoe | Action | Objeto handler principal |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | Valor | Descrição |
+|------|-------|-----------|
+| Horseshoe ID | 44048 | ID do item para coleta |
+| KV Key | spiritual-horseshoe | Chave de armazenamento per-player |
+| Count Requerido | 4 | Quantidade total necessária |
+| Mount ID | 217 | ID da mount a conceder |
+| Achievement | The Spirit of Purity | Nome da realização |
+| Efeito Visual | CONST_ME_HOLYDAMAGE | Efeito de coleta |
+| Mensagem Sucesso | Spirit of Purity is now yours! | Notificação final |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function spiritualHorseshoe.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Carrega config do item
+	local itemInfo = config.requiredItems[item:getId()]
+	if not itemInfo then
+		return true  -- Item desconhecido
+	end
+
+	-- Guard: já tem mount?
+	if player:hasMount(config.mountId) then
+		return true  -- Não fazer novamente
+	end
+
+	-- Incrementar contador
+	local currentCount = (player:kv():get(itemInfo.key) or 0) + 1
+	player:kv():set(itemInfo.key, currentCount)
+	
+	-- Efeito visual
+	player:getPosition():sendMagicEffect(CONST_ME_HOLYDAMAGE)
+	
+	-- Consumir item
+	item:remove(1)
+
+	-- Verificar se completou
+	for _, info in pairs(config.requiredItems) do
+		if (player:kv():get(info.key) or 0) < info.count then
+			return true  -- Ainda faltam items
+		end
+	end
+
+	-- Completou: conceder mount + achievement
+	player:addMount(config.mountId)
+	player:addAchievement("The Spirit of Purity")
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Spirit of Purity is now yours!")
+	return true
+end
+
+-- Dynamic registration
+for itemId, _ in pairs(config.requiredItems) do
+	spiritualHorseshoe:id(itemId)
+end
+spiritualHorseshoe:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador usa spiritual_horseshoe (44048)
+  │
+  ├─ itemInfo = config.requiredItems[item.id]?
+  │   └─ NÃO → return true (item desconhecido)
+  │
+  ├─ player:hasMount(217)?
+  │   ├─ SIM → return true (já tem mount, skip)
+  │   │
+  │   └─ NÃO → Continua...
+  │
+  ├─ Carregar contador KV:
+  │   └─ currentCount = (kv():get(key) or 0) + 1
+  │
+  ├─ Salvar novo valor:
+  │   └─ kv():set(key, currentCount)
+  │
+  ├─ Efeito visual:
+  │   └─ sendMagicEffect(HOLYDAMAGE)
+  │
+  ├─ Consumir item:
+  │   └─ item:remove(1)
+  │
+  ├─ Verificar se completou:
+  │   ├─ Loop pairs(requiredItems)
+  │   ├─ Para cada: (kv():get(key) or 0) < count?
+  │   │   ├─ SIM, algum → return true (aguardar mais)
+  │   │   └─ NÃO, todos >= count → Continua...
+  │   │
+  │   └─ Completou:
+  │       ├─ addMount(217)
+  │       ├─ addAchievement("The Spirit of Purity")
+  │       ├─ Message "Spirit of Purity is now yours!"
+  │       └─ return true
+```
+
+### Acúmulo Progressivo
+
+```
+Primeira ativação:
+  ├─ kv():get("spiritual-horseshoe") = nil ou 0
+  ├─ Incrementa: 0 + 1 = 1
+  ├─ Salva: kv().set("spiritual-horseshoe", 1)
+  ├─ Check: 1 < 4? = true
+  └─ Aguarda próxima
+
+Segunda ativação:
+  ├─ kv():get("spiritual-horseshoe") = 1
+  ├─ Incrementa: 1 + 1 = 2
+  ├─ Salva: kv().set("spiritual-horseshoe", 2)
+  ├─ Check: 2 < 4? = true
+  └─ Aguarda próxima
+
+Terceira ativação:
+  ├─ kv():get("spiritual-horseshoe") = 2
+  ├─ Incrementa: 2 + 1 = 3
+  ├─ Salva: kv().set("spiritual-horseshoe", 3)
+  ├─ Check: 3 < 4? = true
+  └─ Aguarda próxima
+
+Quarta ativação:
+  ├─ kv():get("spiritual-horseshoe") = 3
+  ├─ Incrementa: 3 + 1 = 4
+  ├─ Salva: kv().set("spiritual-horseshoe", 4)
+  ├─ Check: 4 < 4? = false
+  ├─ Completou!
+  ├─ addMount(217)
+  ├─ Achievement "The Spirit of Purity"
+  └─ Message "Spirit of Purity is now yours!"
+```
+
+### Verificação de Completude
+
+```lua
+-- Loop checagem
+for _, info in pairs(config.requiredItems) do
+	if (player:kv():get(info.key) or 0) < info.count then
+		return true  -- Ainda faltam items, não faz nothing
+	end
+end
+-- Se chegar aqui, todos os items atingiram count
+```
+
+Com apenas 1 item no config, loop sempre checa o mesmo. Pode ser expandido para múltiplos items diferentes.
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **KV Storage Cumulativo**: `player:kv():get(key)` carrega valor persistido
+- **Incremento**: `(kv().get(key) or 0) + 1` com default 0
+- **Persistência**: `kv().set(key, value)` salva para próximas ativações
+- **Guard Clause**: `hasMount()` previne duplicação
+- **Check Loop**: Validar todos os items atingiram count
+- **Dynamic Registration**: `pairs(config.requiredItems)` para registrar IDs
+- **Early Return**: Retorna true após consumir se não completo
+- **Final Reward**: Mount + Achievement apenas quando completo
+- **Efeito na Coleta**: HOLYDAMAGE para feedback visual
+
+### Responsabilidades do Handler
+
+1. **Validar item**: Verificar se item está em config
+2. **Guard contra duplicação**: Não prosseguir se já tem mount
+3. **Carregar contador**: Obter valor atual de KV
+4. **Incrementar**: Somar 1 ao contador
+5. **Persistir**: Salvar novo valor em KV
+6. **Efeito visual**: HOLYDAMAGE
+7. **Consumir item**: remove(1)
+8. **Verificar completude**: Loop todos os items
+9. **Premiar se completo**: addMount + achievement
+
+---
+
+## Patterns e Implementação
+
+### Padrão Acúmulo com KV Storage
+
+Este script demonstra sistema cumulativo:
+
+```lua
+-- Incrementar
+local currentCount = (player:kv():get(key) or 0) + 1
+player:kv():set(key, currentCount)
+
+-- Verificar completude
+if currentCount >= requiredCount then
+	-- Conceder recompensa
+	player:addMount(mountId)
+	player:addAchievement(achievementName)
+end
+```
+
+### Padrão Dynamic Registration
+
+Config-driven registration:
+
+```lua
+for itemId, _ in pairs(config.requiredItems) do
+	handler:id(itemId)
+end
+handler:register()
+```
+
+Adicionar novos items à config registra automaticamente.
+
+### Comparação: Spiritual Horseshoe vs Pot of Blackjack
+
+| Aspecto | Spiritual Horseshoe | Pot of Blackjack |
+|---------|---|---|
+| KV Storage | Sim (acúmulo) | Sim (goles) |
+| Persistência | Acumula multi-uso | Rastreia estado |
+| Recompensa | Mount + Achievement | Healing |
+| Completude | 4 items → mount | Por-use |
+| Guard | hasMount() | (nenhuma) |
+| Efeito | HOLYDAMAGE | MAGIC_RED |
+
+### Escalabilidade
+
+Config permite fácil expansão:
+
+```lua
+config.requiredItems = {
+	[44048] = { key = "horseshoe1", count = 4 },
+	[44049] = { key = "horseshoe2", count = 4 },
+	[44050] = { key = "horseshoe3", count = 4 },
+}
+```
+
+Com múltiplos items diferentes, loop de completude funciona corretamente.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: spiritual_horseshoe.lua" icon="star">
+Análise completa de sistema cumulativo com KV storage para acúmulo de 4 horseshoes → mount. Inclui dynamic registration, guard clause dupla e verificação de completude com loop.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Acúmulo com KV storage | Complexidade: Média
+</Aside>

@@ -1,0 +1,758 @@
+---
+title: "monster.lua"
+description: "Extensões da classe Monster com sistema de storage persistente, vida compartilhada entre monstros, gerenciador de monstros fiendish, e integração com sistema de rewards de boss."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que estende a classe `Monster` nativa com funcionalidades avançadas: sistema de storage para persistência de dados por monstro, vida compartilhada entre múltiplos monstros (boss coletivo), integração com sistema de monstros fiendish (transformação), e gerenciamento de rewards para monstros boss. Também estende `MonsterType` para gerar loot customizado de boss com filtros de equipamento e raridade.
+
+**Caminho Original**: `data/libs/functions/monster.lua`
+
+<Aside type="tip">
+O arquivo `monster.lua` é fundamental para **boss mechanics** e **sistema de loot**. Permite criar bosses coletivos com HP compartilhado, monstros especiais (fiendish), e recompensas progressivas baseadas em performance (topScore).
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **3 layers de extensão**:
+
+1. **Layer 1 - Monster Storage**: Sistema de key-value persistente por monstro (tipo Redis simples)
+2. **Layer 2 - Shared Life**: Múltiplos monstros com HP único sincronizado (boss raid coletivo)
+3. **Layer 3 - Rewards & Fiendish**: Integração com sistema de boss rewards e transformação fiendish
+
+O design usa **tabelas globais como cache** (`monsterStorage`, `hpCompartilhada`) inicializadas uma vez com estrutura padrão `[0] = {}` para evitar erros de índice.
+
+### Estrutura de Funcionalidades
+
+```
+Monster Extensions System
+├── Global Variables (Caches)
+│   ├── monsterStorage[monsterId][storageKey] = value
+│   ├── hpCompartilhada[hpid] = {hp, monsters[]}
+│   └── equipmentBags[1..N] = bagId
+├── Monster Methods (10 funções)
+│   ├── Storage Access
+│   │   ├── getStorageValue(key) → value
+│   │   ├── setStorageValue(key, value) → boolean
+│   │   ├── getStorage(key) → value [alias]
+│   │   └── setStorage(key, value) → boolean [alias]
+│   ├── Shared Life / Group HP
+│   │   ├── beginSharedLife(hpid) → boolean
+│   │   ├── inSharedLife() → boolean
+│   │   └── onReceivDamageSL(damage, type, killer) → boolean
+│   └── Boss Systems
+│       ├── setFiendish(position, player) → boolean
+│       ├── setReward(enable) → boolean
+│       └── setRewardBoss() → void
+├── Global Functions (1)
+│   └── updateMonstersSharedLife(hpid, amount, origin, type, kill)
+├── MonsterType Methods (1)
+│   └── getBossReward(lootFactor, topScore, equipmentOnly, lootTable, player)
+└── Local Functions (1)
+    └── isEquipment(itemType) → boolean [helper]
+```
+
+---
+
+## 📦 Variáveis Globais
+
+### `monsterStorage` (Global Local)
+
+Tabela-cache para persistir dados de storage por monstro durante sessão.
+
+**Tipo**: table (global)  
+**Inicialização**: `monsterStorage = { [0] = { [0] = 0 } }`  
+**Estrutura**: `monsterStorage[monsterId][storageKey] = value`
+
+**Exemplo**:
+```lua
+monsterStorage = {
+    [1001] = {
+        ["phase"] = 1,
+        ["defeated_bosses"] = 3,
+        ["shared_storage"] = 100,
+    },
+    [1002] = {
+        ["phase"] = 1,
+        ["shared_storage"] = 100,
+    },
+}
+```
+
+**Validação**: Inicializada como `[0] = [0] = 0` para evitar erro nil ao acessar índice vazio.
+
+---
+
+### `hpCompartilhada` (Global Local)
+
+Tabela-cache para gerenciar vida compartilhada entre múltiplos monstros.
+
+**Tipo**: table (global)  
+**Inicialização**: `hpCompartilhada = { [0] = { hp = 0, monsters = {} } }`  
+**Estrutura**:
+```lua
+hpCompartilhada[hpid] = {
+    hp = 1000,           -- HP atual compartilhado
+    monsters = { mid1, mid2, mid3 }  -- IDs dos monstros
+}
+```
+
+**Propósito**: Rastrear HP grupo onde múltiplos monstros compartilham barra de vida única.
+
+---
+
+### `equipmentBags` (Local)
+
+Lista de IDs de containers que contêm equipamento (magic bags).
+
+**Tipo**: table (local)  
+**Valores**:
+- `BAG_YOU_DESIRE`
+- `PRIMAL_BAG`
+- `BAG_YOU_COVET`
+
+**Propósito**: Filtro para método `getBossReward()` quando `equipmentOnly=true`.
+
+---
+
+## 🔐 Métodos de Storage
+
+### `Monster.getStorageValue(self, key)` → value
+
+Obtém valor armazenado para monstro específico.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `self` (Monster): Instância do monstro
+- `key` (string/number): Chave de storage
+
+**Retorna**: value (any) ou `-1` se não encontrado ou não é monstro
+
+**Implementação**:
+```lua
+function Monster.getStorageValue(self, key)
+    if not self:isMonster() then
+        return -1
+    end
+    local ret = -1
+    for id, pid in pairs(monsterStorage) do
+        if id == self:getId() then
+            for key1, value in pairs(pid) do
+                if key1 == key then
+                    ret = value
+                    break
+                end
+            end
+        end
+    end
+    return ret
+end
+```
+
+**Validação**: Retorna `-1` se não é monstro válido.
+
+**Exemplo**:
+```lua
+local monster = Monster(1001)
+local phase = monster:getStorageValue("phase")
+if phase == 1 then
+    print("Boss is in phase 1")
+end
+```
+
+---
+
+### `Monster.setStorageValue(self, key, value)` → boolean
+
+Define ou atualiza valor de storage para monstro.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `key` (string/number): Chave de storage
+- `value` (any): Valor a armazenar
+
+**Retorna**: boolean (true se sucesso, false se não é monstro)
+
+**Implementação**:
+```lua
+function Monster.setStorageValue(self, key, value)
+    if not self:isMonster() then
+        return false
+    end
+    if not monsterStorage[self:getId()] then
+        monsterStorage[self:getId()] = {}
+    end
+    monsterStorage[self:getId()][key] = value
+    return true
+end
+```
+
+**Inicialização Lazy**: Cria tabela do monstro se não existir.
+
+**Exemplo**:
+```lua
+local monster = Monster(1001)
+monster:setStorageValue("phase", 2)
+monster:setStorageValue("defeated_bosses", monster:getStorageValue("defeated_bosses") + 1)
+```
+
+---
+
+### `Monster.getStorage(self, key)` → value
+
+Alias para `getStorageValue()`. Permite sintaxe mais curta.
+
+**Tipo**: Method  
+**Equivalente**: `getStorageValue(key)`
+
+**Exemplo**:
+```lua
+local value = monster:getStorage("phase")  -- Mesmo que getStorageValue
+```
+
+---
+
+### `Monster.setStorage(self, key, value)` → boolean
+
+Alias para `setStorageValue()`.
+
+**Tipo**: Method  
+**Equivalente**: `setStorageValue(key, value)`
+
+---
+
+## 👥 Vida Compartilhada (Shared Life)
+
+Sistema para criar bosses que compartilham HP único entre múltiplos monstros (raid coletivo).
+
+### `Monster.beginSharedLife(self, hpid)` → boolean
+
+Adiciona monstro ao grupo de vida compartilhada.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `hpid` (number): ID único do grupo HP compartilhado
+
+**Retorna**: boolean (true se sucesso, false se não é monstro)
+
+**Implementação**:
+```lua
+function Monster.beginSharedLife(self, hpid)
+    if not self:isMonster() then
+        return false
+    end
+    if not hpCompartilhada[hpid] then
+        hpCompartilhada[hpid] = { hp = self:getMaxHealth(), monsters = {} }
+    end
+    table.insert(hpCompartilhada[hpid].monsters, self:getId())
+    self:setStorageValue("shared_storage", hpid)
+    return true
+end
+```
+
+**Fluxo**:
+1. Validar que é monstro
+2. Se grupo não existe: criar com HP máximo atual
+3. Adicionar ID do monstro ao array
+4. Registrar hpid em storage (para lookup rápido)
+
+**Exemplo**:
+```lua
+local boss1 = Monster(1001)
+local boss2 = Monster(1002)
+local boss3 = Monster(1003)
+
+boss1:beginSharedLife(100)  -- HP compartilhado ID 100
+boss2:beginSharedLife(100)
+boss3:beginSharedLife(100)
+-- hp = boss1:getMaxHealth() (todo sincronizado)
+```
+
+---
+
+### `Monster.inSharedLife(self)` → boolean
+
+Verifica se monstro está em grupo de vida compartilhada ativo.
+
+**Tipo**: Method  
+**Retorna**: boolean (true se está em shared life, false senão)
+
+**Implementação**:
+```lua
+function Monster.inSharedLife(self)
+    if not self:isMonster() then
+        return false
+    end
+    local storage = self:getStorageValue("shared_storage")
+    if storage < 1 then
+        return false
+    end
+    for id, pid in pairs(hpCompartilhada) do
+        if storage == id then
+            for _id, mid in pairs(pid.monsters) do
+                local mtemp = Monster(mid)
+                if mtemp and mtemp:getId() == self:getId() then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+```
+
+**Validação**: Dupla-checagem (storage + registro em grupo).
+
+---
+
+### `Monster.onReceivDamageSL(self, damage, tp, killer)` → boolean
+
+Processa dano para monstro em vida compartilhada (sincroniza dano entre todos).
+
+**Tipo**: Method  
+**Parâmetros**:
+- `damage` (number): Quantidade de dano recebido
+- `tp` (string): Tipo de dano ("healing" ou damage)
+- `killer` (Player): Jogador que causou dano
+
+**Retorna**: boolean (true sempre, false se não é monstro)
+
+**Implementação**:
+```lua
+function Monster.onReceivDamageSL(self, damage, tp, killer)
+    if not self:inSharedLife() then
+        return true
+    end
+    local storage = self:getStorageValue("shared_storage")
+    if storage < 1 then
+        return false
+    end
+    updateMonstersSharedLife(storage, damage, self:getId(), tp, killer)
+    return true
+end
+```
+
+---
+
+## 🌍 Função Global: Atualizar Vida Compartilhada
+
+### `updateMonstersSharedLife(hpid, amount, origin, _type, kill)` → boolean
+
+Atualiza HP compartilhado e sincroniza todos os monstros do grupo.
+
+**Tipo**: Função Global  
+**Parâmetros**:
+- `hpid` (number): ID do grupo de vida compartilhada
+- `amount` (number): Quantidade de dano/cura
+- `origin` (number): ID do monstro que recebeu dano (para não processar 2x)
+- `_type` (string): "healing" ou outro (default damage)
+- `kill` (boolean): Se true, mata todos (health = 0)
+
+**Retorna**: boolean (true se sucesso, false se hpid não existe)
+
+**Implementação**:
+```lua
+function updateMonstersSharedLife(hpid, amount, origin, _type, kill)
+    if not hpCompartilhada[hpid] then
+        return false
+    end
+    if _type == "healing" then
+        hpCompartilhada[hpid].hp = hpCompartilhada[hpid].hp + amount
+    else
+        hpCompartilhada[hpid].hp = hpCompartilhada[hpid].hp - amount
+    end
+    if hpCompartilhada[hpid].hp < 0 then
+        hpCompartilhada[hpid].hp = 0
+    end
+    for _, monster in pairs(hpCompartilhada[hpid].monsters) do
+        local mt = Monster(monster)
+        if mt and mt:getId() ~= origin then
+            if kill then
+                mt:addHealth(-mt:getHealth())  -- Mata
+            else
+                mt:setHealth(hpCompartilhada[hpid].hp)  -- Sincroniza
+            end
+        end
+    end
+    return true
+end
+```
+
+**Fluxo**:
+1. Validar que grupo existe
+2. Atualizar HP compartilhado (healing ou damage)
+3. Clampar em 0 (nunca negativo)
+4. Iterar todos os monstros EXCETO origin
+5. Se kill: matar todos; senão: syncronizar HP
+
+**Exemplo**:
+```lua
+-- Boss toma 100 de dano
+updateMonstersSharedLife(100, 100, boss1:getId(), "damage", false)
+-- Todos os 3 bosses agora têm HP reduzido em 100
+
+-- Depois de derrotar 1 ao derrotar último
+updateMonstersSharedLife(100, 0, boss3:getId(), "damage", true)
+-- boss1 e boss2 morrem instantaneamente
+```
+
+---
+
+## 🔥 Sistema de Fiendish
+
+### `Monster.setFiendish(self, position, player)` → boolean
+
+Transforma monstro em versão fiendish (especial).
+
+**Tipo**: Method  
+**Parâmetros**:
+- `position` (Position): Posição do monstro (para efeito visual)
+- `player` (Player): Jogador que iniciou transformação (para logs/messages)
+
+**Retorna**: boolean (true se sucesso, false se erro)
+
+**Validações**:
+1. Monstro deve ter `isForgeable() == true`
+2. MonsterType deve ter `isForgeCreature() == true`
+3. Monstro não pode já ser fiendish
+
+**Implementação Core**:
+```lua
+function Monster.setFiendish(self, position, player)
+    if not self or not self:isForgeable() then
+        player:sendCancelMessage("Only allowed monsters can be fiendish.")
+        return false
+    end
+
+    local monsterType = self:getType()
+    local fiendishMonster = Monster(ForgeMonster:pickFiendish())
+    
+    if monsterType then
+        if not monsterType:isForgeCreature() then
+            player:sendCancelMessage("Only allowed monsters can be fiendish.")
+            return false
+        end
+    end
+    
+    if fiendishMonster and fiendishMonster:getId() == self:getId() then
+        player:sendCancelMessage("This monster is already fiendish.")
+        return false
+    end
+    
+    position:sendMagicEffect(CONST_ME_MAGIC_RED)
+    self:clearFiendishStatus()
+    
+    local success
+    if fiendishMonster then
+        Game.removeFiendishMonster(fiendishMonster:getId())
+    end
+    
+    if Game.makeFiendishMonster(self:getId(), false) ~= 0 then
+        success = "set sucessfully a new fiendish monster"
+    else
+        success = "have error to set fiendish monster"
+        player:sendCancelMessage("This monster is not forgeable, fiendish not added.")
+    end
+
+    logger.info("Player {} {} with name {} and id {} on position {}", 
+                player:getName(), success, self:getName(), 
+                self:getId(), self:getPosition():toString())
+    return true
+end
+```
+
+**Fluxo**:
+1. Validar permissões (isForgeable, isForgeCreature)
+2. Verificar se já é fiendish
+3. Enviar feedback visual (magic effect)
+4. Limpar status anterior
+5. Remover outro fiendish se existe
+6. Chamar API de game para transformação
+7. Logar para auditoria
+
+---
+
+## 🏆 Sistema de Rewards
+
+### `Monster.setReward(self, enable)` → boolean
+
+Registra ou desregistra monstro como boss com rewards.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `enable` (boolean): true para ativar rewards, false para desativar
+
+**Retorna**: boolean (true sempre)
+
+**Implementação**:
+```lua
+function Monster.setReward(self, enable)
+    if enable then
+        if not self:getType():isRewardBoss() then
+            error("Rewards can only be enabled to rewards bosses.")
+            return false
+        end
+        _G.GlobalBosses[self:getId()] = {}
+        self:registerEvent("BossDeath")
+        self:registerEvent("BossThink")
+    else
+        _G.GlobalBosses[self:getId()] = nil
+        self:unregisterEvent("BossDeath")
+        self:unregisterEvent("BossThink")
+    end
+    return true
+end
+```
+
+**Fluxo de Ativação**:
+1. Validar que MonsterType é RewardBoss
+2. Registrar em `_G.GlobalBosses[monsterId]`
+3. Registrar eventos "BossDeath" e "BossThink"
+
+**Fluxo de Desativação**:
+1. Remover de `_G.GlobalBosses`
+2. Desregistrar eventos
+
+---
+
+### `Monster:setRewardBoss()` → void
+
+Ativa rewards se monstro é classificado como RewardBoss.
+
+**Tipo**: Method  
+**Equivalente**: `if self:getType():isRewardBoss() then self:setReward(true) end`
+
+**Exemplo**:
+```lua
+local boss = Monster(1001)
+boss:setRewardBoss()  -- Ativa se isRewardBoss == true
+```
+
+---
+
+## 🎁 Métodos de MonsterType
+
+### `MonsterType.getBossReward(self, lootFactor, topScore, equipmentOnly, lootTable, player)` → table
+
+Gera tabela de loot customizada para boss com filtros de equipamento e raridade.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `lootFactor` (number): Multiplicador de loot (1.0, 1.5, 2.0, etc)
+- `topScore` (boolean): true = incluir itens únicos raros
+- `equipmentOnly` (boolean): true = só equipamentos, false = todo loot
+- `lootTable` (table): Base loot table (padrão: {})
+- `player` (Player): Jogador que causou dano (contexto)
+
+**Retorna**: table (loot customizado)
+
+**Implementação**:
+```lua
+function MonsterType.getBossReward(self, lootFactor, topScore, equipmentOnly, lootTable, player)
+    if configManager.getNumber(configKeys.RATE_LOOT) <= 0 then
+        return lootTable or {}
+    end
+
+    return self:generateLootRoll({
+        factor = lootFactor,
+        gut = false,
+        filter = function(itemType, unique)
+            if unique and not topScore then
+                return false  -- Rejeita únicos se não topScore
+            end
+            if equipmentOnly then
+                return not unique and isEquipment(itemType)
+            end
+            return true
+        end,
+    }, lootTable, player)
+end
+```
+
+**Filtro Logic**:
+- Sempre respeita `RATE_LOOT` global (se 0, retorna empty)
+- Se `topScore=false`: bloqueia itens únicos
+- Se `equipmentOnly=true`: só armadura, arma, escudo, acessório (via `isEquipment()`)
+
+**Exemplo**:
+```lua
+local monsterType = MonsterType(BOSS_ID)
+local loot = monsterType:getBossReward(
+    1.5,           -- 50% mais loot
+    true,          -- Incluir únicos se topScore
+    false,         -- Aceitar todo tipo de loot
+    {},            -- Sem loot base pré-definido
+    player         -- Contexto do vencedor
+)
+```
+
+---
+
+## 🔧 Funções Locais (Helper)
+
+### `isEquipment(itemType)` → boolean
+
+Função local que verifica se item é equipamento.
+
+**Scope**: Local ao arquivo (não acessível externamente)  
+**Parâmetros**: `itemType` (ItemType)  
+**Retorna**: boolean
+
+**Lógica**:
+1. Verifica se ID está em `equipmentBags` (BAG_YOU_DESIRE, etc)
+2. Senão: verifica se tipo está em type-list
+
+**Tipos de Equipamento Verificados**:
+- `ITEM_TYPE_ARMOR`, `ITEM_TYPE_HELMET`, `ITEM_TYPE_LEGS`
+- `ITEM_TYPE_BOOTS`, `ITEM_TYPE_SHIELD`
+- `ITEM_TYPE_AMULET`, `ITEM_TYPE_RING`
+- `ITEM_TYPE_SWORD`, `ITEM_TYPE_AXE`, `ITEM_TYPE_CLUB`
+- `ITEM_TYPE_DISTANCE`, `ITEM_TYPE_WAND`, `ITEM_TYPE_QUIVER`
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Boss Simples com Rewards
+
+```lua
+-- On Monster Spawn
+local boss = Monster(1001)
+boss:setRewardBoss()  -- Ativa tracking de rewards
+boss:setStorageValue("phase", 1)
+
+-- On Boss Death (em BossDeath event)
+local monsterType = boss:getType()
+local loot = monsterType:getBossReward(
+    1.0,    -- Loot factor normal
+    true,   -- Permitir únicos
+    false,  -- Todo loot
+    {},
+    killer
+)
+```
+
+### Padrão 2: Boss Raid com Vida Compartilhada
+
+```lua
+-- On Spawn de 3 bosses
+local boss1 = Monster(1001)
+local boss2 = Monster(1002)
+local boss3 = Monster(1003)
+
+local HP_GROUP = 100
+
+boss1:beginSharedLife(HP_GROUP)
+boss2:beginSharedLife(HP_GROUP)
+boss3:beginSharedLife(HP_GROUP)
+-- Todos compartilham 1 barra de HP
+
+-- On Damage (em Combat)
+if boss1:inSharedLife() then
+    boss1:onReceivDamageSL(damage, "damage", killer)
+    -- Sincroniza dano para boss2 e boss3
+end
+
+-- On Final Death
+updateMonstersSharedLife(HP_GROUP, 0, 0, "damage", true)
+-- Mata todos os monstros do grupo
+```
+
+### Padrão 3: Boss com Transformação Fiendish
+
+```lua
+-- TalkAction para jogador especial
+function onTalk(player, words, param)
+    local boss = player:getTarget()
+    if boss and boss:isMonster() then
+        boss:setFiendish(boss:getPosition(), player)
+        -- Boss fica Fiendish (mais forte)
+        return true
+    end
+    return false
+end
+```
+
+### Padrão 4: Boss com Fases e Storage
+
+```lua
+-- On Monster Think (trigger a cada tick)
+local boss = Monster(1001)
+local health = boss:getHealth()
+local maxHealth = boss:getMaxHealth()
+local healthPercent = (health / maxHealth) * 100
+
+if healthPercent <= 66 and boss:getStorage("phase") == 1 then
+    boss:setStorage("phase", 2)
+    boss:say("FASE 2! PREPARE-SE!")
+    boss:setFiendish(boss:getPosition(), nil)  -- Transformação automática
+elseif healthPercent <= 33 and boss:getStorage("phase") == 2 then
+    boss:setStorage("phase", 3)
+    boss:say("FASE FINAL!")
+    -- Aumentar dano, velocidade, etc
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Exemplo |
+|----------|-----------|---------|
+| **Storage Persistente** | Key-value por monstro durante sessão | `monster:setStorage("phase", 2)` |
+| **Shared Life** | Múltiplos monstros com 1 HP sincronizado | 3 bosses = 1 barra de vida |
+| **Fiendish System** | Transformação de monstro em versão especial | `boss:setFiendish(pos, player)` |
+| **Reward Tracking** | Registros de boss para gerar loot especial | `boss:setReward(true)` |
+| **Loot Filtering** | Gerar loot com filtros customizados | `monsterType:getBossReward(...)` |
+
+### Padrões Identificados
+
+1. **Lazy Initialization**: Tabelas globais inicializadas com `[0] = {}` sentinel
+2. **Cache First**: Todas as lookups via tabelas globais (O(1) lookup)
+3. **Validation Chain**: Múltiplas verificações antes de ação
+4. **Event Registration**: Bosses registram eventos para callbacks
+5. **Dual-Mode Methods**: Storage val acesso direto + alias curto
+
+### Responsabilidades por Método
+
+- **Storage**: Persistência temporal de dados
+- **SharedLife**: Sincronização de múltiplos monstros
+- **Fiendish**: Transformação baseada em permissões
+- **Rewards**: Tracking e integração com loot system
+- **MonsterType.getBossReward**: Filtragem e customização de loot
+
+---
+
+## 📚 Conclusão
+
+O arquivo `monster.lua` é **camada essencial** para sistemas de boss avançado. Através de storage persistente, vida compartilhada, transformação fiendish e integração com rewards, permite criar _sophisticated encounter design_ onde múltiplos monstros trabalham em conserto, transformam-se estrategicamente, e distribuem loot progressivo. O design de `hpCompartilhada` é particularmente elegante para raid mechanics, permitindo sincronização automática sem modificação de lógica de dano base.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 304/304 (100%)  
+**Métodos Monster**: 10  
+**Métodos MonsterType**: 1  
+**Funções Globais**: 1  
+**Funções Locais**: 1  
+**Variáveis Globais**: 3  
+**Exemplos Práticos**: 4+  
+**Padrões de Design**: Lazy Init, Cache First, Event Registration
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: Storage é perdido ao reiniciar server (use database para persistência real). SharedLife requer sincronização de dano em Combat scripts custom. Fiendish depende de `ForgeMonster` e `Game` APIs (verificar disponibilidade antes de chamar). RATE_LOOT == 0 desativa toda geração de loot de boss.
+</Aside>

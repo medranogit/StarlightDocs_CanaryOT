@@ -1,0 +1,507 @@
+---
+title: "Movement - special_tiles.lua"
+description: "Sistema de tiles especiais com transformação automática, validação de nível/storage e controle de acesso a depósito"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `special_tiles.lua` |
+| **Localização** | `data/scripts/movements/` |
+| **Tipo de Script** | MoveEvent (stepin + stepout) |
+| **Event Names** | `tile.onStepIn`, `tile.onStepOut` |
+| **Funções Registradas** | 2 callbacks + função auxiliar |
+| **Linhas de Código** | 95 |
+| **Complexidade** | Alto |
+| **Status** | Base implementation |
+
+**Descrição:**
+Sistema dinâmico de tiles que se transformam ao pisar, com validações de nível, storage e detecção de depósito. Oferece controle de acesso integrado e feedback de mensagens de restrição.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/movements/special_tiles.lua
+```
+
+**Requisitos:**
+- Tabelas de transformação bidirecional
+- Sistema de storage (quest/acesso)
+- Sistema de nível mínimo
+- Sistema de depot (chests, stash)
+- Validação de PZ (protection zone)
+- Efeitos visuais e mensagens
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Tiles com Transformação Bidirecional e Controle de Acesso**
+
+Este script implementa um **sistema de tiles dinâmicas com camadas de validação**:
+
+**Transformação:**
+- onStepIn: Incrementa (419 → 420)
+- onStepOut: Decrementa (420 → 419)
+- Padrão de "pressionado" visual
+
+**Camadas de Validação:**
+1. **Nível (actionid >= 1000):** Se actionid=1050, requer level 50
+2. **Storage (actionid como quest):** Verifica storage específico
+3. **Depot (em PZ):** Detecta depot próximo, mostra itens
+
+**Fluxo Entrada (onStepIn):**
+```
+Jogador pisa na tile
+├─ Transform: 419 → 420
+├─ Valida nível?
+│  ├─ Sim, insuficiente → bloqueia
+│  └─ Não, continua
+├─ Valida PZ + depot?
+│  ├─ Sim → mostra mensagem depot
+│  └─ Não: Valida storage
+└─ Permite/Bloqueia conforme storage
+```
+
+**Diferencial:** Único arquivo que integra nível, storage, depot E transformação!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `special_tiles.lua` implementa um sistema avançado de tiles especiais:
+
+- **Transformação Bidirecional:** Incrementa ao pisar, decrementa ao sair
+- **Validação de Nível:** Bloqueia se level < (actionid - 1000)
+- **Validação de Storage:** Verifica completion de quests
+- **Detecção de Depot:** Mostra itens ao estar em PZ com depot próximo
+- **Feedback Integrado:** Mensagens de erro e containers especiais
+
+### Arquitetura
+
+Tabelas + função auxiliar + dois callbacks paralelos:
+
+```
+local increasing = { 419 → 420, 431 → 430, ... }
+local decreasing = { 420 → 419, 430 → 431, ... }
+
+onStepIn:
+  ├─ Transform (increasing)
+  ├─ Válida nível (actionid >= 1000)
+  ├─ Se PZ: Detecta depot
+  ├─ Se não PZ: Válida storage
+  └─ Bloqueia/Permite
+
+onStepOut:
+  ├─ Transform (decreasing)
+  └─ Desabilita containers
+```
+
+### Fluxo Lógico Resumido
+
+| Validação | Condição | Resultado |
+|---|---|---|
+| **Nível** | actionid >= 1000 | Bloqueia se level insuficiente |
+| **PZ + Depot** | Em protection zone | Mostra mensagem depot |
+| **Storage** | actionid como quest ID | Bloqueia se não completado |
+| **Transform Out** | Ao sair | Volta para ID anterior |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Tabelas de Transformação
+
+```lua
+local increasing = { [419] = 420, [431] = 430, [452] = 453, [563] = 564, [549] = 562, [10145] = 10146 }
+local decreasing = { [420] = 419, [430] = 431, [453] = 452, [564] = 563, [562] = 549, [10146] = 10145 }
+```
+
+**Propósito:** Mapeia transformações quando jogador entra/sai.
+
+| Increasing | Decreasing | Padrão |
+|---|---|---|
+| 419 → 420 | 420 → 419 | Tile pressionada |
+| 431 → 430 | 430 → 431 | Tile pressionada |
+| 10145 → 10146 | 10146 → 10145 | Tile pressionada |
+
+---
+
+### Função Auxiliar: checkAndSendDepotMessage
+
+```lua
+local function checkAndSendDepotMessage(player)
+	for _, direction in ipairs(DIRECTIONS_TABLE) do
+		local playerPosition = player:getPosition()
+		playerPosition:getNextPosition(direction)
+
+		local tile = playerPosition:getTile()
+		if tile then
+			local depotItem = tile:getItemByType(ITEM_TYPE_DEPOT)
+			if depotItem then
+				local depotItems = 0
+				for id = 1, configManager.getNumber(configKeys.DEPOT_BOXES) do
+					depotItems = depotItems + player:getDepotChest(id, true):getItemHoldingCount()
+				end
+
+				local depotMessage = string.format("Your depot contains %d item%s", depotItems, depotItems ~= 1 and "s." or ".")
+				local stashMessage = string.format("Your stash contains %d item%s", player:getStashCount(), player:getStashCount() ~= 1 and "s." or ".")
+
+				player:sendTextMessage(MESSAGE_STATUS, string.format("%s %s", depotMessage, stashMessage))
+				player:setSpecialContainersAvailable(true, true, true)
+			end
+		end
+	end
+	return true
+end
+```
+
+**Propósito:** Detecta depot próximo e envia mensagem de itens.
+
+**Parâmetros:**
+- `player` - Jogador pisando na tile
+
+**Fluxo Lógico:**
+
+1. **Itera Direções:** Loop por todas as 8 direções (DIRECTIONS_TABLE)
+2. **Busca Depot:** Verifica tile adjacente para item de depot
+3. **Se Encontrado Depot:**
+   - Calcula total de itens nos depot chests
+   - Calcula itens em stash
+   - Formata mensagens com pluralização
+   - Envia mensagem de status com ambos contadores
+   - ativa containers especiais (true, true, true)
+4. **Retorna:** true
+
+**Exemplo de Mensagem:**
+```
+"Your depot contains 125 items. Your stash contains 52 items."
+```
+
+---
+
+### Callback onStepIn
+
+```lua
+function tile.onStepIn(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player then
+		return true
+	end
+
+	if not increasing[item.itemid] then
+		return true
+	end
+
+	item:transform(increasing[item.itemid])
+
+	if item.actionid >= 1000 then
+		if player:getLevel() < item.actionid - 1000 then
+			player:teleportTo(fromPosition, false)
+			position:sendMagicEffect(CONST_ME_MAGIC_BLUE)
+			player:sendTextMessage(MESSAGE_LOOK, "The tile seems to be protected against unwanted intruders.")
+		end
+		return true
+	end
+
+	if Tile(position):hasFlag(TILESTATE_PROTECTIONZONE) then
+		return checkAndSendDepotMessage(player)
+	end
+
+	if item.actionid ~= 0 and player:getStorageValue(item.actionid) <= 0 then
+		player:teleportTo(fromPosition, false)
+		position:sendMagicEffect(CONST_ME_MAGIC_BLUE)
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "The tile seems to be protected against unwanted intruders.")
+		return true
+	end
+	return true
+end
+```
+
+**Propósito:** Ao pisar, transforma tile e valida acesso.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que pisou |
+| `item` | Item | A tile especial |
+| `position` | Position | Posição da tile |
+| `fromPosition` | Position | Posição anterior |
+
+**Fluxo Lógico:**
+
+1. **Valida Jogador:** Se não é jogador, retorna true
+2. **Valida Tile:** Se não em tabela increasing, retorna true
+3. **Transforma:** `item:transform(increasing[itemid])`
+4. **Validação de Nível (actionid >= 1000):**
+   - Calcula nível requerido: `actionid - 1000`
+   - Se `player.level < required`: Bloqueia com teleport
+   - Efeito azul + mensagem "protected against intruders"
+   - Retorna true
+5. **Validação de Depot (em PZ):**
+   - Se tile em protection zone: Chama `checkAndSendDepotMessage()`
+   - Retorna seu resultado
+6. **Validação de Storage (quest):**
+   - Se `actionid != 0 && storage <= 0`: Bloqueia
+   - Teleporta, efeito, mensagem
+   - Retorna true
+7. **Default:** Retorna true (permite)
+
+---
+
+### Callback onStepOut
+
+```lua
+function tile.onStepOut(creature, item, position, fromPosition)
+	local player = creature:getPlayer()
+	if not player or player:isInGhostMode() then
+		return true
+	end
+
+	if not decreasing[item.itemid] then
+		return true
+	end
+
+	item:transform(decreasing[item.itemid])
+	player:setSpecialContainersAvailable(false, false, false)
+	return true
+end
+```
+
+**Propósito:** Ao sair, volta transformação e limpa containers.
+
+**Fluxo:**
+
+1. **Validação:** Jogador não ghost
+2. **Valida Tile:** Se em tabela decreasing
+3. **Transforma:** VoltaSepara ID anterior
+4. **Desabilita Containers:** `setSpecialContainersAvailable(false, false, false)`
+5. **Retorna:** true
+
+---
+
+### Registração
+
+```lua
+for index, value in pairs(increasing) do
+	tile:id(index)
+end
+tile:type("stepin")
+tile:register()
+
+-- Segunda instância para stepout
+tile = MoveEvent()
+...
+for index, value in pairs(decreasing) do
+	tile:id(index)
+end
+tile:type("stepout")
+tile:register()
+```
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `increasing` | table | Arquivo | Mapa de transformação ao entrar |
+| `decreasing` | table | Arquivo | Mapa de transformação ao sair |
+| `tile` | MoveEvent | Arquivo | Instância do evento |
+| `player` | Player | Função | Criatura convertida a jogador |
+| `depotItems` | number | Função | Total de itens em depot |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Transformação Bidirecional
+
+```lua
+local increasing = { [419] = 420, ... }
+local decreasing = { [420] = 419, ... }
+
+-- onStepIn
+item:transform(increasing[item.itemid])
+
+-- onStepOut
+item:transform(decreasing[item.itemid])
+```
+
+**Benefício:** Feedback visual claro de "pressionado" ao pisar.
+
+### Padrão 2: Validação em Cascata
+
+```lua
+if item.actionid >= 1000 then
+	-- Validação de nível
+end
+
+if Tile(position):hasFlag(TILESTATE_PROTECTIONZONE) then
+	-- Depot message
+end
+
+if item.actionid ~= 0 and player:getStorageValue(...) <= 0 then
+	-- Validação de storage
+end
+```
+
+**Benefício:** Múltiplas camadas de acesso, cada uma com lógica clara.
+
+### Padrão 3: Detecção de Objetos Adjacentes
+
+```lua
+for _, direction in ipairs(DIRECTIONS_TABLE) do
+	local playerPosition = player:getPosition()
+	playerPosition:getNextPosition(direction)
+	local tile = playerPosition:getTile()
+	if tile then
+		local depotItem = tile:getItemByType(ITEM_TYPE_DEPOT)
+```
+
+**Benefício:** Genérico: busca qualquer tipo de item em direções.
+
+---
+
+## 🤖 Documentação das Funções
+
+### checkAndSendDepotMessage(player)
+
+Busca depot adjacente e envia message com contagem de itens.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Jogador a notificar |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre |
+
+**Exemplo:**
+
+```lua
+checkAndSendDepotMessage(player)
+-- Busca depot em 8 direções
+-- Se encontrado:
+--   "Your depot contains 125 items. Your stash contains 52 items."
+-- ativa special containers
+```
+
+---
+
+### tile.onStepIn(creature, item, position, fromPosition)
+
+Ao pisar, transforma e valida acesso por nível/storage.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que pisou |
+| `item` | Item | A tile especial |
+| `position` | Position | Posição |
+| `fromPosition` | Position | De onde veio |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre |
+
+**Validações:**
+
+- **Nível:** Se `actionid >= 1000` e level insuficiente → bloqueia
+- **Depot:** Se em PZ → mostra mensagem
+- **Storage:** Se `actionid > 0` e não completado → bloqueia
+
+---
+
+### tile.onStepOut(creature, item, position, fromPosition)
+
+Ao sair, volta transformação e limpa containers.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Criatura que saiu |
+| `item` | Item | A tile |
+| `position` | Position | Posição |
+| `fromPosition` | Position | Para onde vai |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Sempre |
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Tile de Nível
+
+```lua
+-- Tile com actionid = 1050 (requer level 50)
+-- Jogador level 40 pisa
+-- Validação: 40 < 50 → bloqueia
+-- Teleporta para trás, mensagem de erro
+```
+
+### Caso 2: Tile de Acesso próx a Depot
+
+```lua
+-- Tile em PZ (protection zone)
+-- Depot próximo
+-- Jogador pisa
+-- Detecta depot, mostra contagem
+-- Habilita containers especiais
+```
+
+### Caso 3: Tile de Quest
+
+```lua
+-- Tile com actionid = 5 (quest ID)
+-- storage[5] = -1 (não completou)
+-- Jogador tenta pisar
+-- Validação: storage <= 0 → bloqueia
+-- Teleporta, mensagem de erro
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Storage System:** Sistema de quest persistence
+- **Depot System:** Containers e stash
+- **Protection Zones:** PZ flags e validação
+- **Direction Table:** DIRECTIONS_TABLE (8 direções)
+- **MoveEvent API:** [events/movements](../movements)
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | MoveEvent (stepin + stepout) |
+| **Transformação** | Bidirecional (6 pares) |
+| **Validações** | Nível + Storage + PZ/Depot |
+| **Callbacks** | 2 (entrada e saída) |
+| **Função Auxiliar** | checkAndSendDepotMessage |
+| **Feedback** | Mensagens + efeitos + containers |
+| **Padrões** | Cascata de validação + bidirecional |

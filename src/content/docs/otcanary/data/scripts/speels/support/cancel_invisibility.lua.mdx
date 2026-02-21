@@ -1,0 +1,186 @@
+---
+title: Cancel Invisibility
+description: Spell de suporte para Paladins que remove invisibilidade de alvos numa área 3x3 com efeito de dispel blue
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `cancel_invisibility.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Paladin / Royal Paladin |
+| **Spell ID** | 90 |
+| **Mana Requerida** | 200 |
+| **Level Requerido** | 26 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Área de Efeito** | 3x3 (AREA_CIRCLE3X3) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exana ina` |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Efeito Aplicado** | DISPEL - Remove CONDITION_INVISIBLE |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (suporte defensivo) |
+| **Tipo de Alvo** | Necessita alvo |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/cancel_invisibility.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell utiliza sistema de dispel via Combat. O parâmetro `COMBAT_PARAM_DISPEL` com `CONDITION_INVISIBLE` garante remoção de qualquer invisibilidade ativa no alvo. A área `AREA_CIRCLE3X3` afeta todos os alvos numa área de 3 quadrados de raio circularmente. Ideal para revelar múltiplos inimigos invisíveis em combate em grupo.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `cancel_invisibility.lua` implementa um dispel defensivo premium para Paladins (level 26+) que remove qualquer condition de invisibilidade ativa em alvos dentro de uma área 3x3. É um dos spells de limpeza de efeitos negativos que protegem o grupo contra tactics invisíveis. O spell cria uma instância Combat com parâmetro `COMBAT_PARAM_DISPEL` configurado para `CONDITION_INVISIBLE`, define área de efeito com `createCombatArea(AREA_CIRCLE3X3)`, e executa o combat via handler `onCastSpell`. A implementação é minimalista - sem fórmula de dano, sem condições adicionais, apenas dispel puro em área.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat para Dispel
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_INVISIBLE)
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 3.1 Execução de Combat (dispel)
+    -- 3.2 Aplicação de Efeito em Área
+    -- 3.3 Remoção de Invisibilidade em Alvos
+    -- 3.4 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:name("Cancel Invisibility")
+spell:words("exana ina")
+spell:group("support")
+spell:vocation("paladin;true", "royal paladin;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_CANCEL_INVISIBILITY)
+spell:id(90)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(26)
+spell:mana(200)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat configurada para dispel de invisibilidade em área |
+| `spell` | `Spell` | Local | Instância do spell instantâneo que define comportamento e propriedades |
+| `creature` | `Creature/Player` | Parâmetro | Entidade que executa o cast (Paladin ou Royal Paladin) |
+| `variant` | `Variant` | Parâmetro | Dados variáveis do spell (contém posição ou alvo) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Dispel com CONDITION_INVISIBLE**
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_INVISIBLE)
+```
+Utiliza `COMBAT_PARAM_DISPEL` para remover especificamente `CONDITION_INVISIBLE` sem afetar outras conditions como poison, curse, etc.
+
+### 2. **Padrão de Área Circular 3x3**
+```lua
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+```
+Define área de efeito como círculo de 3 quadrados de raio, afetando múltiplos alvos simultaneamente. Ideal para conter explosão de invisíveis.
+
+### 3. **Padrão de Dispel Não-Agressivo**
+```lua
+spell:isAggressive(false)
+spell:isSelfTarget(true)
+```
+Apesar de revelar inimigos, não é marcado como agressivo - spell de suporte defensivo que protege contra tactics.
+
+### 4. **Padrão de Cooldown Duplo**
+```lua
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+```
+Cooldown individual e de grupo sincronizados (ambos 2 segundos), impedindo spam mesmo em grupo.
+
+### 5. **Padrão de Support Range**
+```lua
+spell:level(26)
+spell:mana(200)
+```
+Level baixo (26) e mana moderada (200) tornam acessível cedo, permitindo uso frequente em combates assim que disponível.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Executa dispel em área 3x3 removendo todas as invisibilidades detectadas.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Paladin ou Royal Paladin que executa o spell.
+- `variant` (Variant): Dados variáveis contendo posição ou alvo focal.
+
+**Fluxo de Execução:**
+
+1. **Validação de Variant**:
+   - Recebe `variant` como parâmetro (position ou target)
+   - Combat valida automaticamente
+
+2. **Execução de Combat em Área**:
+   - Chama `combat:execute(creature, variant)`
+   - Combat aplica área circular 3x3 centered na posição do alvo/creature
+
+3. **Aplicação de Dispel**:
+   - Para cada criatura na área:
+     - Se possui `CONDITION_INVISIBLE` ativa
+     - Remove condition automaticamente
+     - Passa a ser visível novamente
+
+4. **Efeito Visual**:
+   - Efeito visual `CONST_ME_MAGIC_BLUE` na posição central
+   - Effect spread para todos os alvos na área
+
+5. **Resultado**:
+   - Todos os invisíveis na área são revelados
+   - Efeito visual blue confirma cast
+
+6. **Retorno**:
+   - Retorna `true` (cast bem-sucedido, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Spell executado com sucesso, dispel aplicado, mana de 200 consumida
+- `false`: Raro - falha interna do combat
+
+**Lógica Detalhada:**
+
+O spell implementa tática de revelação em grupo. A área 3x3 é suficiente para pegar múltiplos inimigos numa formação, mas não tão grande que seja overpowered. Level 26 é acesso relativamente cedo na progressão, permitindo que Paladins se protejam contra inimigos invisíveis já no mid-game.
+
+O `COMBAT_PARAM_DISPEL` com `CONDITION_INVISIBLE` é específico - não remove outras conditions como poison, manashield, ou buffs. É puramente um antídoto contra invisibilidade. A mana de 200 é moderada, incentivando uso estratégico mas não proibitivo em combates de longa duração.
+
+O cooldown de 2 segundos permite recast rápido se necessário localizar invisíveis adicionais, mas força decisão de onde conjurar a spell. O escopo auto-target (`isSelfTarget(true)`) significa que é centrado no Paladin mesmo se ele conjurar para longe - raio de ação padrão é aplicado normalmente.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_CANCEL_INVISIBILITY`: Som característico de dispel
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+- Feedback visual imediato via efeito MAGIC_BLUE em área
+
+## 📌 Resumo
+
+**Cancel Invisibility** é um spell de suporte defensivo premium exclusivo para Paladins (level 26+) que remove qualquer invisibilidade ativa de alvos numa área 3x3. O dispel requer 200 de mana e cooldown de 2 segundos. O spell é auto-target (centrado no Paladin ao conjurar) e quando bem posicionado afeta múltiplos inimigos invisíveis simultaneamente. O parâmetro `COMBAT_PARAM_DISPEL` garantir remoção limpa de `CONDITION_INVISIBLE` sem afetar outras mechanics. É um dos spells defensivos essenciais em combates contra Assassins ou outras vocações que usam invisibilidade tática.
+
+A implementação segue padrão minimalista de dispels, diferenciando-se por ser: (1) de uso defensivo não-agressivo, (2) em área acima de single-target, (3) acessível em level relativamente baixo (26) com mana moderada, permitindo proteção precoce do grupo.

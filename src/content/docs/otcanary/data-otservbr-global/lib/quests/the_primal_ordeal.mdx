@@ -1,0 +1,260 @@
+---
+title: The Primal Ordeal - Primal Monster Registration
+description: Documentação técnica do arquivo the_primal_ordeal.lua, que implementa sistema de registro de "Primal Pack Beasts" - versões modificadas de monstros padrões.
+sidebar:
+  order: 9
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+O arquivo **the_primal_ordeal.lua** define a **função de registro de Primal Beasts** - monstros customizados que são variações mais fracas dos monstros padrões, usados provavelmente para quest/respawning.
+
+<Card title="Caminho Original">
+`data-otservbr-global/lib/quests/the_primal_ordeal.lua`
+</Card>
+
+<Aside type="note">
+**Tipo**: Monster Registration System  
+**Total de Funções**: 1  
+**Padrão**: Template Cloning com Modificações  
+**Propósito**: Criar versão "Primal" de creatures
+</Aside>
+
+## 📄 Visão Geral
+
+Arquivo **mínimo** com apenas 1 função que registra monstros customizados:
+
+```lua
+function RegisterPrimalPackBeast(template)
+  -- Clona template padrão
+  -- Modifica stats (health, exp, loot)
+  -- Registra nova versão como "Primal Pack Beast"
+end
+```
+
+## 🔧 Função: RegisterPrimalPackBeast
+
+### Assinatura
+
+```lua
+function RegisterPrimalPackBeast(template)
+  local name = template.name or template.description:gsub("an ", ""):gsub("a ", ""):titleCase()
+  local primal = Game.createMonsterType(name .. " (Primal)")
+  local primalMonster = table.copy(template)
+  
+  -- Modificações
+  primalMonster.experience = 0
+  primalMonster.loot = {}
+  primalMonster.name = "Primal Pack Beast"
+  primalMonster.description = "a primal pack beast"
+  primalMonster.maxHealth = primalMonster.maxHealth * 0.7
+  primalMonster.health = primalMonster.maxHealth
+  primalMonster.raceId = nil
+  primalMonster.Bestiary = nil
+  primalMonster.corpse = 0
+  
+  primal:register(primalMonster)
+end
+```
+
+### Parâmetros
+
+**template**: Tabela de definição de monster original
+
+```lua
+{
+  name = "creature name",
+  description = "a creature description",
+  maxHealth = 100,
+  -- ... (resto das propriedades)
+}
+```
+
+## 🔄 Processamento Passo-a-Passo
+
+### 1. Derivar Nome
+
+```lua
+local name = template.name or 
+  template.description:gsub("an ", ""):gsub("a ", ""):titleCase()
+```
+
+**Lógica**:
+- Se `.name` existe: use direto
+- Senão, use `.description`
+- Remove artigos "an " e "a "
+- Aplica `.titleCase()` (capitalize first letter)
+
+**Exemplos**:
+- `"a troll"` → `"Troll"`
+- `"an orc wizard"` → `"Orc Wizard"`
+- `"Giant Spider"` → `"Giant Spider"` (já capitalizado)
+
+### 2. Criar Tipo Customizado
+
+```lua
+local primal = Game.createMonsterType(name .. " (Primal)")
+```
+
+- **Nome registrado**: `"Original Name (Primal)"`
+- **Exemplo**: `"Troll (Primal)"`, `"Giant Spider (Primal)"`
+
+### 3. Clonar Template
+
+```lua
+local primalMonster = table.copy(template)
+```
+
+Deep-copy da tabela completa (inclui stats, abilities, loot, etc).
+
+### 4. Modificações ao Clone
+
+#### Experience = 0
+
+```lua
+primalMonster.experience = 0
+```
+
+- **Efeito**: Matar Primal Beast NÃO dá XP
+- **Propósito**: Mobs de quest (não farm)
+
+#### Loot = {}
+
+```lua
+primalMonster.loot = {}
+```
+
+- **Efeito**: Nenhum drop ao matar
+- **Propósito**: Sem gold/items
+
+#### Nome Genérico
+
+```lua
+primalMonster.name = "Primal Pack Beast"
+primalMonster.description = "a primal pack beast"
+```
+
+- **Efeito**: Todos Primal Beasts têm mesmo nome
+- **Propósito**: Grupos de creatures indistinguíveis
+
+#### Health -30%
+
+```lua
+primalMonster.maxHealth = primalMonster.maxHealth * 0.7
+primalMonster.health = primalMonster.maxHealth
+```
+
+- **Modificação**: 30% HP redução
+- **Exemplo**: 100 HP → 70 HP
+- **Propósito**: Mais fáceis que originais
+
+#### Sem Race/Bestiary
+
+```lua
+primalMonster.raceId = nil
+primalMonster.Bestiary = nil
+```
+
+- **Efeito**: Não contam para Bestiary
+- **Propósito**: Não polui progression
+
+#### Sem Corpse
+
+```lua
+primalMonster.corpse = 0
+```
+
+- **Efeito**: Sem corpo lootável
+- **Propósito**: Limpa arena automaticamente
+
+### 5. Registrar Novo Tipo
+
+```lua
+primal:register(primalMonster)
+```
+
+Registra o monster customizado no servidor.
+
+## 💡 Padrão de Uso Esperado
+
+Na quest "The Primal Ordeal", provavelmente:
+
+```lua
+-- Arquivo: data-otservbr-global/lib/quests/the_primal_ordeal.lua
+-- (ou em script de quest separado)
+
+-- Iterador sobre creatures padrões
+for _, monsterDefinition in ipairs(allMonsters) do
+  RegisterPrimalPackBeast(monsterDefinition)
+end
+
+-- Depois, em arena de quest:
+-- Spawnar Primal Beast ao invés de creature original
+local primalMonster = Game.createMonster("Troll (Primal)", pos)
+-- Garante: sem XP, sem loot, -30% HP, sem corpse
+```
+
+## 🎯 Características da Primal Beast
+
+| Propriedade | Modificação | Propósito |
+|-------------|-------------|----------|
+| `experience` | = 0 | Sem farm |
+| `loot` | = {} | Sem drop |
+| `name` | = "Primal Pack Beast" | Genérico |
+| `maxHealth` | × 0.7 | -30% HP |
+| `raceId` | = nil | Sem Bestiary |
+| `Bestiary` | = nil | Sem tracking |
+| `corpse` | = 0 | Sem body |
+
+## 📊 Exemplo Prático
+
+### Creature Original
+
+```lua
+{
+  name = "Giant Spider",
+  description = "a giant spider",
+  maxHealth = 100,
+  experience = 50,
+  loot = {
+    { itemid = 2148, chance = 10 },  -- mana potion
+  },
+  raceId = 5,
+  Bestiary = true,
+  corpse = 3493,
+}
+```
+
+### Após RegisterPrimalPackBeast()
+
+```
+Nome registrado: "Giant Spider (Primal)"
+
+Propriedades:
+  name = "Primal Pack Beast"
+  description = "a primal pack beast"
+  maxHealth = 70 (100 × 0.7)
+  health = 70
+  experience = 0
+  loot = {}
+  raceId = nil
+  Bestiary = nil
+  corpse = 0
+```
+
+## ⚠️ Observações
+
+1. **Aplicável a qualquer creature**: Função genérica (não specific monster)
+2. **Clonagem profunda**: Todas propriedades copiadas, não shared
+3. **Health é auto-reset**: `health` é sinc com `maxHealth`
+4. **Sem damage scaling**: Damages inherit do template (não reduzem)
+
+## 🤖 Informações da Documentação
+
+**Data**: 21 de Fevereiro de 2026  
+**Versão**: 1.0  
+**Status**: Completo  
+**Complexidade**: ⭐ (Muito Simples)  
+**Quest**: The Primal Ordeal

@@ -1,0 +1,202 @@
+---
+title: store_coins.lua
+description: Item consumível que converte quantidade em coins transferáveis com logging e efeito visual.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="store_coins.lua" icon="pencil">
+Sistema simples de armazenamento de coins com suporte à quantidade e logging de auditoria.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/store_coins.lua`
+
+**Linhas:** 11 | **ID do Item:** ITEM_STORE_COIN | **Tipo:** Action Handler
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa um item consumível que converte coins diretos em coins transferáveis na conta. O sistema lê a quantidade do item e adiciona ao balance de coins transferáveis. Inclui logging de auditoria para rastrear uso do item, efeito visual verde e mensagem customizada com total atualizado.
+
+### Estrutura de Funcionalidades
+
+```
+storeCoin (Action)
+  ├─ onUse(player, item, fromPosition, target, toPosition, isHotkey)
+  │   ├─ Obter quantidade: item:getCount()
+  │   ├─ Adicionar coins: addTransferableCoins(count)
+  │   ├─ Mensagem com feedback: total atualizado
+  │   ├─ Efeito visual: MAGIC_GREEN
+  │   ├─ Remover item: item:remove()
+  │   ├─ Logger warning com nome do jogador
+  │   └─ return true
+  └─ register() → ID ITEM_STORE_COIN
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| storeCoin | Action | Objeto handler para store coins |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | Valor | Descrição |
+|------|-------|-----------|
+| ID do Item | ITEM_STORE_COIN | Constante global para ID |
+| Efeito Visual | CONST_ME_MAGIC_GREEN | Verde mágico para sucesso |
+| Log Level | logger.warn() | Nível de auditoria |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function storeCoin.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Obter quantidade do item
+	local count = item:getCount()
+	
+	-- Adicionar coins transferáveis
+	player:addTransferableCoins(count)
+	
+	-- Mensagem com total atualizado
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+	  "You have added " .. count .. " tibia coins to your balance. Your total is now " .. 
+	  player:getTransferableCoins() .. ".")
+	
+	-- Efeito visual
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+	
+	-- Consumir item
+	item:remove()
+
+	-- Log de auditoria
+	logger.warn("[StoreCoinScript - ITEM_STORE_COIN] The player {} used the item to store Tibia Coins.", 
+	  player:getName())
+	
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa store_coin
+  │
+  ├─ Obter count: item:getCount()
+  │
+  ├─ Adicionar ao balance:
+  │   └─ addTransferableCoins(count)
+  │
+  ├─ Enviar mensagem:
+  │   └─ "You have added X coins... total is now Y"
+  │
+  ├─ Efeito visual:
+  │   └─ MAGIC_GREEN
+  │
+  ├─ Consumir item:
+  │   └─ item:remove() (sem quantidade, remove tudo)
+  │
+  ├─ Log:
+  │   └─ logger.warn() com nome do jogador
+  │
+  └─ return true (sempre sucesso)
+```
+
+### Coins Transferáveis
+
+```
+Antes de usar:
+  └─ player:getTransferableCoins() = X
+
+Após usar store_coin com N moedas:
+  ├─ addTransferableCoins(N)
+  ├─ Novo total: X + N
+  └─ item:remove() → item desaparece
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **getCount()**: Retorna quantidade de items empilhados
+- **addTransferableCoins()**: Adiciona coins à conta (transferáveis entre chars)
+- **getTransferableCoins()**: Obtém total atual para mensagem
+- **item:remove()**: Remove item SEM parâmetro (remove tudo)
+- **Logger Warn**: Auditoria de conversão para segurança
+- **MAGIC_GREEN Effect**: Indica sucesso de operação
+- **String Concatenation**: Mensagem dinâmica com valores
+- **Always True**: Operação nunca falha
+
+### Responsabilidades do Handler
+
+1. **Obter quantidade**: item:getCount()
+2. **Adicionar coins**: addTransferableCoins()
+3. **Carregar novo total**: getTransferableCoins()
+4. **Enviar feedback**: Mensagem customizada
+5. **Efeito visual**: MAGIC_GREEN
+6. **Consumir item**: item:remove()
+7. **Auditar**: logger.warn() com nome do jogador
+8. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Coin Conversion
+
+Este script demonstra conversão simples:
+
+```lua
+local count = item:getCount()
+player:addTransferableCoins(count)
+player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+  "You have added " .. count .. " tibia coins to your balance. Your total is now " .. 
+  player:getTransferableCoins() .. ".")
+```
+
+### Auditoria com Logger
+
+Logging para rastreamento:
+
+```lua
+logger.warn("[StoreCoinScript - ITEM_STORE_COIN] The player {} used the item to store Tibia Coins.", 
+  player:getName())
+```
+
+Formato: `[Script] Message with {placeholder}` para contexto.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: store_coins.lua" icon="star">
+Análise de sistema simples de conversão de coins com auditoria. Demonstra logger.warn() para rastreamento de operações sensíveis.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Coin conversion com auditoria | Complexidade: Muito Baixa
+</Aside>

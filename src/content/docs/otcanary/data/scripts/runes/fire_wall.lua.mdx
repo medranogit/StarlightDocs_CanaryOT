@@ -1,0 +1,262 @@
+---
+title: "Spell/Rune - fire_wall.lua"
+description: "Runa que cria parede de fogo com áreas wallfield e diagonal"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `fire_wall.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 28 |
+| **ID do Item (runeId)** | 3190 |
+| **Level Requerido** | 33 |
+| **Magic Level Requerido** | 6 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_FIREDAMAGE |
+| **Área** | Wall + Diagonal (linha/parede) |
+| **Cooldown** | 2s |
+| **Cargas** | 4 |
+| **PZ Locked** | Sim |
+| **Agressividade** | Sim |
+| **Linhas de Código** | 31 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Runa que cria parede de fogo em linha com cobertura diagonal. Usa áreas WALLFIELD + AREADIAGONAL (padrão, não especificamente energia). Permite controle territorial com campos de fogo em sequência.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/fire_wall.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(28)
+rune:runeId(3190)
+rune:level(33)
+rune:magicLevel(6)
+rune:group("attack")
+rune:setPzLocked(true)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Parede de Fogo com Cobertura Total**
+
+Esta runa implementa um **sistema de bloqueio em linha com fogo**:
+
+1. **Áreas:**
+   - WALLFIELD: Linha horizontal/vertical
+   - AREADIAGONAL: Cantos diagonais
+
+2. **Múltiplos Fields:** Sequência de campos de fogo
+3. **Cargas:** 4 (cara)
+4. **PZ Locked:** Force combate fora town
+
+**Fluxo:**
+```
+Aponta runa em linha
+├─ Area wallfield (linha)
+├─ Area diagonal (cantos)
+├─ Fogo criado em padrão
+└─ Parede completa bloqueia
+```
+
+**Diferencial:** Fire wall patterns = controle territorial com fogo!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `fire_wall` oferece criação de parede de fogo:
+
+- **Dano:** COMBAT_FIREDAMAGE
+- **Áreas:** Wall + diagonal
+- **Fields:** Múltiplos em parede
+- **Controle:** Territorial com sinergia
+
+### Arquitetura
+
+Combat com áreas de parede:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_FIREDAMAGE
+├─ Effect: HITBYFIRE
+├─ Distance: FIRE
+├─ CreateItem: FIREFIELD_PVP_FULL
+├─ Area: WALLFIELD
+└─ Area: AREADIAGONAL
+
+rune.onCastSpell()
+└─ combat:execute(creature, var)
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_FIREDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITBYFIRE)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_FIRE)
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_FIREFIELD_PVP_FULL)
+combat:setArea(createCombatArea(AREA_WALLFIELD, AREADIAGONAL_WALLFIELD))
+```
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_FIREDAMAGE | Dano fogo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITBYFIRE | Impacto |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_FIRE | Projétil |
+| `COMBAT_PARAM_CREATEITEM` | ITEM_FIREFIELD_PVP_FULL | Field fogo |
+| `Area 1` | AREA_WALLFIELD | Linha principal |
+| `Area 2` | AREADIAGONAL_WALLFIELD | Diagonais |
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler principal da runa ao conjuração.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Wall criada |
+| `false` | PZ bloqueado |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Múltiplas Áreas Wall
+
+```lua
+combat:setArea(createCombatArea(AREA_WALLFIELD, AREADIAGONAL_WALLFIELD))
+```
+
+**Benefício:** Wall + diagonal = cobertura linha completa.
+
+### Padrão 2: Field Sequência
+
+```lua
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_FIREFIELD_PVP_FULL)
+```
+
+**Benefício:** Múltiplos fields em padrão.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Cria parede de campos de fogo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Position alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Wall criada |
+| `false` | PZ bloqueado |
+
+**Efeito:**
+- Parede de fields fogo
+- Cobertura linha + diagonal
+- Múltiplos fields simultâneos
+
+**Exemplo:**
+
+```lua
+-- Mago nível 33 cria parede
+rune.onCastSpell(mago, lineVariant, false)
+// Parede horizontal (wallfield)
+// Diagonais cobertas (areadiagonal)
+// Resultado: Linha completa de fire fields
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Bloqueio Passagem
+
+```lua
+-- Mago cria wall em corredor
+// Fire fields em linha
+// Bloqueia passagem
+```
+
+### Caso 2: Defesa Territorial
+
+```lua
+-- 4 cargas = parede completa
+// Zona protegida por fogo
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Areas:** AREA_WALLFIELD, AREADIAGONAL_WALLFIELD
+- **Field:** ITEM_FIREFIELD_PVP_FULL
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Parede de fire fields |
+| **Áreas** | Wall + diagonal (2) |
+| **Cargas** | 4 (cara) |
+| **Level** | 33 (mid-late) |
+| **PZ Locked** | Sim |
+| **Padrão** | Múltiplas áreas wallfield |

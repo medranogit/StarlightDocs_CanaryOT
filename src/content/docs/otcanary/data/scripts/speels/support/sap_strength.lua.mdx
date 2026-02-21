@@ -1,0 +1,309 @@
+---
+title: Sap Strength
+description: Spell de suporte para Sorcerers de level ultra-alto que applica debuff de dano com área dinâmica baseada em WOD e callback multi-staged
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `sap_strength.lua` |
+| **Tipo de Spell** | Spell instantâneo com callback (Support) |
+| **Vocação** | Sorcerer / Master Sorcerer |
+| **Spell ID** | 244 |
+| **Mana Requerida** | 300 |
+| **Level Requerido** | 275 (nível ultra-alto!) |
+| **Status Premium** | Não (acesso livre) |
+| **Cooldown Individual** | 12 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exori kor` |
+| **Efeito Visual** | `CONST_ME_MORTAREA` |
+| **Auto-Target** | Sim (Próprio em cast) |
+| **Agressividade** | Não (suporte crippling) |
+| **Grupos** | support, crippling |
+| **Área Padrão** | AREA_CIRCLE3X3 (3x3) |
+| **Área WOD** | AREA_CIRCLE5X5 (5x5 expandida) |
+| **Callback Stages** | onTargetCreature (default), onTargetCreatureWOD (Wheel) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/sap_strength.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell implementa callback multi-staged com área dinâmica. A função targetFunction() é chamada por dois handlers: onTargetCreature (AREA_CIRCLE3X3) e onTargetCreatureWOD (AREA_CIRCLE5X5). Filtra targets: rejeita players (isPlayer), aceita summons (getMaster retorna true), aplica a monstros. O debuff base é 90% damage reduction, reduzido para 80% se Wheel UPGRADED. Também aplica CONDITION_PARAM_DRAIN_BODY com valor gradeBuff from "Drain_Body_Spells" WOD. A mana de 300 + level 275 indica spell end-game puro.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `sap_strength.lua` implementa debuff multi-alvo ultra-high-level para Sorcerers (level 275+) que enfraquece creatures via callback com filtragem de targets e integração dupla de Wheel de Destiny. É um dos spells mais complexos da suportação, oferecendo duas estratégias de área (3x3 padrão, 5x5 WOD-expandida) com cálculo dinâmico de debuff baseado em Wheel. O spell define função targetFunction que é reutilizada por dois handlers via callback, filtra targets (não-players, aceita summons/monstros), aplica debuff de damage (90% ou 80% WOD) + drain body gradeBuff, e executa combat com área e efeito visual. A implementação demonstra padrão avançado de callback multi-handler com filtragem condicional.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Função Auxiliar de Target
+local function targetFunction(creature, target)
+    -- 1.1 Validação de Target (rejeita players)
+    -- 1.2 Aceitação de Summons
+    -- 1.3 Consulta de Wheel "Sap Strength"
+    -- 1.4 Cálculo de Buff (90% ou 80%)
+    -- 1.5 Criação de Condition
+    -- 1.6 Consulta de Wheel "Drain_Body_Spells"
+    -- 1.7 Aplicação de Condition
+end
+
+-- 2. Handler Padrão
+function onTargetCreature(creature, target)
+    -- Chama targetFunction
+    -- Retorna true
+end
+
+-- 3. Handler WOD
+function onTargetCreatureWOD(creature, target)
+    -- Chama targetFunction (idêntico)
+    -- Retorna true
+end
+
+-- 4. Factory de Combat com Callback
+local function createCombat(area, combatFunc)
+    -- 4.1 Criação de Combat
+    -- 4.2 Setagem de Callback
+    -- 4.3 Setagem de Efeito Visual
+    -- 4.4 Setagem de Área
+    -- 4.5 Retorno do Combat
+end
+
+-- 5. Instâncias de Combat
+local combat = createCombat(AREA_CIRCLE3X3, "onTargetCreature")
+local combatWOD = createCombat(AREA_CIRCLE5X5, "onTargetCreatureWOD")
+
+-- 6. Instância do Spell
+local spell = Spell("instant")
+
+-- 7. Função de Cast Principal
+function spell.onCastSpell(creature, var, isHotkey)
+    -- 7.1 Obtenção de Target
+    -- 7.2 Decisão de Combat (WOD vs padrão)
+    -- 7.3 Retorno de Combat Executado
+end
+
+-- 8. Configuração de Propriedades do Spell
+spell:group("support", "crippling")
+spell:id(244)
+spell:name("Sap Strength")
+spell:words("exori kor")
+spell:level(275)
+spell:mana(300)
+spell:isSelfTarget(true)
+spell:cooldown(12 * 1000)
+spell:groupCooldown(2 * 1000, 12 * 1000)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `creature` | `Creature/Player` | Parâmetro (targetFunction, onCastSpell) | Sorcerer que executa o spell |
+| `target` | `Creature` | Parâmetro (targetFunction) | Target que recebe debuff |
+| `player` | `Player` | Local (targetFunction) | Conversão de creature para validações |
+| `buff` | `number` | Local (targetFunction) | Valor de debuff (90 ou 80) |
+| `grade` | `number` | Local (targetFunction) | Wheel upgrade grade para "Sap Strength" |
+| `condition` | `Condition` | Local (targetFunction) | Condition de CONDITION_ATTRIBUTES |
+| `gradeBuff` | `number` | Local (targetFunction) | Grau de "Drain_Body_Spells" WOD |
+| `combat` | `Combat` | Local | Combat padrão com AREA_CIRCLE3X3 |
+| `combatWOD` | `Combat` | Local | Combat WOD com AREA_CIRCLE5X5 |
+| `var` | `Variant` | Parâmetro (onCastSpell) | Target obtido em cast |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Função Auxiliar Reutilizável**
+```lua
+local function targetFunction(creature, target)
+    ... lógica compartilhada ...
+end
+
+function onTargetCreature(creature, target)
+    targetFunction(creature, target)
+    return true
+end
+
+function onTargetCreatureWOD(creature, target)
+    targetFunction(creature, target)
+    return true
+end
+```
+Função auxiliar encapsula lógica reutilizada por múltiplos handlers.
+
+### 2. **Padrão de Filtragem de Target Multi-Condicional**
+```lua
+if target:isPlayer() then
+    return false
+end
+if target:getMaster() then
+    return true
+end
+```
+Rejeita players, aceita summons (getMaster = controlador), aplica a monstros selvagens.
+
+### 3. **Padrão de Cálculo Dinâmico com Wheel**
+```lua
+local grade = creature:upgradeSpellsWOD("Sap Strength")
+if grade == WHEEL_GRADE_UPGRADED then
+    buff = 80
+end
+```
+Se Wheel não upgraded: 90%. Se upgraded: 80% (pior para inimigo = melhor efeito).
+
+### 4. **Padrão de Dois Parâmetros WOD**
+```lua
+-- Primeiro WOD: "Sap Strength" (área)
+if player:getWheelSpellAdditionalArea("Sap Strength") then
+    return combatWOD:execute(...)
+end
+
+-- Segundo WOD: "Drain_Body_Spells" (debuff extra)
+gradeBuff = creature:upgradeSpellsWOD("Drain_Body_Spells")
+condition:setParameter(CONDITION_PARAM_DRAIN_BODY, gradeBuff)
+```
+Dois Wheels consultados: um para área, outro para debuff.
+
+### 5. **Padrão de Factory para Combat com Área**
+```lua
+local function createCombat(area, combatFunc)
+    local initCombat = Combat()
+    initCombat:setCallback(CALLBACK_PARAM_TARGETCREATURE, combatFunc)
+    initCombat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MORTAREA)
+    initCombat:setArea(createCombatArea(area))
+    return initCombat
+end
+```
+Factory pattern para criar combats com callbacks e áreas configuráveis.
+
+## 🤖 Documentação das Funções
+
+### `targetFunction(creature, target)` (Função Auxiliar Local)
+
+**Descrição:** Função que implementa lógica de filtragem e aplicação de debuff para cada target atingido.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Sorcerer que executa o spell.
+- `target` (Creature): Target que potencialmente receberá debuff.
+
+**Fluxo:**
+
+1. **Validação de Target - Rejeição de Players**:
+   - Se `target:isPlayer()` retorna `false`
+   - Players não são afetados
+
+2. **Aceita Summons e Monstros**:
+   - Se `target:getMaster()` existe: retorna `true` (é summon)
+   - Senão: aplica a monstros selvagens
+
+3. **Cálculo de Buff Base**:
+   - `buff = 90` (default)
+   - Se `grade == WHEEL_GRADE_UPGRADED`:
+     - `buff = 80` (melhor debuff)
+
+4. **Criação de Condition**:
+   - `Condition(CONDITION_ATTRIBUTES)`
+   - Duration: 16000 ms (16 segundos)
+   - Debuff damage dealt: `buff` (90 ou 80)
+
+5. **Bônus de Drain Body WOD**:
+   - Consulta `creature:upgradeSpellsWOD("Drain_Body_Spells")`
+   - Aplica gradeBuff ao `CONDITION_PARAM_DRAIN_BODY`
+
+6. **Aplicação de Condition**:
+   - `target:addCondition(condition)`
+
+---
+
+### `onTargetCreature(creature, target)` (Handler Padrão)
+
+**Descrição:** Handler de callback para AREA_CIRCLE3X3. Reutiliza targetFunction.
+
+**Retorna:**
+- `true`: Target processado com sucesso
+
+---
+
+### `onTargetCreatureWOD(creature, target)` (Handler WOD)
+
+**Descrição:** Handler de callback para AREA_CIRCLE5X5 (Wheel expandida). Reutiliza targetFunction.
+
+**Retorna:**
+- `true`: Target processado com sucesso
+
+---
+
+### `createCombat(area, combatFunc)` (Factory Local)
+
+**Descrição:** Factory que cria instâncias de Combat com callback e área parametrizados.
+
+**Parâmetros:**
+- `area` (CombatArea): AREA_CIRCLE3X3 ou AREA_CIRCLE5X5
+- `combatFunc` (string): Nome de função callback ("onTargetCreature" ou "onTargetCreatureWOD")
+
+**Retorna:**
+- `Combat`: Instância configurada com callback e área
+
+---
+
+### `spell.onCastSpell(creature, var, isHotkey)`
+
+**Descrição:** Função principal de execução do spell. Obtém target, decide entre combats baseado em Wheel, executa.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Sorcerer que executa o spell.
+- `var` (Variant): Dados variáveis (pode conter target).
+- `isHotkey` (boolean): Se foi castado via hotkey.
+
+**Fluxo de Execução:**
+
+1. **Obtenção de Target**:
+   - `target = creature:getTarget()`
+   - Se existe: `var = Variant(target)` (encapsula target)
+
+2. **Decisão de Combat**:
+   - `player = creature:getPlayer()`
+   - Se `player:getWheelSpellAdditionalArea("Sap Strength")`:
+     - Executa `combatWOD:execute()` (AREA_CIRCLE5X5)
+   - Senão:
+     - Executa `combat:execute()` (AREA_CIRCLE3X3)
+
+3. **Efeito Visual**:
+   - CONST_ME_MORTAREA em todos os targets
+
+4. **Retorno**:
+   - Retorna resultado do combat:execute
+
+**Valores de Retorno:**
+- `true`: Spell executado, mana de 300 consumida
+- `false`: Spell falhou (sem target?)
+
+**Lógica Detalhada:**
+
+O spell implementa debuff multi-alvo com estratégia de filtragem sofisticada. A rejeição de players previne uso PvP abusivo. A aceitação de summons permite debuffar familiares de players.
+
+O cálculo dinâmico de buff oferece incentivo para Wheel: sem Wheel a debuff é 90%, com Wheel é 80% (menos dano do alvo).
+
+A duração de 16 segundos é padrão para debuffs. A mana de 300 é alta mesmo para level 275, tornando spell com planejamento estratégico.
+
+A decisão entre combats com base em Wheel permite escalabilidade: Wheel players ganham área expandida (5x5 vs 3x3) como bônus.
+
+O padrão de factory permite reutilização de lógica de callback, mantendo código DRY.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_SAP_STRENGTH`: Som característico
+
+## 📌 Resumo
+
+**Sap Strength** é um spell de suporte gratuito ultra-high-level para Sorcerers (level 275+) que aplica debuff multi-alvo com filtragem de target (não-players, aceita summons/monstros) e integração dupla de Wheel de Destiny. O spell requer 300 de mana e cooldown individual de 12 segundos (2s grupo). A implementação utiliza factory pattern para criar dois combats com áreas diferentes (AREA_CIRCLE3X3 padrão, AREA_CIRCLE5X5 WOD) que compartilham função auxiliar targetFunction(). Cada target recebe debuff de damage (90% base, 80% se Wheel UPGRADED) + drain body gradeBuff consultado de "Drain_Body_Spells" WOD. A duração é 16 segundos. É ferramenta de controle essencial para Sorcerers end-game, permitindo debuffar inimigos com área escalável.
+
+A implementação segue padrão avançado de callback multi-handler com filtragem, diferenciando-se por: (1) função auxiliar reutilizável por múltiplos handlers, (2) factory pattern para combats, (3) filtragem condicional (players vs summons vs monstros), (4) dois Wheels consultados (área + debuff), (5) cálculo dinâmico de debuff.

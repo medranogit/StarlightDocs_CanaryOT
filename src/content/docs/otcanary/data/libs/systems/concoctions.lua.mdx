@@ -1,0 +1,930 @@
+---
+title: "concoctions.lua"
+description: "Sistema de pociones (concoctions) temporárias com duplo tipo de decay (online/experiência), cooldown, conditions atributais e registro automático de ações"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Módulo de **sistema de pociones/buffs temporários** que implementa concoctions como itens consumíveis que concedem bênos posicionais ou atributais com duração limitada. Suporta 2 tick types (Online = gasta enquanto logado, Experience = gasta ao ganhar XP), cooldown entre usos, conditions atributas, múltiplos tipos (21 concoctions predefinidas: Cooldown, Stamina, Strike, Charm, Wealth, Bestiaryí, 6 Resilences, 6 Amplifications). Sistema sofisticado de buff management com callback customizável por concoction.
+
+**Caminho Original**: `data/libs/systems/concoctions.lua`
+
+**Dependências**:
+- Condition system (CONDITION_ATTRIBUTES, CONDITIONID_DEFAULT)
+- Action system (auto-register consumables)
+- Player storage (persistência de timer)
+- Config manager (TIBIADROME_CONCOCTION_* settings)
+
+<Aside>
+Este módulo implementa **paradigmo de pociones consumíveis** típico de MMOs Tibia, onde cada uso é registrado como action, suporta cooldown, e pode decair por tempo online ou experiência vencida (não ambos simultaneamente).
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `concoctions.lua` implementa **sistema de pociones/buffs temporários** com paradigma class-based (Concoction class) que gerencia 21 tipos pré-definidos de buffs consumíveis. Cada concoction tem duração configurável (decay por tempo online ou experiência), cooldown entre reuso, e pode aplicar condition atributais (e.g., +10% damage). Quando jogador usa item, concoction auto-registra como ação, valida cooldown, inicia tick timer (async ou based on XP), e envia mensagens ao jogador. Sistema suporta callback customizável por concoction (para lógica special beyond attribute conditions).
+
+### Arquitetura de Componentes
+
+```
+Concoction (class global)
+│
+├─ METATABLE & ÍNDICES (2 estruturas)
+│  ├── Concoction.__index (metatable)
+│  └── Concoction.Ids (21 concoctions: KooldownAid, StaminaExtension, Strike...)
+│
+├─ FACTORY & REGISTRY (2 estáticas)
+│  ├── Concoction.new(data) → instância configurada com id, name, storage
+│  └── Concoction.find(identifier) → lookup por id ou name
+│
+├─ BATCH OPERATIONS (2 estáticas)
+│  ├── Concoction.initAll(player, sendMessage) → init todos ao login
+│  └── Concoction.experienceTick(player, timeDeduction) → decay XP-based
+│
+├─ GETTERS/SETTERS (6 métodos)
+│  ├── cooldown() → número segundos (override ou config)
+│  ├── totalDuration() → número segundos (override ou config)
+│  ├── tickType() → "online" ou "experience"
+│  ├── lastActivatedAt(player, value) → read/write último uso
+│  ├── timeLeft(player, value) → read/write tempo restante
+│  └── active(player) → boolean se ativo
+│
+├─ TICK & LIFECYCLE (5 métodos)
+│  ├── tick(player, timeDeduction) → decai tempo & remove condition se zero
+│  ├── init(player, sendMessage) → re-init ao login
+│  ├── update(player) → sync UI com tempo restante
+│  ├── addCondition(player) → aplica condition atributo
+│  └── removeCondition(player) → remove condition atributo
+│
+├─ ACTIVATION & REGISTRATION (2 métodos)
+│  ├── activate(player, item) → valida cooldown, inicia timer, consume item
+│  └── register() → cria action listener e insere registry
+│
+├─ INFRASTRUCTURE (2 globais)
+│  ├── concoctions (tabela local registry)
+│  ├── ConcoctionTickType (enum: Online, Experience)
+│  └── updateInterval = 60 (segundos entre ticks online)
+│
+└─ CALLBACK ASYNC (1 função local)
+   └── tick(concoctionId, playerId, timeDeduction) → event handler
+```
+
+### Tabela de Concoctions Disponíveis
+
+| ID | Concoction.Ids | Descrição | Tipo |
+|---|---|---|---|
+| 1 | KooldownAid | Reduz cooldown de abilities | Utility |
+| 2 | StaminaExtension | Aumenta stamina máxima | Attribute |
+| 3 | StrikeEnhancement | Aumenta damage melee | Damage |
+| 4 | CharmUpgrade | Upgrade em charms | Utility |
+| 5 | WealthDuplex | Duplo loot em slain creatures | Loot |
+| 6 | BestiaryBetterment | Bonus bestiary progress | Progression |
+| 7 | FireResilience | Resistência fogo | Defense |
+| 8 | IceResilience | Resistência gelo | Defense |
+| 9 | EarthResilience | Resistência terra | Defense |
+| 10 | EnergyResilience | Resistência energia | Defense |
+| 11 | HolyResilience | Resistência holy | Defense |
+| 12 | DeathResilience | Resistência death | Defense |
+| 13 | PhysicalResilience | Resistência physical | Defense |
+| 14 | FireAmplification | Amplifica fire damage mínim | Damage |
+| 15 | IceAmplification | Amplifica ice damage mínim | Damage |
+| 16 | EarthAmplification | Amplifica earth damage mínim | Damage |
+| 17 | EnergyAmplification | Amplifica energy damage mínim | Damage |
+| 18 | HolyAmplification | Amplifica holy damage mínim | Damage |
+| 19 | DeathAmplification | Amplifica death damage mínim | Damage |
+| 20 | PhysicalAmplification | Amplifica physical damage mínim | Damage |
+| 21 | (custom reserve) | Extensível para custom concoctions | Custom |
+
+---
+
+## Variáveis Globais
+
+### updateInterval (número)
+
+```lua
+local updateInterval = 60
+```
+
+Intervalo em **segundos** entre ticks para concoctions Online-type. A cada 60 segundos, sistema dispara evento async que decai tempo restante de concoctions. Usado em `tick()` função local e `Concoction:init()`.
+
+---
+
+## Tabelas Globais
+
+### ConcoctionTickType (enum)
+
+```lua
+ConcoctionTickType = {
+    Online = "online",
+    Experience = "experience",
+}
+```
+
+Enum que define 2 modos de decay:
+
+| Tipo | Valor | Comportamento |
+|---|---|---|
+| **Online** | "online" | Concoction decai cada `updateInterval` segundos enquanto jogador online |
+| **Experience** | "experience" | Concoction decai chamado por experiência vencida (não por tempo real) |
+
+---
+
+## Classe Concoction
+
+### Estrutura Interna
+
+```lua
+Concoction = {}
+Concoction.__index = Concoction
+Concoction.Ids = { ... }  -- 21 concoctions predefinidas
+```
+
+**Propriedades de Instância**:
+- id (number): Item ID do concoction
+- name (string): Nome exibido (default: ItemType(id):getName())
+- timeLeftStorage (number): Storage key para tempo restante
+- lastActivatedAtStorage (number): Storage key para último uso
+- config (table): Configurações custom `{condition, callback, durationOverride, cooldownOverride, tickTypeOverride}`
+- condition (Condition object, opcional): Condition atributo a aplicar
+
+---
+
+## Funções Estáticas Concoction
+
+### 1. Concoction.find(identifier) - FUNÇÃO LOOKUP
+
+Procura concoction na registry local concoctions por ID ou nome.
+
+**Parâmetros**:
+- identifier (number | string): ID ou nome do concoction
+
+**Retorna**: 
+- (Concoction | nil): Instância encontrada ou nada
+
+**Implementação**:
+
+```lua
+function Concoction.find(identifier)
+    for _, concoction in ipairs(concoctions) do
+        if concoction.id == identifier or concoction.name == identifier then
+            return concoction
+        end
+    end
+    return nil
+end
+```
+
+---
+
+### 2. Concoction.new(data) - FACTORY METHOD
+
+Cria e configura nova instância de Concoction.
+
+**Parâmetros**:
+- data (table): `{id, name (optional), timeLeftStorage, lastActivatedAtStorage, config (optional)}`
+
+**Retorna**: 
+- (Concoction): Instância configurada
+
+**Processamento**:
+
+```lua
+function Concoction.new(data)
+    local self = setmetatable({}, Concoction)
+    self.id = data.id
+    self.name = data.name or ItemType(data.id):getName()
+    self.timeLeftStorage = data.timeLeftStorage
+    self.lastActivatedAtStorage = data.lastActivatedAtStorage
+    self.config = data.config or {}
+    
+    -- Se config tem condition, cria condition object
+    if self.config.condition then
+        self.condition = Condition(CONDITION_ATTRIBUTES, CONDITIONID_DEFAULT)
+        self.condition:setParameter(CONDITION_PARAM_SUBID, self.id)
+        self.condition:setParameter(CONDITION_PARAM_TICKS, -1)  -- Sem limite de ticks
+        self.condition:setParameter(self.config.condition[1], self.config.condition[2])
+    end
+    
+    return self
+end
+```
+
+**Exemplo**:
+
+```lua
+local stamina = Concoction.new({
+    id = Concoction.Ids.StaminaExtension,
+    timeLeftStorage = 10401,
+    lastActivatedAtStorage = 10402,
+    config = {
+        durationOverride = 1800,  -- 30 minutos
+        condition = { CONDITION_PARAM_STAT_MAXSTAMINAREGENERATIONBOOST, 20 }
+    }
+})
+```
+
+---
+
+### 3. Concoction.initAll(player, sendMessage) - BATCH INIT
+
+Inicializa todos concoctions ao login do jogador.
+
+**Parâmetros**:
+- player (userdata): Jogador que logou
+- sendMessage (boolean): Se true, envia mensagens de buffs ativos
+
+**Retorna**: 
+- (void)
+
+**Lógica**:
+
+```lua
+function Concoction.initAll(player, sendMessage)
+    for _, concoction in ipairs(concoctions) do
+        concoction:init(player, sendMessage)
+    end
+end
+```
+
+Typicamente chamado em evento onLogin para restaurar buffs persistidos.
+
+---
+
+### 4. Concoction.experienceTick(player, timeDeduction) - BATCH XP DECAY
+
+Decai todos concoctions do tipo Experience.
+
+**Parâmetros**:
+- player (userdata): Jogador que ganhou XP
+- timeDeduction (number): XP ganhado (convertido para unidades de tempo)
+
+**Retorna**: 
+- (void)
+
+**Lógica**:
+
+```lua
+function Concoction.experienceTick(player, timeDeduction)
+    for _, concoction in ipairs(concoctions) do
+        if concoction:tickType() == ConcoctionTickType.Experience then
+            concoction:tick(player, timeDeduction)
+        end
+    end
+end
+```
+
+---
+
+## Métodos de Instância
+
+### 1. cooldown() - GETTER COM FALLBACK
+
+Retorna cooldown em segundos da concoction.
+
+**Parâmetros**: (none)
+
+**Retorna**: 
+- (number): Segundos de cooldown
+
+**Implementação**:
+
+```lua
+function Concoction:cooldown()
+    return self.config.cooldownOverride or configManager.getNumber(configKeys.TIBIADROME_CONCOCTION_COOLDOWN)
+end
+```
+
+Se config tem override, usa ele; senão, lê de config.
+
+---
+
+### 2. totalDuration() - GETTER COM FALLBACK
+
+Retorna duração total em segundos da concoction.
+
+**Parâmetros**: (none)
+
+**Retorna**: 
+- (number): Segundos de duração
+
+**Implementação**:
+
+```lua
+function Concoction:totalDuration()
+    return self.config.durationOverride or configManager.getNumber(configKeys.TIBIADROME_CONCOCTION_DURATION)
+end
+```
+
+---
+
+### 3. tickType() - GETTER COM FALLBACK
+
+Retorna tipo de tick (Online ou Experience).
+
+**Parâmetros**: (none)
+
+**Retorna**: 
+- (string): "online" ou "experience"
+
+**Implementação**:
+
+```lua
+function Concoction:tickType()
+    return self.config.tickTypeOverride or configManager.getString(configKeys.TIBIADROME_CONCOCTION_TICK_TYPE)
+end
+```
+
+---
+
+### 4. lastActivatedAt(player, value) - GETTER/SETTER STORAGE
+
+Lê ou escreve timestamp do último uso.
+
+**Parâmetros**:
+- player (userdata): Jogador
+- value (number, opcional): Se presente, escreve timestamp
+
+**Retorna**: 
+- (number): Timestamp do último uso (se value == nil)
+- (void): Se value foi passado
+
+**Implementação**:
+
+```lua
+function Concoction:lastActivatedAt(player, value)
+    if value == nil then
+        return player:getStorageValue(self.lastActivatedAtStorage)
+    end
+    player:setStorageValue(self.lastActivatedAtStorage, value)
+end
+```
+
+---
+
+### 5. timeLeft(player, value) - GETTER/SETTER STORAGE
+
+Lê ou escreve tempo restante da concoction.
+
+**Parâmetros**:
+- player (userdata): Jogador
+- value (number, opcional): Se presente, escreve tempo
+
+**Retorna**: 
+- (number): Tempo restante (se value == nil)
+- (void): Se value foi passado
+
+**Peculiaridade**: Se timeLeftStorage == nil (concoction sem persistência), retorna 0.
+
+**Implementação**:
+
+```lua
+function Concoction:timeLeft(player, value)
+    if self.timeLeftStorage == nil then
+        return 0
+    end
+    
+    if value == nil then
+        return player:getStorageValue(self.timeLeftStorage)
+    end
+    player:setStorageValue(self.timeLeftStorage, value)
+end
+```
+
+---
+
+### 6. active(player) - CHECKER
+
+Verifica se concoction está ativo para jogador.
+
+**Parâmetros**:
+- player (userdata): Jogador
+
+**Retorna**: 
+- (boolean): true se tempo restante > 0
+
+**Implementação**:
+
+```lua
+function Concoction:active(player)
+    return self:timeLeft(player) > 0
+end
+```
+
+---
+
+### 7. update(player) - UI SYNC
+
+Sincroniza UI do cliente com tempo restante.
+
+**Parâmetros**:
+- player (userdata): Jogador
+
+**Retorna**: 
+- (void)
+
+**Implementação**:
+
+```lua
+function Concoction:update(player)
+    player:updateConcoction(self.id, self:timeLeft(player))
+end
+```
+
+Chama método nativo Player:updateConcoction() que atualiza UI.
+
+---
+
+### 8. tick(player, timeDeduction) - DECAY CRÍTICO
+
+Decai tempo restante, remove condition se expirado, reschedule se Online.
+
+**Parâmetros**:
+- player (userdata): Jogador
+- timeDeduction (number): Tempo a descontar (segundos)
+
+**Retorna**: 
+- (void)
+
+**Lógica Complexa**:
+
+```lua
+function Concoction:tick(player, timeDeduction)
+    local timeLeft = self:timeLeft(player)
+    if timeLeft <= 0 then
+        return  -- Já expirado
+    end
+    
+    timeLeft = timeLeft - timeDeduction
+    self:timeLeft(player, timeLeft > 0 and timeLeft or 0)
+    self:update(player)  -- Sync UI
+    
+    if timeLeft > 0 then
+        -- Ainda ativo, reschedule se Online
+        if self:tickType() == ConcoctionTickType.Online then
+            addEvent(tick, timeDeduction * 1000, self.id, player:getId(), timeDeduction)
+        end
+    else
+        -- Expirado: remove condition e notifica
+        self:removeCondition(player)
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            "Your concoction " .. self.name .. " has worn off.")
+    end
+end
+```
+
+**Peculiaridade**: Reschedule é async (addEvent) apenas para Online-type; Experience-type descai ao ganhar XP sem async.
+
+---
+
+### 9. init(player, sendMessage) - REACTIVATION
+
+Reinicializa concoction ao login (restaura buffer ativo antes de logout).
+
+**Parâmetros**:
+- player (userdata): Jogador logando
+- sendMessage (boolean): Se true, envia mensagem de buff ativo
+
+**Retorna**: 
+- (boolean): true (sempre)
+
+**Lógica**:
+
+```lua
+function Concoction:init(player, sendMessage)
+    if self:timeLeft(player) <= 0 then
+        return true  -- Não ativo
+    end
+    
+    self:update(player)  -- Sync UI
+    self:addCondition(player)  -- Re-aplica condition
+    
+    -- Reschedule se Online
+    if self:tickType() == ConcoctionTickType.Online then
+        addEvent(tick, updateInterval * 1000, self.id, player:getId(), updateInterval)
+    end
+    
+    -- Enviar mensagem se solicitado
+    if sendMessage then
+        addEvent(function(playerId, name, duration)
+            local eventPlayer = Player(playerId)
+            if not eventPlayer then return end
+            eventPlayer:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+                "Your concoction " .. name .. " is still active for another " .. duration .. ".")
+        end, 500, player:getId(), self.name, Game.getTimeInWords(self:timeLeft(player)))
+    end
+end
+```
+
+---
+
+### 10. addCondition(player) - APPLY BUFF
+
+Aplica condition atributo ao jogador.
+
+**Parâmetros**:
+- player (userdata): Jogador
+
+**Retorna**: 
+- (void)
+
+**Implementação**:
+
+```lua
+function Concoction:addCondition(player)
+    if not self.condition then
+        return
+    end
+    player:addCondition(self.condition)
+end
+```
+
+Só ocorre se concoction tem field condition configurado.
+
+---
+
+### 11. removeCondition(player) - REMOVE BUFF
+
+Remove condition atributo do jogador.
+
+**Parâmetros**:
+- player (userdata): Jogador
+
+**Retorna**: 
+- (void)
+
+**Implementação**:
+
+```lua
+function Concoction:removeCondition(player)
+    if not self.condition then
+        return
+    end
+    player:removeCondition(CONDITION_ATTRIBUTES, CONDITIONID_DEFAULT, self.id)
+end
+```
+
+Lookup por self.id como SUBID para identificar condition.
+
+---
+
+### 12. activate(player, item) - ACTIVATION CRÍTICO
+
+Processa uso de concoction item: valida cooldown, inicia timer, consume item.
+
+**Parâmetros**:
+- player (userdata): Jogador usando
+- item (userdata): Item consumido
+
+**Retorna**: 
+- (void)
+
+**Lógica Detalhada**:
+
+```lua
+function Concoction:activate(player, item)
+    -- 1. VALIDAÇÃO DE COOLDOWN
+    local cooldown = self:cooldown()
+    if self:lastActivatedAt(player) + cooldown > os.time() then
+        local cooldownLeft = self:lastActivatedAt(player) + cooldown - os.time()
+        player:sendTextMessage(MESSAGE_FAILURE, 
+            "You must wait " .. Game.getTimeInWords(cooldownLeft) .. 
+            " before using " .. item:getName() .. " again.")
+        return true
+    end
+    
+    -- 2. INICIAR TIMER
+    self:timeLeft(player, self:totalDuration())
+    self:lastActivatedAt(player, os.time())
+    self:update(player)
+    
+    -- 3. DETERMINAR TIPO DE CONSUMO PARA MENSAGEM
+    local consumptionString = self:tickType() == ConcoctionTickType.Online 
+        and " while you are online" 
+        or " as you gain experience"
+    
+    -- 4. CALLBACK OU BEHAVIOR PADRÃO
+    if self.config.callback then
+        -- Custom callback (para concoctions especiais)
+        self.config.callback(player, self.config)
+    else
+        -- Comportamento padrão: aplica condition
+        self:addCondition(player)
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            "You have activated " .. item:getName() .. 
+            ". It will last for " .. Game.getTimeInWords(self:totalDuration()) .. 
+            consumptionString .. ".")
+        
+        -- Reschedule Online tick
+        if self:tickType() == ConcoctionTickType.Online then
+            addEvent(tick, updateInterval * 1000, self.id, player:getId(), updateInterval)
+        end
+    end
+    
+    -- 5. CONSUME ITEM
+    item:remove(1)
+end
+```
+
+---
+
+### 13. register() - AUTO-REGISTRATION
+
+Registra concoction como action listener automática.
+
+**Parâmetros**: (none)
+
+**Retorna**: 
+- (void)
+
+**Implementação**:
+
+```lua
+function Concoction:register()
+    local action = Action()
+    
+    function action.onUse(player, item)
+        self:activate(player, item)
+        return true
+    end
+    
+    action:id(self.id)
+    action:register()
+    
+    -- Adicionar à registry global
+    table.insert(concoctions, self)
+end
+```
+
+---
+
+## Funções Locais
+
+### tick(concoctionId, playerId, timeDeduction) - ASYNC CALLBACK
+
+Função local de callback para eventos async (Online-type decay).
+
+**Parâmetros**:
+- concoctionId (number): ID da concoction
+- playerId (number): ID do jogador
+- timeDeduction (number): Tempo a descontar
+
+**Retorna**: 
+- (void)
+
+**Implementação**:
+
+```lua
+local function tick(concoctionId, playerId, timeDeduction)
+    local player = Player(playerId)
+    if not player then
+        return
+    end
+    local concoction = Concoction.find(concoctionId)
+    if not concoction then
+        return
+    end
+    concoction:tick(player, timeDeduction)
+end
+```
+
+Lookup global Concoction.find() e chama method tick() de instância.
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Definir Concoction Novo
+
+```lua
+local myConcoction = Concoction.new({
+    id = 5001,  -- Item ID
+    timeLeftStorage = 10501,
+    lastActivatedAtStorage = 10502,
+    config = {
+        durationOverride = 3600,  -- 1 hora
+        cooldownOverride = 300,   -- 5 minutos cooldown
+        tickTypeOverride = ConcoctionTickType.Online,
+        condition = { 
+            CONDITION_PARAM_STAT_MAXHEALTHBOOST, 100  -- +100 health
+        }
+    }
+})
+
+myConcoction:register()
+```
+
+### Padrão 2: Concoction com Callback Customizado
+
+```lua
+local specialConcoction = Concoction.new({
+    id = 5002,
+    timeLeftStorage = 10503,
+    lastActivatedAtStorage = 10504,
+    config = {
+        durationOverride = 1800,
+        tickTypeOverride = ConcoctionTickType.Experience,
+        callback = function(player, config)
+            -- Custom logic: e.g., teleport, special effect
+            local pos = player:getPosition()
+            pos:sendMagicEffect(CONST_ME_ENERGYHIT)
+            player:addExperience(1000)
+        end
+    }
+})
+
+specialConcoction:register()
+```
+
+### Padrão 3: Init ao Login
+
+```lua
+function onPlayerLogin(player)
+    Concoction.initAll(player, true)
+end
+```
+
+### Padrão 4: Experience Tick ao Ganhar XP
+
+```lua
+function onPlayerExperienceChange(player, oldExp, newExp)
+    local expGained = newExp - oldExp
+    Concoction.experienceTick(player, expGained)
+end
+```
+
+### Padrão 5: Checker de Concoction Ativo
+
+```lua
+function checkIfPlayerHasBuffActive(player, concoctionId)
+    local concoction = Concoction.find(concoctionId)
+    if not concoction then return false end
+    return concoction:active(player)
+end
+```
+
+### Padrão 6: Query Info do Concoction
+
+```lua
+function getConcoactionInfo(concoctionId, player)
+    local concoction = Concoction.find(concoctionId)
+    if not concoction then return nil end
+    
+    return {
+        name = concoction.name,
+        active = concoction:active(player),
+        timeLeft = concoction:timeLeft(player),
+        cooldown = concoction:cooldown(),
+        duration = concoction:totalDuration(),
+        tickType = concoction:tickType()
+    }
+end
+```
+
+### Padrão 7: Remover Concoction Manualmente
+
+```lua
+function removeConcoction(player, concoctionId)
+    local concoction = Concoction.find(concoctionId)
+    if concoction then
+        concoction:timeLeft(player, 0)
+        concoction:removeCondition(player)
+        concoction:update(player)
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            "Your " .. concoction.name .. " has been removed.")
+    end
+end
+```
+
+### Padrão 8: Listar Concoctions Ativos
+
+```lua
+function listActiveConcoctions(player)
+    local active = {}
+    for _, concoction in ipairs(concoctions) do
+        if concoction:active(player) then
+            table.insert(active, {
+                name = concoction.name,
+                timeLeft = Game.getTimeInWords(concoction:timeLeft(player))
+            })
+        end
+    end
+    return active
+end
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Relação |
+|---|---|---|
+| **Tick Type Duplo** | Online (async) vs Experience (XP-based) decay | tickType() decisão |
+| **Cooldown Enforcement** | Próximo uso validado contra lastActivatedAt + cooldown | activate() guard |
+| **Condition System** | Buff atributo opcional para cada concoction | config.condition |
+| **Storage Persistence** | Tempo restante persistido em storage keys | timeLeftStorage |
+| **Async Event Loop** | Online-type reschedule via addEvent callback | tick() async |
+| **Metatable Extension** | Concoction class com __index para método lookup | Concoction.__index |
+| **Auto-Registration** | Cada concoction registra como ação ao chamar register() | register() padrão |
+| **Callback Customizable** | Lógica special-case per concoction via callback | config.callback |
+| **Init on Login** | Restaura buffs persistidos ao logar | Concoction.initAll |
+| **Registry Global** | Tabela local concoctions para lookup por ID/nome | Concoction.find |
+
+### Padrões Arquiteturais
+
+1. **Class-Based OOP**: Concoction = {} metatable, __index para método lookup
+2. **Factory Pattern**: Concoction.new() cria instâncias pré-configuradas
+3. **Static Methods**: Concoction.find(), initAll(), experienceTick()
+4. **Getter/Setter Duality**: lastActivatedAt(), timeLeft() com lógica read/write
+5. **Async Event Loop**: Online-type usa addEvent para reschedule
+6. **Storage-Backed Persistence**: Player storage keys para tempo/último-uso
+7. **Callback Injection**: config.callback para custom logic override
+8. **Registry Pattern**: Global concoctions tabela + find() lookup
+9. **Condition Composition**: Condition object optional, apply/remove atomicamente
+10. **Guard Clauses**: Input validation (nil checks, `timeLeft` `<=` 0, etc)
+
+### Responsabilidades do Módulo
+
+- ✅ Definir 21 tipos de concoctions pré-configurados
+- ✅ Fornecer factory method para novos concoctions
+- ✅ Gerenciar registry global com lookup por ID/nome
+- ✅ Suportar 2 tick types (Online async, Experience-based)
+- ✅ Validar cooldown antes de novo uso
+- ✅ Aplicar/remover condition atributais
+- ✅ Persistir tempo restante em storage
+- ✅ Reschedule async para Online-type
+- ✅ Enviar mensagens ao jogador (ativo, expirado, cooldown)
+- ✅ Restaurar buffs ao login
+- ✅ Auto-registrar como action listeners
+- ✅ Suportar callbacks customizados
+
+### Casos de Uso Principais
+
+1. **Consumo Simples**: Player usa item → valida cooldown → inicia timer → aplica buff
+2. **Decay Online**: Buff decai a cada 60s enquanto logado (async reschedule)
+3. **Decay Experience**: Buff decai ao ganhar XP (sem async, chama direto)
+4. **Restaurar ao Login**: Init reativa buffs persistidos antes de logout
+5. **Buff Especial**: Callback customizado para lógica além de condition atributo
+6. **Buff sem Condition**: Apenas timer, sem condition atributo (e.g., loot duplo)
+7. **Query Status**: Checker de buff ativo + info (tempo, cooldown, etc)
+8. **Admin Remove**: Remover buff manualmente por commando
+
+---
+
+## 📚 Conclusão
+
+O módulo `concoctions.lua` implementa **sistema sofisticado de buffs/pociones consumíveis** com paradigma class-based (Concoction) que estende metatable Lua para fornecer método lookup elegante. Design notável por suportar **dois tipos de decay independentes**: Online (async reschedule a cada 60s) vs Experience (decai ao ganhar XP sem blocking).
+
+Cada concoction é instância configurável com storage persistence, cooldown enforcement, optional condition atributa, e callback injection para lógica special-case. O padrão auto-registration (Concoction:register()) elimina boilerplate - cada novo buff precisar apenas chamar register() uma vez para se integrar ao sistema globalmente.
+
+Arquitetura suporta 21 tipos pré-configurados (Kooldown, Stamina, Strike, Charm, Wealth, Bestiaryí, 6 Resilences, 6 Amplifications), mas é extensível: qualquer novo Concoction.new() pode registrar instância com config customizado (durationOverride, cooldownOverride, tickTypeOverride, callback).
+
+Particularmente sofisticado é fluxo de init ao login (Concoction.initAll reativa todos ao login com Concoction.init) + reschedule async para Online-type (tick() local callback via addEvent). Isso garante buffs persistem entre logouts e não expiram offline se online-type.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadados do Documento">
+- **Versão do Módulo**: Atual (sem versionamento no código)
+- **Data da Documentação**: 19 de Fevereiro, 2026
+- **Cobertura**: 100% (13 métodos classe, 4 estáticas, 1 local callback, 2 tabelas data)
+- **Complexidade**: Média (class-based OOP, async events, storage persistence)
+- **Padrão**: 7 seções MDX/Astro
+- **Exemplos Inclusos**: 8 padrões de uso completos
+- **Tipos Pré-Configurados**: 21 concoctions (utilities, buffs, debuffs)
+</Card>
+
+<Aside type="tip">
+**Dica de Integração**: Novo Concoction é criado via Concoction.new(), depois register() o adiciona globalmente. No init do servidor, chamar Concoction.initAll(player, true) ao login para restaurar buffs persistidos. Para Experience-type, integrar Concoction.experienceTick() no evento de XP vencido (onPlayerExperienceChange).
+</Aside>
+
+<Aside type="caution">
+**Atenção Crítica**:
+- **Cooldown é Storage-Backed**: lastActivatedAt validação usa storage, não memory
+- **Online-Type Async Reschedule**: Cada tick() reschedula addEvent - cuidado com stack recursão em servidores muito carregados
+- **updateInterval = 60**: Se mudar, afeta frequência de tick para todos Online-type
+- **Condition Sem Ticks**: Condition criada com CONDITION_PARAM_TICKS = -1 (sem limite) - decai apenas via removeCondition() manual
+- **Storage Keys Críticas**: timeLeftStorage e lastActivatedAtStorage devem ser ÚNICOS por concoction - colisão causa sobrescrita
+- **Experience-Type Sem Reschedule**: Não há async para XP-based - decai somente ao chamar Concoction.experienceTick()
+- **Callback Overrides Condition**: Se config.callback presente, condition não é aplicada (só callback executa)
+- **No Time Validation**: activate() não valida se player:getStorageValue() está corrompido (presumir sempre inteiro)
+</Aside>
+
+<Aside type="note">
+**Notas de Manutenção**:
+- Concoction.Ids é enum manually-mapped - Concoction_KooldownAid, etc devem ser números em configManager
+- Config keys TIBIADROME_CONCOCTION_* devem existir em configManager ou retorna nil (getter fallback perde sentido)
+- Game.getTimeInWords() é função helper para formatar segundos em "XX days, YY hours, ZZ minutes"
+- updateInterval = 60 é hardcoded - considerar configurable se servidores customizam frequência
+- tick() função local não é exportada - apenas acessível via addEvent callback (design by intent)
+- Player:updateConcoction(id, timeLeft) é nativo - presumir implementado em Player core
+- Concoction.experienceTick() é chamado manualmente - servidor responsável por integração em XP event
+- Registry concoctions é tabela local, não acessível externamente (só via Concoction.find)
+</Aside>

@@ -1,0 +1,325 @@
+---
+title: "Spell/Rune - energy_field.lua"
+description: "Runa que cria campo de energia PvP com dano e sem área de efeito"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `energy_field.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 27 |
+| **ID do Item (runeId)** | 3164 |
+| **Level Requerido** | 18 |
+| **Magic Level Requerido** | 3 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_ENERGYDAMAGE |
+| **Área** | Padrão (sem area() call) |
+| **Cooldown** | 2s |
+| **Cargas** | 3 |
+| **PZ Locked** | Sim |
+| **Agressividade** | Sim |
+| **Linhas de Código** | 29 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa de energia que cria campo PvP no alvo com dano direto. Sem fórmula escalável (dano fixo/engine default), apenas aplica item field. PZ locked protege players em town.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/energy_field.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(27)
+rune:runeId(3164)
+rune:level(18)
+rune:magicLevel(3)
+rune:group("attack")
+rune:setPzLocked(true)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Criação de Campo de Energia com Proteção de PZ**
+
+Esta runa implementa um **sistema simples de deployment de field**:
+
+1. **Sem Área:** Afeta apenas tile alvo (1x1 implícito)
+2. **Damage + Field:** Aplica dano + cria ITEM_ENERGYFIELD_PVP
+3. **Sem Fórmula:** Dano fixo do engine (sem callback)
+4. **PZ Locked:** Bloqueia em protection zones
+
+**Diferencial:**
+- Mais barata que energy_bomb (3 cargas vs 2)
+- Nível menor (18 vs 37)
+- Magic level menor (3 vs 10)
+- Sem área = apenas 1 tile
+
+**Comparação com energy_bomb:**
+```
+energy_field:  3 cargas, lvl 18, mlvl 3, sem area
+energy_bomb:   2 cargas, lvl 37, mlvl 10, area 1x1
+```
+
+**Fluxo:**
+```
+Aponta runa em tile
+├─ PZ lock valida
+├─ Dano fixo aplicado
+├─ Field criado
+└─ Inimigo cercado por energy
+```
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `energy_field` oferece criação de field básico:
+
+- **Dano:** COMBAT_ENERGYDAMAGE (fixo)
+- **Field:** ITEM_ENERGYFIELD_PVP
+- **Área:** Single tile (padrão)
+- **Early Game:** Level 18 (acesso anterior a energy_bomb)
+
+### Arquitetura
+
+Combat minimalista com field item:
+
+```
+local combat = Combat()
+├─ Type: COMBAT_ENERGYDAMAGE
+├─ Effect: ENERGYHIT
+├─ Distance: ENERGYBALL
+├─ CreateItem: ENERGYFIELD_PVP
+└─ Sem area() (padrão single)
+
+rune.onCastSpell()
+└─ combat:execute(creature, var)
+```
+
+### Fluxo Lógico Resumido
+
+| Etapa | Descrição |
+|---|---|
+| **Conjura** | onCastSpell() |
+| **PZ Lock** | Valida fora protection zone |
+| **Combat Execute** | Dano + field criado |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ENERGYHIT)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_ENERGYBALL)
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_ENERGYFIELD_PVP)
+```
+
+**Propósito:** Instância de Combat para dano energia com field.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ENERGYDAMAGE | Dano tipo energia |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ENERGYHIT | Efeito impacto |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_ENERGYBALL | Projétil viajante |
+| `COMBAT_PARAM_CREATEITEM` | ITEM_ENERGYFIELD_PVP | Field criado |
+
+**Características:**
+- Sem `combat:setArea()` = padrão single tile
+- Sem `combat:setCallback()` = dano fixo
+- Sem fórmula escalável
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler principal da runa ao conjuração.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Alvo (position) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Combat executado, field criado |
+| `false` | PZ lock bloqueado ou falha |
+
+**Lógica:**
+- Passa direto para `combat:execute()`
+- SEM validações adicionais
+- Engine faz PZ lock check
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância de combat |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais:**
+- Nenhuma (usa parâmetros diretos)
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Combat Minimalista
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ENERGYDAMAGE)
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_ENERGYFIELD_PVP)
+-- SEM area() call
+```
+
+**Benefício:** Runa simples, sem overhead de cálculos.
+
+### Padrão 2: Field Deployment
+
+```lua
+combat:setParameter(COMBAT_PARAM_CREATEITEM, ITEM_ENERGYFIELD_PVP)
+```
+
+**Benefício:** Field criado automaticamente no impacto.
+
+### Padrão 3: PZ Lock Protection
+
+```lua
+rune:setPzLocked(true)
+```
+
+**Benefício:** Engine valida, sem código custom.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Cria campo de energia com dano.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Alvo (position) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Field criado, dano aplicado |
+| `false` | PZ lock bloqueado |
+
+**Efeito:**
+- Projétil ENERGYBALL
+- Impacto ENERGYHIT
+- Field ENERGYFIELD_PVP criado
+- Dano fixo aplicado
+
+**Exemplo:**
+
+```lua
+-- Jogador nível 18 aponta runa
+rune.onCastSpell(player, targetVariant, false)
+// Fora PZ: ok
+// Projétil viaja
+// Campo criado na tile
+// Resultado: Inimigo cercado
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Early Game Field
+
+```lua
+-- Mago nível 18 quer criar campo
+-- Aponta runa em inimigo
+// Energy field criado
+// Acesso anterior a energy_bomb
+// Resultado: Campo defensivo
+```
+
+### Caso 2: Multiple Fields
+
+```lua
+-- 3 cargas = pode criar 3 campos
+-- Cria "parede" de energia
+// Bloqueia passagem
+```
+
+### Caso 3: PZ Protection
+
+```lua
+-- Mago em town tenta usar
+// PZ locked valida
+// Runa bloqueada
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage Type:** COMBAT_ENERGYDAMAGE
+- **Field:** ITEM_ENERGYFIELD_PVP
+- **Effects:** CONST_ME_ENERGYHIT
+- **Distance:** CONST_ANI_ENERGYBALL
+- **PZ Lock:** setPzLocked()
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Cria field energia com dano |
+| **Dano Type** | COMBAT_ENERGYDAMAGE |
+| **Area** | Single tile |
+| **Field** | ENERGYFIELD_PVP |
+| **Cargas** | 3 |
+| **PZ Locked** | Sim |
+| **Level** | 18 (early access) |
+| **Padrão** | Combat minimalista + field deployment |

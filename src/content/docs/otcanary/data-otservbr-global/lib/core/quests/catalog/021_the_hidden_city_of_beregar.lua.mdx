@@ -1,0 +1,283 @@
+---
+title: 021_the_hidden_city_of_beregar.lua
+description: "Documentação técnica da quest The Hidden City of Beregar - Estrutura de 5 missões de exploração de cidade subterrânea"
+sidebar:
+  order: 21
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Este arquivo define a **estrutura de dados** da quest "The Hidden City of Beregar", uma **quest de 5 missões** onde o player explora a cidade subterrânea anã de Beregar, ajudando vários personagens com problemas específicos.
+
+<Card title="Caminho Original" icon="document">
+  `data-otservbr-global\lib\core\quests\catalog\021_the_hidden_city_of_beregar.lua`
+</Card>
+
+<Aside type="tip">
+  Uma quest de **exploração urbana** com 5 missões distintas: reparação de elevador, justiça legal, combate contra boss undead, culinária, e bebidas. Cada uma desbloqueia diferentes áreas da cidade.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+"The Hidden City of Beregar" é uma **quest de exploração de dungeon-city**:
+
+```
+Contexto: Beregar (hidden dwarven city underground)
+Objetivo: Ajudar cidadãos e explorar
+↓
+5 Missões Temáticas:
+  1. Going Down: Reparar elevador
+  2. Justice for All: Investigar acusação injusta
+  3. Pythius the Rotten: Derrotar boss undead
+  4. Sweet as Chocolate Cake: Quest culinária
+  5. The Good Guard: Conseguir bebida
+↓
+Resultado: Acesso a diferentes áreas (eastern, northern, western mine)
+```
+
+## 2. Estrutura Base
+
+```lua
+local quest = {
+  name = "The Hidden City of Beregar",
+  startStorageId = Storage.Quest.U8_4.TheHiddenCityOfBeregar.DefaultStart,
+  startStorageValue = 1,
+  missions = {
+    [1] = { Going Down ... },           -- Elevator repair
+    [2] = { Justice for All ... },      -- Investigation + Evidence
+    [3] = { Pythius the Rotten ... },   -- Boss fight
+    [4] = { Sweet as Chocolate Cake ... }, -- Cooking quest
+    [5] = { The Good Guard ... },       -- Beverage quest
+  }
+}
+```
+
+## 3. Missão 1: Going Down (Elevator Repair, 2 States)
+
+```lua
+[1] = {
+  name = "Going Down",
+  storageId = Storage.Quest.U8_4.TheHiddenCityOfBeregar.GoingDown,
+  missionId = 10228,
+  startValue = 1,
+  endValue = 2,
+  states = {
+    [1] = "Deliver 3 Gear Wheels to Xorlosh.",
+    [2] = "You sucessfully helped Xorlosh in repairing the elevator. \z
+      You can now enter the teleporter to the eastern part of the mine.",
+  },
+}
+```
+
+### 3.1 Objective
+
+| State | Task | Reward |
+|-------|------|--------|
+| 1 | Coleta 3 gear wheels | Engineering items |
+| 2 | Repair complete | Eastern mine access |
+
+**Type**: Item collection + Engineering  
+**NPC**: Xorlosh (engineer)  
+**Mechanic**: Elevator unlock (transportation)
+
+## 4. Missão 2: Justice for All (Long Investigation, 6 States)
+
+```lua
+[2] = {
+  name = "Justice for All",
+  storageId = Storage.Quest.U8_4.TheHiddenCityOfBeregar.JusticeForAll,
+  missionId = 10229,
+  startValue = 1,
+  endValue = 6,
+  states = {
+    [1] = "Nokmir told you that he is falsely accused of being a thief. \z
+      You could help him by talking to Grombur about the case. \z
+      Furthermore you should try to find that ring which belongs to Rerun.",
+    [2] = "You should talking to Grombur about Nokmir.",
+    [3] = "You should try to find that ring which belongs to Rerun everywhere in the mine.",
+    [4] = "You have found Rerun's ring. Bring the ring to the emperor Rehal and talk to him about Nokmir.",
+    [5] = "You informed emperor Rehal about your recent discoveries and he acquitted Nokmir of being a thief.",
+    [6] = "You told Nokmir about his acquittal and he granted you access to the northern mine.",
+  },
+}
+```
+
+### 4.1 Progression
+
+| State | Step | Investigation |
+|-------|------|-------------|
+| 1 | Setup | Nokmir falsely accused |
+| 2 | Talk NPC | Grombur (judge/guard) |
+| 3 | Search | Find Rerun's ring |
+| 4 | Evidence | Present to Emperor |
+| 5 | Verdict | Nokmir acquitted |
+| 6 | Reward | Northern mine access |
+
+**Type**: Mystery investigation + Evidence gathering  
+**NPCs**: Nokmir (accused), Grombur (judge), Rerun (victim), Rehal (emperor)  
+**Mechanic**: Finding evidence to prove innocence
+
+## 5. Missão 3: Pythius the Rotten (Boss Fight, 1 State!)
+
+```lua
+[3] = {
+  name = "Pythius the Rotten",
+  storageId = Storage.Quest.U8_4.TheHiddenCityOfBeregar.FirewalkerBoots,
+  missionId = 10230,
+  startValue = 1,
+  endValue = 1,
+  states = {
+    [1] = "You won the battle against the malicious undead dragon Pythius the Rotten. \z
+      He granted you firewalker boots as a reward.",
+  },
+}
+```
+
+### 5.1 Peculiaridade
+
+**Única missão não-progressiva!** (startValue = endValue = 1)
+
+| State | Event | Reward |
+|-------|-------|--------|
+| 1 | Boss defeat | Firewalker Boots |
+
+**Type**: Boss fight  
+**Enemy**: Pythius the Rotten (undead dragon)  
+**Reward**: Firewalker Boots (special item)
+
+## 6. Missão 4: Sweet as Chocolate Cake (Cooking Quest, 3 States)
+
+```lua
+[4] = {
+  name = "Sweet as Chocolate Cake",
+  storageId = Storage.Quest.U8_4.TheHiddenCityOfBeregar.SweetAsChocolateCake,
+  missionId = 10231,
+  startValue = 1,
+  endValue = 3,
+  states = {
+    [1] = "Bake a Chocolate Cake and bring it to Bolfona at the bar.",
+    [2] = "Report back to Frafnar by telling him about the mission.",
+    [3] = "You told Frafnar that you did everything he asked you to do. \z
+      You may now enter the western part of the mine.",
+  },
+}
+```
+
+### 6.1 Objective
+
+| State | Task | NPC |
+|-------|------|-----|
+| 1 | Bake & deliver | Bolfona (bar) |
+| 2 | Report | Frafnar |
+| 3 | Confirm | Western access |
+
+**Type**: Culinary quest  
+**Item**: Chocolate Cake (requires crafting/gathering)  
+**Location**: Bar (tavern)  
+**Reward**: Western mine access
+
+## 7. Missão 5: The Good Guard (Beverage Quest, 2 States)
+
+```lua
+[5] = {
+  name = "The Good Guard",
+  storageId = Storage.Quest.U8_4.TheHiddenCityOfBeregar.TheGoodGuard,
+  missionId = 10232,
+  startValue = 1,
+  endValue = 2,
+  states = {
+    [1] = "Grombur asked you to get him a cask of dwarven brown ale. \z
+      You heard that Boozer in Venore tried to brew some. Maybe you should pay him a visit.",
+    [2] = "Grombur liked the ale and you are now allowed to enter his part of the mine.",
+  },
+}
+```
+
+### 7.1 Objective
+
+| State | Task | Fetch From |
+|-------|------|-----------|
+| 1 | Get ale | Boozer in Venore |
+| 2 | Deliver | Grombur (guard) |
+
+**Type**: Fetch quest  
+**Item**: Dwarven brown ale  
+**Travel**: Cross-city (to Venore)  
+**Reward**: Grombur's mine section access
+
+## 8. City Structure via Quest Rewards
+
+```
+Main Entrance
+  ↓ M1: Elevator
+Eastern Mine (Xorlosh area)
+  
+Central City
+  ↓ M2: Justice
+  ↓ M5: Guard relations
+Northern Mine (Grombur area)
+  
+Central
+  ↓ M3: Boss
+  ↓ M4: Cooking
+Western Mine (Frafnar area)
+```
+
+Cada missão desbloqueia um setor diferente.
+
+## 9. NPC Distribution
+
+| NPC | Sector | Role | Quest |
+|-----|--------|------|-------|
+| Xorlosh | Eastern | Engineer | Going Down |
+| Nokmir | Central | Falsely accused | Justice |
+| Grombur | Northern | Guard/Judge | Justice → Guard |
+| Rehal | Central | Emperor | Justice |
+| Rerun | (Unknown) | Victim | Justice |
+| Pythius | (Boss lair) | Boss | Boss fight |
+| Bolfona | Bar | Bartender | Cake |
+| Frafnar | Western | Supervisor | Cake |
+| Boozer | Venore | Brewmaster | Guard |
+
+## 10. Tipo de Quest: Urban Exploration System
+
+### Características:
+
+- ✅ 5 missões, cada una desbloqueando setor
+- ✅ Variety de tasks (engineering, investigation, combat, cooking, fetch)
+- ✅ Multi-area exploration
+- ✅ NPC relationships matter (Grombur appears twice)
+- ✅ City structure progression (locked areas unlock)
+- ✅ One-time boss fight (Pythius)
+- ✅ Cross-city trading (to Venore)
+
+## 11. Tema: Hidden City Discovery
+
+```
+Beregar = Secret dwarven city
+Players gradually unlock access:
+  - Repair infrastructure (elevator)
+  - Solve political issues (justice)
+  - Defeat threats (boss)
+  - Contribute labor (cooking, drinks)
+→ Become trusted citizen of city
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+**Data de Criação**: 20 de Fevereiro de 2026  
+**Versão do Tibia**: 8.4 (U8_4)  
+**Tipo**: Quest Definition / City Exploration  
+**Total de Missões**: 5  
+**Storage Namespace**: `Storage.Quest.U8_4.TheHiddenCityOfBeregar`  
+**Padrão**: Multi-Area Unlock System  
+**Locais**: Eastern mine, Northern mine, Western mine, Central Beregar, Venore  
+**Dificuldade**: Média (Investigação, boss, múltiplas tasks)  
+**Tema**: Discovery & Integration into Hidden Society  
+**Elemento Especial**: Sector-based access system

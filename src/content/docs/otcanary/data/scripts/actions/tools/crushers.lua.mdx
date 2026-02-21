@@ -1,0 +1,475 @@
+---
+title: crushers.lua
+description: Sistema dual de esmagadores de gemas (amberCrusher ilimitado vs crusher com charges) com lookup table e RNG de fragmentos.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="crushers.lua" icon="pencil">
+Handler avançado com config table, local function lookup e charge management.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/tools/crushers.lua`
+
+**Linhas:** 85+ | **IDs dos Tools:** 2 esmagadores (46627-46628) | **Tipo:** Action Handler com Gem System
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa sistema dual de esmagadores para gemas com lookup table de 15 gemas diferentes. Config: maxGemBreak=10 (máx por operação), 3 tiers (small/medium/great), cada tier com 5 IDs e correspondentes fragmentos + range. getGemData() busca ID da gema na config e retorna tipo de fragmento + range. amberCrusher (46628): ilimitado, quebra até 10 gemas (breakAmount logic), cria fragmentos random (range[1]-range[2]). crusher (46627): com charges (getAttribute), decrementa charge após cada uso, remove item quando charges=0. Ambos com validações: target existe, is item, não é si mesmo, tem count > 0, é gema conhecida.
+
+### Estrutura de Funcionalidades
+
+```
+CONFIG:
+  └─ maxGemBreak: 10
+  └─ fragmentGems:
+      ├─ small: 5 IDs, fragment 46625, range 1-4
+      ├─ medium: 5 IDs, fragment 46625, range 2-8
+      └─ great: 5 IDs, fragment 46626, range 1-4
+
+FUNÇÃO LOCAL:
+  └─ getGemData(gemId)
+      ├─ Itera fragmentGems
+      ├─ Se gemId está no table
+      │   └─ return fragment, range
+      └─ Senão: return nil
+
+HANDLER 1 - AMBER CRUSHER (46628):
+  └─ Ilimitado
+      ├─ Validações: target, item, não-self, count > 0
+      ├─ getGemData() → fragment e range
+      ├─ breakAmount = min(count, 10) ou 1
+      ├─ for 1 to breakAmount:
+      │   └─ player:addItem(fragment, random(range))
+      └─ Remove breakAmount gemas
+
+HANDLER 2 - CRUSHER (46627):
+  └─ Com Charges
+      ├─ Validações: target, item, não-self, count > 0
+      ├─ getGemData() → fragment e range
+      ├─ crusherCharges = getAttribute(CHARGES)
+      ├─ if crusherCharges <= 0: return false
+      ├─ Remove 1 gema
+      ├─ Cria 1 fragmento
+      ├─ crusherCharges - 1
+      ├─ if > 0: setAttribute + updateContainer
+      └─ else: remove() + message "consumed"
+
+REGISTRO:
+  └─ 2 crushers (46627, 46628)
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| config | table | Configuração de gemas e fragmentos |
+| getGemData | function | Lookup: gemId -> (fragment, range) |
+| amberCrusher | Action | Handler ilimitado |
+| crusher | Action | Handler com charges |
+
+### Estrutura da Config
+
+```lua
+config = {
+	maxGemBreak = 10,
+	fragmentGems = {
+		small = {
+			ids = { 44602, 44605, 44608, 44611, 49371 },
+			fragment = 46625,
+			range = { 1, 4 }
+		},
+		medium = {
+			ids = { 44603, 44606, 44609, 44612, 49372 },
+			fragment = 46625,
+			range = { 2, 8 }
+		},
+		great = {
+			ids = { 44604, 44607, 44610, 44613, 49373 },
+			fragment = 46626,
+			range = { 1, 4 }
+		},
+	},
+}
+```
+
+---
+
+## Funções Locais
+
+### getGemData(gemId)
+
+Busca dados da gema na config:
+
+```lua
+local function getGemData(gemId)
+	for _, gemData in pairs(config.fragmentGems) do
+		if table.contains(gemData.ids, gemId) then
+			return gemData.fragment, gemData.range
+		end
+	end
+	return nil
+end
+```
+
+**Parâmetro:**
+- gemId: ID da gema a buscar
+
+**Retorna:**
+- fragment: ID do fragmento correspondente
+- range: Table with min and max quantity values
+
+**Exemplo:**
+```lua
+local fragment, range = getGemData(44602)
+-- fragment = 46625, range = {1, 4}
+```
+
+---
+
+## Constantes e Parâmetros
+
+### Gem Tiers
+
+| Tier | IDs | Fragment | Range | Quantidade |
+|------|-----|----------|-------|-----------|
+| Small | 5 (44602, 44605, 44608, 44611, 49371) | 46625 | 1-4 | 5 |
+| Medium | 5 (44603, 44606, 44609, 44612, 49372) | 46625 | 2-8 | 5 |
+| Great | 5 (44604, 44607, 44610, 44613, 49373) | 46626 | 1-4 | 5 |
+
+### Crusher Parameters
+
+| Parâmetro | Amber | Regular |
+|-----------|-------|---------|
+| ID | 46628 | 46627 |
+| maxGemBreak | 10 | 1 |
+| Charges | Ilimitado | Sim (getAttribute) |
+| Logic | breakAmount min(count, 10) | Simples decrement |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local config = {
+	maxGemBreak = 10,
+	fragmentGems = {
+		small = { ids = { 44602, 44605, 44608, 44611, 49371 }, fragment = 46625, range = { 1, 4 } },
+		medium = { ids = { 44603, 44606, 44609, 44612, 49372 }, fragment = 46625, range = { 2, 8 } },
+		great = { ids = { 44604, 44607, 44610, 44613, 49373 }, fragment = 46626, range = { 1, 4 } },
+	},
+}
+
+local function getGemData(gemId)
+	for _, gemData in pairs(config.fragmentGems) do
+		if table.contains(gemData.ids, gemId) then
+			return gemData.fragment, gemData.range
+		end
+	end
+	return nil
+end
+
+-- ========== AMBER CRUSHER (Ilimitado) ==========
+local amberCrusher = Action()
+
+function amberCrusher.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: Target
+	if not target or not target:isItem() or target:getId() == item:getId() or 
+	   player:getItemCount(target:getId()) <= 0 then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You can only use the crusher on a valid gem in your inventory.")
+		return true
+	end
+
+	-- Lookup: Dados da gema
+	local fragmentType, fragmentRange = getGemData(target:getId())
+	if not fragmentType then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "This item can't be broken into fragments.")
+		return true
+	end
+
+	-- Break amount logic: min(count, 10) ou 1
+	local breakAmount = (target:getCount() >= config.maxGemBreak) and config.maxGemBreak or 1
+	target:remove(breakAmount)
+
+	-- Criar fragmentos
+	for _ = 1, breakAmount do
+		player:addItem(fragmentType, math.random(fragmentRange[1], fragmentRange[2]))
+	end
+
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have broken the gem into fragments.")
+	return true
+end
+
+amberCrusher:id(46628)
+amberCrusher:register()
+
+-- ========== CRUSHER (Com Charges) ==========
+local crusher = Action()
+
+function crusher.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: Target
+	if not target or not target:isItem() or target:getId() == item:getId() or 
+	   player:getItemCount(target:getId()) <= 0 then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You can only use the crusher on a valid gem in your inventory.")
+		return true
+	end
+
+	-- Lookup: Dados da gema
+	local fragmentType, fragmentRange = getGemData(target:getId())
+	if not fragmentType then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "This item can't be broken into fragments.")
+		return true
+	end
+
+	-- Charge check
+	local crusherCharges = item:getAttribute(ITEM_ATTRIBUTE_CHARGES)
+	if not crusherCharges or crusherCharges <= 0 then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your crusher has no more charges.")
+		return true
+	end
+
+	-- quebrar 1 gema
+	target:remove(1)
+	player:addItem(fragmentType, math.random(fragmentRange[1], fragmentRange[2]))
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have broken the gem into fragments.")
+
+	-- Decrement charges
+	crusherCharges = crusherCharges - 1
+	if crusherCharges > 0 then
+		local container = item:getParent()
+		item:setAttribute(ITEM_ATTRIBUTE_CHARGES, crusherCharges)
+		if container:isContainer() then
+			player:sendUpdateContainer(container)
+		end
+	else
+		item:remove()
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your crusher has been consumed.")
+	end
+	return true
+end
+
+crusher:id(46627)
+crusher:register()
+```
+
+### Árvore de Decisão - Amber Crusher
+
+```
+Jogador usa amber crusher (46628) + target gema
+  │
+  ├─ Validações:
+  │   ├─ target existe?
+  │   ├─ é item?
+  │   ├─ não é si mesmo?
+  │   └─ player tem count > 0?
+  │
+  ├─ getGemData(target:getId())
+  │   ├─ Busca na config
+  │   └─ return fragment, range (ou nil)
+  │
+  ├─ if not fragmentType: return error message
+  │
+  ├─ breakAmount = target:getCount() >= 10 ? 10 : 1
+  │   └─ Se tem 10+: quebra 10, senão quebra 1
+  │
+  ├─ target:remove(breakAmount)
+  │   └─ Remove N gemas
+  │
+  ├─ for 1 to breakAmount:
+  │   └─ player:addItem(fragment, random(range[1], range[2]))
+  │
+  ├─ Message: "Broken into fragments"
+  │
+  └─ return true
+```
+
+### Árvore de Decisão - Crusher
+
+```
+Jogador usa crusher (46627) + target gema
+  │
+  ├─ Validações:
+  │   ├─ target existe?
+  │   ├─ é item?
+  │   ├─ não é si mesmo?
+  │   └─ player tem count > 0?
+  │
+  ├─ getGemData(target:getId())
+  │   ├─ Busca na config
+  │   └─ return fragment, range (ou nil)
+  │
+  ├─ if not fragmentType: return error message
+  │
+  ├─ crusherCharges = getAttribute(CHARGES)
+  │   └─ Obtem charge atual
+  │
+  ├─ if charges <= 0: return "no charges"
+  │
+  ├─ target:remove(1)
+  │   └─ Remove 1 gema
+  │
+  ├─ player:addItem(fragment, random(range))
+  │   └─ Cria 1 fragmento
+  │
+  ├─ crusherCharges - 1
+  │   └─ Decrementa
+  │
+  ├─ if crusherCharges > 0:
+  │   └─ setAttribute + updateContainer (visual)
+  │
+  └─ else:
+      └─ item:remove() + message "consumed"
+```
+
+### Break Amount Logic
+
+```lua
+-- Ternário para calcular breakAmount
+local breakAmount = (target:getCount() >= config.maxGemBreak) and config.maxGemBreak or 1
+
+-- Expansão lógica:
+local breakAmount
+if target:getCount() >= 10 then
+	breakAmount = 10  -- Máximo 10
+else
+	breakAmount = 1   -- Mínimo 1
+end
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Config Table**: Centralizar dados (gemas, ranges)
+- **Local Function**: getGemData() para lookup
+- **pairs() vs ipairs()**: pairs para dicts, ipairs para arrays
+- **table.contains()**: Validar existência em array
+- **Target Validation**: 4 checks (exists, isItem, not-self, count)
+- **Fragment Lookup**: getGemData() retorna 2 valores
+- **Break Amount Logic**: Ternário para min(count, 10) vs 1
+- **Charge System**: getAttribute(ITEM_ATTRIBUTE_CHARGES)
+- **Charge Decrement**: Decrementa até 0 então remove()
+- **Container Update**: sendUpdateContainer() para visual
+- **Dual Implementation**: Ilimitado vs Charges (mesmo core)
+- **Gem Tiers**: 3 tipos (small/medium/great) com ranges diferentes
+
+### Responsabilidades do Handler
+
+**Amber Crusher (Ilimitado):**
+1. Validar target (4 checks)
+2. Lookup: getGemData()
+3. Calcular breakAmount: min(count, 10) ou 1
+4. Remover N gemas
+5. Criar N fragmentos (cada 1 random range)
+
+**Crusher (Charges):**
+1. Validar target (4 checks)
+2. Lookup: getGemData()
+3. Validar charges > 0
+4. Remover 1 gema
+5. Criar 1 fragmento
+6. Decrement charges
+7. Se = 0: remove() crusher; se > 0: update visual
+
+---
+
+## Patterns e Implementação
+
+### Padrão Config + Lookup Function
+
+Centralizar dados e buscar:
+
+```lua
+local config = {
+	fragmentGems = {
+		small = { ids = {...}, fragment = 46625, range = {1, 4} },
+		medium = { ids = {...}, fragment = 46625, range = {2, 8} },
+		great = { ids = {...}, fragment = 46626, range = {1, 4} },
+	},
+}
+
+local function getGemData(gemId)
+	for _, gemData in pairs(config.fragmentGems) do
+		if table.contains(gemData.ids, gemId) then
+			return gemData.fragment, gemData.range
+		end
+	end
+	return nil
+end
+```
+
+### Padrão Target Validation
+
+4 validações:
+
+```lua
+if not target or not target:isItem() or 
+   target:getId() == item:getId() or 
+   player:getItemCount(target:getId()) <= 0 then
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Invalid target.")
+	return true
+end
+```
+
+### Padrão Charge Management
+
+Decrement até remoção:
+
+```lua
+local crusherCharges = item:getAttribute(ITEM_ATTRIBUTE_CHARGES)
+if not crusherCharges or crusherCharges <= 0 then
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "No charges.")
+	return true
+end
+
+-- Use it
+crusherCharges = crusherCharges - 1
+
+if crusherCharges > 0 then
+	item:setAttribute(ITEM_ATTRIBUTE_CHARGES, crusherCharges)
+	if container:isContainer() then
+		player:sendUpdateContainer(container)
+	end
+else
+	item:remove()
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Consumed.")
+end
+```
+
+### Comparação: Dual Crushers vs Single Tools
+
+| Aspecto | Amber | Regular | Difference |
+|---------|-------|---------|-----------|
+| ID | 46628 | 46627 | Diferentes |
+| Charges | Ilimitado | Sim | Regular tem limite |
+| Break Qty | config.maxGemBreak (10) | 1 | Amber quebra múltiplo |
+| Fragment Qty | Varia (1-10) | Always 1 | Variável vs fixo |
+| Removes | N gemas | 1 gema | Proporção |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: crushers.lua" icon="star">
+Análise de sistema dual de gem crushing com config table e local function lookup. Demonstra charge management, break amount logic e target validation.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Dual implementation with charge system | Complexidade: Alta
+</Aside>

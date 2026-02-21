@@ -1,0 +1,333 @@
+---
+title: demonic_candy_ball.lua
+description: Candy aleatória com 5 buffs variáveis diferentes
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="demonic_candy_ball.lua" icon="star">
+Script de ação Lua que implementa candy temática com 5 efeitos aleatórios diferentes.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/demonic_candy_ball.lua`
+
+Item consumível que aplica uno de 5 efeitos aleatórios: buff de atributo (1-4), luz especial (2), invisibilidade (3), restauração de vida/mana (4). Lógica pseudo-aleatória com ranges, não true random. Item ID 11587 com cooldown special-foods (10 min).
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `demonic_candy_ball.lua` implementa candy com 5 conditions pré-compiladas aplicadas aleatoriamente. Índice da condição vai 1-4 (pseudo-random) selecionando buff de atributo variável, luz especial, invisibilidade ou restauração full. Cada condição dura 1 hora. Emote "Smack", efeito vermelho e cooldown 10 minutos.
+
+**Estrutura de Funcionalidades**
+
+```
+[Pré-compile 5 conditions]
+    ├─ defenseCondition: shield +10 (1h)
+    ├─ magicLevelCondition: magic +5 (1h)
+    ├─ meleeCondition: melee +10 (1h)
+    ├─ distanceCondition: distance +10 (1h)
+    └─ speedCondition: speed boost (1h)
+    ├─ lightCondition: light level 15 (1h)
+
+[Create demonicCandyBall Action]
+    ↓
+[onUse function]
+    ├─ Check exhaustion: special-foods-cooldown
+    │   ├─ SIM → reject + return true
+    │   └─ NÃO → continuar
+    ├─ availableConditions = {defense, magic, melee, distance, speed}
+    ├─ randomConditionIndex = random(1, 4)
+    ├─ IF randomConditionIndex == 1
+    │   └─ addCondition(random from all 5)
+    │   └─ "You feel stronger..."
+    ├─ ELSEIF randomConditionIndex == 2
+    │   └─ addCondition(lightCondition)
+    │   └─ "You feel enlightened."
+    ├─ ELSEIF randomConditionIndex == 3
+    │   └─ addCondition(condition_i) [BUGGED - invisibility]
+    │   └─ "You became invisible."
+    ├─ ELSEIF randomConditionIndex == 4
+    │   ├─ addHealth(maxHealth)
+    │   ├─ addMana(maxMana)
+    │   └─ "Your vitality has been restored."
+    ├─ player:say("Smack.", TALKTYPE_MONSTER_SAY)
+    ├─ sendMagicEffect(CONST_ME_MAGIC_RED)
+    ├─ setExhaustion(10min)
+    ├─ item:remove(1)
+    └─ return true
+```
+
+## Variáveis Globais
+
+### Condition Pré-compiladas (5 total)
+
+#### defenseCondition
+
+```lua
+local defenseCondition = Condition(CONDITION_ATTRIBUTES)
+defenseCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreDefense)
+defenseCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+defenseCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+defenseCondition:setParameter(CONDITION_PARAM_SKILL_SHIELD, 10)
+defenseCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+```
+
+Buff de shield +10 por 1 hora.
+
+#### magicLevelCondition
+
+```lua
+local magicLevelCondition = Condition(CONDITION_ATTRIBUTES)
+magicLevelCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreMagicLevel)
+magicLevelCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+magicLevelCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+magicLevelCondition:setParameter(CONDITION_PARAM_STAT_MAGICPOINTS, 5)
+magicLevelCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+```
+
+Buff de magic level +5 por 1 hora.
+
+#### meleeCondition
+
+```lua
+local meleeCondition = Condition(CONDITION_ATTRIBUTES)
+meleeCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreMelee)
+meleeCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+meleeCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+meleeCondition:setParameter(CONDITION_PARAM_SKILL_MELEE, 10)
+meleeCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+```
+
+Buff de melee +10 por 1 hora.
+
+#### distanceCondition
+
+```lua
+local distanceCondition = Condition(CONDITION_ATTRIBUTES)
+distanceCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreDistance)
+distanceCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+distanceCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+distanceCondition:setParameter(CONDITION_PARAM_SKILL_DISTANCE, 10)
+distanceCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+```
+
+Buff de distance +10 por 1 hora.
+
+#### speedCondition
+
+```lua
+local speedCondition = Condition(CONDITION_HASTE)
+speedCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+speedCondition:setParameter(CONDITION_PARAM_SPEED, 729)
+```
+
+Buff de velocidade (haste) por 1 hora. Velocidade 729 é boost significativo.
+
+#### lightCondition
+
+```lua
+local lightCondition = Condition(CONDITION_LIGHT)
+lightCondition:setParameter(CONDITION_PARAM_LIGHT_LEVEL, 15)
+lightCondition:setParameter(CONDITION_PARAM_LIGHT_COLOR, 154)
+lightCondition:setTicks(60 * 60 * 1000)
+```
+
+Condição de light com nível 15, cor 154, por 1 hora.
+
+## Funções
+
+### demonicCandyBall.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que aplica candy aleatória.
+
+**Parâmetros:**
+- player: Creature player
+- item: Candy sendo consumido
+- fromPosition: Posição do uso
+- target: Target (pode ser nil)
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo de Execução:**
+
+```lua
+1. hasExhaustion("special-foods-cooldown")?
+   ├─ SIM → reject + return true
+   └─ NÃO → continuar
+
+2. availableConditions = {defense, magic, melee, distance, speed}
+
+3. randomConditionIndex = random(1, 4)
+   └─ Range 1-4 (Note: 5 não será selecionado!)
+
+4. IF randomConditionIndex == 1
+   ├─ condition = randomCondition from all 5
+   ├─ addCondition(condition)
+   └─ "You feel stronger, but you have no idea what was increased."
+
+5. ELSEIF randomConditionIndex == 2
+   ├─ addCondition(lightCondition)
+   └─ "You feel enlightened."
+
+6. ELSEIF randomConditionIndex == 3
+   ├─ addCondition(condition_i) [UNDEFINED - ERROR]
+   └─ "You became invisible."
+   └─ NOTE: condition_i não existe (bug)
+
+7. ELSEIF randomConditionIndex == 4
+   ├─ addHealth(maxHealth)
+   ├─ addMana(maxMana)
+   └─ "Your vitality has been restored."
+
+8. player:say("Smack.", TALKTYPE_MONSTER_SAY)
+
+9. sendMagicEffect(CONST_ME_MAGIC_RED)
+
+10. setExhaustion(10min)
+
+11. item:remove(1) + return true
+```
+
+**Implementação Atual:**
+
+```lua
+function demonicCandyBall.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true
+	end
+
+	local availableConditions = { defenseCondition, magicLevelCondition, meleeCondition, distanceCondition, speedCondition }
+	local randomConditionIndex = math.random(1, 4)
+
+	if randomConditionIndex == 1 then
+		player:addCondition(availableConditions[math.random(1, #availableConditions)])
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You feel stronger, but you have no idea what was increased.")
+	elseif randomConditionIndex == 2 then
+		player:addCondition(lightCondition)
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You feel enlightened.")
+	elseif randomConditionIndex == 3 then
+		player:addCondition(condition_i)
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You became invisible.")
+	elseif randomConditionIndex == 4 then
+		player:addHealth(player:getMaxHealth())
+		player:addMana(player:getMaxMana())
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your vitality has been restored.")
+	end
+
+	player:say("Smack.", TALKTYPE_MONSTER_SAY)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+	item:remove(1)
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| availableConditions | table | Array de 5 conditions |
+| randomConditionIndex | integer | 1-4 (pseudo-random) |
+| special-foods-cooldown | string | Cooldown key |
+| 10 * 60 | integer | 600 segundos (10 min) |
+| 60 * 60 * 1000 | integer | 3.600.000ms (1h) |
+
+## Efeitos Aleatórios
+
+| Índice | Efeito | Tipo | Duração |
+|--------|--------|------|---------|
+| 1 | Atributo aleatório | Buff (5 possíveis) | 1 hora |
+| 2 | Luz especial | Light (nível 15) | 1 hora |
+| 3 | Invisibilidade | Undefined (BUG) | 1 hora |
+| 4 | Restauração completa | Heal + Mana | Instantâneo |
+
+**Nota**: Index 3 tem bug - condition_i não é definida.
+
+## Fluxo de Operação
+
+```
+[Player usa candy]
+    ↓
+[special-foods-cooldown ativo?]
+    ├─ SIM → reject
+    └─ NÃO → continuar
+    ↓
+[randomConditionIndex = random(1, 4)]
+    ↓
+[Switch por index]
+    ├─ 1: Random buff (shield/magic/melee/distance/speed)
+    ├─ 2: Light (enlightened)
+    ├─ 3: Invisibility (BROKEN)
+    └─ 4: Full heal + mana
+    ↓
+[player:say("Smack.")]
+    ↓
+[Magic effect vermelho]
+    ↓
+[setExhaustion 10 min]
+    ↓
+[item:remove(1) + return true]
+```
+
+## Múltiplas Camadas de Aleatório
+
+**Camada 1**: randomConditionIndex (1-4)
+**Camada 2**: SE index == 1, então random condition do array (5 possibilidades)
+
+**Resultado**: 4-5 outcomes possíveis dependendo de qual escolhe.
+
+## Conhecidos Issues
+
+### Bug em Índice 3
+
+```lua
+elseif randomConditionIndex == 3 then
+	player:addCondition(condition_i)
+```
+
+Variável condition_i não é definida - causará erro runtime se índice 3 for selecionado.
+
+**Fix propostal**: Definir invisibility condition global ou replace com light condition.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Pré-compilação de conditions para reutilização
+2. Múltiplas camadas de randomização
+3. Switch statement por índice
+4. Diferentes tipos de conditions (ATTRIBUTES, HASTE, LIGHT)
+5. Dual effect: condition + instant restore
+6. Serialização em table para random selection
+7. Bug identification em código existente
+
+**Responsabilidades:**
+1. Verificar cooldown special-foods
+2. Selecionar efeito aleatório (1-4)
+3. Aplicar condition ou heal apropriado
+4. Emitir efeito visual
+5. Setar cooldown 10 min
+6. Consumir item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 83 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 11587  
+**Conditions Pré-compiladas**: 6  
+**Efeitos Possíveis**: 5 (incluindo bug)  
+**Cooldown**: 10 minutos  
+**Duração Buffs**: 1 hora  
+**Issue Conhecida**: condition_i undefined
+</Card>
+
+<Aside type="note">
+Candy com 5 efeitos aleatórios: 1 (buff atributo), 2 (light), 3 (invisibility - BROKEN), 4 (full heal). Índice 3 tem bug com condition_i undefined. Pré-compilação de conditions. Cooldown 10 min shared.
+</Aside>

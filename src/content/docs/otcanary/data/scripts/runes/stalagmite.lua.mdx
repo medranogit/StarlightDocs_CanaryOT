@@ -1,0 +1,385 @@
+---
+title: "Spell/Rune - stalagmite.lua"
+description: "Runa de estalagmite com dano terra escalável e muitas cargas"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `stalagmite.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 77 |
+| **ID do Item (runeId)** | 3179 |
+| **Level Requerido** | 24 |
+| **Magic Level Requerido** | 3 |
+| **Grupo** | attack |
+| **Tipo de Dano** | COMBAT_EARTHDAMAGE |
+| **Área** | Single target (sem area) |
+| **Cooldown** | 2s |
+| **Cargas** | 10 (muito!) |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Agressividade** | Sim |
+| **Requer Target** | Sim |
+| **PZ Locked** | Não |
+| **Linhas de Código** | 32 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa de estalagmite com dano terra escalável. Fórmula econômica (0.4/1.59 MLvl). Muitas cargas (10) facilitam treino/farming. Level 24, MLvl 3 = acesso cedo. Requer target selecionado. Sem PZ lock permite uso em town. Sons customizados earth + stalagmite.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/stalagmite.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(77)
+rune:runeId(3179)
+rune:level(24)
+rune:magicLevel(3)
+rune:group("attack")
+rune:allowFarUse(true)
+rune:needTarget(true)
+rune:charges(10)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Estalagmite de Terra com Múltiplas Cargas**
+
+Esta runa implementa um **sistema escalável econômico para treino**:
+
+1. **Fórmula Econômica:**
+   - min = (level/5) + (maglevel*0.4) + 2
+   - max = (level/5) + (maglevel*1.59) + 10
+   - Very baixa escalabilidade (treino!)
+
+2. **Muitas Cargas:**
+   - 10 uses (sessão longa!)
+   - Ideal para farming/treino
+   - Múltiplos targets
+
+3. **Acesso Early:**
+   - Level 24 (cedo)
+   - MLvl 3 (baixo)
+   - Sem PZ lock (town safe)
+
+4. **Efeito Earth:**
+   - CONST_ME_STONES
+   - Visual estalagmites
+   - Som customizado
+
+**Fórmula Visual:**
+```
+level 24, mlvl 3:
+  min = 4.8 + 1.2 + 2 = 8
+  max = 4.8 + 4.77 + 10 = 19.57
+
+level 50, mlvl 15:
+  min = 10 + 6 + 2 = 18
+  max = 10 + 23.85 + 10 = 43.85
+```
+
+**Diferencial:** Terra econômica + 10 cargas = train machine!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `stalagmite` oferece treino econômico early:
+
+- **Dano:** COMBAT_EARTHDAMAGE escalável baixo
+- **Fórmula:** (level/5) + (maglevel*0.4/1.59) + bônus
+- **Cargas:** 10
+- **Target:** Requerido
+- **Sem PZ Lock:** Town safe
+
+### Arquitetura
+
+Combat com fórmula callback leve:
+
+```
+local combat = Combat()
+├─ Type: EARTHDAMAGE
+├─ Effect: STONES
+├─ Distance: EARTH
+└─ Callback: onGetFormulaValues
+
+onGetFormulaValues()
+└─ min/max econômico
+
+rune.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_STONES)
+combat:setParameter(COMBAT_PARAM_DISTANCEEFFECT, CONST_ANI_EARTH)
+```
+
+**Propósito:** Combat de estalagmite.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_EARTHDAMAGE | Dano terra |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_STONES | Efeito pedras |
+| `COMBAT_PARAM_DISTANCEEFFECT` | CONST_ANI_EARTH | Projétil terra |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 0.4) + 2
+	local max = (level / 5) + (maglevel * 1.59) + 10
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano econômico.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 0.4) + 2
+max = (level / 5) + (maglevel * 1.59) + 10
+```
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 24 | 3 | 8 | 20 |
+| 40 | 8 | 14 | 33 |
+| 60 | 15 | 24 | 54 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Estalagmite lançada |
+| `false` | Target falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Fórmula Econômica
+
+```lua
+local min = (level / 5) + (maglevel * 0.4) + 2
+local max = (level / 5) + (maglevel * 1.59) + 10
+```
+
+**Benefício:** Escalabilidade baixa = treino eficiente.
+
+### Padrão 2: Muitas Cargas
+
+```lua
+rune:charges(10)
+```
+
+**Benefício:** 10 uses = sessão longa farming.
+
+### Padrão 3: Sem PZ Lock
+
+```lua
+-- Padrão: sem PZ lock
+```
+
+**Benefício:** Funciona em town, uso livre.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano terra econômico.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(player, 40, 8)
+// min = 8 + 3.2 + 2 = 13.2
+// max = 8 + 12.72 + 10 = 30.72
+// Retorna: -13.2, -30.72
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Lança estalagmite de terra.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Target (obrigatório) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Estalagmite lançada |
+| `false` | Target falhou |
+
+**Efeito:**
+- Projétil terra viaja
+- Impacto STONES
+- Dano escalável econômico
+- Single target
+
+**Exemplo:**
+
+```lua
+-- Mago nível 40, MLvl 8
+rune.onCastSpell(mago, targetVariant, false)
+// Town safe (sem PZ lock)
+// Projétil terra
+// Impacto estalagmites
+// Dano: -13 a -31
+// Resultado: Training eficiente
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Treino Econômico
+
+```lua
+-- 10 cargas = farming longo
+// Escalabilidade baixa
+// Novo mago level 24
+```
+
+### Caso 2: Town Safe
+
+```lua
+-- Sem PZ lock
+// Funciona em town
+// Prática livre
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_EARTHDAMAGE
+- **Effects:** CONST_ME_STONES, CONST_ANI_EARTH
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Estalagmite terra escalável |
+| **Dano Type** | COMBAT_EARTHDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*0.4)+2, max=(lvl/5)+(mlvl*1.59)+10 |
+| **Area** | Single target |
+| **Cargas** | 10 (muito!) |
+| **Distancia** | Sim (allowFarUse) |
+| **Target** | Requerido |
+| **PZ Locked** | Não |
+| **Level** | 24 (early) |
+| **MLvl** | 3 |
+| **Padrão** | Callback econômico + muitas cargas |

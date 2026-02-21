@@ -1,0 +1,231 @@
+---
+title: Add Mount
+description: Comando GOD para adicionar montarias/mounts a jogadores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `add_mount.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GOD) |
+| **Funcionalidade Principal** | Adicionar mounts de criatura |
+| **Comando** | `/addmount <playername>, <mount_id\|all>` |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Modo "all"** | Adiciona IDs 1-231 |
+| **IDs de Mount** | 1-231 (range aproximado) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/add_mount.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando que valida 2 parâmetros (playerName, mountParam), oferece modo "all" que itera 1-231, ou modo single que converte mountId para número. Feedback diferenciado para each. Usa `addMount()` para aplicar. Strings.format para mensagens limpas.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `add_mount.lua` implementa um comando TalkAction (`/addmount`) que adiciona montarias a jogadores. O sistema valida parâmetros, oferece modo "all" para adicionar 231 mounts disponíveis, ou modo single para mount específico por ID, aplica via `addMount()`, e fornece feedback diferenciado. Ferramenta de concessão de mobilidade.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local addmount = TalkAction("/addmount")
+
+function addmount.onSay(player, words, param)
+    -- Create log
+    logCommand(player, words, param)
+    
+    -- Validação: parâmetro vazio
+    if param == "" then
+        player:sendCancelMessage("Command param required.")
+        return true
+    end
+    
+    -- Parse: playerName, mountParam
+    local split = param:split(",")
+    if #split < 2 then
+        player:sendCancelMessage("Usage: /addmount <playername>, <mount id or 'all'>")
+        return true
+    end
+    
+    -- Buscar jogador
+    local playerName = split[1]
+    local target = Player(playerName)
+    
+    if not target then
+        player:sendCancelMessage("Player not found.")
+        return true
+    end
+    
+    -- Extrair mount parameter
+    local mountParam = string.trim(split[2])
+    
+    -- Modo "all": adicionar todos mounts (1-231)
+    if mountParam == "all" then
+        for mountId = 1, 231 do
+            target:addMount(mountId)
+        end
+        
+        target:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("%s has added all mounts to you.", player:getName()))
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("You have successfully added all mounts to player %s.", target:getName()))
+    else
+        -- Modo single: mount específico
+        local mountId = tonumber(mountParam)
+        if not mountId then
+            player:sendCancelMessage("Invalid mount ID.")
+            return true
+        end
+        
+        target:addMount(mountId)
+        target:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("%s has added a new mount for you.", player:getName()))
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+            string.format("You have successfully added mount %d to player %s.", mountId, target:getName()))
+    end
+    
+    return true
+end
+
+addmount:separator(" ")
+addmount:groupType("god")
+addmount:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **addmount.onSay(player, words, param)**
+
+**Descrição:** Função callback que adiciona mounts a um jogador online.
+
+**Parâmetros:**
+- `param` (string): `<playername>, <mount_id|all>`
+
+**Formato de Comando:**
+```
+/addmount Player1, 5               -- Adiciona mount ID 5
+/addmount Player1, all             -- Adiciona todos 231 mounts
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   - `logCommand(player, words, param)` registra uso
+
+2. **Validação de Parâmetro Vazio:**
+   - Se param == "", retorna "Command param required."
+
+3. **Parse de Parâmetros:**
+   ```lua
+   local split = param:split(",")
+   if #split < 2 then
+       player:sendCancelMessage("Usage: /addmount <playername>, <mount id or 'all'>")
+   ```
+   - Valida presença de 2 parâmetros
+
+4. **Busca de Jogador:**
+   ```lua
+   local target = Player(playerName)
+   if not target then
+       player:sendCancelMessage("Player not found.")
+   ```
+   - Deve estar online
+
+5. **Extrair Mount Parameter:**
+   ```lua
+   local mountParam = string.trim(split[2])
+   ```
+
+6. **Modo "all" - Adicionar Todos Mounts:**
+   ```lua
+   if mountParam == "all" then
+       for mountId = 1, 231 do
+           target:addMount(mountId)
+       end
+   ```
+   - Itera IDs 1 até 231
+   - Cada um via `addMount(id)`
+   - Feedback: "has added all mounts to you"
+
+7. **Modo Single - Mount Específico:**
+   ```lua
+   else
+       local mountId = tonumber(mountParam)
+       if not mountId then
+           player:sendCancelMessage("Invalid mount ID.")
+       end
+       target:addMount(mountId)
+   ```
+   - Converte string para número
+   - Valida conversão
+   - Aplica single mount
+
+**Exemplo de Execução:**
+
+```
+GM: /addmount TestPlayer, 5
+
+Parse:
+- playerName = "TestPlayer"
+- mountParam = "5"
+
+Busca:
+- TestPlayer encontrado ✓
+
+Modo Single:
+- mountId = 5
+- Válido ✓
+- addMount(5) aplicado
+
+Feedback:
+- TestPlayer vê: "[GM] has added a new mount for you."
+- GM vê: "You have successfully added mount 5 to player TestPlayer."
+```
+
+---
+
+```
+GM: /addmount TestPlayer, all
+
+Parse:
+- playerName = "TestPlayer"
+- mountParam = "all"
+
+Modo All:
+- Para mountId = 1, 2, 3, ..., 231:
+  - addMount(mountId)
+
+Feedback:
+- TestPlayer vê: "[GM] has added all mounts to you."
+- GM vê: "You have successfully added all mounts to player TestPlayer."
+```
+
+**Range de IDs:**
+- Mounts disponíveis: 1 a 231 (aproximadamente)
+- "all" itera este range completo
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `param:split(sep)` | Divide por separador |
+| `string.trim(str)` | Remove espaços |
+| `tonumber(str)` | Converte para número |
+| `Player(name)` | Busca jogador |
+| `target:addMount(id)` | Adiciona mount |
+| `string.format(fmt, ...)` | Formata string |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo `add_mount.lua` é ferramenta de concessão de mobilidade. Implementação com modo "all" para adição em lote (1-231), modo single para precisão, feedback diferenciado. Essencial para administradores conceder mounts, recompensar participação, ou testar conteúdo. Design flexível prioriza usabilidade com "all" e controle com ID específico.

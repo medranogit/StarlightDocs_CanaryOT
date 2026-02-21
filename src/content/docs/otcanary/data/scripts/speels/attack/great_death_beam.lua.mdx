@@ -1,0 +1,514 @@
+---
+title: "Spell - great_death_beam.lua"
+description: "Spell de raio morte para sorcerers level 300 com WOD grades e beams tri-versão"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `great_death_beam.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant - MUITO COMPLEXA) |
+| **ID do Spell** | 260 |
+| **Tipo de Dano** | COMBAT_DEATHDAMAGE |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Level Requerido** | 300 (MÁXIMO!) |
+| **Mana Requerida** | 140 |
+| **Words** | exevo max mort |
+| **Alcance** | -1 (direction) |
+| **Área** | 3 BEAMS (BEAM6/7/8 WOD grade-based) |
+| **Cooldown** | 10s |
+| **GroupCooldown** | 2s + 6s |
+| **Premium** | Não |
+| **Fórmula** | Magic-level muito alta (5.5-9 coef) |
+| **Som Conjura** | Não especificado |
+| **Requer Direction** | Sim (needDirection) |
+| **Bloqueia Walls** | Sim |
+| **Requer Learn** | Sim (needLearn - RARO!) |
+| **WOD System** | upgradeSpellsWOD (WHEEL_GRADE_NONE a 3) |
+| **Linhas de Código** | 46 |
+| **Complexidade** | MUITO Alto |
+
+**Descrição:**
+Spell EXTREMAMENTE COMPLEXA de raio morte para sorcerers nível 300 (MÁXIMO!). Sistema WOD tri-versão com 3 beams diferentes (BEAM6/7/8) baseado em WOD grade (1-3). Magic-level muito alta (5.5-9 coef). 140 mana (baato para endgame!). Não-premium. needLearn: true (RARO!). Cooldown 10s. Direcionado. Endgame absoluto!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/great_death_beam.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack", "greatbeams")
+spell:id(260)
+spell:name("Great Death Beam")
+spell:words("exevo max mort")
+spell:level(300)
+spell:mana(140)
+spell:isPremium(false)
+spell:needDirection(true)
+spell:blockWalls(true)
+spell:cooldown(10 * 1000)
+spell:groupCooldown(2 * 1000, 6 * 1000)
+spell:needLearn(true)
+spell:vocation("sorcerer;true", "master sorcerer;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Raio Morte Grandioso - WOD Tri-Beam Endgame**
+
+Este spell implementa um sistema EXTREMAMENTE COMPLEXO de beam morte com WOD:
+
+1. **WOD Tri-Beam System:**
+   - Grade 1: AREA_BEAM6 (pequeno)
+   - Grade 2: AREA_BEAM7 (médio)
+   - Grade 3: AREA_BEAM8 (grande!)
+   - upgradeSpellsWOD("Great Death Beam")
+   - WHEEL_GRADE_NONE = rejeita
+
+2. **Magic-Level MUITO Alta:**
+   - Coef min: 5.5 (EXTREMO!)
+   - Coef max: 9 (EXTREMO!)
+   - Fórmula: (level/5) + (mlvl × 5.5/9)
+
+3. **Level 300 Absolute:**
+   - MÁXIMO possível!
+   - needLearn: true (RARO!)
+   - Não-premium advantage
+   - 140 mana (baato!)
+
+4. **Beam Direcionado:**
+   - needDirection: true
+   - Tri-versão WOD grades
+   - blockWalls: true
+   - Endgame absoluto
+
+**Fórmula Visual:**
+```
+Sorcerer lvl 300, mlvl 60 (grade 1 BEAM6):
+  min = 60 + 60 × 5.5 = 390
+  max = 60 + 60 × 9 = 600
+
+Sorcerer lvl 300, mlvl 60 (grade 3 BEAM8):
+  min = 60 + 60 × 5.5 = 390
+  max = 60 + 60 × 9 = 600
+  (mesma fórmula, area maior!)
+```
+
+**Diferencial:** Morte endgame WOD tri-beam absolutamente máximo!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `great_death_beam` oferece dano morte escalável com sistema WOD tri-beam:
+
+- **Dano:** COMBAT_DEATHDAMAGE magic-level
+- **Fórmula:** (level/5) + (mlvl × 5.5/9) (MUITO ALTA!)
+- **Mana:** 140
+- **Level:** 300 (MÁXIMO!)
+- **Sistema:** WOD tri-beam grades (1-3)
+
+### Arquitetura (MUITO COMPLEXA!)
+
+```
+Função: formulaFunction
+└─ Calcula dano base
+
+initCombat (shared callback)
+├─ Callback onGetFormulaValues
+└─ Usada por todos 3 combats
+
+createCombat(combat, area)
+├─ Configura DEATHDAMAGE
+├─ Seta area
+└─ Retorna combat customizado
+
+3 Combat Variants:
+├─ combat1: BEAM6 (grade 1)
+├─ combat2: BEAM7 (grade 2)
+└─ combat3: BEAM8 (grade 3)
+
+combat = {combat1, combat2, combat3}
+
+spell.onCastSpell()
+├─ upgradeSpellsWOD check
+├─ Grade validation (none = reject)
+└─ combat[grade]:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 5.5)
+	local max = (level / 5) + (maglevel * 9)
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano morte magic-level MUITO alto.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Sorcerer |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 5.5)
+max = (level / 5) + (maglevel * 9)
+```
+
+**Pesos (EXTREMAMENTE ALTOS!):**
+- Level: 0.2 por ponto
+- Maglevel min: 5.5 (EXTREMO!)
+- Maglevel max: 9 (EXTREMO!)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 300 | 30 | 210 | 330 |
+| 300 | 50 | 330 | 510 |
+| 300 | 60 | 390 | 600 |
+
+---
+
+### Função Global: createCombat
+
+```lua
+local function createCombat(combat, area)
+	combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_DEATHDAMAGE)
+	combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MORTAREA)
+	combat:setArea(createCombatArea(area))
+	return combat
+end
+```
+
+**Propósito:** Factory para customizar combat com area.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `combat` | Combat | initCombat com callback |
+| `area` | Area | BEAM6/7/8 |
+
+**Retorno:** Combat customizado.
+
+**Uso:**
+```lua
+local combat1 = createCombat(initCombat, AREA_BEAM6)
+local combat2 = createCombat(initCombat, AREA_BEAM7)
+local combat3 = createCombat(initCombat, AREA_BEAM8)
+```
+
+---
+
+### Variável Global: combat (Array de Combats)
+
+```lua
+local combat = { combat1, combat2, combat3 }
+```
+
+**Propósito:** Array indexado por WOD grade para seleção dinâmica.
+
+**Índices:**
+
+| Índice | Grade | Area | Descrição |
+|---|---|---|---|
+| 1 | Grade 1 | BEAM6 | Pequeno |
+| 2 | Grade 2 | BEAM7 | Médio |
+| 3 | Grade 3 | BEAM8 | Grande! |
+
+---
+
+### Variável Global: initCombat
+
+```lua
+local initCombat = Combat()
+initCombat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+**Propósito:** Combat base com callback magic-level.
+
+---
+
+### Função Global: spell.onCastSpell (MUITO COMPLEXA!)
+
+```lua
+function spell.onCastSpell(creature, var)
+	if not creature or not creature:isPlayer() then
+		return false
+	end
+
+	local grade = creature:upgradeSpellsWOD("Great Death Beam")
+	if grade == WHEEL_GRADE_NONE then
+		creature:sendCancelMessage("You need to learn this spell first")
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	return combat[grade]:execute(creature, var)
+end
+```
+
+**Propósito:** Handler complexo com WOD grade selection.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Direction |
+
+**Lógica:**
+1. Valida creature é player
+2. Fetch upgradeSpellsWOD grade
+3. Se WHEEL_GRADE_NONE: reject + message + POFF
+4. Senão: executa combat[grade]
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Beam lançado |
+| `false` | Validação falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `onGetFormulaValues` | function | Global | Callback magic-level |
+| `initCombat` | Combat | Arquivo | Base com callback |
+| `createCombat` | function | Local | Factory combats |
+| `combat1, combat2, combat3` | Combat | Local | 3 variants BEAM |
+| `combat` | table | Arquivo | Array combats |
+| `spell` | Spell | Arquivo | Instância spell |
+| `exhaust` | table | Arquivo | (vazia, não usada) |
+
+**Variáveis Locais (em spell.onCastSpell):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `grade` | number | WOD grade (1-3 ou NONE) |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: WOD Tri-Beam Dynamic Selection
+
+```lua
+local combat = { combat1, combat2, combat3 }
+local grade = creature:upgradeSpellsWOD("Great Death Beam")
+return combat[grade]:execute(creature, var)
+```
+
+**Benefício:** Grade automático seleciona area!
+
+### Padrão 2: Shared Callback + Factory
+
+```lua
+local initCombat = Combat()
+initCombat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+
+local function createCombat(combat, area)
+	-- reutiliza initCombat com areas diferentes
+end
+```
+
+**Benefício:** Callback compartilhado, areas dinâmicas.
+
+### Padrão 3: Magic-Level Extremo
+
+```lua
+local min = (level / 5) + (maglevel * 5.5)
+local max = (level / 5) + (maglevel * 9)
+```
+
+**Benefício:** Escalável MUITO alto magic-level!
+
+### Padrão 4: needLearn + WHEEL_GRADE_NONE
+
+```lua
+spell:needLearn(true)
+if grade == WHEEL_GRADE_NONE then return false
+```
+
+**Benefício:** Aprendizado obrigatório WOD!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano morte magic-level extremo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Sorcerer |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+---
+
+### createCombat(combat, area)
+
+**Descrição:** Factory customiza combat com area BEAM.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `combat` | Combat | initCombat base |
+| `area` | Area | BEAM6/7/8 |
+
+**Retorno:** Combat customizado.
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Lança beam morte com WOD grade selection.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Sorcerer |
+| `var` | Variant | Direction |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Beam lançado |
+| `false` | Grade falhou |
+
+**Requisitos:**
+- Level 300
+- 140 mana
+- Direction required
+- WOD grade >= 1 (WHEEL_GRADE_NONE rejeita)
+- needLearn: true
+- Cooldown 10s
+
+**Efeito:**
+- Grade 1: BEAM6 (pequeno)
+- Grade 2: BEAM7 (médio)
+- Grade 3: BEAM8 (grande!)
+- Dano magic-level EXTREMO
+- Direction livre
+
+**Exemplo:**
+
+```lua
+-- Sorcerer lvl 300, MLvl 60, grade 3
+spell.onCastSpell(sorcerer, directionVariant)
+// upgradeSpellsWOD("Great Death Beam") = 3
+// Usa combat[3] (BEAM8)
+// Dano: -390 a -600
+// Area BEAM8 (grande!)
+// Efeito morte
+// Resultado: Raio morte máximo!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Endgame Absoluto
+
+```lua
+-- Sorcerer lvl 300
+// Great Death Beam = ultimate endgame
+// WOD grade 3 = area máxima
+// Magic-level extremo
+```
+
+### Caso 2: WOD Progression
+
+```lua
+-- Sorcerer grinding WOD grades
+// Grade 1: BEAM6 pequeno
+// Grade 2: BEAM7 médio
+// Grade 3: BEAM8 grande!
+// Escalação visual clara
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_DEATHDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **WOD:** upgradeSpellsWOD, WHEEL_GRADE_NONE
+- **Areas:** AREA_BEAM6, AREA_BEAM7, AREA_BEAM8
+- **Padrão:** Factory + Dynamic Array Selection
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant - Muito Complexa) |
+| **Função** | Beam morte WOD tri-versão |
+| **Dano Type** | COMBAT_DEATHDAMAGE |
+| **Fórmula** | (lvl/5) + (mlvl × 5.5/9) |
+| **Mana** | 140 |
+| **Area** | BEAM6/7/8 (grade-based) |
+| **Level** | 300 (MÁXIMO!) |
+| **Cooldown** | 10s |
+| **Premium** | Não |
+| **Magic-Level** | EXTREMO (5.5-9 coef) |
+| **WOD** | upgradeSpellsWOD tri-grade |
+| **Learn Required** | Sim (RARO!) |
+| **Direction** | Sim (needDirection) |
+| **Vocações** | Sorcerer, Master Sorcerer |
+| **Padrão** | WOD tri-beam + factory + dynamic array + needLearn |

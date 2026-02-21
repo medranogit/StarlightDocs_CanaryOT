@@ -1,0 +1,239 @@
+---
+title: Storage Management
+description: Comando GOD para gerenciar valores de storage de jogadores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | manage_storage.lua |
+| **Tipo de Sistema** | Storage Management (GOD) |
+| **Funcionalidade Principal** | Get/Set storage values |
+| **Comandos** | /getstorage, /setstorage |
+| **Requisito** | Acesso de God (getStorage=gamemaster) |
+| **Separador** | Vírgula |
+| **Suporte** | Storage key (número) ou name (string) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/manage_storage.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /getstorage: Player.getStorageValueTalkaction(param), valida HasValidTalkActionParams, parse 2 params (playerName, storageKey), tonumber(key) ou string.trim. /setstorage: Player.setStorageValueTalkaction(param), 3 parâmetros (key, value, playerName opt), default value=1, só se key é número, player:save() após change.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo manage_storage.lua implementa 2 comandos de storage management. Dispõe de getter com Player extension, setter com default value, suporte a storage key (número) e name (string), validações de parâmetros, logging automático. Ferramenta essencial de player data debugging.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **Player Extension getStorageValueTalkaction**
+
+```lua
+function Player.getStorageValueTalkaction(self, param)
+	-- Validação de parâmetros
+	if not HasValidTalkActionParams(self, param, "Usage: /getstorage <playername>, <storage key or name>") then
+		return true
+	end
+	
+	local split = param:split(",")
+	if not split[2] then
+		self:sendCancelMessage("Insufficient parameters.")
+		return true
+	end
+	
+	-- Buscar player
+	local target = Player(split[1]:trim())
+	if not target then
+		self:sendCancelMessage("A player with that name is not online.")
+		return true
+	end
+	
+	-- Storage key: número ou string
+	local storageKey = tonumber(split[2]) or split[2]:trim()
+	if not storageKey then
+		self:sendCancelMessage("Invalid storage key or name.")
+		return true
+	end
+	
+	-- Obter valor
+	local storageValue = target:getStorageValue(storageKey)
+	if storageValue == nil then
+		self:sendTextMessage(MESSAGE_EVENT_ADVANCE, "The storage with id: " .. split[2] .. " does not exist or is not set for player " .. target:getName() .. ".")
+	else
+		self:sendTextMessage(MESSAGE_EVENT_ADVANCE, "The storage with id: " .. split[2] .. " from player " .. target:getName() .. " is: " .. storageValue .. ".")
+	end
+	
+	return true
+end
+```
+
+---
+
+### **TalkAction /getstorage**
+
+```lua
+local storageGet = TalkAction("/getstorage")
+
+function storageGet.onSay(player, words, param)
+	return player:getStorageValueTalkaction(param)
+end
+
+storageGet:separator(" ")
+storageGet:groupType("gamemaster")
+storageGet:register()
+```
+
+**Comando:**
+```
+/getstorage TestPlayer, 10000        -- Storage número
+/getstorage god, wheel.scroll       -- Storage string (named)
+```
+
+**Fluxo:**
+1. Valida parâmetros
+2. Parse playerName, storageKey
+3. Busca player online
+4. getStorageValue(key) - número ou string
+5. Mensagem: "is: X"
+
+---
+
+### **Player Extension setStorageValueTalkaction**
+
+```lua
+function Player.setStorageValueTalkaction(self, param)
+	-- Validação
+	if not HasValidTalkActionParams(self, param, "Usage: /setstorage <storagekey or name>, <value>, <player name>=default self") then
+		return true
+	end
+	
+	local split = param:split(",")
+	local value = 1
+	if split[2] then
+		value = split[2]
+	end
+	
+	-- Storage key: só número
+	local storageKey = tonumber(split[1])
+	if storageKey == nil then
+		logger.warn("The storage key is not a number.")
+		self:sendCancelMessage("The storage key is not a number.")
+	else
+		-- Alvo: param[3] ou self
+		if split[3] then
+			local targetPlayer = Player(string.trim(split[3]))
+			if not targetPlayer then
+				self:sendCancelMessage("Player not found.")
+				return true
+			else
+				local message = "Set storage: " .. storageKey .. " to player " .. split[3] .. " newValue: " .. value .. "."
+				self:sendTextMessage(MESSAGE_EVENT_ADVANCE, message)
+				targetPlayer:setStorageValue(storageKey, value)
+				targetPlayer:save()
+				return true
+			end
+		else
+			local message = "Set storage: " .. storageKey .. " to player " .. self:getName() .. ", newValue: " .. value .. "."
+			self:sendTextMessage(MESSAGE_EVENT_ADVANCE, message)
+			self:setStorageValue(storageKey, value)
+			self:save()
+		end
+	end
+	return true
+end
+```
+
+---
+
+### **TalkAction /setstorage**
+
+```lua
+local talkaction = TalkAction("/setstorage")
+
+function talkaction.onSay(player, words, param)
+	return player:setStorageValueTalkaction(param)
+end
+
+talkaction:separator(" ")
+talkaction:groupType("god")
+talkaction:register()
+```
+
+**Comando:**
+```
+/setstorage 10001, 1                  -- Set self, value=1
+/setstorage 10001, 100                -- Set self, value=100
+/setstorage 10001, 1, PlayerName      -- Set outro player
+```
+
+**Fluxo:**
+1. Valida parâmetros
+2. Parse key, value, playerName (opt)
+3. Value default = 1
+4. Key deve ser número
+5. setStorageValue(key, value)
+6. player:save() - persiste
+
+**Validações:**
+- Key deve ser número
+- Player deve estar online (se especificado)
+- Value defaults para 1
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /getstorage TestPlayer, 10000
+
+Resultado:
+"The storage with id: 10000 from player TestPlayer is: 100."
+
+---
+
+GM: /setstorage 10000, 50, TestPlayer
+
+Resultado:
+"Set storage: 10000 to player TestPlayer newValue: 50."
+- Storage de TestPlayer alterado
+- Dados salvos no banco
+
+---
+
+GM: /setstorage 10001, 1
+
+Resultado:
+"Set storage: 10001 to player AdminName, newValue: 1."
+- Storage do próprio GM alterado
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `HasValidTalkActionParams(player, param, usage)` | Valida parâmetros |
+| `param:split(sep)` | Divide string |
+| `string.trim(str)` | Remove espaços |
+| `tonumber(str)` | Converte número |
+| `Player(name)` | Busca player online |
+| `player:getStorageValue(key)` | Obtém valor |
+| `player:setStorageValue(key, value)` | Seta valor |
+| `player:save()` | Persiste em banco |
+| `player:getName()` | Obtém nome |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+| `logger.warn(fmt, ...)` | Log warning |
+
+---
+
+## 📌 Resumo
+
+O arquivo manage_storage.lua é sistema simples de storage management. Implementação com Player extensions, getter/setter, support ao number/string keys, default value, auto-save. Essencial para GMs debugar/manipular storage values. Design minimalista focado em usabilidade.

@@ -1,0 +1,359 @@
+---
+title: "Spell - kick.lua"
+description: "Spell de remoção de players de casas (house kick)"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `kick.lua` |
+| **Localização** | `data/scripts/spells/house/` |
+| **Tipo de Script** | Spell (Instant) |
+| **Tipo** | House Management (Guest Removal) |
+| **Alvo** | Player Name (String Parameter) |
+| **Mana Requerida** | Nenhuma |
+| **Words** | alana sio |
+| **Spell ID** | Nenhum (house spell) |
+| **Cooldown** | Nenhum |
+| **Agressivo** | Não |
+| **Aceita Parâmetros** | Sim |
+| **Parâmetro Player Name** | Sim |
+| **Efeito Visual Erro** | CONST_ME_POFF |
+| **Efeito Visual Sucesso** | CONST_ME_TELEPORT (self-kick apenas) |
+| **Som de Casting** | SOUND_EFFECT_TYPE_SPELL_KICK_GUEST |
+| **Linhas de Código** | 30 |
+| **Complexidade** | Intermediária |
+
+**Descrição:**
+Spell de remoção de players de casas. Permite ao dono remover convidados da casa. Suporta self-kick (player teleporta para exit). Obtém target player do variant string (hasPlayerNameParam). Validação: canEditAccessList(GUEST_LIST). Usa kickPlayer(owner, target). Words: "alana sio". Som: SOUND_EFFECT_TYPE_SPELL_KICK_GUEST. Spell house kick remoção convidados gerenciamento!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/house/kick.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:name("House Kick")
+spell:words("alana sio")
+spell:hasParams(true)
+spell:hasPlayerNameParam(true)
+spell:isAggressive(false)
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_KICK_GUEST)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Remoção de Convidados - House Kick Management**
+
+Este spell oferece exclusão de players da casa:
+
+1. **Self-Kick Support:**
+   - Se targetPlayer == player
+   - Teleporta para exit position
+   - Saída graciosa da casa!
+
+2. **Target Player Parameter:**
+   - hasPlayerNameParam: true
+   - Obtém do variant:getString()
+   - Fallback para self se não encontrado!
+
+3. **Validação de Permissões:**
+   - canEditAccessList(GUEST_LIST, player)
+   - Apenas owner/co-owners podem kickar
+   - Segurança house garantida!
+
+4. **Kick Efetivo:**
+   - house:kickPlayer(owner, targetPlayer)
+   - Remove player da house
+   - Com feedback visual/sonoro!
+
+**Uso Típico:**
+```
+House Owner lvl any
+// Cast "alana sio" <player_name>
+// Sistema obtém player do string
+// Se self: teleporta para exit + efeito teleport
+// Se outro: validação + kickPlayer
+// Se sucesso: remoção efetiva
+// Spell house kick remoção convidados!
+```
+
+**Diferencial:** Suporta self-kick com teleportação + validação permissões + remoção efetiva!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `kick` oferece remoção de players de casas com suporte a self-kick:
+
+- **Tipo:** House Management (Guest Removal)
+- **Função Principal:** Remover convidado da casa
+- **Target:** Player name (string parameter)
+- **Self-Kick:** Teleporta para exit position
+- **Validação:** canEditAccessList(GUEST_LIST)
+- **Execução:** house:kickPlayer(owner, target)
+- **Mensagem Erro:** RETURNVALUE_NOTPOSSIBLE
+- **Efeito Erro:** CONST_ME_POFF
+- **Efeito Sucesso (Self):** CONST_ME_TELEPORT
+
+### Arquitetura
+
+```
+local spell = Spell("instant")
+├─ onCastSpell(player, variant)
+│  ├─ Obter target player
+│  │  ├─ Player(variant:getString())
+│  │  └─ Fallback para self
+│  ├─ Obter houses (owner + guest)
+│  ├─ Se self:
+│  │  ├─ Efeito CONST_ME_POFF
+│  │  ├─ Teleport para exit position
+│  │  └─ Efeito CONST_ME_TELEPORT
+│  └─ Se outro:
+│     ├─ Validação canEditAccessList(GUEST_LIST)
+│     ├─ kickPlayer(owner, targetPlayer)
+│     └─ Mensagem erro se não valida
+│
+└─ Configuração spell
+   ├─ name: "House Kick"
+   ├─ words: "alana sio"
+   ├─ hasParams: true
+   ├─ hasPlayerNameParam: true
+   └─ castSound: SOUND_EFFECT_TYPE_SPELL_KICK_GUEST
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell de kick.
+
+**Tipo:** Instant (sem cast time)
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(player, variant)
+	local targetPlayer = Player(variant:getString()) or player
+	local guest = targetPlayer:getTile():getHouse()
+	local owner = player:getTile():getHouse()
+
+	-- Owner kick yourself from house
+	if targetPlayer == player then
+		player:getPosition():sendMagicEffect(CONST_ME_POFF)
+		player:teleportTo(owner:getExitPosition())
+		player:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+		return true
+	end
+
+	if not owner:canEditAccessList(GUEST_LIST, player) then
+		player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		player:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	if not owner or not guest or not guest:kickPlayer(player, targetPlayer) then
+		player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		player:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+	return true
+end
+```
+
+**Propósito:** Remove player da house ou executa self-kick.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Caster (house owner/co-owner) |
+| `variant` | Variant | String com player name |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Kick executado (sucesso) |
+| `false` | Erro (sem permissão ou house não existe) |
+
+**Lógica Detalhada:**
+
+1. **Obtenção de Target:**
+   - `targetPlayer = Player(variant:getString()) or player`
+   - Busca player pelo nome
+   - Se não encontrado, usa self (fallback)
+
+2. **Obtenção de Houses:**
+   - `guest = targetPlayer:getTile():getHouse()`
+   - `owner = player:getTile():getHouse()`
+   - Ambas as houses (target e caster)
+
+3. **Self-Kick (targetPlayer == player):**
+   - Efeito CONST_ME_POFF (antes)
+   - `teleportTo(owner:getExitPosition())`
+   - Efeito CONST_ME_TELEPORT (depois)
+   - Return true (sucesso)
+
+4. **Validação Permissões (outro player):**
+   - `canEditAccessList(GUEST_LIST, player)`
+   - Se falhar: erro + efeito + return false
+
+5. **Execução Kick:**
+   - `guest:kickPlayer(player, targetPlayer)`
+   - Remove player da house
+   - Validação houses existem
+
+6. **Erro Final:**
+   - sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+   - sendMagicEffect(CONST_ME_POFF)
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `spell` | Spell | Arquivo | Instância spell |
+
+### Variáveis Locais (onCastSpell)
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `targetPlayer` | Player | Player a ser kickado (ou self) |
+| `guest` | House | Casa do target player |
+| `owner` | House | Casa do caster |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Obtenção de Target com Fallback
+
+```lua
+local targetPlayer = Player(variant:getString()) or player
+```
+
+**Benefício:** Fallback para self se player não encontrado!
+
+### Padrão 2: Self-Kick com Teleportação
+
+```lua
+if targetPlayer == player then
+	player:getPosition():sendMagicEffect(CONST_ME_POFF)
+	player:teleportTo(owner:getExitPosition())
+	player:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+	return true
+end
+```
+
+**Benefício:** Saída graciosa com efeitos visuais!
+
+### Padrão 3: Validação Permissões Prévia
+
+```lua
+if not owner:canEditAccessList(GUEST_LIST, player) then
+	-- erro
+	return false
+end
+```
+
+**Benefício:** Early exit antes de tentar kick!
+
+### Padrão 4: Validação Dupla Houses + Kick
+
+```lua
+if not owner or not guest or not guest:kickPlayer(player, targetPlayer) then
+	-- erro
+	return false
+end
+```
+
+**Benefício:** Valida existência + execução kick em uma condição!
+
+---
+
+## 🤖 Documentação das Funções
+
+### spell.onCastSpell(player, variant)
+
+**Descrição:** Remove player da house ou executa self-kick com teleportação.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Caster (house owner/co-owner) |
+| `variant` | Variant | String contendo player name |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Kick executado com sucesso |
+| `false` | Erro (sem permissão ou house não existe) |
+
+**Requisitos:**
+- Estar dentro de uma casa
+- Para kick de outro: ser owner ou co-owner
+- Para self-kick: ser qualquer um na house
+- Target player existir (ou fallback para self)
+
+**Lógica de Execução:**
+
+| Cenário | Ação | Efeito |
+|---|---|---|
+| targetPlayer == player | Teleporta para exit position | POFF + TELEPORT |
+| Sem permissão canEditAccessList | Mensagem erro + efeito | POFF |
+| Kick bem-sucedido | Remove player da house | Sucesso |
+| Kick falha | Mensagem erro + efeito | POFF |
+
+**Exemplo de Uso:**
+```lua
+-- House Owner lvl any
+-- Cast "alana sio" <player_name>
+-- Sistema obtém player do string
+
+-- Cenário 1 (Self-Kick):
+-- targetPlayer == player
+// Efeito CONST_ME_POFF
+// teleportTo(owner:getExitPosition())
+// Efeito CONST_ME_TELEPORT
+// Teleporta player para saída!
+
+-- Cenário 2 (Kick outro):
+// Validação canEditAccessList(GUEST_LIST, player)
+// Se valida: guest:kickPlayer(owner, targetPlayer)
+// Se falha: sendCancelMessage + efeito erro
+// Spell house kick remoção convidados!
+```
+
+---
+
+## 📌 Resumo
+
+**House Kick** é um spell de gerenciamento de casa que permite remover convidados ou fazer self-kick com teleportação. Com obtenção de target player do string parameter, fallback para self, self-kick com teleportação para exit position (CONST_ME_TELEPORT), validação canEditAccessList(GUEST_LIST), execução house:kickPlayer(owner, targetPlayer), feedback erro com CONST_ME_POFF, words "alana sio", som SOUND_EFFECT_TYPE_SPELL_KICK_GUEST, hasParams true, hasPlayerNameParam true, isAggressive false. Spell house kick remoção convidados gerenciamento com self-kick teleportação!

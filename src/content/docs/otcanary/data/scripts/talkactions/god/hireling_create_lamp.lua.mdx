@@ -1,0 +1,254 @@
+---
+title: Hireling Create Lamp
+description: Comando GOD para criar novos hirelings (NPCs companheiros)
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | hireling_create_lamp.lua |
+| **Tipo de Sistema** | Hireling System (GOD) |
+| **Funcionalidade Principal** | Criar hireling NPC |
+| **Comando** | /hireling [name], [sex] |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Default Nome** | "Hireling " + player name |
+| **Default Sex** | 1 (feminino ou masculino padrão) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/hireling_create_lamp.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando de hireling creation. Parse 2 parâmetros opcionais (name, sex) via split. Name default: "Hireling " + player:getName(). Sex default: 1. Chama player:addNewHireling(name, sex), valida retorno. Se sucesso: GREEN magic effect. Parâmetros totalmente opcionais com defaults sensatos.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo hireling_create_lamp.lua implementa comando TalkAction (/hireling) que cria novos hireling NPCs (companheiros). O sistema oferece parâmetros opcionais para nome e sexo, defaults sensatos, validação de sucesso, magic effect GREEN. Ferramenta de hireling creation.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local talk = TalkAction("/hireling")
+
+function talk.onSay(player, words, param)
+	-- create log
+	logCommand(player, words, param)
+	
+	-- Parse: optional name and sex
+	local split = param:split(",")
+	local name = split[1] ~= "" and split[1] or "Hireling " .. player:getName()
+	local sex = split[2] and tonumber(split[2]) or 1
+	
+	-- Criar hireling
+	local result = player:addNewHireling(name, sex)
+	if result then
+		player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+	end
+	return true
+end
+
+talk:separator(" ")
+talk:groupType("god")
+talk:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **talk.onSay(player, words, param)**
+
+**Descrição:** Função callback que cria novo hireling.
+
+**Parâmetros:**
+- `param` (string): `[name], [sex]` (ambos opcionais)
+
+**Formato de Comando:**
+```
+/hireling                              -- Nome default, sex=1
+/hireling TestHireling                -- Nome custom, sex=1
+/hireling TestHireling, 2             -- Nome e sex custom
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   ```lua
+   logCommand(player, words, param)
+   ```
+
+2. **Parse de Parâmetros:**
+   ```lua
+   local split = param:split(",")
+   local name = split[1] ~= "" and split[1] or "Hireling " .. player:getName()
+   local sex = split[2] and tonumber(split[2]) or 1
+   ```
+
+   **Lógica Name:**
+   - Se split[1] não vazio: usa split[1]
+   - Se split[1] vazio ou param vazio: usa "Hireling " + nome do jogador
+
+   **Lógica Sex:**
+   - Se split[2] existe: converte tonumber(split[2])
+   - Se split[2] não existe: usa 1 (default)
+
+   **Exemplos:**
+   ```lua
+   -- Caso 1: sem parâmetro
+   param = ""
+   split[1] = ""
+   split[2] = nil
+   name = "Hireling PlayerName"
+   sex = 1
+
+   ---
+
+   -- Caso 2: só nome
+   param = "Guardian"
+   split[1] = "Guardian"
+   split[2] = nil
+   name = "Guardian"
+   sex = 1
+
+   ---
+
+   -- Caso 3: nome e sex
+   param = "Guardian, 2"
+   split[1] = "Guardian"
+   split[2] = " 2"
+   name = "Guardian"
+   sex = 2
+   ```
+
+3. **Criar Hireling:**
+   ```lua
+   local result = player:addNewHireling(name, sex)
+   ```
+   - Chama player:addNewHireling() com nome e sexo
+   - Retorna true/false
+
+4. **Magic Effect (Sucesso):**
+   ```lua
+   if result then
+       player:getPosition():sendMagicEffect(CONST_ME_MAGIC_GREEN)
+   end
+   ```
+   - Se criado com sucesso: GREEN effect
+   - Se falha: silencioso
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /hireling
+
+Fluxo:
+1. Parse: split[1]="", split[2]=nil
+2. name = "Hireling GmName"
+3. sex = 1
+4. addNewHireling("Hireling GmName", 1)
+
+Resultado:
+- Hireling criado com nome "Hireling GmName"
+- Sexo: 1
+- GREEN effect
+
+---
+
+GM: /hireling MyCompanion
+
+Fluxo:
+1. Parse: split[1]="MyCompanion", split[2]=nil
+2. name = "MyCompanion"
+3. sex = 1
+4. addNewHireling("MyCompanion", 1)
+
+Resultado:
+- Hireling criado com nome "MyCompanion"
+- GREEN effect
+
+---
+
+GM: /hireling Valkyrie, 2
+
+Fluxo:
+1. Parse: split[1]="Valkyrie", split[2]=" 2"
+2. name = "Valkyrie"
+3. sex = 2
+4. addNewHireling("Valkyrie", 2)
+
+Resultado:
+- Hireling criado com nome "Valkyrie"
+- Sexo: 2
+- GREEN effect confirmando
+```
+
+---
+
+**Tabela de Defaults**
+
+| Parâmetro | Default | Tipo |
+|---|---|---|
+| name | "Hireling " + player name | string |
+| sex | 1 | number |
+
+---
+
+**Estrutura de Parâmetros**
+
+```
+/hireling {name}, {sex}
+
+Exemplos:
+/hireling                    -- Ambos defaults
+/hireling Guardian           -- Só name
+/hireling Guardian, 1        -- Both
+```
+
+---
+
+**Stack Trace de Création**
+
+```lua
+/hireling MyHireling, 2
+    |
+    v
+parse: name="MyHireling", sex=2
+    |
+    v
+player:addNewHireling("MyHireling", 2)
+    |
+    v
+result = true/false
+    |
+    v
+if result: CONST_ME_MAGIC_GREEN
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `tonumber(str)` | Converte número |
+| `player:getName()` | Obtém nome do jogador |
+| `player:addNewHireling(name, sex)` | Cria hireling |
+| `player:getPosition()` | Posição do GM |
+| `position:sendMagicEffect(effect)` | Efeito visual |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo hireling_create_lamp.lua é ferramenta de hireling creation. Implementação com parâmetros opcionais, defaults sensatos, validação de sucesso, magic effect GREEN. Essencial para GMs criar companions no teste. Design minimalista com ternary operators para defaults elegantes.

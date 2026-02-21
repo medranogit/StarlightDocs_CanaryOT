@@ -1,0 +1,440 @@
+---
+title: "Spell - terra_burst.lua"
+description: "Spell de explosão terrestre para druids level 300 com escalabilidade magic-level SUPREMA"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `terra_burst.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 263 |
+| **Tipo de Dano** | COMBAT_EARTHDAMAGE |
+| **Vocações** | Druid, Elder Druid |
+| **Level Requerido** | 300 |
+| **Mana Requerida** | 230 |
+| **Words** | exevo ulus tera |
+| **Área** | AREA_RING1_BURST3 (ring burst) |
+| **Cooldown** | 22s |
+| **GroupCooldown** | 2s / 22s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level SUPREMA (7.0-10.5 coef - MÁXIMO!) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_WRATH_OF_NATURE |
+| **SelfTarget** | Sim |
+| **Requer Aprendizado** | Sim (revelationStageWOD) |
+| **Grupo** | attack, burstsofnature |
+| **Linhas de Código** | 39 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de explosão terrestre suprema para druids nível 300 (ULTIMATE!). Dano terra escalável magic-level SUPREMAMENTE ALTO (7.0-10.5 coef - MÁXIMO EVER!). 230 mana (CARO!). Area RING1_BURST3 (burst ring). Self target. Cooldown 22s (MUITO LONGO!). Premium only. Requer aprendizado revelationStageWOD. Ultimate druid power burst spell!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/terra_burst.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack", "burstsofnature")
+spell:id(263)
+spell:name("Terra Burst")
+spell:words("exevo ulus tera")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_WRATH_OF_NATURE)
+spell:level(300)
+spell:mana(230)
+spell:isPremium(true)
+spell:isSelfTarget(true)
+spell:cooldown(22 * 1000)
+spell:groupCooldown(2 * 1000, 22 * 1000)
+spell:needLearn(true)
+spell:vocation("druid;true", "elder druid;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Explosão Terrestre Suprema - Ultimate Magic-Level SUPREMA**
+
+Este spell implementa um sistema de ultimate earth burst com escalabilidade SUPREMA:
+
+1. **Magic-Level SUPREMAMENTE Alta:**
+   - min = (level/5) + (maglevel × 7.0)
+   - max = (level/5) + (maglevel × 10.5)
+   - Coef SUPREMOS (7.0-10.5!)
+   - LINEAR escalabilidade MÁXIMA!
+
+2. **Ultimate Druid Spell:**
+   - Level 300 (ULTIMATE!)
+   - 230 mana (MUITO CARO!)
+   - Premium only
+   - Cooldown 22s (EXTREMO!)
+
+3. **Burst Ring Area:**
+   - AREA_RING1_BURST3
+   - Self target
+   - AOE ring explosion
+   - Druid exclusive
+
+4. **Requer Aprendizado:**
+   - revelationStageWOD("Twin Burst")
+   - needLearn: true
+   - Progression requirement
+   - Ultimate spell control
+
+**Fórmula Visual:**
+```
+Druid lvl 300, mlvl 20:
+  min = 60 + 140 = 200
+  max = 60 + 210 = 270
+
+Druid lvl 300, mlvl 40:
+  min = 60 + 280 = 340
+  max = 60 + 420 = 480
+
+Druid lvl 300, mlvl 60:
+  min = 60 + 420 = 480
+  max = 60 + 630 = 690
+```
+
+**Diferencial:** Ultimate druid spell magic-level SUPREMA com ring burst!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `terra_burst` oferece dano terra ultimate com escalabilidade SUPREMA:
+
+- **Dano:** COMBAT_EARTHDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel × 7.0/10.5) (SUPREMA!)
+- **Mana:** 230 (caro)
+- **Level:** 300 (ultimate)
+- **Area:** AREA_RING1_BURST3 (ring burst)
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ Type: EARTHDAMAGE
+├─ Effect: SMALLPLANTS
+├─ Area: RING1_BURST3
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+function spell.onCastSpell(creature, var)
+├─ Verifica revelationStageWOD("Twin Burst")
+├─ Se grade == 0: cancel
+└─ Senão: combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_EARTHDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_SMALLPLANTS)
+combat:setArea(createCombatArea(AREA_RING1_BURST3))
+```
+
+**Propósito:** Combat de burst terra ring ultimate.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_EARTHDAMAGE | Dano terra |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_SMALLPLANTS | Efeito pequenas plantas |
+| `Area` | AREA_RING1_BURST3 | Ring burst |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 7)
+	local max = (level / 5) + (maglevel * 10.5)
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano terra SUPREMAMENTE escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 7.0)
+max = (level / 5) + (maglevel * 10.5)
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 7.0 (SUPREMO!)
+- Maglevel max: 10.5 (SUPREMO!)
+- Bônus: 0 (direto no coef!)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 300 | 20 | 200 | 270 |
+| 300 | 40 | 340 | 480 |
+| 300 | 60 | 480 | 690 |
+| 300 | 80 | 620 | 900 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	local grade = creature:revelationStageWOD("Twin Burst")
+	if grade == 0 then
+		creature:sendCancelMessage("You need to learn this spell first")
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler com verificação de aprendizado.
+
+**Lógica:**
+1. Obtém grade revelationStageWOD("Twin Burst")
+2. Se grade == 0: spell não aprendido
+3. Envia mensagem de cancel
+4. Envia efeito POFF (purple off)
+5. Retorna false
+6. Senão: executa combat
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `false` | Não aprendido |
+| `true` | Burst ativado |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Ring burst EARTHDAMAGE |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+**Variáveis Locais (em spell.onCastSpell):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `grade` | number | Revelação stage WOD |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Magic-Level SUPREMA
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 7)
+	local max = (level / 5) + (maglevel * 10.5)
+	return -min, -max
+end
+```
+
+**Benefício:** Escalabilidade SUPREMA com magic level!
+
+### Padrão 2: Verificação de Aprendizado
+
+```lua
+local grade = creature:revelationStageWOD("Twin Burst")
+if grade == 0 then
+	creature:sendCancelMessage("You need to learn this spell first")
+	creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+	return false
+end
+```
+
+**Benefício:** Controle de progressão spell!
+
+### Padrão 3: Ultimate Ring Burst
+
+```lua
+spell:isSelfTarget(true)
+spell:cooldown(22 * 1000)
+combat:setArea(createCombatArea(AREA_RING1_BURST3))
+```
+
+**Benefício:** Self-target AOE burst ring!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano terra SUPREMAMENTE escalável.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(druid, 300, 50)
+// min = 60 + 350 = 410
+// max = 60 + 525 = 585
+// Retorna: -410, -585
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura burst terra com verificação aprendizado.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druid |
+| `var` | Variant | Não utilizado (self) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `false` | Não aprendido |
+| `true` | Burst ativado |
+
+**Requisitos:**
+- Level 300+
+- 230 mana
+- Premium account
+- RevealationStageWOD("Twin Burst") > 0
+- Cooldown 22s
+
+**Efeito:**
+- Efeito pequenas plantas
+- Ring RING1_BURST3
+- Dano magic-level SUPREMA
+- Self target AOE
+- Burst grupo
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Ultimate Druid Burst
+
+```lua
+-- Druid lvl 300+ premium
+// Terra Burst = ultimate power
+// Magic-level SUPREMA escalável
+// 230 mana = expensive ultimate!
+// Ring self-target = AOE explosão
+// Cooldown 22s = ultimate timing
+```
+
+### Caso 2: Ultimate Druid Progression
+
+```lua
+-- Premium druid ultimate progression
+// Terra Burst = end-game spell
+// revelationStageWOD progression
+// Magic-level escalabilidade SUPREMA
+// Burst group combos
+// 300 level ultimate!
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_EARTHDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Areas:** AREA_RING1_BURST3
+- **Effects:** CONST_ME_SMALLPLANTS
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Ultimate earth burst spell |
+| **Dano Type** | COMBAT_EARTHDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*7.0), max=(lvl/5)+(mlvl*10.5) |
+| **Mana** | 230 (caro) |
+| **Area** | AREA_RING1_BURST3 |
+| **Level** | 300 (ultimate) |
+| **Cooldown** | 22s |
+| **Premium** | Sim |
+| **Group** | attack, burstsofnature |
+| **Vocações** | Druid, Elder Druid |
+| **Aprendizado** | Sim (revelationStageWOD) |
+| **Padrão** | Magic-level SUPREMA + ultimate + verificação aprendizado |

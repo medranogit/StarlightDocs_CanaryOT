@@ -1,0 +1,420 @@
+---
+title: "Spell/Rune - chameleon.lua"
+description: "Runa de disfarce que muda a aparência do conjurador para imitar um item específico"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `chameleon.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 14 |
+| **ID do Item (runeId)** | 3178 |
+| **Level Requerido** | 27 |
+| **Magic Level Requerido** | 4 |
+| **Grupo** | support |
+| **Cooldown** | 2s |
+| **Cargas** | 1 |
+| **Auto-Target** | Sim (isSelfTarget) |
+| **Agressividade** | Não |
+| **Linhas de Código** | 38 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa de suporte que aplica outfit do conjurador baseado em um item específico (lookTypeEx). Procura o item em container, inventário ou tile e cria condition de outfit permanente (até logout).
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/chameleon.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(14)
+rune:runeId(3178)
+rune:level(27)
+rune:magicLevel(4)
+rune:isSelfTarget(true)
+rune:isAggressive(false)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Disfarce Baseado em Item**
+
+Esta runa implementa um **sistema de transformação de aparência**:
+
+1. **Busca de Item:** Em 3 locais diferentes
+   - Container (mochila/caixa)
+   - Inventário do conjurador
+   - Tile adjacente
+
+2. **Validação:** Item deve ser movable
+3. **Outfit:** lookTypeEx do item
+4. **Duração:** Permanente (ticks -1) ou até logout
+
+**Fluxo Visual:**
+```
+Jogador aponta runa
+├─ Tela de seleção permite escolher item
+├─ Valida se item é movable
+├─ Extrai lookTypeEx
+├─ Aplica condition outfit
+└─ Jogador muda visual para item
+```
+
+**Diferencial:** Único disfarce que permite item específico, não apenas modelo fixo.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `chameleon` oferece disfarce dinâmico:
+
+- **Base:** Qualquer item movable selecionado
+- **Aparência:** lookTypeEx do item
+- **Duração:** 200000 ticks (permanente de sessão)
+- **Locais:** Container, inventário, tile
+
+### Arquitetura
+
+Condition pré-criada + lookup em 3 locais + validação:
+
+```
+local condition = Condition(OUTFIT)
+├─ ticks: 200000 (permanente)
+└─ lookTypeEx: varia por item
+
+onCastSpell(creature, variant, isHotkey)
+├─ Extrai position do variant
+├─ Valida posição (container vs tile)
+├─ Busca item nos 3 locais
+├─ Valida se item é movable
+├─ Aplica outfit condition
+└─ Retorna true/false
+```
+
+### Fluxo Lógico Resumido
+
+| Etapa | Tipo | Resultado |
+|---|---|---|
+| **Pega Position** | Validação | Container pos ou tile pos |
+| **Se Container** | Busca | Item em mochila |
+| **Se Tile** | Busca | Item na ground |
+| **Valida Movable** | Validação | Item pode ser usado |
+| **Aplica Outfit** | Ação | Condition adicionada |
+| **Efeito** | Feedback | MAGIC_RED sucesso, POFF falha |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_OUTFIT)
+condition:setTicks(200000)
+```
+
+**Propósito:** Condition pré-criada e reutilizável para outfit.
+
+**Propriedades:**
+
+| Propriedade | Valor | Significado |
+|---|---|---|
+| **Type** | CONDITION_OUTFIT | Transformação visual |
+| **Ticks** | 200000 | Permanente na sessão (~55 horas) |
+| **lookTypeEx** | Dinâmico | Alterado por item |
+
+**Nota:** lookTypeEx é alterado antes de aplicar (setOutfit).
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, variant, isHotkey)
+	local position, item = variant:getPosition()
+	if position.x == CONTAINER_POSITION then
+		local container = creature:getContainerById(position.y - 64)
+		if container then
+			item = container:getItem(position.z)
+		else
+			item = creature:getSlotItem(position.y)
+		end
+	else
+		item = Tile(position):getTopDownItem()
+	end
+
+	if not item or item.itemid == 0 or not isMovable(item.uid) then
+		creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	condition:setOutfit({ lookTypeEx = item.itemid })
+	creature:addCondition(condition)
+	creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	return true
+end
+```
+
+**Propósito:** Handler principal - busca item e aplica outfit.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador (alvo - isSelfTarget) |
+| `variant` | Variant | Position ou item selecionado |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Outfit aplicado com sucesso |
+| `false` | Item inválido, não movable, não encontrado |
+
+**Fluxo Detalhado:**
+
+1. **Extrai Position:**
+   ```lua
+   local position, item = variant:getPosition()
+   ```
+   - Pega posição do item selecionado
+
+2. **Valida Container vs Tile:**
+   ```lua
+   if position.x == CONTAINER_POSITION then
+       -- Item em mochila/container
+   else
+       -- Item em tile
+   end
+   ```
+
+3. **Se Container (posição especial):**
+   ```lua
+   local container = creature:getContainerById(position.y - 64)
+   if container then
+       item = container:getItem(position.z)
+   else
+       item = creature:getSlotItem(position.y)
+   end
+   ```
+   - position.y - 64 = ID do container
+   - position.z = índice do item
+   - Se container não existe, tenta slot de equipamento
+
+4. **Se Tile:**
+   ```lua
+   item = Tile(position):getTopDownItem()
+   ```
+   - Top-down (item mais visível)
+
+5. **Validação de Item:**
+   ```lua
+   if not item or item.itemid == 0 or not isMovable(item.uid) then
+       -- Falha
+   end
+   ```
+   - Item deve existir
+   - ItemID deve ser válido (> 0)
+   - Item deve ser movable
+
+6. **Aplica Outfit:**
+   ```lua
+   condition:setOutfit({ lookTypeEx = item.itemid })
+   creature:addCondition(condition)
+   ```
+   - Altera outfit para lookTypeEx do item
+   - Aplica condition permanente
+
+7. **Efeito Sucesso:**
+   ```lua
+   creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+   return true
+   ```
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `condition` | Condition | Arquivo | Outfit pré-criada |
+| `rune` | Spell | Arquivo | Instância da runa |
+| `position` | Position | Função | Position do item |
+| `item` | Item | Função | Item encontrado/selecionado |
+| `container` | Container | Função | Container obtido por ID |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Condition Pré-Criada
+
+```lua
+local condition = Condition(CONDITION_OUTFIT)
+condition:setTicks(200000)
+
+-- Depois, altera e aplica
+condition:setOutfit({ lookTypeEx = item.itemid })
+creature:addCondition(condition)
+```
+
+**Benefício:** Condition criada uma vez, reutilizada com propriedades dinâmicas.
+
+### Padrão 2: Lookup em Múltiplos Locais
+
+```lua
+if position.x == CONTAINER_POSITION then
+	-- Container
+else
+	-- Tile
+end
+```
+
+**Benefício:** Item pode estar em 3 locais diferentes - cobertura completa.
+
+### Padrão 3: Validação Compacta
+
+```lua
+if not item or item.itemid == 0 or not isMovable(item.uid) then
+	-- Falha
+end
+```
+
+**Benefício:** Três validações em uma linha (existência, valididade, movabilidade).
+
+### Padrão 4: Efeito Condicional
+
+```lua
+-- Sucesso
+creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+
+-- Falha
+creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+```
+
+**Benefício:** Feedback visual diferente para sucesso/falha.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, variant, isHotkey)
+
+**Descrição:** Muda aparência para item selecionado (disfarce).
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador (alvo - self) |
+| `variant` | Variant | Item ou position selecionado |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Outfit aplicado, visual mudou |
+| `false` | Item inválido ou não movable |
+
+**Validações:**
+- Item deve existir (not nil)
+- ItemID deve ser válido (> 0)
+- Item deve ser movable
+
+**Efeito:**
+- **Sucesso:** MAGIC_RED, outfit mudou
+- **Falha:** POFF, mensagem NOTPOSSIBLE
+
+**Exemplo:**
+
+```lua
+-- Jogador aponta runa em espada
+rune.onCastSpell(player, swordVariant, false)
+// Busca espada em posição
+// Valida se é movable
+// Extrai lookTypeEx do item
+// Aplica condition outfit
+// Resultado: Jogador aparenta ser uma espada
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Disfarce de Item em Tile
+
+```lua
+-- Jogador vê baú no chão
+-- Aponta runa no baú
+// Busca item em tile
+// Valida movable
+// Aplica outfit de baú
+// Resultado: Jogador disfarçado de baú
+```
+
+### Caso 2: Disfarce de Item em Mochila
+
+```lua
+-- Jogador tem cristal em mochila
+-- Aponta runa nele (via bag interface)
+// Busca em container
+// Valida movable
+// Aplica outfit de cristal
+// Resultado: Jogador disfarçado de cristal
+```
+
+### Caso 3: Item Não-Movable
+
+```lua
+-- Jogador tenta disfarçar de terra/parede
+// isMovable() = false
+// Retorna false
+// POFF effect, mensagem NOTPOSSIBLE
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Condition OUTFIT:** Transformação visual
+- **lookTypeEx:** Propriedade de item para aparência
+- **isMovable:** Validação de item
+- **Containers:** Mochila e equipamento
+- **Tiles:** Ground items
+- **Magic Effects:** CONST_ME_MAGIC_RED, CONST_ME_POFF
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Muda outfit para item selecionado |
+| **Duração** | 200000 ticks (permanente sessão) |
+| **Locais** | Container + inventário + tile |
+| **Validação** | Movable required |
+| **Efeito Sucesso** | MAGIC_RED + visual muda |
+| **Efeito Falha** | POFF + mensagem |
+| **Padrão** | Lookup múltiplo + condition dinâmica |

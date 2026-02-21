@@ -1,0 +1,742 @@
+---
+title: creature.lua (Creature Extensions & Utilities)
+description: "Documentação técnica de extensões para Creature - Métodos helpers de tipo, outfit management, summon control, damage conditions, position finding, PvP tracking e stamina bonus system"
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Arquivo que implementa **extensões helpers para a classe Creature**. Fornece métodos utilitários para validação de tipo, gerenciamento de outfits, controle de summons, cálculo de damage conditions complexas, busca de posições livres e tracking de PvP.
+
+<Card title="Caminho Original" icon="document">
+  `data/libs/functions/creature.lua`
+</Card>
+
+<Aside type="tip">
+  Extensão completa para Creature class (~250 linhas). Implementa 19 funções globais: Type checkers (isMonster/isPlayer/isNpc/isItem/isContainer/isTeleport/isTile sempre false base, override em subclasses), getters (getMonster/getPlayer), getClosestFreePosition() busca spiral raio 0-maxRadius com reachability check opcional, outfit methods (setMonsterOutfit/setItemOutfit com Condition), summon management (setSummon/removeSummon com master binding), complex addDamageCondition() com 4 damage list types (EXPONENTIAL/LOGARITHMIC/VARYING_PERIOD/CONSTANT_PERIOD, exponential scaling damage), checkCreatureInsideDoor() door teleport logic com retry positions, canAccessPz() check PZ access, getKillers() damage map tracking com time filter e sort by damage, addEventStamina() integração com staminaBonus system.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+`creature.lua` é um **conjunto completo de extensões para Creature**. Implementa:
+
+1. **Type Validation**: 8 métodos para checar tipo (isMonster, isPlayer, etc)
+2. **Getters**: Conversão segura para Monster/Player
+3. **Position Finding**: Busca spiral com pathfinding opcional
+4. **Outfit Management**: Aplicar outfits de monster/item com conditions
+5. **Summon Control**: Criar e remover summons com master binding
+6. **Damage Conditions**: 4 tipos de damage scaling (exponential, logarithmic, varying, constant)
+7. **Door Logic**: Teleportação inteligente com retry positions
+8. **PvP Access**: Validação de acesso PvP/Protection Zone
+9. **Killer Tracking**: Obter killers ordenados por damage
+10. **Stamina Integration**: Hook para bonus stamina system
+
+**Objetivo Principal**: Fornecer **set completo de helpers** para manipular creatures, outfits, summons e tracking de combate.
+
+---
+
+## 🔧 Type Validation Methods (8 funções)
+
+### `Creature.isContainer(self): boolean`
+
+```lua
+function Creature.isContainer(self)
+	return false
+end
+```
+
+**Propósito**: Verifica se creature é container.
+
+**Retorno**: Sempre `false` (creatures nunca são containers)
+
+**Uso em Subclasses**: Container class override com `return true`
+
+---
+
+### `Creature.isItem(self): boolean`
+
+```lua
+function Creature.isItem(self)
+	return false
+end
+```
+
+**Propósito**: Verifica se creature é item.
+
+**Retorno**: Sempre `false`
+
+---
+
+### `Creature.isMonster(self): boolean`
+
+```lua
+function Creature.isMonster(self)
+	return false
+end
+```
+
+**Propósito**: Verifica se creature é monster.
+
+**Retorno**: Sempre `false` (overridden em Monster class)
+
+---
+
+### `Creature.isNpc(self): boolean`
+
+```lua
+function Creature.isNpc(self)
+	return false
+end
+```
+
+**Propósito**: Verifica se creature é NPC.
+
+**Retorno**: Sempre `false` (overridden em Npc class)
+
+---
+
+### `Creature.isPlayer(self): boolean`
+
+```lua
+function Creature.isPlayer(self)
+	return false
+end
+```
+
+**Propósito**: Verifica se creature é player.
+
+**Retorno**: Sempre `false` (overridden em Player class)
+
+---
+
+### `Creature.isTeleport(self): boolean`
+
+```lua
+function Creature.isTeleport(self)
+	return false
+end
+```
+
+**Propósito**: Verifica se creature é teleport.
+
+**Retorno**: Sempre `false`
+
+---
+
+### `Creature.isTile(self): boolean`
+
+```lua
+function Creature.isTile(self)
+	return false
+end
+```
+
+**Propósito**: Verifica se creature é tile.
+
+**Retorno**: Sempre `false`
+
+---
+
+## 🎯 Type Getter Methods (2 funções)
+
+### `Creature.getMonster(self): Monster | nil`
+
+```lua
+function Creature.getMonster(self)
+	return self:isMonster() and self or nil
+end
+```
+
+**Propósito**: Converte creature para Monster se aplicável.
+
+**Retorno**: 
+- Monster se `self:isMonster()` é true
+- `nil` se não é monster
+
+**Uso**:
+```lua
+local monster = creature:getMonster()
+if monster then
+	monster:setOutfit(...)
+end
+```
+
+---
+
+### `Creature.getPlayer(self): Player | nil`
+
+```lua
+function Creature.getPlayer(self)
+	return self:isPlayer() and self or nil
+end
+```
+
+**Propósito**: Converte creature para Player se aplicável.
+
+**Retorno**:
+- Player se `self:isPlayer()` é true
+- `nil` se não é player
+
+**Uso**:
+```lua
+local player = creature:getPlayer()
+if player then
+	player:sendTextMessage(MESSAGE_INFO, "text")
+end
+```
+
+---
+
+## 📍 Position Finding: `Creature.getClosestFreePosition()`
+
+**Assinatura**:
+```lua
+function Creature.getClosestFreePosition(self, position, maxRadius, mustBeReachable)
+	maxRadius = maxRadius or 1
+	if maxRadius == true then
+		maxRadius = 2  -- Backward compatibility
+	end
+	-- Busca spiral de positions livres...
+end
+```
+
+**Propósito**: Encontra **posição livre mais próxima** em raio especificado.
+
+**Parâmetros**:
+- `position` (`Position`): Position central para busca
+- `maxRadius` (`number` | `boolean`): Raio máximo (default 1), true = 2
+- `mustBeReachable` (`boolean`): Se true, valida caminho via pathfinding
+
+**Retorno**:
+- `Position`: Posição livre encontrada
+- `Position()` vazia se nenhuma encontrada
+
+**Algoritmo - Busca Spiral**:
+
+```
+Raio 0: (0,0) - center
+Raio 1: 8 posições ao redor
+Raio 2: 16 posições
+...
+Raio N: N*8 posições
+```
+
+**Validações por Tile**:
+1. Tile existe
+2. Sem creatures (`getCreatureCount() == 0`)
+3. Sem impassable solid (`not CONST_PROP_IMMOVABLEBLOCKSOLID`)
+4. Se `mustBeReachable`, pathfinding viável (`getPathTo()`)
+
+**Retorna na Primeira Encontrada**: E continua buscando em raio++ para eventual encontrada mais próxima.
+
+**Exemplo**:
+```lua
+-- Encontra posição livre para teleporte
+local freePos = creature:getClosestFreePosition(targetPosition, 2, true)
+if freePos.x ~= 0 then
+	creature:teleportTo(freePos)
+end
+```
+
+---
+
+## 👗 Outfit Management (2 funções)
+
+### `Creature:setMonsterOutfit(monster: string, time: number): boolean`
+
+```lua
+function Creature:setMonsterOutfit(monster, time)
+	local monsterType = MonsterType(monster)
+	if not monsterType then
+		return false
+	end
+
+	local condition = Condition(CONDITION_OUTFIT)
+	condition:setOutfit(monsterType:getOutfit())
+	condition:setTicks(time)
+	self:addCondition(condition)
+
+	return true
+end
+```
+
+**Propósito**: Aplicar outfit de monster com duration.
+
+**Parâmetros**:
+- `monster` (`string`): Nome do monster
+- `time` (`number`): Duração em milliseconds
+
+**Retorno**: `true` se sucesso, `false` se monster invalid
+
+**Fluxo**:
+1. Valida MonsterType(monster)
+2. Cria Condition CONDITION_OUTFIT
+3. Set outfit do monster
+4. Set ticks (duration)
+5. Aplica condition
+
+**Exemplo**:
+```lua
+-- Disfarçar como dragon por 10 segundos
+player:setMonsterOutfit("dragon", 10000)
+```
+
+---
+
+### `Creature:setItemOutfit(item: string | number, time: number): boolean`
+
+```lua
+function Creature:setItemOutfit(item, time)
+	local itemType = ItemType(item)
+	if not itemType then
+		return false
+	end
+
+	local condition = Condition(CONDITION_OUTFIT)
+	condition:setOutfit({
+		lookTypeEx = itemType:getId(),
+	})
+	condition:setTicks(time)
+	self:addCondition(condition)
+
+	return true
+end
+```
+
+**Propósito**: Aplicar outfit de item com duration.
+
+**Parâmetros**:
+- `item` (`string | number`): Nome ou ID do item
+- `time` (`number`): Duração em milliseconds
+
+**Retorno**: `true` se sucesso, `false` se item invalid
+
+**Diferença vs setMonsterOutfit**: Usa `lookTypeEx` para item visual.
+
+**Exemplo**:
+```lua
+-- Parecer um backpack por 5 segundos
+player:setItemOutfit(1988, 5000)
+```
+
+---
+
+## 👹 Summon Management (2 funções)
+
+### `Creature:setSummon(monster: string): boolean`
+
+```lua
+function Creature:setSummon(monster)
+	local summon = Monster(monster)
+	if not summon then
+		return false
+	end
+
+	summon:setMaster(self, true)
+	summon:setTarget(self.attackedCreature)
+	return true
+end
+```
+
+**Propósito**: Cria ou atribui summon a creature.
+
+**Parâmetros**:
+- `monster` (`string`): Monster ID/UID a setar como summon
+
+**Retorno**: `true` se sucesso, `false` se invalid
+
+**Efeitos**:
+1. Set master/owner (self)
+2. Set target para current attacked creature
+
+**Exemplo**:
+```lua
+-- Criar summon de monster existente
+player:setSummon(monsterId)
+```
+
+---
+
+### `Creature:removeSummon(monster: string): boolean`
+
+```lua
+function Creature:removeSummon(monster)
+	local summon = Monster(monster)
+	if not summon or summon:getMaster() ~= self then
+		return false
+	end
+
+	summon:setTarget(nil)
+	summon:setFollowCreature(nil)
+	summon:setDropLoot(true)
+	summon:setSkillLoss(true)
+	summon:setMaster(nil)
+
+	return true
+end
+```
+
+**Propósito**: Remove summon (desvincula de master).
+
+**Parâmetros**:
+- `monster` (`string`): Monster ID a remover
+
+**Retorno**: `true` se sucesso, `false` se não é summon ou invalid
+
+**Validações**:
+- Monster válido
+- Master é self (previne remover summon alheio)
+
+**Efeitos de Cleanup**:
+1. Clear target
+2. Clear follow
+3. Re-enable loot dropping
+4. Re-enable skill loss
+5. Clear master reference
+
+---
+
+## 💥 Damage Conditions: `Creature:addDamageCondition()`
+
+**Assinatura**:
+```lua
+function Creature:addDamageCondition(target, type, list, damage, period, rounds)
+	if damage <= 0 or not target or target:isImmune(type) then
+		return false
+	end
+	-- 4 tipos de damage scaling...
+end
+```
+
+**Propósito**: Aplicar condition com **damage escalável** (DoT).
+
+**Parâmetros**:
+- `target` (`Creature`): Alvo do damage
+- `type` (`CONDITION_*`): Tipo de condition (POISON, FIRE, etc)
+- `list` (`DAMAGELIST_*`): Padrão de scaling
+- `damage` (`number`): Damage base/máximo
+- `period` (`number | array`): Período em segundos (ou array [min, max])
+- `rounds` (`number`): Número de ticks/iterations
+
+**Validações**:
+- Damage > 0
+- Target existe
+- Target não é immune to type
+
+**Retorno**: `true` se aplicado, `false` se validação falhou
+
+### Tipo 1: `DAMAGELIST_EXPONENTIAL_DAMAGE`
+
+```lua
+if list == DAMAGELIST_EXPONENTIAL_DAMAGE then
+	local exponent, value = -10, 0
+	while value < damage do
+		value = math.floor(10 * math.pow(1.2, exponent) + 0.5)
+		condition:addDamage(1, period or 4000, -value)
+		if value >= damage then
+			local permille = math.random(10, 1200) / 1000
+			condition:addDamage(1, period or 4000, -math.max(1, math.floor(value * permille + 0.5)))
+		else
+			exponent = exponent + 1
+		end
+	end
+end
+```
+
+**Escala**: Exponencial crescente (1.2^x)
+
+**Uso**: Veneno que aumenta em severidade
+
+**Padrão**:
+```
+Tick 1: valor baixo
+Tick 2: valor médio
+Tick N: valor alto (até damage limit)
+```
+
+---
+
+### Tipo 2: `DAMAGELIST_LOGARITHMIC_DAMAGE`
+
+```lua
+elseif list == DAMAGELIST_LOGARITHMIC_DAMAGE then
+	local n, value = 0, damage
+	while value > 0 do
+		value = math.floor(damage * math.pow(2.718281828459, -0.05 * n) + 0.5)
+		if value ~= 0 then
+			condition:addDamage(1, period or 4000, -value)
+			n = n + 1
+		end
+	end
+end
+```
+
+**Escala**: Logarítmica decrescente (e^-x)
+
+**Uso**: Dano que diminui com o tempo
+
+**Padrão**:
+```
+Tick 1: damage alto
+Tick 2: damage médio (reduzido ~95%)
+Tick N: damage baixo (trailing off)
+```
+
+---
+
+### Tipo 3: `DAMAGELIST_VARYING_PERIOD`
+
+```lua
+elseif list == DAMAGELIST_VARYING_PERIOD then
+	for _ = 1, rounds do
+		condition:addDamage(1, math.random(period[1], period[2]) * 1000, -damage)
+	end
+end
+```
+
+**Período**: Aleatório entre periodMin/Max
+
+**Uso**: Dano com timing variável
+
+**Parâmetros**:
+- `period`: Array `{minSeconds, maxSeconds}`
+- `rounds`: Número de hits
+
+---
+
+### Tipo 4: `DAMAGELIST_CONSTANT_PERIOD`
+
+```lua
+elseif list == DAMAGELIST_CONSTANT_PERIOD then
+	condition:addDamage(rounds, period * 1000, -damage)
+end
+```
+
+**Período**: Fixo
+
+**Uso**: Dano DoT regular
+
+**Padrão**: 
+```
+Tick 1-N: damage constante a cada period segundos
+```
+
+**Exemplo**:
+```lua
+-- Poison com 50 damage exponencial
+creature:addDamageCondition(target, CONDITION_POISON, 
+	DAMAGELIST_EXPONENTIAL_DAMAGE, 50, 4, nil)
+
+-- Fire com 30 damage logarítmico
+creature:addDamageCondition(target, CONDITION_FIRE,
+	DAMAGELIST_LOGARITHMIC_DAMAGE, 30, 3, nil)
+
+-- Random timing poison
+creature:addDamageCondition(target, CONDITION_POISON,
+	DAMAGELIST_VARYING_PERIOD, 20, {2, 5}, 10)
+```
+
+---
+
+## 🚪 Door Logic: `Creature.checkCreatureInsideDoor()`
+
+**Assinatura**:
+```lua
+function Creature.checkCreatureInsideDoor(player, toPosition)
+	-- Valida tile, teleporta creature se necessário
+end
+```
+
+**Propósito**: **Teleporta creature fora de door** se blocking.
+
+**Parâmetros**:
+- `player` (`Player`): Player usando door
+- `toPosition` (`Position`): Posição alvo
+
+**Algoritmo de Retry**:
+
+1. Tenta posição original (right +1)
+2. Se falhar, tenta (up +1)
+3. Se falhar, tenta (down -2)
+4. Se falhar, tenta (left-down -1, up +1)
+5. Se todas falham, cancela
+
+**Validações**:
+- Tile existe
+- queryAdd returns RETURNVALUE_NOERROR
+- Flags: FLAG_IGNOREBLOCKCREATURE | FLAG_PATHFINDING
+
+---
+
+## 🛡️ PvP Access: `Creature:canAccessPz()`
+
+```lua
+function Creature:canAccessPz()
+	if self:isMonster() or (self:isPlayer() and self:isPzLocked()) then
+		return false
+	end
+	return true
+end
+```
+
+**Propósito**: Verifica se pode acessar Protection Zone.
+
+**Lógica**:
+- Monsters: Nunca podem (return false)
+- Players: Podem se NÃO estão PZ-locked
+
+**Uso**:
+```lua
+if creature:canAccessPz() then
+	-- Allow PZ entry
+end
+```
+
+---
+
+## 🗡️ Killer Tracking: `Creature.getKillers()`
+
+**Assinatura**:
+```lua
+function Creature.getKillers(self, onlyPlayers)
+	local killers = {}
+	local inFightTicks = configManager.getNumber(configKeys.PZ_LOCKED)
+	local timeNow = systemTime()
+	local getCreature = onlyPlayers and Player or Creature
+	for cid, cb in pairs(self:getDamageMap()) do
+		local creature = getCreature(cid)
+		if creature and creature ~= self and (timeNow - cb.ticks) <= inFightTicks then
+			killers[#killers + 1] = {
+				creature = creature,
+				damage = cb.total,
+			}
+		end
+	end
+	table.sort(killers, function(a, b)
+		return a.damage > b.damage
+	end)
+	for i, killer in pairs(killers) do
+		killers[i] = killer.creature
+	end
+	return killers
+end
+```
+
+**Propósito**: Obtém **killers ordenados por damage**.
+
+**Parâmetros**:
+- `onlyPlayers` (`boolean`): Se true, retorna só Players; se false, todas Creatures
+
+**Filtros**:
+- Creature != self
+- Damage recente (dentro inFightTicks)
+
+**Retorno**: Array de Creatures, ordenado por damage decrescente
+
+**Exemplo**:
+```lua
+local killers = player:getKillers(true)  -- Só players
+for _, killer in ipairs(killers) do
+	print(killer:getName() .. " damage: " .. killer:getDamage())
+end
+```
+
+---
+
+## ⭐ Stamina Bonus Integration: `Creature:addEventStamina()`
+
+```lua
+function Creature:addEventStamina(target)
+	local player = self:getPlayer()
+	local monster = target:getMonster()
+	if player and monster and monster:getName() == staminaBonus.target then
+		local playerId = player:getId()
+		if not staminaBonus.eventsTrainer[playerId] then
+			staminaBonus.eventsTrainer[playerId] = addEvent(addStamina, staminaBonus.period, playerId)
+		end
+	end
+end
+```
+
+**Propósito**: Hook para stamina bonus system (training events).
+
+**Parâmetros**:
+- `target` (`Creature`): Target da ação
+
+**Lógica**:
+1. Valida self é Player
+2. Valida target é Monster
+3. Valida monster é alvo de training (staminaBonus.target)
+4. Cria event único por player se não existe
+5. Adiciona stamina periodicamente
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+1. **Type Checking Pattern**: isX() retorna false em base class, override em subclasses
+2. **Safe Getters**: getMonster/getPlayer retornam nil se tipo errado
+3. **Position Finding**: Spiral búsqueda con pathfinding opcional
+4. **Outfit via Condition**: Applies outfit conditions com duration
+5. **Summon Master Binding**: setMaster/getMaster para ownership
+6. **Damage Scaling**: 4 padrões matemáticos para DoT
+7. **Killer Tracking**: Damage map com time filtering e sorting
+
+### Design Patterns
+
+- **Type Validation**: Chain de checks simples
+- **Safe Shortcuts**: getMonster/getPlayer como ternary wrapper
+- **Damage Accumulation**: 4 algoritmos diferentes para DoT
+- **Spatial Search**: Spiral expansion algoritmo
+- **Master-Servant**: Binding via setMaster()
+
+---
+
+## 📚 Conclusão
+
+`creature.lua` fornece um **conjunto robusto de helpers** para:
+
+1. **Type Validation**: Checks seguros de tipo
+2. **Visual Effects**: Outfit management com duration
+3. **Summon Control**: Master binding e lifecycle
+4. **Damage Systems**: 4 tipos de damage scaling
+5. **Position Logic**: Busca inteligente e porta teleportação
+6. **PvP Tracking**: Killer tracking e PZ access
+7. **Event Integration**: Stamina bonus system
+
+Essencial para **lógica de creatures, combate e effects**.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata da Documentação" icon="star">
+  - **Arquivo Original**: creature.lua
+  - **Caminho**: data/libs/functions/
+  - **Tipo**: Creature Extensions & Utilities
+  - **Última Atualização**: 2026-02-19
+  - **Status**: ✅ Completo
+  - **Linhas de Código**: ~250 linhas
+  - **Funções Globais**: 19
+  - **Type Validators**: 8 (isContainer, isItem, isMonster, isNpc, isPlayer, isTeleport, isTile)
+  - **Getters**: 2 (getMonster, getPlayer)
+  - **Outfit Methods**: 2 (setMonsterOutfit, setItemOutfit)
+  - **Summon Methods**: 2 (setSummon, removeSummon)
+  - **Damage Types**: 4 (EXPONENTIAL, LOGARITHMIC, VARYING_PERIOD, CONSTANT_PERIOD)
+  - **Position Finding**: 1 (getClosestFreePosition com spiral search)
+  - **PvP Methods**: 2 (canAccessPz, getKillers)
+  - **Integration**: 1 (addEventStamina para stamina system)
+</Card>
+
+<Aside type="note">
+  **Nota de Manutenção**: Extensões críticas para Creature. Modificações devem: (1) Preservar type validation pattern (false base, override em subclasses), (2) Manter safe getters (return nil para tipo errado), (3) Testar damage condition calculations, (4) Validar spiral search algorithm, (5) Documentar novo damage types. Considerar adicionar: (1) getClosest creatures filter, (2) Damage reflection/mitigation hooks, (3) Summon limit validation, (4) Outfit stacking behavior, (5) Advanced killer filtering options.
+</Aside>
+
+```

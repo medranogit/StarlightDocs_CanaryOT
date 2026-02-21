@@ -1,0 +1,341 @@
+---
+title: "Script Lib - quests.lua"
+description: "Biblioteca de inicialização de quests com suporte a registros customizados"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `quests.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Library/Bootstrap |
+| **Responsabilidade** | Registro e inicialização de quests |
+| **Linhas de Código** | 5 |
+| **Função de Inicialização** | RegisterSoulWarBossesLevers (condicional) |
+| **Complexidade** | Trivial |
+| **Status** | Minimal implementation (hook point) |
+
+**Descrição:**
+Biblioteca minimalista de inicialização de quests que atua como hook point para registro de quests customizadas. Implementa verificação condicional de função global `RegisterSoulWarBossesLevers()` e a executa se existir. Serve como padrão para adicionar novos registros de quests durante boot do servidor.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/quests.lua
+```
+
+**Tipo de Carregamento:** Executado durante inicialização (parte do boot sequence)
+
+**Contexto de Uso:** Quest system - ponto de entrada unificado para registros de quests
+
+**Pré-requisitos:**
+- Função global opcional: `RegisterSoulWarBossesLevers()`
+- Quest/EventChallenge system do servidor
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de Quest Initialization Hook (Bootstrap Pattern)**
+
+Quests precisam ser registradas durante boot. Este arquivo serve como ponto central:
+
+**Sem hook:**
+```lua
+-- Cada quest registra-se isoladamente
+-- data-otservbr-global/scripts/quests/soul_war.lua
+RegisterSoulWarBossesLevers()
+
+-- Difícil de rastrear onde quests são registradas
+-- Requer conhecer cada arquivo separado
+```
+
+**Com hook:**
+```lua
+-- data/scripts/lib/quests.lua
+if RegisterSoulWarBossesLevers then
+	RegisterSoulWarBossesLevers()
+end
+
+-- Centralizado
+-- Explícito
+-- Fácil adicionar mais quests
+```
+
+**Timing:**
+```
+Boot Sequence
+  ├─ core.lua
+  ├─ global.lua
+  ├─ libs.lua (imports)
+  │  └─ lib/quests.lua ← Registra quests
+  │     └─ Chama RegisterSoulWarBossesLevers()
+  └─ Scripts de jogo começam
+```
+
+**Flexibilidade:**
+- Verifica se função existe antes de chamar
+- Não falha se função não está definida
+- Permite datapacks parciais ou customizados
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `quests.lua` implementa um **bootstrap hook de inicialização** para quests:
+
+- **Centraliza registro** de quests em um único local
+- **Valida existência** de funções de registro antes de chamar
+- **Permite extensão** para adicionar novos registros facilmente
+- **Seguro:** não falha se registro customizado não existe
+
+### Arquitetura
+
+Script usa padrão de **conditional initialization**:
+
+```lua
+if RegisterSoulWarBossesLevers then
+	RegisterSoulWarBossesLevers()
+end
+```
+
+Padrão simples que pode ser estendido para múltiplos registros.
+
+### Fluxo Lógico Resumido
+
+| Evento | Ação | Resultado |
+|--------|------|-----------|
+| **Boot Start** | libs.lua imports quests.lua | Script executa |
+| **Validação** | Se RegisterSoulWarBossesLevers existe | Função é definida em algum lugar |
+| **Chamada** | RegisterSoulWarBossesLevers() | Quests Soul War são registradas |
+| **Completion** | Boot continua | Quests disponíveis no jogo |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Lógica Principal: Conditional Registration
+
+```lua
+-- We need to register the variables beforehand to avoid accessing null values.
+if RegisterSoulWarBossesLevers then
+	RegisterSoulWarBossesLevers()
+end
+```
+
+**Propósito:** Hook de boot que registra quests Soul War se função existir.
+
+**Fluxo de Execução:**
+
+#### 1. **Comentário Explicativo**
+
+```lua
+-- We need to register the variables beforehand to avoid accessing null values.
+```
+
+Explicita a razão: registrar variáveis globais (quest data, storage keys, etc) antes de scripts de jogo usarem.
+
+#### 2. **Validação de Existência**
+
+```lua
+if RegisterSoulWarBossesLevers then
+```
+
+- Verifica se a função `RegisterSoulWarBossesLevers` está definida em global scope
+- Se `nil` → condição false, não executa
+- Se function → condição true, executa
+
+**Por quê verificar?**
+- Função pode não estar em todos os datapacks
+- Datapacks customizados podem não ter Soul War
+- Segurança: evita erro nil function
+
+#### 3. **Execução do Registro**
+
+```lua
+	RegisterSoulWarBossesLevers()
+```
+
+Se função existe, chama-a sem argumentos.
+
+**O que a função faz (esperado):**
+```lua
+function RegisterSoulWarBossesLevers()
+	-- Define quests Soul War
+	-- Cria levers e logic de open
+	-- Popula Global.Storage keys
+	-- Registra eventos associados
+end
+```
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Funções Globais Referenciadas
+
+| Função | Origem | Descrição | Obrigatória |
+|--------|--------|-----------|------------|
+| `RegisterSoulWarBossesLevers()` | Global | Registra quests e levers Soul War | Não* |
+
+*Obrigatória apenas se datapack incluir Soul War content
+
+### Possíveis Símbolos Criados por RegisterSoulWarBossesLevers()
+
+**(Esperado ser implementado em outro arquivo)**
+
+| Símbolo | Tipo | Descrição |
+|---------|------|-----------|
+| `Global.Storage.*` | Constantes | Storage keys para Soul War |
+| `EventChallenge.*` | Systems | Challenges registradas |
+| `Lever` objects | Entidades | Levers para abrir quests |
+| `MoveEvent` objects | Eventos | Handlers de movimento |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Conditional Bootstrap Hook
+
+**Técnica:** Usar `if function_exists then call() end` para registro seguro.
+
+```lua
+if RegisterSoulWarBossesLevers then
+	RegisterSoulWarBossesLevers()
+end
+```
+
+**Vantagem:**
+- Seguro: não falha se função não existe
+- Flexível: permite datapacks parciais
+- Explícito: registros visíveis no arquivo
+
+**Aplicação:** Initialization de subsistemas opcionais.
+
+---
+
+### Padrão 2: Centralized Registration Point
+
+**Técnica:** Consolidar todos os registros em um arquivo central.
+
+**Sem consolidação:**
+```
+data-otservbr-global/scripts/quests/soul_war.lua
+  ├─ Registra Soul War
+data-otservbr-global/scripts/quests/tibia_blessing.lua
+  ├─ Registra Blessing
+data/scripts/systems/dailyReward.lua
+  ├─ Registra Daily Rewards
+-- Disperso, difícil de rastrear
+```
+
+**Com consolidação (este arquivo):**
+```
+data/scripts/lib/quests.lua
+  ├─ RegisterSoulWarBossesLevers()
+  ├─ RegisterBlessingQuest()  -- Futura adição
+  ├─ RegisterDailyReward()     -- Futura adição
+-- Centralizado, fácil de gerenciar
+```
+
+**Vantagem:**
+- Rastreabilidade: todos os registros em um lugar
+- Manutenibilidade: fácil adicionar/remover
+- Performance: single point of init
+
+**Aplicação:** Orchestration de boot.
+
+---
+
+### Padrón 3: Preemptive Registration Design
+
+**Técnica:** Registrar símbolos globais ANTES que scripts de jogo tentem usá-los.
+
+```lua
+-- Sequência de boot
+core.lua
+  ├─ core.lua (loads libs.lua)
+  ├─ libs.lua
+  │  └─ lib/quests.lua ← RegisterSoulWarBossesLevers() aqui
+  │     └─ Define Global.Storage.SOUL_WAR_* keys
+  └─ scripts/creaturescripts/ (tenta usar Global.Storage.SOUL_WAR_*)
+     └─ ✓ Já está definido, safe
+```
+
+**Vantagem:**
+- Evita race conditions
+- Garante definições antes de uso
+- Order-of-execution é fácil de entender
+
+**Aplicação:** Dependência ordering em boot.
+
+---
+
+## 📈 Escalabilidade & Extensão
+
+### Padrão de Extensão (Adicionar Novo Registro)
+
+Para adicionar novo registro de quest:
+
+```lua
+-- Antes de adicionar:
+if RegisterSoulWarBossesLevers then
+	RegisterSoulWarBossesLevers()
+end
+
+-- Depois de adicionar (novo registro):
+if RegisterSoulWarBossesLevers then
+	RegisterSoulWarBossesLevers()
+end
+
+if RegisterBlessingQuest then
+	RegisterBlessingQuest()
+end
+
+if RegisterHuntingGrounds then
+	RegisterHuntingGrounds()
+end
+```
+
+### Template de Nova Função de Registro
+
+```lua
+-- data-otservbr-global/scripts/quests/new_quest.lua
+
+function RegisterNewQuest()
+	-- Define quests
+	local quest = Quest(1234)
+	quest:setName("New Quest")
+	
+	-- Registra em global
+	Global.Storage.NEW_QUEST_START = 10001
+	Global.Storage.NEW_QUEST_COMPLETE = 10002
+	
+	-- Cria eventos/levers
+	Lever(5000):onUse(function(player, item, topos, ...)
+		player:setStorageValue(Global.Storage.NEW_QUEST_START, 1)
+		return true
+	end)
+	
+	-- Pode logging
+	logger.info("New Quest registered")
+end
+
+-- Será chamado por data/scripts/lib/quests.lua:
+-- if RegisterNewQuest then RegisterNewQuest() end
+```
+
+### Escalabilidade
+
+- **Linear:** Cada novo registro é uma new `if` statement
+- **Manutenível:** Cada um é isolado
+- **Não intrusivo:** Adicionar não afeta código existente

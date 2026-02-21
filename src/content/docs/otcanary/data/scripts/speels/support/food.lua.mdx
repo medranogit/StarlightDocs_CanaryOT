@@ -1,0 +1,192 @@
+---
+title: Food
+description: Spell de suporte para Druids que manifesta itens de comida aleatória com chance de 50% de dar 2 items
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `food.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Druid / Elder Druid |
+| **Spell ID** | 42 |
+| **Mana Requerida** | 120 |
+| **Soul Points Requeridos** | 1 |
+| **Level Requerido** | 14 |
+| **Status Premium** | Não (acesso livre) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exevo pan` |
+| **Efeito Visual** | `CONST_ME_MAGIC_GREEN` |
+| **Items Manifesto** | 1-2 aleatórios (50% chance de 2) |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (suporte alimentar) |
+| **Tipos de Comida** | 7 (meat, ham, grape, apple, bread, roll, cheese) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/food.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell é único por ser puramente generativo - cria items diretamente no inventário sem usar Combat ou Conditions. A tabela `foods` contém 7 IDs de items comestíveis. A lógica usa `math.random(0, 1)` para decisão binária (50% de chance): se resultado é 1, adiciona item extra antes do item garantido. Sempre adiciona pelo menos 1 item ao final. O efeito visual é aplicado apenas na posição, não em alvos específicos pois é auto-target. Soul point é custável em cost, tornando spell não-spam-able.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `food.lua` implementa gerador de comida para Druids (level 14+) que manifesta itens alimentares aleatoriamente no inventário. É um dos poucos spells puramente generativos que não utiliza Combat ou Conditions. O spell mantém tabela de 7 tipos de comida (meat, ham, grape, apple, bread, roll, cheese), executa lógica aleatória com 50% chance de adicionar 2 items vs 1, e aplica efeito visual verde. A implementação demonstra padrão minimalista de geração direta de items com randomização simples.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Tabela de Items de Comida
+local foods = {
+    3577, -- meat
+    3582, -- ham
+    3592, -- grape
+    3585, -- apple
+    3600, -- bread
+    3601, -- roll
+    3607, -- cheese
+}
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 3.1 Randomização 50% para 1-2 items
+    -- 3.2 Seleção Aleatória de Tipo de Comida
+    -- 3.3 Adição ao Inventário
+    -- 3.4 Efeito Visual
+    -- 3.5 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:name("Food")
+spell:words("exevo pan")
+spell:group("support")
+spell:vocation("druid;true", "elder druid;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_FOOD)
+spell:id(42)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(14)
+spell:mana(120)
+spell:soul(1)
+spell:isAggressive(false)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `foods` | `table` | Local/Global | Tabela de 7 IDs de items comestíveis |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Druid que conjura o spell |
+| `variant` | `Variant` | Parâmetro | Dados variáveis (não utilizados - self target) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Tabela de Resources**
+```lua
+local foods = {
+    3577, -- meat
+    3582, -- ham
+    ...
+}
+```
+Tabela simples de IDs para fácil manutenção e readabilidade.
+
+### 2. **Padrão de Randomização Binária**
+```lua
+if math.random(0, 1) == 1 then
+    creature:addItem(foods[math.random(#foods)])
+end
+creature:addItem(foods[math.random(#foods)])
+```
+50% chance de adicionar item extra antes do item garantido.
+
+### 3. **Padrão de Seleção Aleatória de Tabela**
+```lua
+foods[math.random(#foods)]
+```
+Usa `#foods` (length operator) para indexação segura dentro de bounds.
+
+### 4. **Padrão de Soul Point Cost**
+```lua
+spell:soul(1)
+```
+Soul point torna spell não-spam-able, forcing decisão tática de uso.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Gera 1-2 items comestíveis aleatórios no inventário do caster.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Druid que executa o spell.
+- `variant` (Variant): Dados variáveis (não utilizados - self target).
+
+**Fluxo de Execução:**
+
+1. **Randomização Binária para Quantidade**:
+   - Chama `math.random(0, 1)` que retorna 0 ou 1 com probabilidade 50/50
+   - Se resultado é 1:
+     - Seleciona índice aleatório: `foods[math.random(#foods)]`
+     - Adiciona item extra: `creature:addItem(...)`
+
+2. **Adição Garantida de Item**:
+   - Seleciona novo índice aleatório: `foods[math.random(#foods)]`
+   - Adiciona ao inventário: `creature:addItem(...)`
+   - Este sempre executa (fora do if)
+
+3. **Efeito Visual**:
+   - Envia efeito visual `CONST_ME_MAGIC_GREEN` na posição
+   - Confirma visualmente que food foi criado
+
+4. **Retorno**:
+   - Retorna `true` (cast bem-sucedido, mana + soul consumida)
+
+**Valores de Retorno:**
+- `true`: Food gerado, mana de 120 + 1 soul consumido
+
+**Lógica Detalhada:**
+
+O spell implementa geração pura de items sem Combat. A probabilidade é simples:
+- 50% chance de 2 items
+- 100% chance de 1 item
+
+Isto resulta em distribuição: 50% com 2 items totais, 50% com 1 item total.
+
+Os 7 tipos de comida oferecem variedade:
+- 3577: Meat (proteína)
+- 3582: Ham (carne processada)
+- 3592: Grape (fruta)
+- 3585: Apple (fruta)
+- 3600: Bread (carboidrato)
+- 3601: Roll (carboidrato)
+- 3607: Cheese (laticínio)
+
+A mana de 120 é moderada para level 14. O soul point obrigatório (1) força decisão de uso - se o player está baixo em soul, precisa decide entre usar este spell ou guardar soul para emergências. Isto evita spam contínuo.
+
+A fórmula `math.random(#foods)` é segura - # operator garante que sempre retorna índice válido dentro da tabela.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_FOOD`: Som característico de criação
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal (apenas efeito visual GREEN)
+
+## 📌 Resumo
+
+**Food** é um spell de suporte gratuito para Druids (level 14+) que gera 1-2 items comestíveis aleatórios no inventário com 50% chance de item extra. O spell requer 120 de mana e 1 soul point, com cooldown de 2 segundos. Os 7 tipos de comida oferecidos variam de carnes a frutas e grãos. A implementação é minimalista, usando apenas lógica aleatória simples sem Combat ou Conditions. É ferramenta de suporte alimentar que oferece sustentação em exploração prolongada sem necesidade de farm ou compra de comida. O requisito de soul point força planejamento tático de uso.
+
+A implementação segue padrão minimalista de geração pura, diferenciando-se por: (1) sem Combat, (2) sem Conditions, (3) randomização binária para quantidade, (4) tabela simples de resources, (5) soul point cost para anti-spam.

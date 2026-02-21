@@ -1,0 +1,182 @@
+---
+title: Cancel Magic Shield
+description: Spell de suporte para Druids e Sorcerers que remove Magic Shield (manashield) do alvo de forma instantânea
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `cancel_magic_shield.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Druid / Sorcerer / Elder Druid / Master Sorcerer |
+| **Spell ID** | 245 |
+| **Mana Requerida** | 50 |
+| **Level Requerido** | 14 |
+| **Status Premium** | Não (spell de acesso livre) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `exana vita` |
+| **Efeito Visual** | `CONST_ME_MAGIC_BLUE` |
+| **Efeito Aplicado** | Remove CONDITION_MANASHIELD |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (suporte defensivo) |
+| **Tipo de Alvo** | Auto-target, remove próprio manashield |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/cancel_magic_shield.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell remove Magic Shield (manashield) diretamente via `creature:removeCondition(CONDITION_MANASHIELD)`. Diferente de dispels que funcionam via Combat, este spell chama função de remoção explícita. Útil quando você quer máximo controle sobre qual condition remover e quando. Pode ser usado tanto para remover seu próprio manashield quanto o de aliados, dependendo do escopo de efeito.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `cancel_magic_shield.lua` implementa um spell de suporte que remove Magic Shield (manashield) de forma explícita via `removeCondition()`. É acessível para Druids e Sorcerers (level 14+) como ferramenta tática de controle de battle. O spell cria uma instância Combat para aplicação de efeito visual, mas executa lógica principal manualmente no handler `onCastSpell` através de chamada direta a `creature:removeCondition(CONDITION_MANASHIELD)`. A implementação combina abordagem Combat (para efeito visual) com remoção explícita (para máximo controle), oferecendo arquitetura híbrida eficiente.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat para Efeito Visual
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, var)
+    -- 3.1 Remoção Explícita de Manashield
+    -- 3.2 Execução de Combat (efeito visual)
+    -- 3.3 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:group("support")
+spell:id(245)
+spell:name("Cancel Magic Shield")
+spell:words("exana vita")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_CANCEL_MAGIC_SHIELD)
+spell:level(14)
+spell:mana(50)
+spell:isAggressive(false)
+spell:isSelfTarget(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("druid;true", "sorcerer;true", "elder druid;true", "master sorcerer;true")
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat para aplicação de efeito visual apenas |
+| `spell` | `Spell` | Local | Instância do spell instantâneo que define comportamento e propriedades |
+| `creature` | `Creature/Player` | Parâmetro | Entidade que executa o cast (Druid/Sorcerer) |
+| `var` | `Variant` | Parâmetro | Dados variáveis do spell (não utilizados - é self target) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Remoção Explícita sem Dispel**
+```lua
+creature:removeCondition(CONDITION_MANASHIELD)
+return combat:execute(creature, var)
+```
+Chama `removeCondition()` diretamente em vez de usar `COMBAT_PARAM_DISPEL`. Oferece máximo controle sobre qual condition remover.
+
+### 2. **Padrão de Combat Híbrido (Efeito Visual Only)**
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+```
+Combat é criado apenas para efeito visual, sem fórmula ou dispel integrado. Lógica principal é manual.
+
+### 3. **Padrão de Baixo Acesso**
+```lua
+spell:level(14)
+spell:mana(50)
+spell:isPremium(false)  -- implícito, não está presente
+```
+Level muito baixo (14) e mana mínima (50) tornam acessível extremamente cedo, sem requisito premium. Spell utilitário puro.
+
+### 4. **Padrão de Vocações Múltiplas**
+```lua
+spell:vocation("druid;true", "sorcerer;true", "elder druid;true", "master sorcerer;true")
+```
+Todas as 4 vocações de magia (Druid e Sorcerer, mais promotions) têm acesso.
+
+### 5. **Padrão de Self-Target Defensivo**
+```lua
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+```
+Auto-target que remove seu próprio manashield. Não-agressivo pois é tático interno não prejudicial.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, var)`
+
+**Descrição:** Função principal de execução do spell. Remove Magic Shield (manashield) da criatura executora e aplica efeito visual.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Druid, Sorcerer, ou promotions que executa o spell.
+- `var` (Variant): Dados variáveis do spell (não utilizados - é auto-target).
+
+**Fluxo de Execução:**
+
+1. **Remoção Explícita de Manashield**:
+   - Executa `creature:removeCondition(CONDITION_MANASHIELD)`
+   - Remove condition de magic shield diretamente
+   - Operação é sincrônica e completa imediatamente
+
+2. **Validação de Removal**:
+   - `removeCondition()` sucede mesmo se condition não existir
+   - Sem efeito colateral (idempotent)
+
+3. **Execução de Combat**:
+   - Chama `combat:execute(creature, var)`
+   - Combat aplica apenas efeito visual (CONST_ME_MAGIC_BLUE)
+   - Sem fórmula, sem dano, sem dispel adicional
+
+4. **Aplicação de Efeito Visual**:
+   - Efeito visual `CONST_ME_MAGIC_BLUE` na posição do conjurador
+   - Confirma visualmente que manashield foi removido
+
+5. **Retorno**:
+   - Retorna `true` (cast bem-sucedido, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Spell executado com sucesso, manashield removido, mana de 50 consumida
+- `false`: Raro - falha interna
+
+**Lógica Detalhada:**
+
+O spell implementa tática de anti-manashield simples mas efetiva. Diferente de spells que usam `COMBAT_PARAM_DISPEL`, este spell remover a condition explicitamente, oferecendo máximo controle. A remoção acontece antes do efeito visual, garantindo sincronização com servidor.
+
+O uso de `removeCondition()` direto é idempotent - pode ser chamado infinitas vezes sem erro, mesmo que manashield não exista. Isso torna o spell seguro para usar preventivamente ou quando incerto se alvo possui manashield.
+
+A mana de apenas 50 é extremamente baixa, permitindo uso frequente. Level 14 é acesso muito cedo - Druids e Sorcerers têm esta ferramenta disponível logo na progressão inicial. Sem requisito premium indica design de acesso livre para todos.
+
+O cooldown de 2 segundos permite recast rápido em combate, mas força posicionamento estratégico. O spell é auto-target (`isSelfTarget(true)`), significando que remove seu próprio manashield - útil em situações onde você quer ativar manashield defensivo após gastar tudo em ataque, ou vice-versa.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_CANCEL_MAGIC_SHIELD`: Som característico de dispel
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+- Feedback visual via efeito MAGIC_BLUE confirma execução
+
+## 📌 Resumo
+
+**Cancel Magic Shield** é um spell de suporte defensivo gratuito para Druids e Sorcerers (level 14+) que remove Magic Shield (manashield) de forma instantânea com apenas 50 de mana e 2 segundos de cooldown. O spell é acessível extremamente cedo na progressão, permitindo tática de manashield cycling desde o early-game. A implementação usa remoção explícita via `removeCondition()` em vez de dispel, oferecendo máximo controle sobre qual condition remover. É essencial para playstyle ofensivo que alterna entre ataque e defesa, permitindo reativar manashield frequentemente conforme necessário em combate.
+
+A implementação segue padrão híbrido combinando remoção explícita (controle) com efeito visual via Combat (feedback), criando arquitetura eficiente e intuitiva. Diferencia-se por ser: (1) extremamente acessível (level 14, sem premium), (2) mana mínima (50), (3) usar remoção direta em vez de dispel, (4) disponível para todas as vocações mágicas de suporte.

@@ -1,0 +1,188 @@
+---
+title: Protector
+description: Spell de suporte para Knights que remove condition anterior e aplica buff ofensivo/defensivo por 13 segundos
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `protector.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Knight / Elite Knight |
+| **Spell ID** | 132 |
+| **Mana Requerida** | 200 |
+| **Level Requerido** | 55 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração do Buff** | 13 segundos (13.000 ms) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utamo tempo` |
+| **Efeito Visual** | `CONST_ME_MAGIC_GREEN` |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (buff defensivo/ofensivo) |
+| **Grupos** | support, focus |
+| **Condition Type** | CONDITION_ATTRIBUTES |
+| **SubID da Condition** | AttrSubId_BloodRageProtector |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/protector.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell remove a condition anterior de Protector antes de aplicar a nova via setParameter com AttrSubId_BloodRageProtector. O buff oferece: +220% shield (CONDITION_PARAM_SKILL_SHIELDPERCENT), +65 damage dealt, +85 damage received (menos dano recebido), e BUFF_SPELL true. Se player já tem condition ativa, é removida para permitir re-cast imediato. A mana de 200 é alta para level 55, tornando recurso planejado.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `protector.lua` implementa buff defensivo/ofensivo premium para Knights (level 55+) que remove condition anterior e aplica nova condition de atributos com múltiplos benefícios (shield 220%, damage +65, damage -85). É spell de foco (focus group) que oferece trade-off entre mana gasta e duração (13s é curta para custo 200). O spell valida presença de condition anterior via CONDITIONID_COMBAT, remove se existe, e aplica nova condition via combat com efeito visual. A implementação demonstra padrão de condition replacement com validação de subID.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância Combat com Efeito Visual
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_GREEN)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+
+-- 2. Criação de Condition de Atributos
+local skill = Condition(CONDITION_ATTRIBUTES)
+skill:setParameter(CONDITION_PARAM_SUBID, AttrSubId_BloodRageProtector)
+skill:setParameter(CONDITION_PARAM_TICKS, 13000)
+skill:setParameter(CONDITION_PARAM_SKILL_SHIELDPERCENT, 220)
+skill:setParameter(CONDITION_PARAM_BUFF_DAMAGEDEALT, 65)
+skill:setParameter(CONDITION_PARAM_BUFF_DAMAGERECEIVED, 85)
+skill:setParameter(CONDITION_PARAM_BUFF_SPELL, true)
+combat:addCondition(skill)
+
+-- 3. Instância do Spell
+local spell = Spell("instant")
+
+-- 4. Função de Cast Principal
+function spell.onCastSpell(creature, variant)
+    -- 4.1 Validação de Condition Anterior
+    -- 4.2 Remoção de Condition se Existe
+    -- 4.3 Execução de Combat (aplica nova condition)
+    -- 4.4 Retorno de Status
+end
+
+-- 5. Configuração de Propriedades do Spell
+spell:name("Protector")
+spell:words("utamo tempo")
+spell:group("support", "focus")
+spell:vocation("knight;true", "elite knight;true")
+spell:id(132)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000, 2 * 1000)
+spell:level(55)
+spell:mana(200)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | `Combat` | Local | Instância de combat com condition e efeito visual |
+| `skill` | `Condition` | Local | Condition de CONDITION_ATTRIBUTES com subID BloodRageProtector |
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `creature` | `Creature/Player` | Parâmetro | Knight que executa o spell |
+| `variant` | `Variant` | Parâmetro | Dados variáveis (self target) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Condition Replacement**
+```lua
+if creature:getCondition(CONDITION_ATTRIBUTES, CONDITIONID_COMBAT, AttrSubId_BloodRageProtector) then
+    creature:removeCondition(CONDITION_ATTRIBUTES, CONDITIONID_COMBAT, AttrSubId_BloodRageProtector)
+end
+```
+Verifica presença de condition anterior com subID específico e remove antes de aplicar nova.
+
+### 2. **Padrão de Múltiplos Parâmetros de Condition**
+```lua
+skill:setParameter(CONDITION_PARAM_SKILL_SHIELDPERCENT, 220)
+skill:setParameter(CONDITION_PARAM_BUFF_DAMAGEDEALT, 65)
+skill:setParameter(CONDITION_PARAM_BUFF_DAMAGERECEIVED, 85)
+```
+Um único Condition recebe múltiplos parâmetros de buff simultâneos.
+
+### 3. **Padrão de Focus Group**
+```lua
+spell:group("support", "focus")
+```
+Spell está em focus group junto com support - ambos groups aplicáveis.
+
+### 4. **Padrão de Condition Insertion via Combat**
+```lua
+combat:addCondition(skill)
+...
+return combat:execute(creature, variant)
+```
+Condition é adicionada ao combat, não diretamente ao creature.
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(creature, variant)`
+
+**Descrição:** Função principal de execução do spell. Remove condition anterior e aplica novo buff.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Knight que executa o spell.
+- `variant` (Variant): Dados variáveis (self target).
+
+**Fluxo de Execução:**
+
+1. **Validação de Condition Anterior**:
+   - `creature:getCondition(CONDITION_ATTRIBUTES, CONDITIONID_COMBAT, AttrSubId_BloodRageProtector)`
+   - Verifica se já existe protector ativo
+
+2. **Remoção de Condition Anterior** (se existe):
+   - `creature:removeCondition(CONDITION_ATTRIBUTES, CONDITIONID_COMBAT, AttrSubId_BloodRageProtector)`
+   - Remove condition anterior para permitir recast imediato
+
+3. **Execução de Combat**:
+   - `combat:execute(creature, variant)`
+   - Aplica nova condition com efeito visual CONST_ME_MAGIC_GREEN
+
+4. **Valores Aplicados**:
+   - Shield: +220% (CONDITION_PARAM_SKILL_SHIELDPERCENT)
+   - Damage dealt: +65 (CONDITION_PARAM_BUFF_DAMAGEDEALT)
+   - Damage received: +85 (CONDITION_PARAM_BUFF_DAMAGERECEIVED) - menos dano
+   - Buff spell: true (CONDITION_PARAM_BUFF_SPELL)
+
+5. **Retorno**:
+   - Retorna `true` (cast bem-sucedido, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Buff aplicado, mana de 200 consumida
+
+**Lógica Detalhada:**
+
+O spell implementa buff defensivo/ofensivo com duração curta (13s) que força re-cast frequente em combate. A mana de 200 é investimento significativo para duração curta - estratégia de uso é manter buff ativo durante picos de dano.
+
+O removal anterior permite re-cast imediato sem aguardar timeout - Knight pode recast infinitas vezes se tiver mana. Isso oferece controle fino sobre quando manter buff vs quando economizar mana.
+
+O trade-off de +65 damage dealt vs +85 damage received (menos dano) oferece balanço interessante: Knight ganha ofensiva mas pode tomar mais dano direto. O shield +220% compensa oferecendo proteção.
+
+A duração de 13 segundos é padrão para focus spells, forçando planejamento de timing.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_PROTECTOR`: Som característico
+
+**Mensagens ao Jogador:**
+- Nenhuma mensagem verbal
+
+## 📌 Resumo
+
+**Protector** é um spell de suporte premium para Knights (level 55+) que remove condition anterior e aplica novo buff defensivo/ofensivo por 13 segundos. O spell requer 200 de mana com cooldown de 2 segundos. Os efeitos incluem: +220% shield (CONDITION_PARAM_SKILL_SHIELDPERCENT), +65 damage dealt, +85 damage received (redução), e flag buff spell. A implementação remove condition anterior antes de aplicar nova via combat, permitindo recast imediato sem aguardar timeout. É ferramenta ofensiva essencial para Knights em combate, oferecendo trade-off entre mana e duração curta.
+
+A implementação segue padrão de condition replacement, diferenciando-se por: (1) remoção de condition anterior com validação de subID, (2) múltiplos parâmetros de buff simultâneos, (3) grupo focus + support, (4) duração curta com mana alta.

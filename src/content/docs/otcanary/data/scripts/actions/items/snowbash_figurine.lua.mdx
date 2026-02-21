@@ -1,0 +1,253 @@
+---
+title: snowbash_figurine.lua
+description: Figurinha para desbloquear familiar Snowbash exclusiva de Knight com validações de vocação e level/premium.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="snowbash_figurine.lua" icon="pencil">
+Item de familiar class-exclusive para Cavaleiros com validações encadeadas.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/snowbash_figurine.lua`
+
+**Linhas:** 24 | **ID do Item:** 35589 | **Looktype:** 1365 | **Tipo:** Action Handler
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa figurinha que desbloqueia o familiar Snowbash, exclusivo para Cavaleiros. Implementa validações idênticas ao Sandscourge: vocação (KNIGHT), nível (200+) OU premium, e verificação de duplication. Usa setFamiliarLooktype() + addFamiliar() para ativar o familiar. Padrão class-exclusive replicado para diferente vocação.
+
+### Estrutura de Funcionalidades
+
+```
+snowbashFigurine (Action)
+  ├─ Validação 1: vocação == KNIGHT?
+  │   └─ NÃO → reject
+  │
+  ├─ Validação 2: level 200+ OR premium?
+  │   └─ NÃO → reject (silencioso)
+  │
+  ├─ Validação 3: looktype ainda não definido?
+  │   └─ Sim → setFamiliarLooktype(1365)
+  │
+  ├─ Validação 4: não tem familiar 1365?
+  │   ├─ SIM → addFamiliar(1365) + mensagem
+  │   └─ NÃO → mensagem "already have"
+  │
+  ├─ Consumir: item:remove(1)
+  └─ register() → ID 35589
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| snowbashFigurine | Action | Objeto handler para a figurinha |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Item | ID | Descrição |
+|------|-------|-----------|
+| Figurinha Snowbash | 35589 | ID do item para trigger |
+| Looktype Snowbash | 1365 | Looktype visual do familiar |
+| Vocação Requerida | KNIGHT | Base ID da vocação |
+| Nível Mínimo | 200 | Sem premium |
+| Mensagem Vocação | "Only knights..." | Se não é knight |
+| Mensagem Sucesso | "You have summoned a Snowbash." | Primeiro familiar adicionado |
+| Mensagem Duplication | "You already have a Snowbash." | Já tem o familiar |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function snowbashFigurine.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação 1: Vocação obrigatória
+	if player:getVocation():getBaseId() ~= VOCATION.BASE_ID.KNIGHT then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Only knights can use this item.")
+		return true  -- Item NÃO removido
+	end
+	
+	-- Validação 2: Level 200+ OU Premium
+	if player:getLevel() < 200 and not player:isPremium() then
+		return true  -- Rejeição silenciosa
+	end
+	
+	-- Validação 3: Definir looktype se não está definido
+	if player:getFamiliarLooktype() == 0 then
+		player:setFamiliarLooktype(1365) -- Snowbash looktype
+	end
+	
+	-- Validação 4: Adicionar familiar ou avisar se já tem
+	if not player:hasFamiliar(1365) then
+		player:addFamiliar(1365) -- Snowbash looktype
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have summoned a Snowbash.")
+	else
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You already have a Snowbash.")
+	end
+	
+	-- Consumir item sempre
+	item:remove(1)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa snowbash_figurine (35589)
+  │
+  ├─ getVocation():getBaseId() == KNIGHT?
+  │   ├─ NÃO → Message "Only knights can use this item."
+  │   │         Item NÃO removido
+  │   │         return true
+  │   │
+  │   └─ SIM → Continua...
+  │
+  ├─ getLevel() < 200 AND NOT isPremium()?
+  │   ├─ SIM → Return true (rejeição silenciosa)
+  │   │         Item NÃO removido
+  │   │
+  │   └─ NÃO (200+ ou premium) → Continua...
+  │
+  ├─ getFamiliarLooktype() == 0?
+  │   └─ SIM → setFamiliarLooktype(1365)
+  │
+  ├─ hasFamiliar(1365)?
+  │   ├─ NÃO → addFamiliar(1365)
+  │   │         Message "You have summoned a Snowbash."
+  │   │
+  │   └─ SIM → Message "You already have a Snowbash."
+  │
+  ├─ Remover item:
+  │   └─ item:remove(1)
+  │
+  └─ return true
+```
+
+### Validação Encadeada
+
+Padrão idêntico ao Sandscourge:
+
+```
+1° - Vocação (HARD STOP)
+    └─ KNIGHT requerido, senão reject + mensagem
+
+2° - Level/Premium (SOFT STOP)
+    └─ 200+ OU premium, senão reject silencioso
+
+3° - Looktype (SETUP)
+    └─ Define 1365 se não está definido
+
+4° - Duplication (GUARD)
+    └─ Verifica hasFamiliar(1365) antes de adicionar
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Class-Exclusive Knight**: Validação de `getVocation():getBaseId() == KNIGHT`
+- **Level OR Premium**: Lógica `<200 AND NOT premium` para gate
+- **Silent Rejection**: Return true sem mensagem para rejeições silenciosas
+- **getFamiliarLooktype()**: Retorna 0 se nenhum looktype está definido
+- **setFamiliarLooktype()**: Define visual antes de adicionar
+- **hasFamiliar()**: Verifica duplication por ID específico
+- **addFamiliar()**: Adiciona novo familiar com looktype pré-definido
+- **Replicação Padrão**: Código idêntico ao Sandscourge, apenas vocação/looktype/mensagens diferentes
+
+### Responsabilidades do Handler
+
+1. **Validar vocação**: getVocation():getBaseId() == KNIGHT
+2. **Rejeitar se inválido**: Mensagem clara "Only knights..."
+3. **Validar nível/premium**: 200+ OU isPremium()
+4. **Rejeitar se insuficiente**: Silenciosamente (sem mensagem)
+5. **Definir looktype**: setFamiliarLooktype(1365)
+6. **Verificar duplication**: hasFamiliar(1365)
+7. **Adicionar ou avisar**: addFamiliar(1365) ou mensagem de duplicação
+8. **Consumir**: item:remove(1)
+
+---
+
+## Patterns e Implementação
+
+### Padrão Class-Exclusive (Replicado)
+
+Snowbash e Sandscourge usam padrão idêntico com variações:
+
+**Sandscourge (Paladin):**
+```lua
+VOCATION.BASE_ID.PALADIN → 1366 → "Sandscourge"
+```
+
+**Snowbash (Knight):**
+```lua
+VOCATION.BASE_ID.KNIGHT → 1365 → "Snowbash"
+```
+
+Estrutura de handler é 100% idêntica, apenas vocação/looktype/nomes diferem.
+
+### Comparação: Snowbash (Knight) vs Sandscourge (Paladin)
+
+| Aspecto | Snowbash | Sandscourge |
+|---------|---|---|
+| Vocação | KNIGHT | PALADIN |
+| Looktype | 1365 | 1366 |
+| ID Item | 35589 | 35590 |
+| Level Requerido | 200 (ou premium) | 200 (ou premium) |
+| Mensagem Sucesso | "You have summoned a Snowbash." | "You have summoned a Sandscourge." |
+| Padrão | Idêntico | Idêntico |
+
+### Validação Level OU Premium
+
+```
+Implementação:
+  └─ if getLevel() < 200 and not isPremium() then reject
+
+Interpretação:
+  └─ if getLevel() >= 200 or isPremium() then allow
+
+Matriz:
+  Level 200+ | Premium | Status
+  --- | --- | ---
+  ✅ | ✅ | ✅ Allow
+  ✅ | ❌ | ✅ Allow
+  ❌ | ✅ | ✅ Allow
+  ❌ | ❌ | ❌ Reject
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: snowbash_figurine.lua" icon="star">
+Análise de familiar exclusivo de Knight com padrão idêntico ao Sandscourge (Paladin). Demonstra replicação de padrão class-exclusive para diferentes vocações com looktype 1365.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Class-exclusive familiar (replicado) | Complexidade: Baixa-Média
+</Aside>

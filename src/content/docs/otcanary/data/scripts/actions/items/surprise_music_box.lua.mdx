@@ -1,0 +1,266 @@
+---
+title: surprise_music_box.lua
+description: Music box com prêmios de chance cumulativa (1-100) com tabela de 11 camadas de escala progressiva.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="surprise_music_box.lua" icon="pencil">
+Sistema de prêmios com chance cumulativa e distribuição desbalanceada por rarity.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/surprise_music_box.lua`
+
+**Linhas:** 27 | **ID do Item:** 12045 | **Tipo:** Action Handler com Prize Table
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa caixa de música com prêmios baseados em chance cumulativa de 1-100. Tabela contém 11 prêmios com diferentes raridades: itens raros no topo (1-5% chance), coins intermediários (10-90% chance). Usa soma cumulativa de chances para determinar o prêmio. Efeito POFF indica falha/sucesso.
+
+### Estrutura de Funcionalidades
+
+```
+PRIZE TABLE (11 entradas):
+  ├─ Chance 1-5: Itens raros (4 items)
+  ├─ Chance 10-50: Crystal coins variáveis
+  ├─ Chance 20-90: Gold coins (1 ou 80)
+  └─ Chance 30-50: Platinum coins (15)
+
+HANDLER:
+  └─ surpriseBox.onUse()
+      ├─ number = random(1, 100)
+      ├─ cumulativeChance = 0
+      ├─ Loop prizes:
+      │   ├─ Soma chance ao cumulative
+      │   ├─ number <= cumulative?
+      │   │   ├─ SIM → encontrou prêmio
+      │   │   ├─ addItem(id, amount)
+      │   │   └─ break
+      │   └─ Não → continua
+      └─ Effect: POFF + remove
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| prize | table | Array com 11 prêmios e chances |
+| surpriseBox | Action | Objeto handler principal |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Prize Table (Ordem de Rarity)
+
+| Chance | ID | Quantidade | Rarity | Item |
+|--------|----|----|---|---|
+| 1 | 3246 | 1 | Ultra Rare | Dungeon Key |
+| 2 | 10227 | 1 | Ultra Rare | Frozen Starlight |
+| 3 | 11588 | 1 | Ultra Rare | Sweet Mangonaise |
+| 4 | 3549 | 1 | Ultra Rare | Golden Boots |
+| 5 | 3420 | 1 | Ultra Rare | Magic Chain |
+| 10 | CRYSTAL_COIN | 17 | Rare | 17 Crystal Coins |
+| 20 | GOLD_COIN | 1 | Uncommon | 1 Gold Coin |
+| 30 | CRYSTAL_COIN | 1 | Uncommon | 1 Crystal Coin |
+| 40 | GOLD_COIN | 50 | Common | 50 Gold Coins |
+| 50 | PLATINUM_COIN | 15 | Common | 15 Platinum Coins |
+| 90 | GOLD_COIN | 80 | Very Common | 80 Gold Coins |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local prize = {
+	{ chance = 1, id = 3246, amount = 1 },
+	{ chance = 2, id = 10227, amount = 1 },
+	{ chance = 3, id = 11588, amount = 1 },
+	{ chance = 4, id = 3549, amount = 1 },
+	{ chance = 5, id = 3420, amount = 1 },
+	{ chance = 10, id = ITEM_CRYSTAL_COIN, amount = 17 },
+	{ chance = 20, id = ITEM_GOLD_COIN, amount = 1 },
+	{ chance = 30, id = ITEM_CRYSTAL_COIN, amount = 1 },
+	{ chance = 40, id = ITEM_GOLD_COIN, amount = 50 },
+	{ chance = 50, id = ITEM_PLATINUM_COIN, amount = 15 },
+	{ chance = 90, id = ITEM_GOLD_COIN, amount = 80 },
+}
+
+function surpriseBox.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- RNG de 1-100
+	local number = math.random(1, 100)
+	local cumulativeChance = 0
+
+	-- Loop até encontrar prêmio
+	for _, prizeEntry in ipairs(prize) do
+		-- Somar chance ao total acumulado
+		cumulativeChance = cumulativeChance + prizeEntry.chance
+		
+		-- Verificar se número está dentro do range
+		if number <= cumulativeChance then
+			-- Encontrou prêmio
+			player:getPosition():sendMagicEffect(CONST_ME_POFF)
+			player:addItem(prizeEntry.id, prizeEntry.amount)
+			item:remove()
+			break
+		end
+	end
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa surprise_music_box (12045)
+  │
+  ├─ number = random(1, 100)
+  │
+  ├─ cumulativeChance = 0
+  │
+  ├─ Loop para cada prêmio:
+  │   ├─ cumulativeChance += chance
+  │   │
+  │   ├─ number <= cumulativeChance?
+  │   │   │
+  │   │   ├─ SIM → Encontrou prêmio
+  │   │   │   ├─ Effect: POFF
+  │   │   │   ├─ addItem(id, amount)
+  │   │   │   ├─ item:remove()
+  │   │   │   └─ break (sai do loop)
+  │   │   │
+  │   │   └─ NÃO → Continua para próximo prêmio
+  │
+  └─ return true (sempre sucesso)
+```
+
+### Chance Cumulativa
+
+```
+Prize 1: chance = 1
+  └─ cumulative = 0 + 1 = 1
+  └─ Hit se number = 1 (1% chance)
+
+Prize 2: chance = 2
+  └─ cumulative = 1 + 2 = 3
+  └─ Hit se number = 2 ou 3 (2% chance)
+
+Prize 3: chance = 3
+  └─ cumulative = 3 + 3 = 6
+  └─ Hit se number = 4, 5, ou 6 (3% chance)
+
+...
+
+Prize 11: chance = 90
+  └─ cumulative = 10 + 90 = 100
+  └─ Hit se number = 11-100 (90% chance)
+
+Total cumulative = 1 + 2 + 3 + 4 + 5 + 10 + 20 + 30 + 40 + 50 + 90 = 255
+```
+
+**Problema:** Chances somam 255, não 100. Implementação gera número 1-100 e compara com cumulative progressivo. Último item (chance 90) nunca pode ser sorteado com este sistema, pois número máximo é 100 e cumulative chegaria a 255.
+
+### Exemplo de Execução
+
+```
+Caso: number = 5
+  ├─ Prize 1: cum = 1, 5 > 1? FIM
+  ├─ Prize 2: cum = 3, 5 > 3? FIM
+  ├─ Prize 3: cum = 6, 5 <= 6? SIM → ID 11588 (Sweet Mangonaise)
+  └─ break
+
+Caso: number = 27
+  ├─ Prize 1-5: cum < 10, skip
+  ├─ Prize 6: cum = 10, 27 > 10? FIM
+  ├─ Prize 7: cum = 30, 27 <= 30? SIM → ID GOLD_COIN (1)
+  └─ break
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Chance Cumulativa**: Somar chances até atingir threshold
+- **math.random(1, 100)**: Gera número para comparação
+- **Loop com Break**: Limpa quando encontra match
+- **Soma Progressiva**: cumulativeChance += chance a cada iteração
+- **Hit Condition**: `number <= cumulativeChance`
+- **Rarity Distribution**: Items raros no início, coins comuns no final
+- **Tabela Estruturada**: chance, id, amount por prêmio
+- **Item Removal**: item:remove() após prêmio (não remove quantidade)
+
+### Responsabilidades do Handler
+
+1. **Gerar RNG**: random(1, 100)
+2. **Inicializar cumulative**: = 0
+3. **Loop prêmios**: ipairs(prize)
+4. **Somar chance**: cumulativeChance += chance
+5. **Comparar**: `number <= cumulativeChance`?
+6. **Conceder prêmio**: addItem(id, amount)
+7. **Efeito visual**: CONST_ME_POFF
+8. **Consumir box**: item:remove()
+9. **Break**: Sair do loop após acertar
+
+---
+
+## Patterns e Implementação
+
+### Padrão Chance Cumulativa
+
+Este script demonstra sistema de escala progressiva:
+
+```lua
+local cumulativeChance = 0
+for _, prizeEntry in ipairs(prize) do
+	cumulativeChance = cumulativeChance + prizeEntry.chance
+	if number <= cumulativeChance then
+		-- Prêmio encontrado
+		player:addItem(prizeEntry.id, prizeEntry.amount)
+		break
+	end
+end
+```
+
+### Comparação: Surprise Box vs Surprise Bags
+
+| Aspecto | Surprise Box | Surprise Bags |
+|---------|---|---|
+| Seleção | Chance cumulativa | Equiprobável |
+| Rarity | Desbalanceada | Equiprobável |
+| Max Chance | 100 | 100 (por item/bag) |
+| Items | 11 entradas | 5 bags × 11-17 items |
+| ID único | 12045 | 5 IDs diferentes |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: surprise_music_box.lua" icon="star">
+Análise de sistema de chance cumulativa com 11 prêmios de rarities progressivas. Demonstra soma cumulativa para hit detection com distribuição desbalanceada.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Chance cumulativa com rarity | Complexidade: Baixa-Média
+</Aside>

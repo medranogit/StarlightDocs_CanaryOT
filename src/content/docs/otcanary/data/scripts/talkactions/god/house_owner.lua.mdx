@@ -1,0 +1,196 @@
+---
+title: House Owner Management
+description: Comando GOD para gerenciar proprietário de uma casa
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | house_owner.lua |
+| **Tipo de Sistema** | House Management (GOD) |
+| **Funcionalidade Principal** | Transferir propriedade de casa |
+| **Comando** | /owner [playername\|none] |
+| **Requisito** | Estar dentro de una casa |
+| **Acesso** | God |
+| **Separador** | Espaço |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/house_owner.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando minimalista de house ownership. Obtém tile da posição do GM, busca house do tile. Se param vazio ou "none", seta owner 0 (sem dono). Se param fornecido, busca player online e seta setHouseOwner(getGuid()). Validações: house exists check (getHouse() pode ser nil).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo house_owner.lua implementa comando TalkAction (/owner) para transferir ou remover propriedade de casas. O sistema valida que GM está dentro de casa, oferece modo "nenhum dono" (param="none" ou vazio), busca jogador para transferência, seta owner via GUID. Ferramenta de house property management.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local houseOwner = TalkAction("/owner")
+
+function houseOwner.onSay(player, words, param)
+	-- create log
+	logCommand(player, words, param)
+	
+	-- Obter tile da posição do GM
+	local tile = Tile(player:getPosition())
+	
+	-- Buscar house no tile
+	local house = tile and tile:getHouse()
+	if not house then
+		player:sendCancelMessage("You are not inside a house.")
+		return true
+	end
+	
+	-- Modo 1: Remover dono (param vazio ou "none")
+	if param == "" or param == "none" then
+		house:setHouseOwner(0)
+		return true
+	end
+	
+	-- Modo 2: Transferir para outro jogador
+	local targetPlayer = Player(param)
+	if not targetPlayer then
+		player:sendCancelMessage("Player not found.")
+		return true
+	end
+	
+	-- Seta novo dono
+	house:setHouseOwner(targetPlayer:getGuid())
+	return true
+end
+
+houseOwner:separator(" ")
+houseOwner:groupType("god")
+houseOwner:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **houseOwner.onSay(player, words, param)**
+
+**Descrição:** Função callback que gerencia proprietário da casa.
+
+**Parâmetros:**
+- `param` (string): Nome do jogador ou "none" (opcional)
+
+**Formato de Comando:**
+```
+/owner                          -- Remove dono
+/owner none                     -- Remove dono (explícito)
+/owner PlayerName              -- Transfere para jogador
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   ```lua
+   logCommand(player, words, param)
+   ```
+
+2. **Obter Tile:**
+   ```lua
+   local tile = Tile(player:getPosition())
+   ```
+
+3. **Buscar House:**
+   ```lua
+   local house = tile and tile:getHouse()
+   if not house then
+       player:sendCancelMessage("You are not inside a house.")
+       return true
+   end
+   ```
+   - Valida que GM está dentro de casa
+   - Mensagem de erro se fora
+
+4. **Modo 1: Remover Dono**
+   ```lua
+   if param == "" or param == "none" then
+       house:setHouseOwner(0)
+       return true
+   end
+   ```
+   - param vazio ou exatamente "none"
+   - Seta owner 0 (sem dono)
+
+5. **Modo 2: Transferir**
+   ```lua
+   local targetPlayer = Player(param)
+   if not targetPlayer then
+       player:sendCancelMessage("Player not found.")
+       return true
+   end
+   house:setHouseOwner(targetPlayer:getGuid())
+   ```
+   - Busca jogador online
+   - Seta GUID como owner
+   - Retorna "Player not found" se offline
+
+**Exemplos de Uso:**
+
+```
+GM (dentro de casa): /owner
+
+Resultado:
+- House owner setado para 0 (ninguém)
+- Casa fica abandonada
+- Qualquer um pode comprar
+
+---
+
+GM (dentro de casa): /owner TestPlayer
+
+Resultado:
+- Busca "TestPlayer" online
+- Se encontrado: casa transferida pra TestPlayer
+- Se não encontrado: "Player not found."
+
+---
+
+GM (dentro de casa): /owner none
+
+Resultado:
+- Mesmo que /owner vazio
+- Remove owner explicitamente
+```
+
+---
+
+### **Tabela de Modos**
+
+| Param | Efeito | Mensagem |
+|---|---|---|
+| (vazio) | Remove dono | Silencioso |
+| "none" | Remove dono | Silencioso |
+| "PlayerName" | Transfere | Silencioso se encontrado |
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Tile(position)` | Obtém tile na posição |
+| `tile:getHouse()` | Obtém casa do tile |
+| `house:setHouseOwner(guid)` | Seta proprietário por GUID |
+| `Player(name)` | Busca jogador online |
+| `player:getGuid()` | Obtém GUID do jogador |
+| `player:getPosition()` | Posição do GM |
+| `logCommand(player, words, param)` | Log do comando |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo house_owner.lua é ferramenta minimalista de house property management. Implementação com validação de localização (must be in house), 2 modos (remove/transfer), offline check, sem feedback explícito. Essencial para GMs transferir casas após testes ou reorganização de propriedades. Design simples com validações adequadas.

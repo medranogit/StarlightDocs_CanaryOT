@@ -1,0 +1,248 @@
+---
+title: Summon Creature
+description: Spell parametrizado para Druids e Sorcerers que cria summons com validação de type, limite e mana dinâmica
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `summon_creature.lua` |
+| **Tipo de Spell** | Spell instantâneo parametrizado (Support) |
+| **Vocação** | Druid / Elder Druid / Sorcerer / Master Sorcerer |
+| **Spell ID** | 9 |
+| **Level Requerido** | 25 |
+| **Status Premium** | Não (acesso livre) |
+| **Cooldown Individual** | 2 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utevo res` |
+| **Efeito Visual Cast** | `CONST_ME_MAGIC_BLUE` |
+| **Efeito Visual Summon** | `CONST_ME_TELEPORT` |
+| **Auto-Target** | Sim (Próprio, cria no local) |
+| **Agressividade** | Não (suporte de summon) |
+| **Parâmetro Requerido** | Monster name (string) |
+| **Limit de Summons** | 2 máximo (sem flag especial) |
+| **Mana Cost** | Dinâmico por MonsterType |
+| **Validações** | isSummonable(), mana cost, limite summons |
+| **Flags Especiais** | PlayerFlag_CanSummonAll, PlayerFlag_HasInfiniteMana |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/summon_creature.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell é parametrizado - requer MonsterType name como string. Valida: (1) MonsterType existe, (2) isSummonable() se sem flag especial, (3) limite de 2 summons, (4) mana cost dinâmico. O mana cost é obtido via monsterType:getManaCost() e pode variar por monster. Game.createMonster(name, position, true, false, player) cria o summon. Flags especiais: PlayerFlag_CanSummonAll ignora isSummonable e limite, PlayerFlag_HasInfiniteMana ignora mana check. Mana é debitada via player:addMana(-cost) + player:addManaSpent(cost).
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `summon_creature.lua` implementa criação parametrizada de summons para Druids e Sorcerers (level 25+) que valida MonsterType, isSummonable, limite de 2 summons, e mana cost dinâmico por creature. É um dos poucos spells que utiliza Game.createMonster() para spawnar creatures controladas. O spell extrai nome de monster do parâmetro, cria MonsterType, valida isSummonable (se sem flag), verifica limite de summons (máximo 2), calcula mana cost dinâmico, deacerta mana com penalidade, cria summon no local, e aplica efeitos visuais. A implementação demonstra padrão de parametrização complexa com múltiplas validações em cascata.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Instância do Spell
+local spell = Spell("instant")
+
+-- 2. Função de Cast Principal
+function spell.onCastSpell(player, variant)
+    -- 2.1 Obtenção de Posição e Nome do Monster
+    -- 2.2 Criação de MonsterType
+    -- 2.3 Validação de Existência
+    -- 2.4 Validação de isSummonable (se sem flag)
+    -- 2.5 Validação de Limite de Summons
+    -- 2.6 Obtenção de Mana Cost Dinâmico
+    -- 2.7 Validação de Mana Suficiente
+    -- 2.8 Criação de Summon
+    -- 2.9 Debitação de Mana
+    -- 2.10 Aplicação de Efeitos Visuais
+    -- 2.11 Retorno de Status
+end
+
+-- 3. Configuração de Propriedades do Spell
+spell:group("support")
+spell:id(9)
+spell:name("Summon Creature")
+spell:words("utevo res")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_SUMMON_CREATURE)
+spell:level(25)
+spell:hasParams(true)
+spell:cooldown(2 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:vocation("druid;true", "sorcerer;true", "elder druid;true", "master sorcerer;true")
+spell:needLearn(false)
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `spell` | `Spell` | Local | Instância do spell instantâneo |
+| `player` | `Player` | Parâmetro | Druid/Sorcerer que executa o spell |
+| `variant` | `Variant` | Parâmetro | Contém nome de monster como string |
+| `position` | `Position` | Local | Posição atual do player |
+| `monsterName` | `string` | Local | Nome do monster extraído do variant |
+| `monsterType` | `MonsterType` | Local | Tipo de creature a ser summoned |
+| `manaCost` | `number` | Local | Custo de mana dinâmico do monster |
+| `summon` | `Creature` | Local | Criatura summoned (resultado de Game.createMonster) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Parametrização com MonsterType Lookup**
+```lua
+local monsterName = variant:getString()
+local monsterType = MonsterType(monsterName)
+
+if not monsterType then
+    player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+    return false
+end
+```
+Extrai parameter, faz lookup de MonsterType, valida existência.
+
+### 2. **Padrão de Validação Condicional com Flag**
+```lua
+if not player:hasFlag(PlayerFlag_CanSummonAll) then
+    if not monsterType:isSummonable() then
+        player:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+        return false
+    end
+end
+```
+Flag especial bypassa validação de isSummonable.
+
+### 3. **Padrão de Limite de Summons**
+```lua
+if #player:getSummons() >= 2 then
+    player:sendCancelMessage("You cannot summon more creatures.")
+    return false
+end
+```
+Máximo 2 summons simultâneos (sem flag).
+
+### 4. **Padrão de Mana Cost Dinâmico**
+```lua
+local manaCost = monsterType:getManaCost()
+if player:getMana() < manaCost and not player:hasFlag(PlayerFlag_HasInfiniteMana) then
+    player:sendCancelMessage(RETURNVALUE_NOTENOUGHMANA)
+    return false
+end
+```
+Mana cost varia por monster type.
+
+### 5. **Padrão de Criação de Creature Controlada**
+```lua
+local summon = Game.createMonster(monsterName, position, true, false, player)
+if not summon then
+    player:sendCancelMessage(RETURNVALUE_NOTENOUGHROOM)
+    return false
+end
+```
+Game.createMonster com player como owner (true para controllable).
+
+## 🤖 Documentação das Funções
+
+### `spell.onCastSpell(player, variant)`
+
+**Descrição:** Função principal de execução do spell. Cria summon parametrizado com validações multi-camada.
+
+**Parâmetros:**
+- `player` (Player): Druid/Sorcerer que executa o spell.
+- `variant` (Variant): Contém nome de monster como string.
+
+**Fluxo de Execução:**
+
+1. **Obtenção de Posição e Nome**:
+   - `position = player:getPosition()`
+   - `monsterName = variant:getString()`
+
+2. **Criação e Validação de MonsterType**:
+   - `monsterType = MonsterType(monsterName)`
+   - Se não existe:
+     - Envia `RETURNVALUE_NOTPOSSIBLE`
+     - Efeito visual `CONST_ME_POFF` (derrota)
+     - Retorna `false`
+
+3. **Validação de isSummonable** (se sem flag):
+   - Se `player:hasFlag(PlayerFlag_CanSummonAll)` não existe:
+     - Se `not monsterType:isSummonable()`:
+       - Envia `RETURNVALUE_NOTPOSSIBLE`
+       - Efeito visual `CONST_ME_POFF`
+       - Retorna `false`
+   - Senão: bypassa validação
+
+4. **Validação de Limite de Summons** (se sem flag):
+   - Se `player:hasFlag(PlayerFlag_CanSummonAll)` não existe:
+     - Se `#player:getSummons() >= 2`:
+       - Envia mensagem customizada
+       - Efeito visual `CONST_ME_POFF`
+       - Retorna `false`
+   - Senão: bypassa limite
+
+5. **Obtenção de Mana Cost Dinâmico**:
+   - `manaCost = monsterType:getManaCost()`
+   - Varia por monster
+
+6. **Validação de Mana Suficiente**:
+   - Se `player:getMana() < manaCost` E não tem `PlayerFlag_HasInfiniteMana`:
+     - Envia `RETURNVALUE_NOTENOUGHMANA`
+     - Efeito visual `CONST_ME_POFF`
+     - Retorna `false`
+
+7. **Criação de Summon**:
+   - `summon = Game.createMonster(monsterName, position, true, false, player)`
+   - Argumentos: (name, position, controllable, withProtection, owner)
+   - Se falhou (sem espaço):
+     - Envia `RETURNVALUE_NOTENOUGHROOM`
+     - Efeito visual `CONST_ME_POFF`
+     - Retorna `false`
+
+8. **Debitação de Mana**:
+   - `player:addMana(-manaCost)` (debita mana)
+   - `player:addManaSpent(manaCost)` (registra gasto)
+
+9. **Efeitos Visuais de Sucesso**:
+   - Na posição do caster: `CONST_ME_MAGIC_BLUE`
+   - Na posição do summon: `CONST_ME_TELEPORT`
+
+10. **Retorno**:
+    - Retorna `true` (summon criado, mana consumida)
+
+**Valores de Retorno:**
+- `true`: Summon criado com sucesso, mana debitada
+- `false`: Validação falhou, mana não debitada
+
+**Lógica Detalhada:**
+
+O spell implementa criação de summons com sistema de validação robusto. A parametrização via MonsterType nome permite flexibilidade extrema - any monstertype pode ser summoned se isSummonable.
+
+As flags especiais (PlayerFlag_CanSummonAll, PlayerFlag_HasInfiniteMana) permitem admin/tester bypass de restrições.
+
+O limite de 2 summons padrão balanceia gameplay vs poder. Sem limite, players poderiam summon centenas.
+
+O mana cost dinâmico permite creatures diferentes custarem diferentes quantidades. Criaturas mais fortes custam mais mana.
+
+O Game.createMonster(nome, posição, true, false, player) cria criatura controlável pelo player (true = controllable). O player é owner, permitindo que spell commands funcionem.
+
+A dupla validação (isSummonable + mana cost) previne exploits de mana farming.
+
+**Sound Effect:**
+- `SOUND_EFFECT_TYPE_SPELL_SUMMON_CREATURE`: Som característico
+
+**Mensagens ao Jogador:**
+- Monster inválido: RETURNVALUE_NOTPOSSIBLE
+- Não summonable: RETURNVALUE_NOTPOSSIBLE
+- Limite de summons: Customizada
+- Mana insuficiente: RETURNVALUE_NOTENOUGHMANA
+- Sem espaço: RETURNVALUE_NOTENOUGHROOM
+
+## 📌 Resumo
+
+**Summon Creature** é um spell de suporte gratuito para Druids e Sorcerers (level 25+) que cria summon parametrizado via MonsterType name com validações robustas: isSummonable, limite de 2 summons, mana cost dinâmico. O spell requer parâmetro string (nome do monster). Mana cost é obtido via monsterType:getManaCost() e varia por creature. A implementação valida existência de MonsterType, isSummonable (se sem flag), limite de summons (se sem flag), mana suficiente (se sem flag de infinite mana), cria summon controllable com Game.createMonster(), debita mana com penalidade. Cooldown é 2 segundos. É ferramenta fundamental para Druids/Sorcerers, permitindo summoning dinâmico de creatures para combate e suporte.
+
+A implementação segue padrão de parametrização complexa, diferenciando-se por: (1) parametrização via MonsterType lookup, (2) validação isSummonable, (3) limite de 2 summons, (4) mana cost dinâmico, (5) flags especiais de bypass, (6) Game.createMonster com ownership.

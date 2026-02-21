@@ -1,0 +1,475 @@
+---
+title: "Spell/Rune - ultimate_healing_rune.lua"
+description: "Runa de cura suprema com validações vocacionais e anti-monster"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `ultimate_healing_rune.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 5 |
+| **ID do Item (runeId)** | 3160 |
+| **Level Requerido** | 24 |
+| **Magic Level Requerido** | 4 |
+| **Grupo** | healing |
+| **Tipo de Dano** | COMBAT_HEALING |
+| **Área** | Single target (com variações) |
+| **Cooldown** | 1s |
+| **Cargas** | 1 (PRECIOSA!) |
+| **Distância Longa** | Sim (allowFarUse) |
+| **Bloqueio** | Sim |
+| **Agressividade** | Não (isAggressive: false) |
+| **Requer Target** | Sim |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_OR_RUNE |
+| **Som Impacto** | SOUND_EFFECT_TYPE_SPELL_ULTIMATE_HEALING_RUNE |
+| **Linhas de Código** | 52 |
+| **Complexidade** | Alto |
+
+**Descrição:**
+Runa cura suprema com apenas 1 carga ultra-preciosa. Fórmula escalável potente (7.3-12.4 MLvl). Sem negativo (heal positivo). Dispel paralyze. Validações complexas: vocation "exalted monk" bloqueada, monstros rejeitados. Alvo obrigatório. Não-agressiva. Level 24, MLvl 4.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/ultimate_healing_rune.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(5)
+rune:group("healing")
+rune:name("ultimate healing rune")
+rune:castSound(SOUND_EFFECT_TYPE_SPELL_OR_RUNE)
+rune:impactSound(SOUND_EFFECT_TYPE_SPELL_ULTIMATE_HEALING_RUNE)
+rune:runeId(3160)
+rune:allowFarUse(true)
+rune:charges(1)
+rune:level(24)
+rune:magicLevel(4)
+rune:cooldown(1 * 1000)
+rune:groupCooldown(1 * 1000)
+rune:isAggressive(false)
+rune:needTarget(true)
+rune:isBlocking(true)
+rune:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Cura Suprema com Validações Vocacionais**
+
+Esta runa implementa um **sistema de healing com proteção contra abuso**:
+
+1. **1 Carga Ultra-Preciosa:**
+   - Apenas 1 use (consumível raro!)
+   - Cura máxima disponível
+   - Tesouro do jogador
+
+2. **Fórmula Potente (Sem Negativo):**
+   - min = (level/5) + (maglevel*7.3) + 42
+   - max = (level/5) + (maglevel*12.4) + 90
+   - RETORNA POSITIVO (heal real)
+
+3. **Validações Múltiplas:**
+   - Vocation "exalted monk" bloqueada
+   - Monstros rejeitados
+   - Proteção sistema dupla
+
+4. **Dispel Paralyze:**
+   - Remove CONDITION_PARALYZE
+   - Cura + desparalyze
+   - Efeito combo
+
+**Fórmula Visual:**
+```
+level 24, mlvl 4:
+  min = 4.8 + 29.2 + 42 = 76
+  max = 4.8 + 49.6 + 90 = 144.4
+
+level 50, mlvl 15:
+  min = 10 + 109.5 + 42 = 161.5
+  max = 10 + 186 + 90 = 286
+```
+
+**Diferencial:** 1 carga preciosa + anti-vocation + anti-monster!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `ultimate_healing_rune` oferece cura máxima com proteção:
+
+- **Dano:** COMBAT_HEALING (positivo, sem negativo)
+- **Fórmula:** (level/5) + (maglevel*7.3/12.4) + bônus (POTENTE!)
+- **Cargas:** 1 (preciosa)
+- **Target:** Obrigatório
+- **Validações:** Vocation + Monster checks
+
+### Arquitetura
+
+Combat com validações complexas:
+
+```
+rune.onCastSpell(creature, var, isHotkey)
+├─ Player cast
+├─ getVocation() check
+│  └─ "exalted monk" → reject
+├─ Monster(var) check
+│  └─ Monster → reject
+└─ combat:execute()
+   └─ COMBAT_HEALING
+
+combat:setCallback(onGetFormulaValues)
+└─ min/max potente (sem negativo)
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_HEALING)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+combat:setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+combat:setParameter(COMBAT_PARAM_TARGETCASTERORTOPMOST, 1)
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+```
+
+**Propósito:** Combat de healing com dispel.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_HEALING | Tipo cura |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_MAGIC_BLUE | Efeito azul |
+| `COMBAT_PARAM_AGGRESSIVE` | 0 | Não-agressivo |
+| `COMBAT_PARAM_TARGETCASTERORTOPMOST` | 1 | Target ou caster |
+| `COMBAT_PARAM_DISPEL` | CONDITION_PARALYZE | Dispel paralyze |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 7.3) + 42
+	local max = (level / 5) + (maglevel * 12.4) + 90
+	return min, max
+end
+```
+
+**Propósito:** Calcula cura potente - SEM NEGATIVO!
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Cura mínima (POSITIVO) |
+| `max` | number | Cura máxima (POSITIVO) |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 7.3) + 42
+max = (level / 5) + (maglevel * 12.4) + 90
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 7.3 (POTENTE!)
+- Maglevel max: 12.4 (MUITO potente!)
+- Bônus: 42/90 (significativo)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 24 | 4 | 76 | 144 |
+| 50 | 15 | 162 | 286 |
+| 80 | 25 | 246 | 400 |
+| 100 | 35 | 310 | 524 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: rune.onCastSpell (VALIDAÇÕES)
+
+```lua
+function rune.onCastSpell(creature, var, isHotkey)
+	local player = Player(creature)
+	if not player then
+		return false
+	end
+
+	local vocation = player:getVocation():getName():lower()
+	if vocation == "exalted monk" then
+		player:sendCancelMessage("Your vocation cannot use this rune.")
+		player:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	if Monster(var:getNumber(1073762188)) then
+		player:sendCancelMessage("Sorry, not possible.")
+		player:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	return combat:execute(player, var)
+end
+```
+
+**Propósito:** Handler com validações duplas.
+
+**Fluxo:**
+
+| Step | Ação | Resultado |
+|---|---|---|
+| 1 | Cast rune | Handler called |
+| 2 | Player check | Se não player: false |
+| 3 | Vocation check | Se "exalted monk": reject |
+| 4 | Monster check | Se monster: reject |
+| 5 | Execute | combat:execute() |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Cura realizada |
+| `false` | Validação falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com DISPEL paralyze |
+| `rune` | Spell | Arquivo | Instância da runa |
+
+**Variáveis Locais (em onCastSpell):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador validado |
+| `vocation` | string | Nome vocação |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Cura mínima |
+| `max` | number | Cura máxima |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Carga Única Preciosa
+
+```lua
+rune:charges(1)
+```
+
+**Benefício:** Extrema raridade = tesouro jogador.
+
+### Padrão 2: Validação Vocation
+
+```lua
+local vocation = player:getVocation():getName():lower()
+if vocation == "exalted monk" then
+	-- reject
+end
+```
+
+**Benefício:** Proteção contra abuso "exalted monk".
+
+### Padrão 3: Validação Monster
+
+```lua
+if Monster(var:getNumber(1073762188)) then
+	-- reject
+end
+```
+
+**Benefício:** Cura não funciona em monstros (só players).
+
+### Padrão 4: Dispel Paralyze
+
+```lua
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+```
+
+**Benefício:** Cura + desparalyze combo.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula cura potente - retorna positivo!
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Cura mínima (positivo) |
+| `max` | number | Cura máxima (positivo) |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(player, 50, 15)
+// min = 10 + 109.5 + 42 = 161.5
+// max = 10 + 186 + 90 = 286
+// Retorna: 161.5, 286 (ambos positivos!)
+```
+
+---
+
+### rune.onCastSpell(creature, var, isHotkey)
+
+**Descrição:** Cura com validações múltiplas.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `var` | Variant | Target (obrigatório) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Cura realizada |
+| `false` | Validação falhou ou target inválido |
+
+**Validações:**
+
+| Validação | Rejeita | Mensagem |
+|---|---|---|
+| Player check | Não-players | (falhou silencioso) |
+| Vocation | "exalted monk" | "Your vocation cannot use this rune." |
+| Monster | Monstros | "Sorry, not possible." |
+
+**Efeito:**
+- Efeito cura azul
+- Cura sin negativo (apenas recuperação)
+- Dispel paralyze automático
+- Cooldown 1s
+
+**Exemplo:**
+
+```lua
+-- Cleric nível 50, MLvl 15
+rune.onCastSpell(cleric, targetVariant, false)
+// ✓ Validação player OK
+// ✓ Validação vocation OK (não é monk)
+// ✓ Validação monster OK (é player)
+// Executa: combat:execute()
+// Cura: +161 a +286 HP
+// Dispel: remove paralyze
+// Sons: ULTIMATE_HEALING
+// Resultado: 1 carga consumida!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Ressurreição Emergência
+
+```lua
+-- Jogador em perigo crítico
+// 1 carga = salvação última
+// Cura máxima: +286 (nível 50)
+// Ultima esperança!
+```
+
+### Caso 2: Proteção Anti-Monk
+
+```lua
+-- Sistema: bloqueia exalted monk
+// Vocation check
+// Balance gameplay
+```
+
+### Caso 3: Segurança Anti-Monster
+
+```lua
+-- Sistema: rejeita monstros
+// Monster check
+// Evita exploit heal
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat Healing
+- **Parameters:** COMBAT_PARAM_DISPEL, COMBAT_PARAM_AGGRESSIVE
+- **Effects:** CONST_ME_MAGIC_BLUE, CONST_ME_POFF
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Cura suprema com proteção |
+| **Cura Type** | COMBAT_HEALING (sem negativo!) |
+| **Fórmula** | min=(lvl/5)+(mlvl*7.3)+42, max=(lvl/5)+(mlvl*12.4)+90 |
+| **Cargas** | 1 (PRECIOSA) |
+| **Distancia** | Sim (allowFarUse) |
+| **Bloqueio** | Sim |
+| **Target** | Requerido |
+| **Aggressive** | Não (healing) |
+| **Dispel** | CONDITION_PARALYZE |
+| **Validações** | Vocation + Monster |
+| **Level** | 24 (early) |
+| **MLvl** | 4 |
+| **Padrão** | 1 carga + dupla validação + dispel |

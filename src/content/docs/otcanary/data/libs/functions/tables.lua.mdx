@@ -1,0 +1,683 @@
+---
+title: "tables.lua"
+description: "Extensões da biblioteca table do Lua: alias append, empty (validação), find (busca por valor), contains (boolean check), count/countElements, getCombinations (combinações N elementos), serialize/unserialize (conversão table ↔ string), shallowCopy (cópia rasa), pairsByKeys (iterador ordenado por chaves). Utilities para manipulação de tabelas."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que estende **Lua table library com 11 funções utilitárias**: append (alias insert), empty (validação), find/contains (busca), count (contador), getCombinations (combinações), serialize/unserialize (conversão), shallowCopy (clonagem), pairsByKeys (iterador ordenado). Todas adicionadas ao global `table` table ou como função global (pairsByKeys). Suporta empty checking, valor búsqueda, serialização com detecção de recursão, e iteração ordenada.
+
+**Caminho Original**: `data/libs/functions/tables.lua`
+
+<Aside type="tip">
+O arquivo `tables.lua` é **essential table utilities library**. Fornece busca, contagem, combinações, serialização, clonagem, e iteração ordenada. Perfeito para data validation, configuração storage, combinatorics, debugging via serialização.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **11 funções de extensão**:
+
+1. **Validação**: empty (table vazio?)
+2. **Busca**: find (index), contains (boolean)
+3. **Contagem**: count (occurrences)
+4. **Combinatorics**: getCombinations (N-elemento subsets)
+5. **Serialização**: serialize (table → string), unserialize (string → table)
+6. **Clonagem**: shallowCopy (cópia rasa)
+7. **Iteração**: pairsByKeys (sorted iterator)
+
+O design usa **pairs() para loops**, **loadstring para desserialização**, **recursion detection para serialize**, **combinatorial algorithm para getCombinations**, e **table.sort para ordering**. Todas funções adicionadas a `table` global ou como função global.
+
+### Estrutura de Funcionalidades
+
+```
+Table Extensions
+├── Utilities (2)
+│   ├── table.append → alias para table.insert
+│   └── table.empty(t) → boolean [next(t) == nil]
+├── Searching (2)
+│   ├── table.find(table, value) → index|nil
+│   └── table.contains(array, value) → boolean
+├── Counting (2)
+│   ├── table.count(table, item) → count
+│   └── table.countElements → alias para table.count
+├── Combinatorics (1)
+│   └── table.getCombinations(table, num) → combinations[]
+├── Serialization (2)
+│   ├── table.serialize(x, recur) → string [com recursion check]
+│   └── table.unserialize(str) → table [via loadstring]
+├── Cloning (1)
+│   └── table.shallowCopy(oldTable) → newTable
+└── Iteration (1)
+    └── pairsByKeys(t, f) → iterator [sorted keys]
+```
+
+---
+
+## 🔧 Utilitários Básicos
+
+### `table.append`
+
+Alias para `table.insert()`.
+
+**Tipo**: Alias (adicionado a table library)  
+**Equivalente a**: `table.insert()`
+
+**Uso**:
+```lua
+table.append(myTable, value)  -- Mesmo que table.insert(myTable, value)
+```
+
+---
+
+### `table.empty(t)` → boolean
+
+Verifica se tabela está vazia.
+
+**Tipo**: Função estendida  
+**Parâmetros**: t (table)  
+**Retorna**: boolean (true se vazio)
+
+**Implementação**:
+```lua
+table.empty = function(t)
+	return next(t) == nil
+end
+```
+
+**Lógica**: Usa `next(t)` para check (mais eficiente que contar)
+
+**Exemplo**:
+```lua
+print(table.empty({}))           -- true
+print(table.empty({1, 2, 3}))    -- false
+print(table.empty({a = 1}))      -- false
+```
+
+---
+
+## 🔍 Busca
+
+### `table.find(table, value)` → index | nil
+
+Encontra primeiro índice de valor.
+
+**Tipo**: Função estendida  
+**Parâmetros**:
+- table (table): Tabela a buscar
+- value (any): Valor a encontrar
+
+**Retorna**: index (key) ou nil
+
+**Implementação**:
+```lua
+table.find = function(table, value)
+	for i, v in pairs(table) do
+		if v == value then
+			return i
+		end
+	end
+	return nil
+end
+```
+
+**Fluxo**:
+1. Loop cada elemento (pairs)
+2. Se v == value: return i (a chave)
+3. Se nenhum encontrado: return nil
+
+**Exemplo**:
+```lua
+local idx = table.find({10, 20, 30}, 20)
+-- idx = 2
+
+local notFound = table.find({"a", "b", "c"}, "z")
+-- notFound = nil
+
+local keyFind = table.find({x = 10, y = 20}, 10)
+-- keyFind = "x"
+```
+
+---
+
+### `table.contains(array, value)` → boolean
+
+Verifica se valor existe (returns boolean, não index).
+
+**Tipo**: Função estendida  
+**Parâmetros**:
+- array (table): Tabela a buscar
+- value (any): Valor a encontrar
+
+**Retorna**: boolean
+
+**Implementação**:
+```lua
+table.contains = function(array, value)
+	for _, targetColumn in pairs(array) do
+		if targetColumn == value then
+			return true
+		end
+	end
+	return false
+end
+```
+
+**Diferença vs find**: contains retorna boolean; find retorna index
+
+**Exemplo**:
+```lua
+print(table.contains({1, 2, 3}, 2))        -- true
+print(table.contains({"a", "b"}, "c"))     -- false
+print(table.contains({x = 10, y = 20}, 20))-- true
+```
+
+---
+
+## 📊 Contagem
+
+### `table.count(table, item)` → number
+
+Conta quantas vezes item aparece na tabela.
+
+**Tipo**: Função estendida  
+**Parâmetros**:
+- table (table): Tabela a contar
+- item (any): Item a contar
+
+**Retorna**: number (count)
+
+**Implementação**:
+```lua
+table.count = function(table, item)
+	local count = 0
+	for i, n in pairs(table) do
+		if item == n then
+			count = count + 1
+		end
+	end
+	return count
+end
+```
+
+**Exemplo**:
+```lua
+print(table.count({1, 2, 2, 3, 2}, 2))           -- 3
+print(table.count({a = 1, b = 1, c = 2}, 1))    -- 2
+print(table.count({10, 20, 30}, 40))            -- 0
+```
+
+---
+
+### `table.countElements`
+
+Alias para `table.count()`.
+
+**Tipo**: Alias
+
+**Uso**:
+```lua
+table.countElements({1, 2, 2, 3}, 2)  -- Mesmo que table.count
+```
+
+---
+
+## 🎲 Combinatorics
+
+### `table.getCombinations(table, num)` → combinations[]
+
+Gera todas combinações de num elementos.
+
+**Tipo**: Função estendida  
+**Parâmetros**:
+- table (table): Elementos para combinar
+- num (number): Tamanho de cada combinação
+
+**Retorna**: table de combinações (cada é array)
+
+**Implementação** (algoritmo):
+```lua
+table.getCombinations = function(table, num)
+	local a, number, select, newlist = {}, #table, num, {}
+	for i = 1, select do
+		a[#a + 1] = i
+	end
+
+	local newthing = {}
+	while true do
+		local newrow = {}
+		for i = 1, select do
+			newrow[#newrow + 1] = table[a[i]]
+		end
+
+		newlist[#newlist + 1] = newrow
+		i = select
+		while a[i] == (number - select + i) do
+			i = i - 1
+		end
+
+		if i < 1 then
+			break
+		end
+
+		a[i] = a[i] + 1
+		for j = i, select do
+			a[j] = a[i] + j - i
+		end
+	end
+
+	return newlist
+end
+```
+
+**Algoritmo**: Combinatorial generation (lexicographic order)
+
+**Exemplo**:
+```lua
+local combos = table.getCombinations({1, 2, 3}, 2)
+-- combos = {
+--   {1, 2},
+--   {1, 3},
+--   {2, 3}
+-- }
+
+local names = table.getCombinations({"A", "B", "C"}, 2)
+-- names = {
+--   {"A", "B"},
+--   {"A", "C"},
+--   {"B", "C"}
+-- }
+```
+
+---
+
+## 💾 Serialização
+
+### `table.serialize(x, recur)` → string
+
+Converte table (ou valor) em string Lua-válida.
+
+**Tipo**: Função estendida  
+**Parâmetros**:
+- x (any): Valor a serializar
+- recur (table|nil): Recursion tracker (interno)
+
+**Retorna**: string representação
+
+**Implementação**:
+```lua
+function table.serialize(x, recur)
+	local t = type(x)
+	recur = recur or {}
+
+	if t == nil then
+		return "nil"
+	elseif t == "string" then
+		return string.format("%q", x)
+	elseif t == "number" then
+		return tostring(x)
+	elseif t == "boolean" then
+		return t and "true" or "false"
+	elseif getmetatable(x) then
+		error("Can not serialize a table that has a metatable associated with it.")
+	elseif t == "table" then
+		if table.find(recur, x) then
+			error("Can not serialize recursive tables.")
+		end
+		table.append(recur, x)
+
+		local s = "{"
+		for k, v in pairs(x) do
+			s = s .. "[" .. table.serialize(k, recur) .. "]"
+			s = s .. " = " .. table.serialize(v, recur) .. ","
+		end
+		s = s .. "}"
+		return s
+	else
+		error("Can not serialize value of type '" .. t .. "'.")
+	end
+end
+```
+
+**Suporte**:
+- nil → "nil"
+- string → quoted com %q
+- number → tostring
+- boolean → "true" ou "false"
+- table → `{[k] = v, ...}` format
+
+**Validações**:
+- Error se metatable exists
+- Error se tabela recursiva (detecção via recur array)
+
+**Exemplo**:
+```lua
+print(table.serialize({a = 1, b = 2}))
+-- {["a"] = 1,["b"] = 2,}
+
+print(table.serialize({{1, 2}, {3, 4}}))
+-- {[1] = {[1] = 1,[2] = 2,},[2] = {[1] = 3,[2] = 4,},}
+
+table.serialize({a = {}})
+-- {["a"] = {},}
+```
+
+---
+
+### `table.unserialize(str)` → table
+
+Converte string (do serialize) em table.
+
+**Tipo**: Função estendida  
+**Parâmetros**: str (string): Serialized string  
+**Retorna**: table (or value)
+
+**Implementação**:
+```lua
+function table.unserialize(str)
+	return loadstring("return " .. str)()
+end
+```
+
+**Fluxo**:
+1. Prepend "return " ao string
+2. Executar com loadstring (cria chunk)
+3. Call chunk () para retornar valor
+
+**Segurança**: ⚠️ loadstring executa código arbitrário (usar cuidado com input não-confiável)
+
+**Exemplo**:
+```lua
+local serialized = table.serialize({a = 1, b = 2})
+local restored = table.unserialize(serialized)
+-- restored = {a = 1, b = 2}
+
+local data = table.unserialize("{[1] = 10, [2] = 20}")
+-- data = {10, 20}
+```
+
+---
+
+## 🔄 Clonagem
+
+### `table.shallowCopy(oldTable)` → newTable
+
+Cria cópia rasa (shallow copy).
+
+**Tipo**: Função estendida  
+**Parâmetros**: oldTable (table)  
+**Retorna**: newTable (cópia rasa)
+
+**Implementação**:
+```lua
+function table.shallowCopy(oldTable)
+	local newTable = {}
+	for k, v in pairs(oldTable) do
+		newTable[k] = v
+	end
+	return newTable
+end
+```
+
+**Nota**: Shallow = copiam referências (não deepCopy)
+
+**Exemplo**:
+```lua
+local original = {a = 1, b = {x = 10}}
+local copy = table.shallowCopy(original)
+
+copy.a = 2
+copy.b.x = 20
+
+print(original.a)    -- 1 (não afetado)
+print(original.b.x)  -- 20 (referência compartilhada!)
+```
+
+---
+
+## 🔁 Iteração Ordenada
+
+### `pairsByKeys(t, f)` → iterator
+
+Retorna iterator que ordena por chaves.
+
+**Tipo**: Função global  
+**Parâmetros**:
+- t (table): Tabela a iterar
+- f (function|nil): Funcão de comparação (opcional)
+
+**Retorna**: iterator function
+
+**Implementação**:
+```lua
+function pairsByKeys(t, f)
+	local a = {}
+	for n in pairs(t) do
+		table.insert(a, n)
+	end
+	table.sort(a, f)
+	local i = 0 -- iterator variable
+	local iter = function() -- iterator function
+		i = i + 1
+		if a[i] == nil then
+			return nil
+		else
+			return a[i], t[a[i]]
+		end
+	end
+	return iter
+end
+```
+
+**Fluxo**:
+1. Extrair todas chaves em array a
+2. Sort a com função f (se fornecida)
+3. Retornar função iterator que:
+   - Incrementa i
+   - Retorna (key, value) ou nil
+
+**Uso em Loop**:
+```lua
+for key, value in pairsByKeys(table) do
+	print(key, value)
+end
+
+-- Com comparator customizado
+for key, value in pairsByKeys(table, function(a, b) return a > b end) do
+	print(key, value)
+end
+```
+
+**Exemplo**:
+```lua
+local data = {z = 1, a = 2, m = 3}
+
+-- Iteração normal (ordem indefinida)
+for k, v in pairs(data) do
+	print(k, v)
+end
+
+-- Iteração ordenada (a, m, z)
+for k, v in pairsByKeys(data) do
+	print(k, v)
+end
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Validação de Tabela Vazia
+
+```lua
+local config = loadConfig()
+if table.empty(config) then
+	print("Configuração não encontrada, usando defaults")
+	config = getDefaults()
+end
+```
+
+---
+
+### Padrão 2: Busca e Verificação
+
+```lua
+local allowedItems = {2175, 2176, 2177}
+
+if table.contains(allowedItems, itemId) then
+	player:say("Item é permitido!")
+end
+
+local itemIndex = table.find(allowedItems, itemId)
+if itemIndex then
+	print("Item na posição " .. itemIndex)
+end
+```
+
+---
+
+### Padrão 3: Contagem de Occurrências
+
+```lua
+local drops = {2160, 2160, 2165, 2160}
+print("Drops de item 2160: " .. table.count(drops, 2160))  -- 3
+```
+
+---
+
+### Padrão 4: Combinações para Recipes
+
+```lua
+local ingredients = {"apple", "sugar", "flour"}
+local combos = table.getCombinations(ingredients, 2)
+
+for _, combo in ipairs(combos) do
+	print("Recipe: " .. combo[1] .. " + " .. combo[2])
+end
+-- Recipe: apple + sugar
+-- Recipe: apple + flour
+-- Recipe: sugar + flour
+```
+
+---
+
+### Padrão 5: Serialização para Storage
+
+```lua
+local playerData = {
+	level = 50,
+	experience = 10000,
+	items = {2175, 2176}
+}
+
+local serialized = table.serialize(playerData)
+player:setStorageValue(1001, serialized)
+
+-- Depois, restaurar:
+local stored = player:getStorageValue(1001)
+local restored = table.unserialize(stored)
+print(restored.level)  -- 50
+```
+
+---
+
+### Padrão 6: Clonagem Rasa
+
+```lua
+local original = {a = 1, b = 2, c = 3}
+local copy = table.shallowCopy(original)
+
+copy.a = 999
+
+print(original.a)  -- 1 (não afetado)
+print(copy.a)      -- 999
+```
+
+---
+
+### Padrão 7: Iteração Ordenada
+
+```lua
+local rankings = {
+	["Alice"] = 100,
+	["Zoe"] = 90,
+	["Bob"] = 95
+}
+
+-- Mostrar em ordem alfabética
+for name, score in pairsByKeys(rankings) do
+	print(name .. ": " .. score)
+end
+-- Alice: 100
+-- Bob: 95
+-- Zoe: 90
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Função |
+|----------|-----------|--------|
+| **next() Check** | Testa se tabela vazia | table.empty |
+| **Iterative Searching** | Busca linear por valor | table.find, contains |
+| **Occurrence Counting** | Conta duplicatas | table.count |
+| **Combinatorial Generation** | Gera N-elemento subsets | table.getCombinations |
+| **Type-Aware Serialization** | Converte valores com tipo-checking | table.serialize |
+| **Loadstring Deserialization** | Executa Lua code para desserializar | table.unserialize |
+| **Shallow Copying** | Cria cópia rasa (shared references) | table.shallowCopy |
+| **Sorted Iteration** | Iterator com keys ordenadas | pairsByKeys |
+| **Recursion Detection** | Previne serialização cíclica | serialize com recur array |
+
+### Padrões Identificados
+
+1. **Extension Library**: Todas adicionadas a `table` global
+2. **Linear Search**: Búsqueda simples via pairs
+3. **Type Dispatch**: Serialize com type checking
+4. **Algorithm-Heavy**: getCombinations é complexo
+5. **Safety Checks**: Detecção de recursão, metatable validation
+6. **Utility Variants**: Aliases (append, countElements)
+
+### Responsabilidades
+
+- **Validation**: empty checking
+- **Searching**: find/contains for membership
+- **Counting**: occurrence tracking
+- **Combinatorics**: subset generation
+- **Serialization**: table ↔ string conversion
+- **Copying**: shallow cloning
+- **Iteration**: sorted traversal
+
+---
+
+## 📚 Conclusão
+
+O arquivo `tables.lua` estende **Lua table library com utilities essenciais** para manipulação de tabelas. Validação via empty, busca, contagem, combinações, serialização bidirecional, clonagem, e iteração ordenada. Suporta detecção de recursão em serialização, shallow copying, e combinatorial generation. Ideal para data validation, armazenamento de configuração, debugging, e algoritmos combinatoriais.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 150+/150+ (100%)  
+**Funções Principais**: 11  
+**Funções Adicionadas a**: Global `table` library + 1 função global (pairsByKeys)  
+**Categorias**: Utilities (2), Searching (2), Counting (2), Combinatorics (1), Serialization (2), Cloning (1), Iteration (1)  
+**Aliases**: table.append, table.countElements  
+**Algoritmos**: Combinatorial generation (lexicographic), Recursion tracking  
+**Exemplos Práticos**: 7  
+**Segurança**: ⚠️ unserialize usa loadstring (input não-confiável é risco)
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: table.append é alias direto para table.insert. table.empty usa next(t) == nil (eficiente). table.find retorna chave (index), não boolean; table.contains retorna boolean. table.getCombinations usa algoritmo combinatorial complexo (lexicographic order). table.serialize deteta recursão via recur array, retorna error se tabela cíclica ou tem metatable. table.unserialize usa loadstring ("return " .. str) - risco de segurança com input não-confiável. table.shallowCopy não faz deepCopy (referências compartilhadas). pairsByKeys retorna função iterator (não um for-able). Aliases: table.countElements chama table.count.
+</Aside>

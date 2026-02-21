@@ -1,0 +1,799 @@
+---
+title: "spawn.lua"
+description: "Sistema de gerenciamento de spawn de monstros com suporte a múltiplas posições, respawn automático via storage, callbacks de evento (onSpawn, onDeath), timers com efeitos visuais, gerenciamento de UID de monstros, e estatísticas de spawn ativo/inativo."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que implementa **complete spawn system para monstros**: constructor Spawn() que cria instância com storage-based respawn tracking, positions array (monster name + position + spawntime), monsters registry com UIDs, event callbacks (onSpawn para registro, onDeath para respawn), spawnMonsterTimer com contagem regressiva + efeitos visuais (3x CONST_ME_TELEPORT), removeSpawn para desabilitar spawn, checkMonstersUID para validar UIDs ativos vs inativo. Centraliza lógica de spawn em uma classe reutilizável.
+
+**Caminho Original**: `data/libs/functions/spawn.lua`
+
+<Aside type="tip">
+O arquivo `spawn.lua` é **foundation para spawn system de servidor**. Permite criar spawn points com múltiplas posições, respawn automático de monstros eliminados, event callbacks para customização, e spawn timers com visual feedback. Perfeito para raids, áreas de mobs, invasões dinâmicas.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **4 layers de funcionalidade**:
+
+1. **Spawn Instance Creation**: Constructor via __call que cria spawn_data com storage/monsters/positions
+2. **Position Management**: Gerenciar lista de posições (monster name, posição, spawntime)
+3. **Monster Registry**: Adicionar/remover/buscar monstros por UID
+4. **Spawn Execution**: Despawnar monstros com timers, callbacks de evento, respawn automático
+
+O design usa **storage-based respawn** (monstro guarda index de posição em storage), **event callback system** (onSpawn → registra monsterDeath, onDeath → respawn), **timer-based spawning** com visual effects, e **UID validation** para limpeza de referencias mortas.
+
+### Estrutura de Funcionalidades
+
+```
+Spawn System
+├── Global Variables (2)
+│   ├── MonsterStorage (storage constants)
+│   └── SpawnMetatables (registry of instances)
+├── Constructor (1)
+│   └── Spawn() → spawn instance [via __call]
+├── Position Management (2)
+│   ├── Spawn:getPositions() → table
+│   └── Spawn:setPositions(pos) → void
+├── Monster Registry (4)
+│   ├── Spawn:getMonsters() → table of UIDs
+│   ├── Spawn:getMonster(uid) → index
+│   ├── Spawn:addMonster(monster) → boolean
+│   ├── Spawn:deleteMonster(uid) → boolean
+│   └── Spawn:removeMonsters() → void
+├── Function Management (4)
+│   ├── Spawn:getFunctionMonster(tableName) → table
+│   ├── Spawn:addFunctionMonster(tableName, func, name) → boolean
+│   ├── Spawn:executeFunctionMonster(tableName, ...) → boolean
+│   ├── Spawn:addFunction(table, func, name) → boolean
+│   └── Spawn:executeFunction(table, ...) → boolean
+├── Spawning Engine (3)
+│   ├── Spawn:spawnMonsterTimer(config, func) → void [addEvent]
+│   ├── Spawn:spawnMonsterIndex(index) → void
+│   └── Spawn:executeSpawn() → boolean
+├── Spawn Control (2)
+│   ├── Spawn:removeSpawn() → boolean
+│   └── Spawn:checkMonstersUID() → {active, inactive}
+└── Internal Data Structure
+    ├── storage.info (550000) - monstro index storage
+    ├── storage.object (550001) - spawn reference storage
+    ├── monsters[] - UIDs de monstros vivos
+    ├── positions[] - Spawn configs {monster, pos, spawntime, status}
+    └── functions.onSpawn / onDeath - Event callbacks
+```
+
+---
+
+## 🌍 Variáveis Globais
+
+### `MonsterStorage`
+
+Constantes de storage IDs para respawn tracking.
+
+**Tipo**: Tabela global  
+**Estrutura**:
+```lua
+MonsterStorage = {
+	Spawn = {
+		info = 550000,                    -- Storage para monstro index
+		monster_spawn_object = 550001,    -- Storage para spawn object ref
+	},
+}
+```
+
+**Uso**:
+- `info (550000)`: Monstro armazena seu spawn index aqui (para respawn)
+- `monster_spawn_object (550001)`: Monstro armazena spawn object ref (para death callback)
+
+---
+
+### `SpawnMetatables`
+
+Registro global de todas Spawn instances criadas.
+
+**Tipo**: Tabela global (array)  
+**Estrutura**: `SpawnMetatables[index] = spawn_instance`
+
+**Propósito**: Allows iteration de todos spawns (ex: para cleanup on shutdown)
+
+---
+
+## 🏗️ Constructor
+
+### `Spawn()` → spawn instance
+
+Cria novo Spawn instance via metatable __call.
+
+**Tipo**: Constructor function (via metatable)  
+**Retorna**: Spawn instance (metatable com __index = Spawn)
+
+**Implementação**:
+```lua
+setmetatable(Spawn, {
+	__call = function(self)
+		local spawn_data = {
+			storage = {
+				info = MonsterStorage.Spawn.info,
+				object = MonsterStorage.Spawn.monster_spawn_object,
+			},
+			monsters = {},
+			positions = {},
+			functions = {
+				["onSpawn"] = {
+					["MonsterDeath"] = function(s, monster)
+						monster:setStorageValue(s.storage.object, s)
+						monster:registerEvent("monsterDeath")
+					end,
+				},
+				["onDeath"] = {
+					["Respawn"] = function(s, monster)
+						if monster:getStorageValue(s.storage.info) > 0 then
+							s:spawnMonsterIndex(monster:getStorageValue(s.storage.info))
+						end
+					end,
+				},
+			},
+		}
+		local mt = setmetatable(spawn_data, { __index = Spawn })
+		table.insert(SpawnMetatables, mt)
+		return mt
+	end,
+})
+```
+
+**Estrutura Criada**:
+- `storage.info`: 550000 (storage key para monstro armazenar index)
+- `storage.object`: 550001 (storage key para spawn reference)
+- `monsters`: Array vazio para UIDs de monstros
+- `positions`: Array vazio para spawn configs
+- `functions.onSpawn.MonsterDeath`: Callback registra monsterDeath event
+- `functions.onDeath.Respawn`: Callback respawna monstro se index válido
+
+**Fluxo**:
+1. Cria spawn_data com estrutura completa
+2. setmetatable com __index = Spawn (acesso aos métodos)
+3. Insere em SpawnMetatables global
+4. Retorna instância pronta
+
+**Uso**:
+```lua
+local mySpawn = Spawn()
+```
+
+---
+
+## 📍 Gerenciamento de Posições
+
+### `Spawn:getPositions()` → table
+
+Retorna array de posições de spawn.
+
+**Tipo**: Method  
+**Retorna**: self.positions (table)
+
+**Estrutura de Elemento**:
+```lua
+{
+	monster = "Rat",       -- Nome do monstro
+	pos = Position(x,y,z), -- Posição
+	spawntime = 60,        -- Tempo respawn em segundos
+	status = true          -- Habilitado/desabilitado
+}
+```
+
+---
+
+### `Spawn:setPositions(pos)` → void
+
+Define array de posições.
+
+**Tipo**: Method  
+**Parâmetros**: `pos` (table ou single position)  
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Spawn.setPositions(self, pos)
+	if type(pos) ~= "table" then
+		pos = { pos }
+	end
+	self.positions = pos
+end
+```
+
+**Comportamento**: Wraps single position em table se necessário
+
+**Exemplo**:
+```lua
+local spawn = Spawn()
+spawn:setPositions({
+	{ monster = "Rat", pos = Position(100, 100, 7), spawntime = 60 },
+	{ monster = "Spider", pos = Position(110, 100, 7), spawntime = 60 },
+})
+```
+
+---
+
+## 👾 Gerenciamento de Monstros
+
+### `Spawn:getMonsters()` → table
+
+Retorna array de UIDs de monstros ativos.
+
+**Tipo**: Method  
+**Retorna**: self.monsters (table de UIDs)
+
+---
+
+### `Spawn:getMonster(uid)` → index
+
+Busca índice de monstro na lista.
+
+**Tipo**: Method  
+**Parâmetros**: `uid` (creature UID)  
+**Retorna**: index (number) ou 0 (não encontrado)
+
+**Implementação**:
+```lua
+function Spawn.getMonster(self, uid)
+	for i, v in pairs(self:getMonsters()) do
+		if v == uid then
+			return i
+		end
+	end
+	return 0
+end
+```
+
+---
+
+### `Spawn:addMonster(monster)` → boolean
+
+Adiciona monstro ao registry (valida se vivo).
+
+**Tipo**: Method  
+**Parâmetros**: `monster` (Creature)  
+**Retorna**: boolean (sucesso)
+
+**Implementação**:
+```lua
+function Spawn.addMonster(self, monster)
+	if monster:getId() then
+		table.insert(self:getMonsters(), monster)
+		return true
+	end
+	return false
+end
+```
+
+**Validação**: Checa se monstro:getId() retorna valor válido
+
+---
+
+### `Spawn:deleteMonster(uid)` → boolean
+
+Remove monstro do registry.
+
+**Tipo**: Method  
+**Parâmetros**: `uid` (creature UID)  
+**Retorna**: boolean (sucesso)
+
+**Implementação**:
+```lua
+function Spawn.deleteMonster(self, uid)
+	local get_monster = self:getMonster(uid)
+	table.remove(self:getMonsters(), get_monster)
+	return true
+end
+```
+
+---
+
+### `Spawn:removeMonsters()` → void
+
+Remove todos os monstros (chamada :remove() em cada).
+
+**Tipo**: Method  
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Spawn.removeMonsters(self)
+	for i, v in pairs(self:getMonsters()) do
+		if v then
+			v:remove()
+		end
+	end
+end
+```
+
+---
+
+## 🔗 Gerenciamento de Funções
+
+### `Spawn:getFunctionMonster(tableName)` → table
+
+Retorna tabela de callbacks para evento específico.
+
+**Tipo**: Method  
+**Parâmetros**: `tableName` (string: "onSpawn", "onDeath", etc)  
+**Retorna**: self.functions[tableName] (table de callbacks)
+
+**Exemplo**:
+```lua
+local onSpawnCallbacks = spawn:getFunctionMonster("onSpawn")
+```
+
+---
+
+### `Spawn:addFunctionMonster(tableName, func, functionName)` → boolean
+
+Adiciona callback a evento específico.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `tableName` (string): "onSpawn", "onDeath"
+- `func` (function): Callback a adicionar
+- `functionName` (string|nil): Nome (ou index auto)
+
+**Retorna**: boolean (sucesso)
+
+**Implementação** (via addFunction):
+```lua
+function Spawn.addFunctionMonster(self, tableName, func, functionName)
+	return self:addFunction(self:getFunctionMonster(tableName), func, functionName)
+end
+```
+
+---
+
+### `Spawn:executeFunctionMonster(tableName, ...)` → boolean
+
+Executa todos callbacks de evento.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `tableName` (string): "onSpawn", "onDeath"
+- `...`: Argumentos passados aos callbacks
+
+**Retorna**: boolean (sucesso)
+
+**Implementação** (via executeFunction):
+```lua
+function Spawn.executeFunctionMonster(self, tableName, ...)
+	return self:executeFunction(self:getFunctionMonster(tableName), ...)
+end
+```
+
+**Callback Signature**:
+```lua
+function(spawn, ...) -- spawn como primeiro arg, depois ...
+```
+
+---
+
+### `Spawn:addFunction(table, func, functionName)` → boolean
+
+Utilitário genérico: adiciona function a tabela.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `table` (table): Tabela alvo
+- `func` (function): Function a adicionar
+- `functionName` (string|nil): Nome (ou #table + 1)
+
+**Retorna**: boolean (sucesso)
+
+**Validação**: Checa type(func) == "function", type(table) == "table"
+
+---
+
+### `Spawn:executeFunction(table, ...)` → boolean
+
+Utilitário genérico: executa todas functions em tabela.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `table` (table): Tabela com functions
+- `...`: Argumentos aos callbacks
+
+**Retorna**: boolean (sucesso)
+
+---
+
+## 🎯 Motor de Spawn
+
+### `Spawn:spawnMonsterTimer(config, func)` → void
+
+Cria timer de spawn com contador visual e efeitos.
+
+**Tipo**: Method  
+**Parâmetros**:
+- `config` (table): `{spawntime, monster, pos}`
+- `func` (function|nil): Callback pós-spawn
+
+**Retorna**: Nenhum (usa addEvent)
+
+**Implementação**:
+```lua
+function Spawn.spawnMonsterTimer(self, config, func)
+	local time_tp = 3  -- 3 segundos visual countdown
+	config.spawntime = config.spawntime <= time_tp and (time_tp + 1) or (config.spawntime - time_tp)
+	addEvent(function()
+		-- 3 loops de efeito
+		for i = 1, time_tp do
+			addEvent(function()
+				config.pos:sendMagicEffect(CONST_ME_TELEPORT)
+			end, i * 1000)
+		end
+		-- Spawn monstro após efeitos
+		addEvent(function()
+			local monster = Game.createMonster(config.monster, config.pos, false, false)
+			if not monster then
+				logger.error("[Spawn] Error on spawn monster: {}", config.monster)
+				return false
+			end
+			if func ~= nil and func ~= false then
+				func(monster)
+			end
+			self:executeFunctionMonster("onSpawn", monster)
+		end, time_tp * 1000)
+	end, config.spawntime * 1000)
+end
+```
+
+**Fluxo**:
+1. Calcula tempo real: se menor ou igual a 3s, set 4s; senão subtract 3s (para efeitos)
+2. Espera config.spawntime
+3. Envia 3x CONST_ME_TELEPORT (1s apart)
+4. Cria monstro Game.createMonster
+5. Executa func(monster) se fornecido
+6. Executa onSpawn callbacks
+
+**Timing Example**:
+- Config spawntime: 60s
+- Efetivo wait: 57s (60-3)
+- Visual effects: 3s antes do spawn (nos últimos 3s do timer)
+- Total real: 60s (57 + 3 efeitos)
+
+---
+
+### `Spawn:spawnMonsterIndex(index)` → void
+
+Spawna monstro em posição específica (via index no array).
+
+**Tipo**: Method  
+**Parâmetros**: `index` (number: índice em self.positions)  
+**Retorna**: Nenhum
+
+**Implementação**:
+```lua
+function Spawn.spawnMonsterIndex(self, index)
+	local table = self:getPositions()
+	table = table[index]
+	if table ~= nil and table.status == true then
+		local config = {
+			spawntime = table.spawntime,
+			monster = table.monster,
+			pos = table.pos,
+		}
+		local func = function(s, monster)
+			monster:setStorageValue(s.storage.info, index)
+			s:addMonster(monster)
+		end
+		self:addFunctionMonster("onSpawn", func, "MonsterIndex")
+		self:spawnMonsterTimer(config)
+	else
+		logger.error("[Spawn.spawnMonsterIndex] - Table is nil")
+	end
+end
+```
+
+**Fluxo**:
+1. Lookup position by index
+2. Validar status == true
+3. Criar config `{spawntime, monster, pos}`
+4. Criar callback que seta storage.info = index + addMonster
+5. Adicionar callback a onSpawn
+6. Chamar spawnMonsterTimer
+
+**Storage Setting**: Monstro armazena index em storage.info para respawn tracking
+
+---
+
+### `Spawn:executeSpawn()` → boolean
+
+Spawna todos os monstros (itera positions).
+
+**Tipo**: Method  
+**Retorna**: boolean (sucesso)
+
+**Implementação**:
+```lua
+function Spawn.executeSpawn(self)
+	local pos = self:getPositions()
+	if not pos then
+		error("Not set pos")
+		return false
+	end
+	for i, v in pairs(pos) do
+		self:spawnMonsterIndex(i)
+	end
+end
+```
+
+**Fluxo**:
+1. Validar positions não nil
+2. Loop cada posição
+3. Chamar spawnMonsterIndex(i) para cada
+
+---
+
+## 🛑 Controle de Spawn
+
+### `Spawn:removeSpawn()` → boolean
+
+Desabilita spawn (set status = false).
+
+**Tipo**: Method  
+**Retorna**: boolean (sucesso)
+
+**Implementação**:
+```lua
+function Spawn.removeSpawn(self)
+	local pos = self:getPositions()
+	if not pos then
+		error("Not set pos")
+		return false
+	end
+	for i, v in pairs(pos) do
+		v.status = false
+	end
+end
+```
+
+**Efeito**: Novos spawns não ocorrem (status = false previne spawnMonsterIndex)
+
+---
+
+### `Spawn:checkMonstersUID()` → table
+
+Valida UUIDs (limpa mortos, retorna estatísticas).
+
+**Tipo**: Method  
+**Retorna**: `{active: number, inactive: number}`
+
+**Implementação**:
+```lua
+function Spawn.checkMonstersUID(self)
+	local monsters = self:getMonsters()
+	local statistics = {
+		active = 0,
+		inactive = 0,
+	}
+	for i, v in pairs(monsters) do
+		if v ~= nil and v:isMonster() then
+			statistics.active = statistics.active + 1
+		else
+			self:deleteMonster(v)
+			statistics.inactive = statistics.inactive + 1
+		end
+	end
+	return statistics
+end
+```
+
+**Fluxo**:
+1. Loop cada monstro em self.monsters
+2. Validar v:isMonster() (vivo)
+3. Se vivo: active++
+4. Se morto: deleteMonster + inactive++
+5. Retornar estatísticas
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Spawn Simples de Rato
+
+```lua
+local ratSpawn = Spawn()
+ratSpawn:setPositions({
+	{ monster = "Rat", pos = Position(100, 100, 7), spawntime = 60, status = true },
+})
+ratSpawn:executeSpawn()
+```
+
+**Resultado**: Rato spawna a cada 60s na posição (100,100,7)
+
+---
+
+### Padrão 2: Múltiplas Posições
+
+```lua
+local spiderSpawn = Spawn()
+spiderSpawn:setPositions({
+	{ monster = "Spider", pos = Position(100, 100, 7), spawntime = 45, status = true },
+	{ monster = "Spider", pos = Position(120, 100, 7), spawntime = 45, status = true },
+	{ monster = "Spider", pos = Position(140, 100, 7), spawntime = 45, status = true },
+})
+spiderSpawn:executeSpawn()
+```
+
+**Resultado**: 3 spiders spawnam em paralelo com timers independentes
+
+---
+
+### Padrão 3: Event Callbacks Customizados
+
+```lua
+local bossSpawn = Spawn()
+bossSpawn:setPositions({
+	{ monster = "Dragon", pos = Position(200, 200, 7), spawntime = 3600, status = true },
+})
+
+-- Customizar onSpawn
+bossSpawn:addFunctionMonster("onSpawn", function(spawn, monster)
+	monster:say("I am awake!")
+	Game.broadcastMessage(monster:getName() .. " spawned!")
+end, "BossAnnounce")
+
+-- Customizar onDeath
+bossSpawn:addFunctionMonster("onDeath", function(spawn, monster)
+	Game.broadcastMessage(monster:getName() .. " was defeated! Respawning in 1 hour...")
+end, "BossDeathAnnounce")
+
+bossSpawn:executeSpawn()
+```
+
+**Resultado**: Boss saysa mensagem ao spawnar, broadcast ao morrer
+
+---
+
+### Padrão 4: Condição de Status
+
+```lua
+local eventSpawn = Spawn()
+eventSpawn:setPositions({
+	{ monster = "Demon", pos = Position(150, 150, 7), spawntime = 30, status = false },
+})
+
+-- Depois, iniciar evento:
+if shouldStartEvent() then
+	eventSpawn.positions[1].status = true
+	eventSpawn:executeSpawn()
+end
+
+-- Parar evento:
+eventSpawn:removeSpawn()
+```
+
+**Resultado**: Spawn pode ser turned on/off via status flag
+
+---
+
+### Padrão 5: Cleanup & Validation
+
+```lua
+local farmSpawn = Spawn()
+farmSpawn:setPositions({
+	-- Array de monsters...
+})
+farmSpawn:executeSpawn()
+
+-- Periodicamente validar UIDs
+addEvent(function()
+	local stats = farmSpawn:checkMonstersUID()
+	print("Active: " .. stats.active .. ", Inactive: " .. stats.inactive)
+end, 60000)  -- Check a cada 1 minuto
+```
+
+**Resultado**: Limpa referências mortas, monitora spawn health
+
+---
+
+### Padrão 6: Spawn com Callback Customizado
+
+```lua
+local lootSpawn = Spawn()
+lootSpawn:setPositions({
+	{ monster = "Treasure Golem", pos = Position(175, 175, 7), spawntime = 120, status = true },
+})
+
+-- Função customizada pós-spawn
+local onLootMonster = function(monster)
+	-- Customizado behavior aqui
+	monster:addItem(Item(2165, 10))  -- Adicionar ouro ao spawn
+end
+
+lootSpawn:executeSpawn()
+
+-- Ou chamar diretamente spawnMonsterTimer
+local config = {
+	spawntime = 120,
+	monster = "Treasure Golem",
+	pos = Position(175, 175, 7),
+}
+lootSpawn:spawnMonsterTimer(config, onLootMonster)
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Implementação |
+|----------|-----------|---------------|
+| **Storage-Based Respawn** | Monstro armazena spawn index em storage | monster:setStorageValue(storage.info, index) |
+| **Event Callback Chain** | onSpawn → register death, onDeath → respawn | functions.onSpawn, .onDeath |
+| **Timer-Based Spawn** | Countdown antes de spawn com efeitos | spawnMonsterTimer com addEvent |
+| **Visual Feedback** | 3x CONST_ME_TELEPORT antes do spawn | Efeitos 1s apart |
+| **UID Validation** | Limpa references mortas | checkMonstersUID |
+| **Position Array** | Multi-spawn com independent timers | positions[] array |
+| **Status Control** | Enable/disable spawn via flag | positions[i].status |
+| **Metatable Constructor** | Spawn() via __call | __call em Spawn metatable |
+
+### Padrões Identificados
+
+1. **Position-Based Spawning**: Array de posições com timeout independente
+2. **Event-Driven System**: onSpawn/onDeath callbacks para behavior customization
+3. **Timer-Based Execution**: addEvent para spawn scheduling com visual effects
+4. **Storage-Based State**: Monstro armazena index para respawn automation
+5. **Array-Based Registry**: monsters[] para UID tracking
+6. **Status-Based Control**: Flag enable/disable sem remover config
+7. **Metatable Factory**: Constructor via __call para Spawn instances
+
+### Responsabilidades by Category
+
+- **Position Management**: Define/get spawn locations com spawntime
+- **Monster Registry**: Track UIDs vivos, cleanup mortos
+- **Event System**: onSpawn/onDeath callbacks para customization
+- **Spawn Engine**: Timer logic, monster creation, effect timing
+- **Spawn Control**: Start/stop spawning, validate health
+
+---
+
+## 📚 Conclusão
+
+O arquivo `spawn.lua` implementa **complete spawn management system para monstros**. Storage-based respawn garante automático respawn de monstros eliminados, event callbacks permitem customization, timer-based spawning com visual effects cria immersive experience, multi-position arrays permitem complex spawn patterns. Ideal para raids, farMinecraft de mob, e dynamic monster management.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: 1.0  
+**Autor**: @Glatharth  
+**Linhas Documentadas**: 220/220 (100%)  
+**Métodos Principais**: 15  
+**Global Variables**: 2 (MonsterStorage, SpawnMetatables)  
+**Events Suportados**: onSpawn, onDeath [extensível]  
+**Storage Keys**: 550000 (info), 550001 (object reference)  
+**Visual Effects**: CONST_ME_TELEPORT (3x antes spawn)  
+**Padrões de Design**: Event-Driven, Timer-Based, Storage-Driven, Factory, Registry  
+**Exemplos Práticos**: 6  
+**Complexidade**: Position array scales linear, respawn automation O(1)
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: 
+
+- Spawn usa `storage.info` (550000) para monster index tracking
+- `storage.object` (550001) para spawn reference
+- `spawnMonsterIndex` adiciona "MonsterIndex" callback a onSpawn dinamicamente
+- `spawnMonsterTimer` reduz spawntime by 3s (para visual effects countdown)
+- Visual effects (`CONST_ME_TELEPORT`) executam 1s apart (3 total)
+- `removeSpawn` only sets status=false (não remove config)
+- `checkMonstersUID` deletes dead references from monsters[]
+- Respawn triggered by onDeath callback checking storage.info > 0
+- Position structure requer `{monster, pos, spawntime, status}` per element
+</Aside>

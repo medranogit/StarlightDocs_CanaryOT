@@ -1,0 +1,267 @@
+---
+title: on_death.lua
+description: CreatureEvent "FamiliarDeath" que limpa timers e registra morte via kv quando familiar morre.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="on_death.lua" icon="pencil">
+Listener de morte que limpa timers e registra death timestamp.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/familiar/on_death.lua`
+
+**Linhas:** 19 | **Event:** CreatureEvent "FamiliarDeath" | **Tipo:** onDeath Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener de morte de familiar. Ao familiar morrer: obtem master (jogador dono), lookup vocation em FAMILIAR_ID, valida se o familiar morto está na lista da vocation (table.contains por nome). Se sim: registra morte via player:kv():set("familiar-summon-time", os.time()), faz loop em FAMILIAR_TIMER table e cancela todos os timers ativos (stopEvent + setStorageValue -1). Padrão de familiar death com cleanup de timers.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT: "FamiliarDeath"
+  └─ onDeath(creature, corpse, lasthitkiller, mostdamagekiller, lasthitunjustified, mostdamageunjustified)
+      ├─ player = creature:getMaster()
+      │   └─ Obtem jogador dono do familiar
+      │
+      ├─ Validação: player exists?
+      │   └─ NÃO → return false
+      │
+      ├─ vocation = FAMILIAR_ID[player:getVocation():getBaseId()]
+      │   └─ Lookup: Tabela global
+      │
+      ├─ table.contains(vocation, creature:getName())?
+      │   │   (Valida se é familiar listado)
+      │   │
+      │   ├─ SIM:
+      │   │   ├─ player:kv():set("familiar-summon-time", os.time())
+      │   │   │   └─ Registra morte (timestamp)
+      │   │   │
+      │   │   └─ for sendMessage = 1 to #FAMILIAR_TIMER:
+      │   │       ├─ storage = FAMILIAR_TIMER[sendMessage].storage
+      │   │       ├─ stopEvent(player:getStorageValue(storage))
+      │   │       │   └─ Cancela timer ativo
+      │   │       └─ setStorageValue(storage, -1)
+      │   │           └─ Marca como inativo
+      │   │
+      │   └─ NÃO: Pula cleanup
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| familiarOnDeath | CreatureEvent | Listener de morte |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| FAMILIAR_ID | table | Tabela global de mapeamento vocation -> familiar |
+| FAMILIAR_TIMER | table | Tabela de configuração de timers |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| creature | Creature | Familiar que morreu |
+| corpse | Item | Corpo deixado |
+| lasthitkiller | Player | Último golpe |
+| mostdamagekiller | Player | Mais dano |
+| lasthitunjustified | bool | Last hit injustificado |
+| mostdamageunjustified | bool | Most damage injustificado |
+
+### Data Structures
+
+| Estrutura | Tipo | Descrição |
+|-----------|------|-----------|
+| FAMILIAR_TIMER | table | Array com items: `{.storage = numero}` |
+| vocation | table | FAMILIAR_ID[baseId], contém lista de nomes |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local familiarOnDeath = CreatureEvent("FamiliarDeath")
+
+function familiarOnDeath.onDeath(creature, corpse, lasthitkiller, mostdamagekiller, lasthitunjustified, mostdamageunjustified)
+	-- Obter master (jogador dono)
+	local player = creature:getMaster()
+	if not player then
+		return false
+	end
+
+	-- Lookup: Vocation familiar data
+	local vocation = FAMILIAR_ID[player:getVocation():getBaseId()]
+
+	-- Validação: É familiar registrado desta vocation?
+	if table.contains(vocation, creature:getName()) then
+		-- Registrar morte (timestamp)
+		player:kv():set("familiar-summon-time", os.time())
+		
+		-- Cleanup: Cancelar todos os timers
+		for sendMessage = 1, #FAMILIAR_TIMER do
+			-- Obter ID do timer ativo
+			local timerEventId = player:getStorageValue(FAMILIAR_TIMER[sendMessage].storage)
+			
+			-- Cancelar timer
+			stopEvent(timerEventId)
+			
+			-- Marcar como inativo
+			player:setStorageValue(FAMILIAR_TIMER[sendMessage].storage, -1)
+		end
+	end
+	return true
+end
+
+familiarOnDeath:register()
+```
+
+### Árvore de Decisão
+
+```
+Familiar morre
+  │
+  ├─ player = creature:getMaster()
+  │   └─ Obtem jogador dono
+  │
+  ├─ player exists?
+  │   ├─ NÃO → return false (erro)
+  │   └─ SIM → Continua
+  │
+  ├─ vocation = FAMILIAR_ID[baseVocationId]
+  │   └─ Lookup: Tabela global
+  │
+  ├─ table.contains(vocation, creature:getName())?
+  │   │   (Valida se é familiar da vocation)
+  │   │
+  │   ├─ SIM:
+  │   │   │
+  │   │   ├─ Registrar morte:
+  │   │   │   └─ player:kv():set("familiar-summon-time", os.time())
+  │   │   │       (Timestamp atual = morte)
+  │   │   │
+  │   │   └─ CLEANUP TIMERS:
+  │   │       for i = 1 to #FAMILIAR_TIMER:
+  │   │       │
+  │   │       ├─ timerEventId = getStorageValue(storage[i])
+  │   │       │   └─ Obtem ID do timer ativo
+  │   │       │
+  │   │       ├─ stopEvent(timerEventId)
+  │   │       │   └─ Cancela timer
+  │   │       │
+  │   │       └─ setStorageValue(storage[i], -1)
+  │   │           └─ Marca inativo
+  │   │
+  │   └─ NÃO: Pula cleanup
+  │
+  └─ return true (sucesso)
+```
+
+### Timer Cleanup Loop
+
+```lua
+-- Loop sobre todos os timers configurados
+for sendMessage = 1, #FAMILIAR_TIMER do
+	-- FAMILIAR_TIMER[sendMessage] = { storage = numero }
+	local storage = FAMILIAR_TIMER[sendMessage].storage
+	
+	-- Obter ID do timer ativo do player
+	local timerEventId = player:getStorageValue(storage)
+	
+	-- Cancelar timer
+	stopEvent(timerEventId)
+	
+	-- Marcar como inativo (-1)
+	player:setStorageValue(storage, -1)
+end
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **getMaster()**: Obtem jogador dono de creature
+- **table.contains()**: Validar existência em table
+- **player:kv()**: Key-value storage persistente
+- **kv():set()**: Registrar timestamp
+- **os.time()**: Timestamp Unix atual
+- **stopEvent()**: Cancelar event ativo
+- **getStorageValue()**: Obter ID de timer
+- **setStorageValue()**: Marcar como inativo (-1)
+- **Loop de timers**: Cleanup automático de múltiplos timers
+
+### Responsabilidades do Handler
+
+1. **Obter dono**: creature:getMaster()
+2. **Validar**: player exists?
+3. **Lookup**: vocation = FAMILIAR_ID[baseId]
+4. **Verificar**: table.contains(vocation, name)
+5. **Registrar**: kv():set("familiar-summon-time", os.time())
+6. **Cleanup**: Loop stopEvent + setStorageValue -1
+7. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Death Registration
+
+Registrar morte via timestamp:
+
+```lua
+player:kv():set("familiar-summon-time", os.time())
+```
+
+### Padrão Timer Cleanup Loop
+
+Cancelar múltiplos timers:
+
+```lua
+for sendMessage = 1, #FAMILIAR_TIMER do
+	stopEvent(player:getStorageValue(FAMILIAR_TIMER[sendMessage].storage))
+	player:setStorageValue(FAMILIAR_TIMER[sendMessage].storage, -1)
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: on_death.lua" icon="star">
+Análise de listener de morte de familiar. Demonstra getMaster(), table.contains, timer cleanup e kv persistent storage.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Familiar death with timer cleanup | Complexidade: Média
+</Aside>

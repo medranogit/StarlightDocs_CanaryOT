@@ -1,0 +1,214 @@
+---
+title: on_advance.lua
+description: CreatureEvent "FamiliarAdvance" que adiciona familar ao jogador ao fazer level-up (premium + level 200+).
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="on_advance.lua" icon="pencil">
+Listener de level-up que gerencia familiar com looktype.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/familiar/on_advance.lua`
+
+**Linhas:** 22 | **Event:** CreatureEvent "FamiliarAdvance" | **Tipo:** onAdvance Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener de level-up que adiciona familiar ao jogador. Ao fazer advance (level-up): valida se vocation existe em FAMILIAR_ID table (lookup por vocation base ID). Se não premium e newLevel < 200: retorna true silenciosamente. Se vocation existe e premium/level 200+: seta familiarLooktype (visual), verifica e adiciona familiar se não possui. Padrão de familiar system com premium gating.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT: "FamiliarAdvance"
+  └─ onAdvance(player, skill, oldLevel, newLevel)
+      ├─ Lookup: vocation = FAMILIAR_ID[player:getVocation():getBaseId()]
+      │
+      ├─ Validação: newLevel < 200 && não premium?
+      │   └─ SIM → return true (silencioso, sem ação)
+      │
+      ├─ if vocation:
+      │   ├─ getFamiliarLooktype() == 0?
+      │   │   └─ SIM → setFamiliarLooktype(vocation.id)
+      │   │
+      │   ├─ hasFamiliar(vocation.id)?
+      │   │   └─ NÃO → addFamiliar(vocation.id)
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| familiarOnAdvance | CreatureEvent | Listener de advance |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| FAMILIAR_ID | table | Tabela global de mapeamento vocation -> familiar |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Jogador que fez level-up |
+| skill | número | ID da skill que foi avançada |
+| oldLevel | número | Level anterior |
+| newLevel | número | Novo level |
+
+### Familiar Requirements
+
+| Requisito | Valor | Descrição |
+|-----------|-------|-----------|
+| Premium Account | Sim | Obrigatório se level < 200 |
+| Min Level | 200 | Level mínimo para familiar |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local familiarOnAdvance = CreatureEvent("FamiliarAdvance")
+
+function familiarOnAdvance.onAdvance(player, skill, oldLevel, newLevel)
+	-- Lookup: Obter familiar data da vocation
+	local vocation = FAMILIAR_ID[player:getVocation():getBaseId()]
+	
+	-- Validação: Premium + level check
+	if newLevel < 200 and not player:isPremium() then
+		return true  -- Silencioso, sem ação
+	end
+
+	-- Se vocation existe
+	if vocation then
+		-- Seta looktype se não possui
+		if player:getFamiliarLooktype() == 0 then
+			player:setFamiliarLooktype(vocation.id)
+		end
+		
+		-- Adiciona familiar se não possui
+		if not player:hasFamiliar(vocation.id) then
+			player:addFamiliar(vocation.id)
+		end
+	end
+	return true
+end
+
+familiarOnAdvance:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador faz level-up
+  │
+  ├─ vocation = FAMILIAR_ID[baseVocationId]
+  │   └─ Lookup: Tabela global
+  │
+  ├─ newLevel < 200 && não premium?
+  │   ├─ SIM → return true (nada acontece)
+  │   └─ NÃO → Continua
+  │
+  ├─ if vocation exists:
+  │   │
+  │   ├─ getFamiliarLooktype() == 0?
+  │   │   ├─ SIM → setFamiliarLooktype(vocation.id)
+  │   │   │         (Define visual do familiar)
+  │   │   └─ NÃO → Pula (já tem looktype)
+  │   │
+  │   └─ hasFamiliar(vocation.id)?
+  │       ├─ SIM → Pula (já possui)
+  │       └─ NÃO → addFamiliar(vocation.id)
+  │               (Adiciona familiar)
+  │
+  └─ return true (sucesso)
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent**: Sistema de listeners para eventos de creature
+- **onAdvance**: Callback disparado ao fazer level-up
+- **getBaseId()**: Obtem ID base de vocation (sem classe secundária)
+- **Premium Gating**: Requisito premium para algumas features
+- **Familiar Looktype**: Visual do familiar (ID numérico)
+- **Familiar Possession**: Validar e adicionar familiar
+- **FAMILIAR_ID Lookup**: Tabela global de mapeamento
+
+### Responsabilidades do Handler
+
+1. **Obter vocation**: FAMILIAR_ID[baseVocationId]
+2. **Validar requisitos**: Premium + level 200+
+3. **Seta looktype**: Se não possui
+4. **Adicionar familiar**: Se não possui
+5. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Familiar Setup
+
+Setup de familiar em level-up:
+
+```lua
+if vocation then
+	if player:getFamiliarLooktype() == 0 then
+		player:setFamiliarLooktype(vocation.id)
+	end
+	if not player:hasFamiliar(vocation.id) then
+		player:addFamiliar(vocation.id)
+	end
+end
+```
+
+### Padrão Premium Gating
+
+Requisito premium:
+
+```lua
+if newLevel < 200 and not player:isPremium() then
+	return true  -- Silencioso
+end
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: on_advance.lua" icon="star">
+Análise de listener de level-up para familiar system. Demonstra CreatureEvent, premium gating e looktype management.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Familiar advance setup with premium gating | Complexidade: Média
+</Aside>

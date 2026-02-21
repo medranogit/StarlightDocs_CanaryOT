@@ -1,0 +1,363 @@
+---
+title: "Spell - divine_healing.lua"
+description: "Spell de cura holy com dispel paralyze para paladins level 35"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `divine_healing.lua` |
+| **Localização** | `data/scripts/spells/healing/` |
+| **Tipo de Script** | Spell (Instant) |
+| **Tipo** | Healing/Dispel Combat |
+| **Vocações** | Paladin, Royal Paladin |
+| **Level Requerido** | 35 |
+| **Mana Requerida** | 160 |
+| **Soul Requerida** | Nenhuma |
+| **Words** | exura san |
+| **Grupo** | healing |
+| **Spell ID** | 125 |
+| **Cooldown** | 1s |
+| **GroupCooldown** | 1s |
+| **Premium** | Não |
+| **Agressivo** | Não |
+| **Self Target** | Sim |
+| **Tipo Combat** | Healing + Dispel CONDITION_PARALYZE |
+| **Efeito Visual** | CONST_ME_MAGIC_BLUE |
+| **Som de Casting** | SOUND_EFFECT_TYPE_SPELL_DIVINE_HEALING |
+| **Linhas de Código** | 33 |
+| **Complexidade** | Intermediária |
+
+**Descrição:**
+Spell mid-level de cura holy + dispel paralyze para paladins nível 35. Fórmula healing avançada com magic level multiplicador. Remove CONDITION_PARALYZE. 160 mana (alto!). Cooldown 1s (rápido!). Spell ID 125. Som especial divine healing. Paladin exclusive. Spell de healing HOLY+DISPEL mid paladin!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/healing/divine_healing.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:name("Divine Healing")
+spell:words("exura san")
+spell:group("healing")
+spell:vocation("paladin;true", "royal paladin;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_DIVINE_HEALING)
+spell:id(125)
+spell:cooldown(1000)
+spell:groupCooldown(1000)
+spell:level(35)
+spell:mana(160)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(false)
+spell:needLearn(false)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Cura Divina - Mid-Level 35 Paladin Holy Healing**
+
+Este spell implementa um sistema healing holy + dispel paralyze:
+
+1. **Cura Holy Healing Mid:**
+   - Level 35 (MID!)
+   - 160 mana (alto!)
+   - Fórmula avançada: (level * 0.2 + magicLevel * 7.22) + 44 até (level * 0.2 + magicLevel * 12.79) + 79
+   - Cura mid paladin holy base!
+
+2. **Dispel Paralyze:**
+   - Remove CONDITION_PARALYZE
+   - 1s cooldown (rápido!)
+   - Self target (cura + dispel self)
+   - Combat healing system!
+
+3. **Paladin Exclusive Mid:**
+   - Paladin + Royal Paladin (2 vocações)
+   - Grupo healing
+   - Não agressivo
+   - Spell cura healing mid paladin exclusive!
+
+4. **Tipo Combat:**
+   - Combat system com callback
+   - Efeito visual: CONST_ME_MAGIC_BLUE
+   - Som especial divine healing
+   - Holy + paralyze dispel combo!
+
+**Uso Típico:**
+```
+Paladin lvl 35+
+// Divine Healing = mid healing holy dispel
+// Remove paralyze e cura healing
+// 160 mana = alto!
+// 1s cooldown = rápido!
+// Healing skillpoint paladin exclusive mid
+```
+
+**Diferencial:** Cura mid paladin com formulação avançada + paralyze dispel!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `divine_healing` oferece cura healing holy + dispel paralyze:
+
+- **Tipo:** Healing/Dispel Combat
+- **Spell ID:** 125
+- **Dispel:** CONDITION_PARALYZE
+- **Mana:** 160 (alto!)
+- **Level:** 35 (mid)
+- **Fórmula Healing:** (level * 0.2 + magicLevel * 7.22) + 44 até (level * 0.2 + magicLevel * 12.79) + 79
+- **Cooldown:** 1s (rápido!)
+- **Tipo Combat:** Healing + Dispel
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ setParameter(COMBAT_PARAM_TYPE, COMBAT_HEALING)
+├─ setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+├─ setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+├─ setParameter(COMBAT_PARAM_AGGRESSIVE, false)
+└─ setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+
+local spell = Spell("instant")
+├─ onCastSpell(creature, variant)
+│  └─ return combat:execute(creature, variant)
+└─ Configuração spell
+   ├─ group: healing
+   ├─ mana: 160
+   └─ vocation: paladin exclusive
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+```
+
+**Propósito:** Instância do sistema Combat para healing + dispel.
+
+**Tipo:** Combat
+
+**Parâmetros Configurados:**
+- COMBAT_PARAM_TYPE: COMBAT_HEALING
+- COMBAT_PARAM_EFFECT: CONST_ME_MAGIC_BLUE
+- COMBAT_PARAM_DISPEL: CONDITION_PARALYZE
+- COMBAT_PARAM_AGGRESSIVE: false
+
+---
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell de cura.
+
+**Tipo:** Instant (sem cast time)
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(_player, level, magicLevel)
+	local min = (level * 0.2 + magicLevel * 7.22) + 44
+	local max = (level * 0.2 + magicLevel * 12.79) + 79
+	return min, max
+end
+```
+
+**Propósito:** Calcula valores de healing avançados baseado em level + magic level.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `_player` | Player | Caster (não utilizado) |
+| `level` | Integer | Level do player |
+| `magicLevel` | Integer | Magic level do player |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `min` | Healing mínimo |
+| `max` | Healing máximo |
+
+**Fórmula de Healing Avançada:**
+```
+min = level * 0.2 + magicLevel * 7.22 + 44
+max = level * 0.2 + magicLevel * 12.79 + 79
+Range = [min, max]
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, variant)
+	return combat:execute(creature, variant)
+end
+```
+
+**Propósito:** Executa sistema Combat healing + dispel.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster |
+| `variant` | Variant | Target variant |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Healing + dispel executado |
+| `false` | Falha execução |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância Combat healing |
+| `spell` | Spell | Arquivo | Instância spell |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Combat Healing + Dispel Mid
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_HEALING)
+combat:setParameter(COMBAT_PARAM_DISPEL, CONDITION_PARALYZE)
+```
+
+**Benefício:** Combine healing + dispel em um único combat action!
+
+### Padrão 2: Paladin Exclusive Mid-Level
+
+```lua
+spell:vocation("paladin;true", "royal paladin;true")
+spell:level(35)
+spell:group("healing")
+```
+
+**Benefício:** Paladin exclusive mid-level healing!
+
+### Padrão 3: Custos Altos Mid Healing
+
+```lua
+spell:mana(160)
+spell:cooldown(1000)
+spell:groupCooldown(1000)
+```
+
+**Benefício:** Custos altos (mana 160) para mid-level healing!
+
+### Padrão 4: Callback Fórmula Avançada
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+**Benefício:** Healing dinâmico avançado baseado em level + magic level (7.22-12.79 multipliers)!
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(_player, level, magicLevel)
+
+**Descrição:** Calcula healing cure avançado baseado em level + magic level.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `_player` | Player | Caster (não utilizado) |
+| `level` | Integer | Level do player |
+| `magicLevel` | Integer | Magic level do player |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `min` | Healing mínimo: level * 0.2 + magicLevel * 7.22 + 44 |
+| `max` | Healing máximo: level * 0.2 + magicLevel * 12.79 + 79 |
+
+**Exemplo de Cálculo:**
+```lua
+-- Paladin lvl 35, magic lvl 0
+-- min = 35 * 0.2 + 0 * 7.22 + 44 = 7 + 0 + 44 = 51
+-- max = 35 * 0.2 + 0 * 12.79 + 79 = 7 + 0 + 79 = 86
+
+-- Paladin lvl 50, magic lvl 20
+-- min = 50 * 0.2 + 20 * 7.22 + 44 = 10 + 144.4 + 44 = 198.4
+-- max = 50 * 0.2 + 20 * 12.79 + 79 = 10 + 255.8 + 79 = 344.8
+```
+
+### spell.onCastSpell(creature, variant)
+
+**Descrição:** Executa healing + paralyze dispel para o caster.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Paladin ou Royal Paladin |
+| `variant` | Variant | Target variant |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Healing + dispel executado |
+| `false` | Falha execução |
+
+**Requisitos:**
+- Level 35+
+- 160 mana
+
+**Exemplo de Uso:**
+```lua
+// Ao lançar "exura san"
+-- combat:execute(creature, variant)
+-- Cura healing value baseado em fórmula avançada
+-- Remove CONDITION_PARALYZE
+-- Displays CONST_ME_MAGIC_BLUE effect
+-- Cooldown 1s aplicado (rápido!)
+```
+
+---
+
+## 📌 Resumo
+
+**Divine Healing** é um spell de cura mid-level paladin exclusive que oferece healing avançado + remoção de paralyze. Com 160 mana (alto!) e level 35 (mid), implementa fórmula dinâmica healing avançada (level * 0.2 + magicLevel * 7.22) + 44 até (level * 0.2 + magicLevel * 12.79) + 79. Cooldown rápido 1s, self target, grupo healing, som especial SOUND_EFFECT_TYPE_SPELL_DIVINE_HEALING. Usa Combat system com dispel CONDITION_PARALYZE - spell essencial para paladins em healing mid-level com paralyze removal!

@@ -1,0 +1,306 @@
+---
+title: exercise_training_weapons.lua
+description: Sistema avançado de treinamento com armas em dummies
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="exercise_training_weapons.lua" icon="star">
+Script de ação Lua que implementa sistema completo de treinamento de skills com armas especializadas.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/exercise_training_weapons.lua`
+
+Sistema sofisticado de treinamento com 30+ armas de exercício (fist, sword, axe, club, shield, rod, range, wand) que progridem skills ao atacar dummies. Validações: zona proteção, casa, dummy disponível, charges. Event loop com taxa configurável. Suporte evento fast-exercise. Item ID 28540-28557, 35279-35290, 44064-44067, 50292-50295.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `exercise_training_weapons.lua` implementa sistema de treinamento robusto com armas especiais que desgastam (charges). Ao usar arma em dummy, inicia event loop que valida continuamente: zona proteção, dummy existência, item charges, posição casa. Event loop incrementa skill baseado em taxa dummy (configurable 0-100%). Magic damage reduz charges. Suporta event fast-exercise para velocidade 2x. Suporta tanto melee (skill try gaining) quanto magia (mana spent).
+
+**Estrutura de Funcionalidades**
+
+```
+[Define exhaustionTime = 10 segundos]
+
+[Define exerciseWeaponsTable com 30+ armas]
+    ├─ Melee (20): Fist/Sword/Axe/Club/Shield
+    ├─ Rod (4): SKILL_MAGLEVEL + effect SMALLICE
+    ├─ Bow (4): SKILL_DISTANCE + effect ARROW
+    └─ Wand (4): SKILL_MAGLEVEL + effect FIRE
+
+[Define dummies = Game.getDummies()]
+
+[Define leaveExerciseTraining() cleanup function]
+
+[Define exerciseTrainingEvent() loop function]
+    ├─ Check player exists
+    ├─ Check dummy still at position
+    ├─ Check player still training
+    ├─ Check still in protection zone
+    ├─ Check weapon still in backpack
+    ├─ Check weapon has charges
+    ├─ Add skill/mana based on weapon type
+    ├─ Send magic effect
+    ├─ Check charges again
+    └─ Reschedule event
+
+[Create exerciseTraining Action]
+    ↓
+[onUse function]
+    ├─ Validate target is item dummy
+    ├─ Check already training
+    ├─ Distance check (if not allowFarUse)
+    ├─ Protection zone check
+    ├─ House match check (if dummy in house)
+    ├─ Players on dummy count check
+    ├─ Exhaustion check
+    ├─ Init _G.OnExerciseTraining[playerId]
+    ├─ Schedule event
+    ├─ Set training flag
+    ├─ Start dummy animation
+    └─ return true
+```
+
+## Variáveis Globais
+
+### exhaustionTime (local constant)
+
+```lua
+local exhaustionTime = 10
+```
+
+Cooldown em segundos entre treinamentos (10 segundos).
+
+### exerciseWeaponsTable (local table - 30+ armas)
+
+Mapeamento de arma ID para skill target.
+
+**Estrutura**:
+```lua
+[weaponId] = { 
+  skill = SKILL_TYPE, 
+  effect = CONST_ANI_TYPE (optional),
+  allowFarUse = true (optional)
+}
+```
+
+**Categorias**:
+- Melee (20): Fist, Sword, Axe, Club, Shield (sem effect)
+- Rod (4): SKILL_MAGLEVEL + SMALLICE effect
+- Bow (4): SKILL_DISTANCE + SIMPLEARROW effect  
+- Wand (4): SKILL_MAGLEVEL + FIRE effect
+
+### dummies (global)
+
+```lua
+local dummies = Game.getDummies()
+```
+
+Tabela de dummies configuradas com taxa de ganho (0-100%).
+
+### _G.OnExerciseTraining (global table)
+
+```lua
+_G.OnExerciseTraining[playerId] = {
+  event = eventId,
+  dummyPos = position
+}
+```
+
+Rastreamento de treinamentos ativos por jogador.
+
+## Funções Locais
+
+### leaveExerciseTraining(playerId, targetItem)
+
+Cleanup function que encerra treinamento.
+
+**Responsabilidades**:
+1. Stop event associado
+2. Remove entry de _G.OnExerciseTraining
+3. Set player training flag false
+4. Stop dummy animation
+
+### exerciseTrainingEvent(playerId, tilePosition, weaponId, dummyId)
+
+Event loop chamado repetidamente durante treinamento.
+
+**Validações Contínuas**:
+1. Player ainda existe
+2. Dummy ainda na posição
+3. Player ainda marked como training
+4. Player ainda em protection zone
+5. Weapon ainda no backpack
+6. Weapon ainda tem charges
+
+**Se alguma validação falha**: Para treinamento.
+
+**Se passa**: Adiciona progresso skill/mana, decrementa charges, reschedula event.
+
+## Funções
+
+### exerciseTraining.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que inicia treinamento.
+
+**Parâmetros**:
+- player: Creature player
+- item: Arma de treinamento
+- fromPosition: Posição do uso
+- target: Dummy alvo (DEVE ser item)
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Validações Iniciais**:
+
+```lua
+1. If not target or not item
+   └─ return true
+
+2. If not isDummy(target.id)
+   └─ return false
+
+3. If already training
+   └─ reject
+
+4. If not allowFarUse and distância > 1
+   └─ reject
+
+5. If not in protection zone
+   └─ reject
+
+6. If dummy in house and player/dummy em casas diferentes
+   └─ reject
+
+7. If players on dummy >= max allowed
+   └─ reject
+
+8. If has exhaustion training-exhaustion
+   └─ reject
+```
+
+**Se passa todas validações**:
+1. Init _G.OnExerciseTraining entry
+2. Schedule event com delay 0
+3. Set player training true
+4. Start dummy animation
+5. Set exhaustion
+6. Return true
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| exhaustionTime | integer | 10 segundos |
+| SKILL_FIST | constant | Melee fist |
+| SKILL_SWORD | constant | Melee sword |
+| SKILL_AXE | constant | Melee axe |
+| SKILL_CLUB | constant | Melee club |
+| SKILL_SHIELD | constant | Shield defense |
+| SKILL_DISTANCE | constant | Range distance |
+| SKILL_MAGLEVEL | constant | Magic level |
+
+## Skill Progression
+
+### Melee (Fist/Sword/Axe/Club)
+
+```lua
+player:addSkillTries(weapon.skill, 7 * rate)
+```
+
+Adiciona 7 * taxa dummy skill tries.
+
+**Exemplo**: Dummy 100% = 7 tries, Dummy 50% = 3.5 tries.
+
+### Magic (Rod/Wand)
+
+```lua
+player:addManaSpent(600 * rate)
+```
+
+Adiciona 600 * taxa dummy progress para magic level.
+
+## Fluxo de Operação
+
+```
+[Player usa arma em dummy]
+    ↓
+[Validações iniciais]
+    ├─ Target é dummy? SIM → continuar
+    ├─ Já treinando? NÃO → continuar
+    ├─ Zona proteção? SIM → continuar
+    ├─ Casa match? SIM (ou sem house) → continuar
+    ├─ Dummy não lotado? SIM → continuar
+    └─ Cooldown expirado? SIM → continuar
+    ↓
+[Event loop inicia]
+    ├─ A cada X segundos (baseado vocation speed)
+    ├─ Revalida todas condições
+    ├─ Se alguma falha: para treinamento
+    ├─ Se passa: adiciona skill/mana
+    ├─ Decrementa charges (-1)
+    └─ Reschedula
+    ↓
+[Termina quando]
+    ├─ Weapon charges == 0
+    ├─ Dummy removido
+    ├─ Player sai zona proteção
+    ├─ Player entra em outro dummy
+    └─ Player sai treinamento
+```
+
+## Fast Exercise Event
+
+```lua
+local scopedFastExercise = KV.scoped("eventscheduler"):get("fast-exercise")
+if scopedFastExercise then
+	eventSpeedMultiplier = 0.5
+end
+```
+
+Se event "fast-exercise" está ativo, metade do delay (2x velocidade).
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Event loop com validações contínuas
+2. Três tipos de weapons (melee, magic, special effects)
+3. Taxa dummy configurável (0-100%)
+4. Charges como consumível
+5. Validação casa (house matching)
+6. Limite jogadores por dummy
+7. Fast exercise event multiplier
+8. Training flag para rastreamento
+
+**Responsabilidades**:
+1. Validar target é dummy
+2. Validar zona proteção
+3. Validar house match (se applicable)
+4. Validar limit players on dummy
+5. Schedule event loop inicial
+6. Validações continuas em event
+7. Adicionar skill/mana baseado weapon
+8. Decrementar charges
+9. Cleanup ao terminar
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler - complexo)  
+**Tamanho**: 226 linhas  
+**Funções**: 3 (onUse, event loop, cleanup)  
+**Armas**: 30+ IDs  
+**Categorias**: 5 (melee, shield, rod, bow, wand)  
+**Validações**: 8+ contínuas  
+**Config**: Dummy rate, vocation speed, house limits
+</Card>
+
+<Aside type="note">
+Sistema avançado de treinamento com validações robustas: zona proteção, house matching, player limit per dummy, charges. Event loop com vocation-based speed e fast-exercise support. Melee ganha skill tries, magic ganha mana spent.
+</Aside>

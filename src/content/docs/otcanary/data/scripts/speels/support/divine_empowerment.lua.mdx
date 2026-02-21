@@ -1,0 +1,244 @@
+---
+title: Divine Empowerment
+description: Spell de suporte para Paladins que cria items de empowerment em área 3x3, requer Revelation WOD e verifica presença ao seu redor
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `divine_empowerment.lua` |
+| **Tipo de Spell** | Spell instantâneo (Support) |
+| **Vocação** | Paladin / Royal Paladin |
+| **Spell ID** | 268 |
+| **Mana Requerida** | 500 |
+| **Level Requerido** | 300 |
+| **Status Premium** | Sim (exclusivo premium) |
+| **Duração dos Items** | 5 segundos (5.000 ms) |
+| **Cooldown Individual** | 32 segundos |
+| **Cooldown de Grupo** | 2 segundos |
+| **Palavras de Ativação** | `utevo grav san` |
+| **Área de Efeito** | 3x3 (9 quadrados) |
+| **Alcance** | 7 quadrados |
+| **Item Criado** | ITEM_DIVINE_EMPOWERMENT |
+| **Auto-Target** | Sim (Próprio) |
+| **Agressividade** | Não (buff defensivo) |
+| **Requer Aprendizado** | Sim (needLearn true) |
+| **Validação** | Revelation WOD, sem immovable/floorchange |
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/support/divine_empowerment.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Este spell cria items físicos (ITEM_DIVINE_EMPOWERMENT) em cada tile válido dentro de área 3x3. A validação de tile verifica flags `TILESTATE_IMMOVABLEBLOCKSOLID` e `TILESTATE_FLOORCHANGE` para evitar colocar items em paredes ou mudanças de nível. O item é setado com ITEM_ATTRIBUTE_OWNER para tracking. Um evento agendado remove todos os items após 5 segundos via função `removeEmpowermentItem` que itera a mesma área. A mana alta (500) e cooldown longo (32s) indicam spell premium de endgame.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O spell `divine_empowerment.lua` implementa spell premium de empowerment exclusivo para Paladins (level 300+) que cria items de suporte em uma área 3x3 ao redor do conjurador. É um dos poucos spells que cria objetos físicos no mapa ao invés de aplicar conditions. O spell valida Revelation WOD, itera uma grid 3x3 de tiles, verifica flags de impassibilidade, cria items com ITEM_DIVINE_EMPOWERMENT ID setando owner, agenda evento de remoção automática após 5 segundos, e ativa `onThinkWheelOfDestiny`. A implementação demonstra padrão avançado de criação de items com lifecycle gerenciado via eventos agendados.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Função Auxiliar: Remoção Automática de Items
+local function removeEmpowermentItem(position)
+    -- Itera 3x3 em torno de position
+    -- Remove cada ITEM_DIVINE_EMPOWERMENT encontrado
+end
+
+-- 2. Instância do Spell
+local spell = Spell("instant")
+
+-- 3. Função de Cast Principal
+function spell.onCastSpell(creature, var)
+    -- 3.1 Validação de Creature como Player
+    -- 3.2 Verificação de Revelation WOD
+    -- 3.3 Obtenção de Posição
+    -- 3.4 Iteração 3x3
+    -- 3.5 Validação de Tile Impassível
+    -- 3.6 Criação de Item
+    -- 3.7 Setagem de Owner
+    -- 3.8 Agendamento de Remoção
+    -- 3.9 Ativação Wheel of Destiny
+    -- 3.10 Retorno de Status
+end
+
+-- 4. Configuração de Propriedades do Spell
+spell:group("support")
+spell:id(268)
+spell:name("Divine Empowerment")
+spell:words("utevo grav san")
+spell:level(300)
+spell:mana(500)
+spell:isPremium(true)
+spell:range(7)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:cooldown(32 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(true)
+spell:vocation("paladin;true", "royal paladin;true")
+spell:register()
+```
+
+## 📊 Variáveis Globais e Locais
+
+| Variável | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `creature` | `Creature/Player` | Parâmetro (onCastSpell) | Paladin que conjura o spell |
+| `var` | `Variant` | Parâmetro (onCastSpell) | Dados variáveis (não utilizados - self target) |
+| `grade` | `number` | Local (onCastSpell) | Nível de Revelation WOD (0 = sem acesso) |
+| `position` | `Position` | Local (onCastSpell) | Posição do Paladin para centro de grid |
+| `pos` | `Position` | Local (loops) | Posição calculada no grid 3x3 |
+| `tile` | `Tile` | Local (loops) | Tile object na posição calculada |
+| `item` | `Item` | Local (loops) | Item criado se tile válido |
+| `x` | `number` | Local (loops) | Offset X (-1 a 1) |
+| `y` | `number` | Local (loops) | Offset Y (-1 a 1) |
+
+## 🎯 Padrões Identificados
+
+### 1. **Padrão de Função Auxiliar para Cleanup**
+```lua
+local function removeEmpowermentItem(position)
+    for x = -1, 1 do
+        for y = -1, 1 do
+            local tile = Tile(Position(position.x + x, position.y + y, position.z))
+```
+Função local que realiza cleanup inverso, iterando mesma grid e removendo items.
+
+### 2. **Padrão de Iteração 3x3 Grid**
+```lua
+for x = -1, 1 do
+    for y = -1, 1 do
+        local pos = Position(position.x + x, position.y + y, position.z)
+```
+Grid quadrado de 3x3 oferece cobertura simétrica em torno de centro.
+
+### 3. **Padrão de Validação de Tile**
+```lua
+if tile and not tile:hasFlag(bit.bor(TILESTATE_IMMOVABLEBLOCKSOLID, TILESTATE_FLOORCHANGE)) then
+```
+Verifica tile não é nulo E não tem flags de impassibilidade combinadas com bitwise OR.
+
+### 4. **Padrão de Attribution de Item**
+```lua
+local item = Game.createItem(ITEM_DIVINE_EMPOWERMENT, 1, pos)
+if item then
+    item:setAttribute(ITEM_ATTRIBUTE_OWNER, creature:getId())
+end
+```
+Item criado com quantidade 1, owner setado para tracking proprietário.
+
+### 5. **Padrão de Evento Agendado para Cleanup**
+```lua
+addEvent(removeEmpowermentItem, 5000, position)
+```
+Event agendado remove items após 5 segundos enviando posição original.
+
+### 6. **Padrão de Wheel of Destiny Integration**
+```lua
+creature:onThinkWheelOfDestiny(true)
+```
+Ativa pensamento do Wheel para aplicar modificadores/bônus.
+
+## 🤖 Documentação das Funções
+
+### `removeEmpowermentItem(position)` (Função Auxiliar Local)
+
+**Descrição:** Função chamada via evento agendado que remove todos os items de empowerment em área 3x3 após 5 segundos.
+
+**Parâmetros:**
+- `position` (Position): Posição original onde spell foi castado (centro do grid).
+
+**Fluxo:**
+1. Itera loops x = -1 a 1, y = -1 a 1
+2. Cria Position relativa: `Position(position.x + x, position.y + y, position.z)`
+3. Obtém tile: `Tile(pos)`
+4. Se tile existe:
+   - Busca item: `tile:getItemById(ITEM_DIVINE_EMPOWERMENT)`
+   - Se item encontrado: `item:remove()`
+
+**Retorno:**
+- Nenhum (void)
+
+---
+
+### `spell.onCastSpell(creature, var)`
+
+**Descrição:** Função principal de execução do spell. Valida Revelation WOD, cria items em grid 3x3, agenda remoção.
+
+**Parâmetros:**
+- `creature` (Creature/Player): Paladin que executa o spell.
+- `var` (Variant): Dados variáveis (não utilizados - self target).
+
+**Fluxo de Execução:**
+
+1. **Validação de Creature**:
+   - Checa `if not creature or not creature:isPlayer()`
+   - Retorna `false` se não é player válido
+
+2. **Verificação de Revelation WOD**:
+   - Chama `creature:revelationStageWOD("Divine Empowerment")`
+   - Se `grade == 0` (sem acesso):
+     - Envia mensagem `"You cannot cast this spell"`
+     - Aplica efeito visual erro `CONST_ME_POFF`
+     - Retorna `false`
+
+3. **Obtenção de Posição**:
+   - `position = creature:getPosition()`
+   - Será centro do grid 3x3
+
+4. **Iteração de Grid 3x3**:
+   - Loop `for x = -1, 1 do`
+   - Loop `for y = -1, 1 do`
+   - Calcula `pos = Position(position.x + x, position.y + y, position.z)`
+
+5. **Validação de Tile**:
+   - Obtém `tile = Tile(pos)`
+   - Verifica se tile existe
+   - Checa flags: `not tile:hasFlag(bit.bor(TILESTATE_IMMOVABLEBLOCKSOLID, TILESTATE_FLOORCHANGE))`
+   - Se inválido: pula para próximo tile
+
+6. **Criação de Item** (para tiles válidos):
+   - `item = Game.createItem(ITEM_DIVINE_EMPOWERMENT, 1, pos)`
+   - Se item criado com sucesso:
+     - Seta owner: `item:setAttribute(ITEM_ATTRIBUTE_OWNER, creature:getId())`
+
+7. **Agendamento de Cleanup**:
+   - `addEvent(removeEmpowermentItem, 5000, position)`
+   - Função será executada após 5 segundos
+
+8. **Ativação do Wheel of Destiny**:
+   - `creature:onThinkWheelOfDestiny(true)`
+   - Aplica modificadores do Wheel se disponível
+
+9. **Retorno**:
+   - Retorna `true` (cast bem-sucedido)
+
+**Valores de Retorno:**
+- `true`: Items criados, mana de 500 consumida
+- `false`: Falha de validação (não player ou sem Revelation WOD)
+
+**Lógica Detalhada:**
+
+O spell implementa criação de items com lifecycle gerenciado. A grid 3x3 oferece cobertura simétrica em torno do Paladin. A validação de tile é crítica - tenta evitar criar items em paredes OU mudanças de nível (escadas/portas).
+
+A remoção automática após 5 segundos garante que items não persistem indefinidamente. A função auxiliar `removeEmpowermentItem` itera a mesma grid para cleanup determinístico.
+
+A mana muito alta (500) e cooldown longo (32s individual) indicam spell premium de endgame. O requisito de Revelation WOD cria gating - não todos Paladins podem usar, apenas aqueles que investiram em WOD específico.
+
+O `needLearn(true)` força aprendizado explícito antes de poder usar. O attributo OWNER permite tracking de quem criou item para purposes de loot/credit.
+
+**Mensagens ao Jogador:**
+- Se sem Revelation WOD: `"You cannot cast this spell"`
+
+## 📌 Resumo
+
+**Divine Empowerment** é um spell premium exclusivo para Paladins (level 300+) que cria items de suporte em grid 3x3 ao redor do conjurador por 5 segundos, requerindo Revelation WOD completada. O spell requer 500 de mana (muito alto) e cooldown individual de 32 segundos. A implementação cria objetos físicos no mapa com owner attribution e lifecycle gerenciado via evento agendado. É spell de endgame que fornece suporte tático através de items posicionáveis, permitindo estratégia de placement e timing para maximizar benefício em combates grupais. Integração com Wheel of Destiny permite modificadores dinâmicos.
+
+A implementação segue padrão de item creation com cleanup, diferenciando-se por: (1) criar items físicos em grid, (2) validação de tile flags, (3) attribution de item, (4) limpeza automática via evento, (5) Revelation WOD gating, (6) mana extremamente alta.

@@ -1,0 +1,248 @@
+---
+title: tropical_fried_terrorbird.lua
+description: Comida que aplica condition de Magic +5 por 1 hora com cooldown compartilhado de 10 minutos.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="tropical_fried_terrorbird.lua" icon="pencil">
+Sistema de buff permanente via condition pré-compilada com stat de magia incremental.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/tropical_fried_terrorbird.lua`
+
+**Linhas:** 25 | **ID do Item:** 12666 | **Tipo:** Action Handler com Condition Application
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa comida que aplica condition de Magic +5 por 60 minutos. Usa condition pré-compilada global (magicLevelCondition) definida em outro arquivo (provavelmente lib/core). Diferencia-se por não ser healing, mas skill buff. Inclui cooldown compartilhado "special-foods-cooldown" (10 min), efeito MAGIC_RED e mensagens customizadas.
+
+### Estrutura de Funcionalidades
+
+```
+CONDITION GLOBAL:
+  └─ magicLevelCondition (pré-compilada, aplicada diretamente)
+      ├─ SUBID: JeanPierreMagicLevel
+      ├─ BUFF_SPELL: 1 (true/permanent)
+      ├─ TICKS: 60 * 60 * 1000 ms (1 hora)
+      ├─ STAT_MAGICPOINTS: +5
+      └─ FORCEUPDATE: true
+
+HANDLER:
+  └─ tropicalFried.onUse()
+      ├─ player:addCondition(magicLevelCondition)
+      ├─ Message: "You feel smarter."
+      ├─ Emote: "Chomp."
+      ├─ Effect: MAGIC_RED
+      ├─ Cooldown: special-foods-cooldown (10 min)
+      ├─ item:remove(1)
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| tropicalFried | Action | Objeto handler |
+| magicLevelCondition | Condition (global) | Pré-compilada condition Magic +5 |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Condition magicLevelCondition
+
+| Atributo | Valor | Significado |
+|----------|-------|------------|
+| Type | CONDITION_ATTRIBUTES | Modifica stats |
+| SubID | JeanPierreMagicLevel | Identificador único |
+| BUFF_SPELL | 1 | Permanente (não dispel) |
+| Tick Duration | 60*60*1000 ms | 3,600,000 ms = 1 hora |
+| STAT_MAGICPOINTS | +5 | Aumenta magic em 5 pontos |
+| FORCEUPDATE | true | Atualiza UI imediatamente |
+
+### Item Parameters
+
+| Item | Valor | Descrição |
+|------|-------|-----------|
+| ID Item | 12666 | Tropical Fried Terrorbird |
+| Cooldown | special-foods-cooldown | Compartilhado (10 min) |
+| Efeito | CONST_ME_MAGIC_RED | Vermelho mágico |
+| Emote | Chomp. | Fala do personagem |
+| Mensagem | You feel smarter. | Feedback positivo |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+-- Condition é compilada globalmente em outro arquivo
+-- magicLevelCondition já contém:
+--   CONDITION_ATTRIBUTES + STAT_MAGICPOINTS +5 + 1 hora
+
+function tropicalFried.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Aplicar condition magic
+	player:addCondition(magicLevelCondition)
+	
+	-- Mensagem e efeito
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You feel smarter.")
+	player:say("Chomp.", TALKTYPE_MONSTER_SAY)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	
+	-- Cooldown compartilhado
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+	
+	-- Consumir item
+	item:remove(1)
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa tropical_fried_terrorbird (12666)
+  │
+  ├─ Aplicar condition:
+  │   └─ addCondition(magicLevelCondition)
+  │       └─ Magic +5 por 1 hora
+  │
+  ├─ Feedback ao jogador:
+  │   ├─ Message: "You feel smarter."
+  │   ├─ Emote: "Chomp."
+  │   └─ Effect: MAGIC_RED
+  │
+  ├─ Cooldown:
+  │   └─ setExhaustion("special-foods-cooldown", 10 min)
+  │
+  ├─ Consumo:
+  │   └─ item:remove(1)
+  │
+  └─ return true (sempre sucesso)
+```
+
+### Condition Application Over Time
+
+```
+t = 0:00
+  └─ addCondition(magicLevelCondition)
+  └─ Magic level: +5 imediatamente
+  └─ Duração: 60 minutos
+
+t = 30:00 (meio do ciclo)
+  └─ Magic level: ainda +5
+
+t = 60:00
+  └─ Condition expira automaticamente
+  └─ Magic level: volta ao normal
+  └─ FORCEUPDATE: true (sem delay de UI)
+```
+
+### Difference: Food Buff vs Equipment Buff
+
+```
+Food Buff (tropical_fried_terrorbird):
+  ├─ Aplicado via item consumível
+  ├─ Desaparece após 60 min
+  ├─ Pode ser reaplicado (cooldown só bloqueia 10 min, depois pode usar novamente após 1 hora de exp)
+  └─ Visível na barra de condition
+
+Equipment Buff (ex: anel com stat):
+  ├─ Aplicado via item equipado
+  ├─ Permanece enquanto equipado
+  ├─ Desaparece se desequipa
+  └─ Não é "condition", é stat puro do item
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Condition Pre-Compiled**: magicLevelCondition é global (não compilada aqui)
+- **STAT_MAGICPOINTS**: Adiciona ao magic level (+5)
+- **BUFF_SPELL**: Valor 1 = não pode ser dispelado
+- **Tick Duration**: 60*60*1000 = 3.6M ms = 1 hora
+- **FORCEUPDATE**: Atualiza interface sem delay
+- **Shared Cooldown**: "special-foods-cooldown" afeta todas as comidas
+- **Auto Expiration**: Condition desaparece após ticks expirados
+- **Return True Always**: Operação nunca falha
+
+### Responsabilidades do Handler
+
+1. **Aplicar condition**: addCondition(magicLevelCondition)
+2. **Enviar mensagem**: "You feel smarter."
+3. **Emote**: "Chomp." audível
+4. **Efeito visual**: MAGIC_RED
+5. **Cooldown**: setExhaustion("special-foods-cooldown", 10 min)
+6. **Consumir**: item:remove(1)
+7. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Condition Application
+
+Este script demonstra aplicação de buff:
+
+```lua
+player:addCondition(magicLevelCondition)
+```
+
+Assuming magicLevelCondition é compilada como:
+```lua
+-- Elsewhere in lib/core
+magicLevelCondition = createConditionObject(CONDITION_ATTRIBUTES)
+magicLevelCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreMagicLevel)
+magicLevelCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+magicLevelCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+magicLevelCondition:setParameter(CONDITION_PARAM_STAT_MAGICPOINTS, 5)
+magicLevelCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, 1)
+```
+
+### Comparação: Tropical Bird vs Strawberry Cupcake
+
+| Aspecto | Tropical | Strawberry |
+|---------|----------|-----------|
+| Tipo | Buff permanente | Healing |
+| Sistema | Condition | Direct health |
+| Duração | 60 minutos | Instantânea |
+| Stat | Magic +5 | HP 100% |
+| Efeito | MAGIC_RED | Nenhum visual |
+| Emote | Chomp. | Mmmm. |
+| Cooldown | Comum (foods) | Próprio |
+| Mensagem | You feel smarter | Health refilled |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: tropical_fried_terrorbird.lua" icon="star">
+Análise de buff permanente via condition pré-compilada com STAT_MAGICPOINTS +5 por 1 hora. Demonstra aplicação de conditions globais em handlers.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Condition application com skill buff | Complexidade: Baixa-Média
+</Aside>

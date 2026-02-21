@@ -1,0 +1,177 @@
+---
+title: lemon_cupcake.lua
+description: Cupcake de limão que aumenta distance skill
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="lemon_cupcake.lua" icon="star">
+Script de ação Lua que implementa cupcake temático com buff de distance skill.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/lemon_cupcake.lua`
+
+Cupcake (ID 28486) que aumenta distance skill +10 por 1 hora. Condition pré-compilada com FORCEUPDATE para refresh imediato. Cooldown específico "lemon-cupcake-cooldown" (10 min). BUFF_SPELL para efeitos positivos. Emote "Mmmm."
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `lemon_cupcake.lua` implementa cupcake temático com buff de distance skill. Condition pré-compilada com tipo ATTRIBUTES, skill DISTANCE +10, duração 1 hora, com FORCEUPDATE para aplicação imediata. Cooldown "lemon-cupcake-cooldown" (10 min) controla uso frequente. Emote "Mmmm.", mensagem "You feel more focused."
+
+**Estrutura de Funcionalidades**
+
+```
+[Pré-compile distanceCondition]
+    ├─ CONDITION_ATTRIBUTES type
+    ├─ BUFF_SPELL true (efeito positivo)
+    ├─ TICKS: 3.600.000ms (1h)
+    ├─ SKILL_DISTANCE: +10
+    └─ FORCEUPDATE: true (refresh imediato)
+
+[Create lemonCupcake Action]
+    ↓
+[onUse function]
+    ├─ If hasExhaustion("lemon-cupcake-cooldown")
+    │   └─ "You need to wait before using it again."
+    │   └─ return true
+    ├─ addCondition(distanceCondition)
+    ├─ sendTextMessage: "You feel more focused."
+    ├─ player:say("Mmmm.", TALKTYPE_MONSTER_SAY)
+    ├─ setExhaustion("lemon-cupcake-cooldown", 10min)
+    ├─ item:remove(1)
+    └─ return true
+    ↓
+[Register on item ID 28486]
+```
+
+## Variáveis Globais
+
+### distanceCondition (local)
+
+```lua
+local distanceCondition = Condition(CONDITION_ATTRIBUTES)
+distanceCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+distanceCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+distanceCondition:setParameter(CONDITION_PARAM_SKILL_DISTANCE, 10)
+distanceCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+```
+
+Condition pré-compilada para reutilização.
+
+**Parâmetros:**
+- BUFF_SPELL: 1 (true) efeito positivo
+- TICKS: 3.600.000ms (1 hora)
+- SKILL_DISTANCE: 10 (skill increment)
+- FORCEUPDATE: true (aplicação imediata)
+
+## Funções
+
+### lemonCupcake.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que aplica buff distance.
+
+**Parâmetros:**
+- player: Creature player
+- item: Cupcake sendo consumido
+- fromPosition: Posição original
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. If hasExhaustion("lemon-cupcake-cooldown")
+   ├─ "You need to wait before using it again."
+   └─ return true
+
+2. addCondition(distanceCondition)
+   └─ Distance +10 por 1h
+
+3. sendTextMessage: "You feel more focused."
+
+4. player:say("Mmmm.", TALKTYPE_MONSTER_SAY)
+
+5. setExhaustion("lemon-cupcake-cooldown", 600s)
+
+6. item:remove(1) + return true
+```
+
+**Implementação:**
+
+```lua
+function lemonCupcake.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if player:hasExhaustion("lemon-cupcake-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true
+	end
+
+	player:addCondition(distanceCondition)
+	player:sendTextMessage(MESSAGE_FAILURE, "You feel more focused.")
+	player:say("Mmmm.", TALKTYPE_MONSTER_SAY)
+	player:setExhaustion("lemon-cupcake-cooldown", 10 * 60)
+	item:remove(1)
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| CONDITION_ATTRIBUTES | constant | Tipo condition |
+| CONDITION_PARAM_BUFF_SPELL | param | Efeito positivo |
+| CONDITION_PARAM_TICKS | param | Duração ms |
+| CONDITION_PARAM_SKILL_DISTANCE | param | Skill distance |
+| CONDITION_PARAM_FORCEUPDATE | param | Force recalc |
+| lemon-cupcake-cooldown | string | Cooldown key |
+
+## Comparação com Outras Special Foods
+
+| Item | Skill | Valor | Duração | Cooldown |
+|------|-------|-------|---------|----------|
+| lemon_cupcake | Distance | +10 | 1h | lemon-cupcake (10min) |
+| hireling_foods (29409) | Distance | +7 | 1h | special-foods (10min) |
+| carrot_cake | Distance | +10 | 1h | special-foods (10min) |
+
+Lemon cupcake tem cooldown próprio (não shared).
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Condition ATTRIBUTES para skill buff
+2. BUFF_SPELL para marcar positivo
+3. FORCEUPDATE para aplicação imediata
+4. Cooldown específico por item
+5. TICKS em milissegundos (3.6M = 1h)
+6. Pré-compilação reutilizável
+
+**Responsabilidades:**
+1. Validar cooldown
+2. Aplicar condition distância
+3. Enviar mensagem feedback
+4. Emitir emote
+5. Setar cooldown 10 min
+6. Consumir item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 20 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 28486  
+**Condition**: ATTRIBUTES (Distance +10)  
+**Duração**: 1 hora  
+**Cooldown**: lemon-cupcake-cooldown (10 min)  
+**FORCEUPDATE**: Sim
+</Card>
+
+<Aside type="note">
+Cupcake com distance skill +10 por 1 hora. Cooldown próprio 10 min. FORCEUPDATE para aplicação imediata. Pré-compilado.
+</Aside>

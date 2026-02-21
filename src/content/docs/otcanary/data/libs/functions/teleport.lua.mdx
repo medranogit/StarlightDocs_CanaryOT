@@ -1,0 +1,314 @@
+---
+title: "teleport.lua"
+description: "Extensão da classe Teleport com `isTeleport()` method, e factory SimpleTeleport() que cria MoveEvent automático para teleportação simples com step-in trigger, optional condition validation, e optional teleport effect."
+---
+
+import { Aside, Card } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+Módulo que implementa **teleport system convenience layer**: adiciona method `isTeleport()` à classe Teleport (sempre retorna true), e factory function `SimpleTeleport(from, destination, condition, disableEffect)` que cria MoveEvent com onStepIn handler automático, validação opcional via condition callback, teleport effect automático (CONST_ME_TELEPORT), e registro já feito. Simplifica criação de teleportes simples em revscripts.
+
+**Caminho Original**: `data/libs/functions/teleport.lua`
+
+<Aside type="tip">
+O arquivo `teleport.lua` é **convenience layer para teleporte**. SimpleTeleport factory elimina boilerplate repetitivo (criar MoveEvent, setposition, register). Suporta validation callbacks para verificar requirements (nível, storage, etc) antes de teleportar. Auto-desabilita effect se pedido.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+Arquivo com **2 funcionalidades**:
+
+1. **Teleport.isTeleport()**: Marca classe como teleport (sempre true)
+2. **SimpleTeleport Factory**: Cria MoveEvent pronto com onStepIn teleportação
+
+O design usa **closure-based handler** que captura destination/condition/disableEffect, **MoveEvent factory pattern** para evitar boilerplate, e **optional validation callback** para enforcement de requirements.
+
+### Estrutura de Funcionalidades
+
+```
+Teleport Extension
+├── Extension Method (1)
+│   └── Teleport.isTeleport() → boolean (always true)
+└── Factory Function (1)
+    └── SimpleTeleport(from, destination, condition, disableEffect) → MoveEvent
+        ├── Creates MoveEvent
+        ├── Defines onStepIn callback
+        │   ├── Filters to player creatures
+        │   ├── Executes optional condition check
+        │   ├── Teleports player to destination
+        │   ├── Sends magic effect (conditional)
+        │   └── Returns success/failure
+        ├── Sets position via :position(from)
+        └── Registers MoveEvent
+```
+
+---
+
+## 🔧 Extension Method
+
+### `Teleport.isTeleport()` → boolean
+
+Marca objeto como teleport.
+
+**Tipo**: Método de extensão (Teleport class)  
+**Retorna**: boolean (sempre true)
+
+**Implementação**:
+```lua
+function Teleport.isTeleport(self)
+	return true
+end
+```
+
+**Uso**: Identificação de type checking (para scripts que precisam detectar se é teleport)
+
+**Exemplo**:
+```lua
+local item = player:getSlotItem(CONST_SLOT_FEET)
+if item and item:isTeleport() then
+	print("Player is on a teleport!")
+end
+```
+
+---
+
+## 🏭 Factory Function
+
+### `SimpleTeleport(from, destination, condition, disableEffect)` → MoveEvent
+
+Factory que cria MoveEvent com teleportação automática.
+
+**Tipo**: Factory function  
+**Parâmetros**:
+- `from` (position|number): Posição da origem do teleport (Table `{x,y,z}` ou itemid)
+- `destination` (position): Posição destino `{x,y,z}`
+- `condition` (function|nil): Callback opcional para validação
+- `disableEffect` (boolean|nil): Se true, desabilita magic effect
+
+**Retorna**: MoveEvent (registrado)
+
+**Implementação**:
+```lua
+function SimpleTeleport(from, destination, condition, disableEffect)
+	local teleport = MoveEvent()
+
+	function teleport.onStepIn(creature, item, position, fromPosition)
+		local player = creature:getPlayer()
+		if not player then
+			return false
+		end
+
+		if condition and not condition(player, item, position, fromPosition) then
+			return false
+		end
+
+		player:teleportTo(destination)
+		if not disableEffect then
+			player:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+		end
+		return true
+	end
+
+	teleport:position(from)
+	teleport:register()
+	return teleport
+end
+```
+
+**Fluxo**:
+1. Criar MoveEvent vazio
+2. Define onStepIn handler que:
+   - Filtra para Player (ignora NPCs/Monsters)
+   - Executa condition callback (se fornecido)
+   - Retorna false se condition falha
+   - Teleporta player para destination
+   - Envia magic effect (se não disabled)
+   - Retorna true (sucesso)
+3. Registra position (from)
+4. Registra MoveEvent
+5. Retorna objeto (para chaining se necessário)
+
+**Condition Callback Signature**:
+```lua
+function(player, item, position, fromPosition) → boolean
+```
+
+---
+
+## 🔄 Padrões de Uso
+
+### Padrão 1: Teleporte Simples Sem Validação
+
+```lua
+SimpleTeleport(
+	{ x = 100, y = 100, z = 7 },      -- from (posição do teleport)
+	{ x = 200, y = 200, z = 7 }       -- destination (onde teleportar)
+)
+```
+
+**Resultado**: Qualquer criatura que andar no teleport é teleportada automaticamente com efeito.
+
+---
+
+### Padrão 2: Teleporte com Validação de Nível
+
+```lua
+SimpleTeleport(
+	{ x = 100, y = 100, z = 7 },
+	{ x = 200, y = 200, z = 7 },
+	function(player, item, position, fromPosition)
+		if player:getLevel() < 100 then
+			player:sendTextMessage(MESSAGE_STATUS_CONSOLE_BLUE, "You need level 100 to use this teleport.")
+			return false
+		end
+		return true
+	end
+)
+```
+
+**Fluxo**: Teleporte só funciona se player nível >= 100, senão retorna false.
+
+---
+
+### Padrão 3: Teleporte com Storage Validation
+
+```lua
+SimpleTeleport(
+	{ x = 100, y = 100, z = 7 },
+	{ x = 200, y = 200, z = 7 },
+	function(player, item, position, fromPosition)
+		if player:getStorageValue(1001) ~= 1 then
+			player:say("You have not completed the quest!")
+			return false
+		end
+		return true
+	end
+)
+```
+
+---
+
+### Padrão 4: Teleporte com Item Específico (Via CONST)
+
+```lua
+SimpleTeleport(
+	2175,  -- itemid for wildcard (matches item ID only)
+	{ x = 200, y = 200, z = 7 },
+	function(player, item, position, fromPosition)
+		-- Validação customizada
+		if player:getLevel() < 50 then
+			player:say("Too weak!")
+			return false
+		end
+		return true
+	end
+)
+```
+
+---
+
+### Padrão 5: Teleporte sem Efeito
+
+```lua
+SimpleTeleport(
+	{ x = 100, y = 100, z = 7 },
+	{ x = 200, y = 200, z = 7 },
+	nil,       -- sem condition
+	true       -- disableEffect = true
+)
+```
+
+**Resultado**: Teleporte silencioso, sem magic effect visual.
+
+---
+
+### Padrão 6: Cadeia de Teleportes com Diferentes Validações
+
+```lua
+-- Teleporte nível 1-50
+SimpleTeleport(
+	{ x = 100, y = 100, z = 7 },
+	{ x = 200, y = 200, z = 7 },
+	function(player)
+		return player:getLevel() < 50
+	end
+)
+
+-- Teleporte nível 50-100
+SimpleTeleport(
+	{ x = 150, y = 150, z = 7 },
+	{ x = 250, y = 250, z = 7 },
+	function(player)
+		return player:getLevel() >= 50 and player:getLevel() < 100
+	end
+)
+
+-- Teleporte nível 100+
+SimpleTeleport(
+	{ x = 160, y = 160, z = 7 },
+	{ x = 260, y = 260, z = 7 },
+	function(player)
+		return player:getLevel() >= 100
+	end
+)
+```
+
+---
+
+## ✅ Checkpoint de Aprendizagem
+
+### Conceitos Principais
+
+| Conceito | Descrição | Implementação |
+|----------|-----------|---------------|
+| **Factory Pattern** | SimpleTeleport cria MoveEvent pronto | Função que retorna MoveEvent registrado |
+| **Closure Capture** | Destination/condition/disableEffect capturados | MoveEvent.onStepIn captures do escopo da factory |
+| **Condition Callback** | Validação opcional antes de teleportar | function(player, item, pos, fromPos) |
+| **Creature Filtering** | Filtra para players apenas | creature:getPlayer() check |
+| **Effect Control** | Magic effect automático ou disabled | if not disableEffect então sendMagicEffect |
+| **Type Checking** | isTeleport() para identificar tipo | Extends Teleport class |
+
+### Padrões Identificados
+
+1. **Factory Simplification**: SimpleTeleport elimina boilerplate MoveEvent
+2. **Conditional Entry**: Condition callbacks para requirements validation
+3. **Closure-Based Configuration**: Parameters capturados na closure
+4. **Auto-Registration**: Position + register já feito
+5. **Automatic Effects**: Optional visual feedback
+
+### Responsabilidades
+
+- **SimpleTeleport**: Criar MoveEvent com handler onStepIn
+- **onStepIn Handler**: Validar, teleportar, efeito
+- **Condition Callback**: Implementar requirements lógica
+- **isTeleport()**: Type marker para identificação
+
+---
+
+## 📚 Conclusão
+
+O arquivo `teleport.lua` é **convenience layer para teleportação simples**. SimpleTeleport factory elimina necessidade de criar MoveEvent manualmente, setando position, registrando. Suporta validação opcional via condition callbacks e efeito automático. Ideal para criar teleportes em revscripts de forma rápida e declarativa.
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card>
+**Última Atualização**: 2024  
+**Versão do Arquivo**: Estável  
+**Linhas Documentadas**: 30/30 (100%)  
+**Extension Methods**: 1 (isTeleport)  
+**Factory Functions**: 1 (SimpleTeleport)  
+**Padrões de Design**: Factory Pattern, Closure Capture, Condition Validation, Auto-Registration  
+**Exemplos Práticos**: 6  
+**Suporte**: Condition callbacks, magic effects, level validation, storage validation
+</Card>
+
+<Aside type="note">
+**Nota de Manutenção**: SimpleTeleport requer MoveEvent registered antes de funcionar. Condition é callback opcional (pode ser nil). disableEffect desabilita magic effect se true. onStepIn handler filtra para players (retorna false para NPCs/Monsters). Teleport destination deve ser valid position. Magic effect usa CONST_ME_TELEPORT (pode ser customizado).
+</Aside>

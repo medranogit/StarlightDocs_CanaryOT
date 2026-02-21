@@ -1,0 +1,199 @@
+---
+title: mossmasher_figurine.lua
+description: Figurinha para desbloquear familiar Mossmasher (druid)
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="mossmasher_figurine.lua" icon="star">
+Script de ação Lua que implementa figurinha temática de familiar druid.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/mossmasher_figurine.lua`
+
+Figurinha (ID 35591) exclusiva para druidas que desbloqueia familiar Mossmasher (looktype 1364). Validações: apenas druid (base ID), level 200+ ou premium obrigatório, familiar não duplicado. Seta looktype ao primeiro uso.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `mossmasher_figurine.lua` implementa figurinha temática para druid com desbloquio de familiar Mossmasher. Validações: class druid (VOCATION.BASE_ID.DRUID), level 200+ OU premium account (premium ignora level). Primeiro uso seta looktype 1364, addFamiliar desbloqueia. Se já tem familiar, reject. Consumido ao usar.
+
+**Estrutura de Funcionalidades**
+
+```
+[Create mossmasherFigurine Action]
+    ↓
+[onUse function]
+    ├─ Validação 1: Vocação Druid?
+    │   ├─ getNot druid? 
+    │   │   └─ "Only druids can use this item."
+    │   │   └─ return true
+    │   └─ SIM Druid → continuar
+    ├─ Validação 2: Level 200+ or Premium?
+    │   ├─ level < 200 AND not premium?
+    │   │   └─ return true (silent reject)
+    │   └─ SIM pass → continuar
+    ├─ Action 1: Set looktype se não tem
+    │   ├─ If getFamiliarLooktype() == 0
+    │   │   └─ setFamiliarLooktype(1364)
+    ├─ Action 2: Add familiar
+    │   ├─ If not hasFamiliar(1364)
+    │   │   ├─ addFamiliar(1364)
+    │   │   ├─ "You have summoned a Mossmasher."
+    │   └─ Else
+    │       └─ "You already have a Mossmasher."
+    ├─ item:remove(1)
+    └─ return true
+    ↓
+[Register on item ID 35591]
+```
+
+## Variáveis e Constantes
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| VOCATION.BASE_ID.DRUID | constant | Druid base class |
+| 1364 | integer | Mossmasher looktype |
+| 200 | integer | Level requirement |
+
+## Funções
+
+### mossmasherFigurine.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que desbloqueia familiar.
+
+**Parâmetros:**
+- player: Creature player
+- item: Figurinha sendo usada
+- fromPosition: Posição original
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. if player:getVocation():getBaseId() ~= VOCATION.BASE_ID.DRUID
+   ├─ "Only druids can use this item."
+   └─ return true
+
+2. if player:getLevel() < 200 and not player:isPremium()
+   └─ return true (silencioso)
+
+3. if player:getFamiliarLooktype() == 0
+   └─ setFamiliarLooktype(1364)
+
+4. if not player:hasFamiliar(1364)
+   ├─ addFamiliar(1364)
+   ├─ "You have summoned a Mossmasher."
+   └─ return true
+
+5. else
+   ├─ "You already have a Mossmasher."
+   └─ return true
+
+6. item:remove(1)
+```
+
+**Implementação:**
+
+```lua
+function mossmasherFigurine.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if player:getVocation():getBaseId() ~= VOCATION.BASE_ID.DRUID then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Only druids can use this item.")
+		return true
+	end
+	if player:getLevel() < 200 and not player:isPremium() then
+		return true
+	end
+	if player:getFamiliarLooktype() == 0 then
+		player:setFamiliarLooktype(1364) -- Mossmasher looktype
+	end
+	if not player:hasFamiliar(1364) then
+		player:addFamiliar(1364) -- Mossmasher looktype
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have summoned a Mossmasher.")
+	else
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You already have a Mossmasher.")
+	end
+	item:remove(1)
+	return true
+end
+```
+
+## Validações Sequenciais
+
+### 1. Classe Druid
+
+```lua
+if player:getVocation():getBaseId() ~= VOCATION.BASE_ID.DRUID then
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Only druids can use this item.")
+	return true
+end
+```
+
+**Rejeita**: Non-druids com mensagem. Consumo de item não ocorre.
+
+### 2. Level 200+ ou Premium
+
+```lua
+if player:getLevel() < 200 and not player:isPremium() then
+	return true
+end
+```
+
+**Rejeita**: Level < 200 AND non-premium silenciosamente.
+
+**Aceita**: Level >= 200 OR premium account (level irrelevante).
+
+### 3. Familiar Não Duplicado
+
+```lua
+if not player:hasFamiliar(1364) then
+	-- Add first time
+else
+	-- Already has
+end
+```
+
+**Não duplica**: Se player já tem 1364, rejeita uso.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Vocação base ID validation
+2. Level + premium check (OR logic)
+3. Looktype system para familiares
+4. Prevent duplication (hasFamiliar)
+5. Silent rejection (return true sem msg)
+6. Message varia (novo vs duplicado)
+
+**Responsabilidades:**
+1. Validar druid
+2. Validar level/premium
+3. Set looktype (primeira vez)
+4. Add familiar (sem duplicata)
+5. Emit mensagem apropriada
+6. Consumir item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 22 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 35591  
+**Familiar ID**: 1364 (Mossmasher)  
+**Classe**: Druid (VOCATION.BASE_ID.DRUID)  
+**Validação**: Level 200+ OR Premium  
+**Consumo**: Sempre (item:remove)  
+**Anti-duplicação**: hasFamiliar check
+</Card>
+
+<Aside type="note">
+Figurinha druid exclusiva. Level 200+ ou premium. Desbloqueia familiar Mossmasher (1364). Set looktype ao primeiro uso. Impede duplicação. Mensagem varia (novo vs duplicado).
+</Aside>

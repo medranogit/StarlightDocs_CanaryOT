@@ -1,0 +1,443 @@
+---
+title: "Spell - divine_caldera.lua"
+description: "Spell de caldeira divina AOE para paladins level 50 self-target"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `divine_caldera.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 124 |
+| **Tipo de Dano** | COMBAT_HOLYDAMAGE |
+| **Vocações** | Paladin, Royal Paladin |
+| **Level Requerido** | 50 |
+| **Mana Requerida** | 160 |
+| **Words** | exevo mas san |
+| **Alcance** | 0 (self, não range) |
+| **Área** | 3x3 Circle (9 tiles) |
+| **Cooldown** | 4s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level based (4-6 MLvl) - POTENTE! |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_DIVINE_CALDERA |
+| **Requer Self-Target** | Sim (isSelfTarget: true) |
+| **Linhas de Código** | 36 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de caldeira divina AOE para paladins nível 50 (mid-game). Dano sagrado em área 3x3. Fórmula potente com escalabilidade muito ALTA em MLvl (4-6 coef). Self-target obrigatório (isSelfTarget: true). 160 mana (custoso). Premium only. Cooldown 4s. Efeito HOLYAREA.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/divine_caldera.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(124)
+spell:name("Divine Caldera")
+spell:words("exevo mas san")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_DIVINE_CALDERA)
+spell:level(50)
+spell:mana(160)
+spell:isPremium(true)
+spell:isSelfTarget(true)
+spell:cooldown(4 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("paladin;true", "royal paladin;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Caldeira Divina - AOE Self-Target**
+
+Este spell implementa um **sistema de AOE holy com self-target obrigatório**:
+
+1. **Self-Target AOE:**
+   - isSelfTarget: true (usa caster como centro)
+   - Não precisa target/direction
+   - AOE 3x3 ao redor caster
+
+2. **Escalabilidade Muito Alta:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 4)
+   - max = (level/5) + (maglevel × 6)
+   - Coef MLvl MUITO ALTOS (4-6!)
+
+3. **Mid-Game Premium:**
+   - Level 50 (mid)
+   - 160 mana (custoso)
+   - Premium only
+   - Cooldown 4s (moderado)
+
+4. **Tipo Holy:**
+   - COMBAT_HOLYDAMAGE (sagrado)
+   - Efeito HOLYAREA
+   - Área 3x3 (9 tiles)
+   - Paladins apenas
+
+**Fórmula Visual:**
+```
+Paladin lvl 50, mlvl 10:
+  min = 10 + 40 = 50
+  max = 10 + 60 = 70
+
+Paladin lvl 80, mlvl 20:
+  min = 16 + 80 = 96
+  max = 16 + 120 = 136
+```
+
+**Diferencial:** Self-target holy AOE mega-escalável!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `divine_caldera` oferece AOE sagrado centrado:
+
+- **Dano:** COMBAT_HOLYDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*4/6) (POTENTE!)
+- **Mana:** 160 (custoso)
+- **Level:** 50 (mid-game)
+- **Área:** 3x3 (9 tiles)
+
+### Arquitetura
+
+Combat com self-target:
+
+```
+local combat = Combat()
+├─ Type: HOLYDAMAGE
+├─ Effect: HOLYAREA
+├─ Area: CIRCLE3X3
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max potente extremo
+
+spell:isSelfTarget(true)
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_HOLYDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HOLYAREA)
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+```
+
+**Propósito:** Combat de AOE sagrado.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_HOLYDAMAGE | Dano sagrado |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HOLYAREA | Efeito holy área |
+| `Area` | AREA_CIRCLE3X3 | 3x3 círculo (9 tiles) |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 4)
+	local max = (level / 5) + (maglevel * 6)
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano sagrado AOE potente.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 4)
+max = (level / 5) + (maglevel * 6)
+```
+
+**Pesos:**
+- Level: 0.2 por ponto (baixo)
+- Maglevel min: 4 (MUITO ALTO!)
+- Maglevel max: 6 (MUITO ALTO!)
+- Sem bônus fixo
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 50 | 10 | 50 | 70 |
+| 80 | 20 | 96 | 136 |
+| 120 | 30 | 160 | 200 |
+| 150 | 40 | 210 | 270 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Caldeira ativada |
+| `false` | Validação falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com área 3x3 |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Self-Target AOE
+
+```lua
+spell:isSelfTarget(true)
+```
+
+**Benefício:** Caster é centro AOE.
+
+### Padrão 2: Escalabilidade Extrema MLvl
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 4)
+	local max = (level / 5) + (maglevel * 6)
+	return -min, -max
+end
+```
+
+**Benefício:** Dano escala muito com com magic level.
+
+### Padrão 3: Área 3x3
+
+```lua
+combat:setArea(createCombatArea(AREA_CIRCLE3X3))
+```
+
+**Benefício:** 9 tiles = múltiplos targets.
+
+### Padrão 4: Mana Custosa
+
+```lua
+spell:mana(160)
+```
+
+**Benefício:** Spell poderoso = mana cara.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano caldeira sagrado.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(paladin, 80, 20)
+// min = 16 + 80 = 96
+// max = 16 + 120 = 136
+// Retorna: -96, -136
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Lança caldeira divina centrada.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Paladin conjurador |
+| `var` | Variant | (ignorado, usa caster pos) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Caldeira ativada |
+| `false` | Validação falhou |
+
+**Requisitos:**
+- Level 50+
+- 160 mana
+- Self-target (sem reqs adicionais)
+- Premium account
+- Cooldown 4s
+
+**Efeito:**
+- Efeito holy área
+- Area 3x3 centrado caster
+- Dano magic-level escalável
+- Até 9 targets
+- Sagrado
+
+**Exemplo:**
+
+```lua
+-- Paladin lvl 80, MLvl 20
+spell.onCastSpell(paladin, selfVariant)
+// Validações:
+//   ✓ Level 80 >= 50
+//   ✓ Mana 160 disponível
+//   ✓ Self-target OK
+//   ✓ Premium account
+// Combat executa
+// Centro: caster position
+// Area: 3x3 círculo
+// 9 targets potencial
+// Dano: -96 a -136 cada
+// Efeito holy área
+// Cooldown 4s
+// Resultado: Caldeira devastadora!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: AOE Defensivo
+
+```lua
+-- Paladin rodeado de inimigos
+// Divine Caldera = centro AOE
+// Self-target = sem aiming
+// Multi-target automático
+```
+
+### Caso 2: Group PvE
+
+```lua
+-- Dungeon group com paladins
+// Caldeira = AOE área mobs
+// 160 mana = timing
+// Escalabilidade MLvl potente
+```
+
+### Caso 3: Boss Strategy
+
+```lua
+-- Boss com adds
+// Self-target = fácil
+// 3x3 cobre adds
+// Dano sagrado significante
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_HOLYDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Areas:** AREA_CIRCLE3X3
+- **Effects:** CONST_ME_HOLYAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | AOE caldeira sagrada |
+| **Dano Type** | COMBAT_HOLYDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*4), max=(lvl/5)+(mlvl*6) |
+| **Mana** | 160 |
+| **Area** | 3x3 Circle (9 tiles) |
+| **Level** | 50 (mid) |
+| **Cooldown** | 4s |
+| **Premium** | Sim |
+| **Self-Target** | Sim (isSelfTarget) |
+| **Vocações** | Paladin, Royal Paladin |
+| **Padrão** | Self-target AOE + escalabilidade MLvl extrema |

@@ -1,0 +1,214 @@
+---
+title: hydra_tongue_salad.lua
+description: Salada que remove 10 condições ruinosas
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="hydra_tongue_salad.lua" icon="star">
+Script de ação Lua que implementa salada curativa removendo múltiplas condições.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/hydra_tongue_salad.lua`
+
+Salada temática (ID 9080) que remove 10 condições ruinosas: poison, fire, energy, paralyze, drunk, drown, freezing, dazzled, cursed, bleeding. Cooldown compartilhado special-foods (10 min). Efeito MAGIC_RED, emote "Chomp", mensagem "You feel better body condition."
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `hydra_tongue_salad.lua` implementa salada curativa temática com remoção multicondicional. Remove 10 tipos de condições ruinosas (poison, fire, energy, paralyze, drunk, drown, freezing, dazzled, cursed, bleeding) via loop simples. Usa cooldown compartilhado special-foods (10 min) com outras special foods. Efeito visual MAGIC_RED, emote "Chomp", mensagem descritiva. Sem validações especiais.
+
+**Estrutura de Funcionalidades**
+
+```
+[Define conditionsToRemove array com 10 types]
+    ├─ CONDITION_POISON
+    ├─ CONDITION_FIRE
+    ├─ CONDITION_ENERGY
+    ├─ CONDITION_PARALYZE
+    ├─ CONDITION_DRUNK
+    ├─ CONDITION_DROWN
+    ├─ CONDITION_FREEZING
+    ├─ CONDITION_DAZZLED
+    ├─ CONDITION_CURSED
+    └─ CONDITION_BLEEDING
+
+[Create hydraTongueSalad Action]
+    ↓
+[onUse function]
+    ├─ If hasExhaustion("special-foods-cooldown")
+    │   └─ "You need to wait before using it again."
+    │   └─ return true
+    ├─ For each in conditionsToRemove
+    │   └─ player:removeCondition(conditionType)
+    ├─ sendTextMessage: "You feel better body condition."
+    ├─ player:say("Chomp.", TALKTYPE_MONSTER_SAY)
+    ├─ sendMagicEffect(CONST_ME_MAGIC_RED)
+    ├─ setExhaustion("special-foods-cooldown", 10min)
+    ├─ item:remove(1)
+    └─ return true
+    ↓
+[Register on item ID 9080]
+```
+
+## Variáveis Globais
+
+### conditionsToRemove (local array - 10 types)
+
+Array de condition types para remover.
+
+**Estrutura**:
+```lua
+local conditionsToRemove = {
+	CONDITION_POISON,
+	CONDITION_FIRE,
+	-- ... mais 8 types
+}
+```
+
+## Condições Removidas
+
+| Tipo | Efeito | Causa Típica |
+|------|--------|--------------|
+| CONDITION_POISON | Dano over time | Poison spells/mobs |
+| CONDITION_FIRE | Dano over time | Fire spells/mobs |
+| CONDITION_ENERGY | Dano over time | Energy spells |
+| CONDITION_PARALYZE | Slow/paralisia | Paralyze effect |
+| CONDITION_DRUNK | Distorção visual | Drunk condition |
+| CONDITION_DROWN | Dano progressivo | Drowning |
+| CONDITION_FREEZING | Lentidão | Freezing |
+| CONDITION_DAZZLED | Desorientação | Dazzled effect |
+| CONDITION_CURSED | Debuff múltiplo | Curse |
+| CONDITION_BLEEDING | Dano over time | Bleeding damage |
+
+## Funções
+
+### hydraTongueSalad.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que cura condições.
+
+**Parâmetros:**
+- player: Creature player
+- item: Salada sendo consumida
+- fromPosition: Posição original
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. If hasExhaustion("special-foods-cooldown")
+   ├─ "You need to wait before using it again."
+   └─ return true
+
+2. For _, conditionType in ipairs(conditionsToRemove)
+   └─ player:removeCondition(conditionType)
+
+3. sendTextMessage: "You feel better body condition."
+
+4. player:say("Chomp.", TALKTYPE_MONSTER_SAY)
+
+5. player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+
+6. setExhaustion("special-foods-cooldown", 600s)
+
+7. item:remove(1) + return true
+```
+
+**Implementação:**
+
+```lua
+function hydraTongueSalad.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true
+	end
+
+	for _, conditionType in ipairs(conditionsToRemove) do
+		player:removeCondition(conditionType)
+	end
+
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You feel better body condition.")
+	player:say("Chomp.", TALKTYPE_MONSTER_SAY)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+	item:remove(1)
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| CONDITION_* | constant | 10 tipos |
+| special-foods-cooldown | string | Cooldown key |
+| CONST_ME_MAGIC_RED | constant | Efeito visual |
+
+## Loop de Remoção
+
+```lua
+for _, conditionType in ipairs(conditionsToRemove) do
+	player:removeCondition(conditionType)
+end
+```
+
+Itera sobre 10 types e remove cada uma (mesmo se não ativa no player).
+
+**removeCondition behavior**:
+- Se condition ativa → remove
+- Se condition inativa → ignora (seguro)
+
+## Comparação com Outras Special Foods
+
+| Item | Efeito | Duração | Cooldown |
+|------|--------|---------|----------|
+| blessed_steak | Mana max | Instant | 10min shared |
+| carrot_cake | Distance +10 | 1h | 10min shared |
+| filled_jalapeno | Haste speed | 1h | 10min shared |
+| hydra_tongue | Condição remove | Instant | 10min shared |
+
+Todas compartilham special-foods-cooldown.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Array de 10 condition types
+2. Loop ipairs para iteração
+3. removeCondition seguro (ignora inativas)
+4. Cooldown compartilhado entre special foods
+5. Mensagem descritiva
+6. Efeito mágico feedback
+7. Emote "Chomp"
+
+**Responsabilidades:**
+1. Verificar cooldown
+2. Loop remove 10 condições
+3. Enviar mensagem feedback
+4. Emitir emote
+5. Emitir efeito visual
+6. Setar cooldown 10 min
+7. Consumir salada
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 36 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 9080  
+**Condições Removidas**: 10 types  
+**Efeito**: MAGIC_RED  
+**Cooldown**: special-foods shared (10 min)  
+**Comportamento**: Multicondicional removal loop
+</Card>
+
+<Aside type="note">
+Salada que remove 10 condições (poison, fire, energy, paralyze, drunk, drown, freezing, dazzled, cursed, bleeding). Cooldown shared 10 min. Efeito vermelho. Segura vs condições inativas.
+</Aside>

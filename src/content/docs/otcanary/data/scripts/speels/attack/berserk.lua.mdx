@@ -1,0 +1,455 @@
+---
+title: "Spell - berserk.lua"
+description: "Spell de fúria física para knights com dano escalável combo"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `berserk.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 80 |
+| **Tipo de Dano** | COMBAT_PHYSICALDAMAGE |
+| **Vocações** | Knight, Elite Knight |
+| **Level Requerido** | 35 |
+| **Mana Requerida** | 115 |
+| **Words** | exori |
+| **Alcance** | 0 (melee touch) |
+| **Área** | AREA_SQUARE1X1 |
+| **Cooldown** | 4s |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Requer Weapon** | Sim |
+| **Fórmula** | Skill-based combo (skill + attack) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_BERSERK |
+| **Bloqueio Armor** | Sim |
+| **Usa Charges** | Sim |
+| **Linhas de Código** | 40 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de fúria física para knights nível 35. Dano baseado em skill + attack weapon. Fórmula combo (skill + attack x 0.5-1.5) com multiplicador extra. Alcance melee (0). Area square 1x1. Requer weapon. 115 mana. Premium only. Cooldown 4s. Efeito HITAREA.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/berserk.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(80)
+spell:name("Berserk")
+spell:words("exori")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_BERSERK)
+spell:level(35)
+spell:mana(115)
+spell:isPremium(true)
+spell:needWeapon(true)
+spell:cooldown(4 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("knight;true", "elite knight;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fúria Berserk - Ataques Combo**
+
+Este spell implementa um **sistema de dano físico combo skill+attack**:
+
+1. **Skill+Attack Combo:**
+   - Usa CALLBACK_PARAM_SKILLVALUE
+   - Formula: (skill + attack) × 0.5-1.5
+   - Multiplicador extra × 1.1
+
+2. **Fórmula Combo:**
+   - min = (level/5) + (skill + attack) × 0.5 × 1.1
+   - max = (level/5) + (skill + attack) × 1.5 × 1.1
+   - Altamente dependente weapon combo
+
+3. **Mid-Game Premium:**
+   - Level 35 (mid)
+   - 115 mana (moderado)
+   - Premium only
+   - Cooldown 4s
+
+4. **Melee Combo:**
+   - Alcance 0 (muito close)
+   - Area square 1x1
+   - Requer weapon
+   - BlockArmor
+   - Usa charges
+
+**Fórmula Visual:**
+```
+Knight lvl 35, skill 50, attack 10:
+  min = 7 + (50 + 10) × 0.5 × 1.1 = 40
+  max = 7 + (50 + 10) × 1.5 × 1.1 = 106
+
+Knight lvl 60, skill 100, attack 20:
+  min = 12 + (100 + 20) × 0.5 × 1.1 = 78
+  max = 12 + (100 + 20) × 1.5 × 1.1 = 210
+```
+
+**Diferencial:** Combo skill+attack doubling!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `berserk` oferece dano físico combinado:
+
+- **Dano:** COMBAT_PHYSICALDAMAGE skill+attack combo
+- **Fórmula:** (level/5) + (skill+attack) × 0.5-1.5 × 1.1
+- **Mana:** 115 (moderado)
+- **Level:** 35 (mid-game)
+- **Range:** 0 (melee touch)
+
+### Arquitetura
+
+Combat com callback skill combo:
+
+```
+local combat = Combat()
+├─ Type: PHYSICALDAMAGE
+├─ Effect: HITAREA
+├─ Area: SQUARE1X1
+├─ BlockArmor: sim
+├─ UseCharges: sim
+└─ Callback: onGetFormulaValues (SKILL)
+
+onGetFormulaValues(player, skill, attack, factor)
+└─ min/max combo (skill+attack)
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_PHYSICALDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_HITAREA)
+combat:setParameter(COMBAT_PARAM_BLOCKARMOR, 1)
+combat:setParameter(COMBAT_PARAM_USECHARGES, 1)
+combat:setArea(createCombatArea(AREA_SQUARE1X1))
+```
+
+**Propósito:** Combat de dano combo.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_PHYSICALDAMAGE | Dano físico |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_HITAREA | Efeito hit |
+| `COMBAT_PARAM_BLOCKARMOR` | 1 | Bloqueia armor |
+| `COMBAT_PARAM_USECHARGES` | 1 | Usa charges |
+| `Area` | AREA_SQUARE1X1 | 1x1 square melee |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, skill, attack, factor)
+	local level = player:getLevel()
+
+	local min = (level / 5) + (skill + attack) * 0.5
+	local max = (level / 5) + (skill + attack) * 1.5
+
+	return -min * 1.1, -max * 1.1
+end
+```
+
+**Propósito:** Calcula dano combo skill+attack.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Weapon attack |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+level = player:getLevel()
+
+min = (level / 5) + (skill + attack) × 0.5
+max = (level / 5) + (skill + attack) × 1.5
+
+return -min × 1.1, -max × 1.1
+```
+
+**Variáveis Locais:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `level` | number | Player level |
+| `min` | number | Dano mínimo (pré-mult) |
+| `max` | number | Dano máximo (pré-mult) |
+
+**Exemplos:**
+
+| Level | Skill | Attack | Min | Max |
+|---|---|---|---|---|
+| 35 | 50 | 10 | 40 | 106 |
+| 60 | 100 | 20 | 78 | 210 |
+| 100 | 150 | 40 | 156 | 418 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_SKILLVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Berserk ativado |
+| `false` | Target/weapon falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com callback combo |
+| `spell` | Spell | Arquivo | Instância do spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `level` | number | Player level |
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Skill+Attack Combo
+
+```lua
+local min = (level / 5) + (skill + attack) * 0.5
+local max = (level / 5) + (skill + attack) * 1.5
+return -min * 1.1, -max * 1.1
+```
+
+**Benefício:** Dano escala com ambos weapon stats.
+
+### Padrão 2: Area Square 1x1
+
+```lua
+combat:setArea(createCombatArea(AREA_SQUARE1X1))
+```
+
+**Benefício:** Melee direto single tile.
+
+### Padrão 3: Multiplicador Extra
+
+```lua
+return -min * 1.1, -max * 1.1
+```
+
+**Benefício:** 10% boost spell power.
+
+### Padrão 4: Cooldown Médio
+
+```lua
+spell:cooldown(4 * 1000)
+```
+
+**Benefício:** Spell poderoso = espera moderada.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, skill, attack, factor)
+
+**Descrição:** Calcula dano berserk combo.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Knight |
+| `skill` | number | Weapon skill |
+| `attack` | number | Weapon attack |
+| `factor` | number | Factor (unused) |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(knight, 50, 10, 0)
+// level = 35
+// min = 7 + (50 + 10) × 0.5 × 1.1 = 40
+// max = 7 + (50 + 10) × 1.5 × 1.1 = 106
+// Retorna: -40, -106
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura berserk em melee.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Knight conjurador |
+| `var` | Variant | Target muito próximo |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Berserk ativado |
+| `false` | Target/weapon inválido |
+
+**Requisitos:**
+- Level 35+
+- 115 mana
+- Weapon equipado
+- Target muito próximo (range 0)
+- Premium account
+- Cooldown 4s
+
+**Efeito:**
+- Efeito HITAREA
+- Area square 1x1
+- Dano combo (skill+attack)
+- Bloqueia armor
+- Usa charges weapon
+
+**Exemplo:**
+
+```lua
+-- Knight lvl 60, skill 100, attack 20
+spell.onCastSpell(knight, adjacentTarget)
+// Validações:
+//   ✓ Level 60 >= 35
+//   ✓ Mana 115 disponível
+//   ✓ Weapon equipado
+//   ✓ Target muito próximo
+//   ✓ Premium account
+// Combat executa
+// Combo: skill 100 + attack 20 = 120
+// min = 12 + 120 × 0.5 × 1.1 = 78
+// max = 12 + 120 × 1.5 × 1.1 = 210
+// Resultado: Fúria descrita!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Combo Dano
+
+```lua
+-- Knight com skill/attack high
+// Berserk = dano escalão combo
+// Ambos stats importam
+```
+
+### Caso 2: PvP Melee
+
+```lua
+-- Duelo knights melee
+// Range 0 = muito close
+// Weapon charges crítico
+```
+
+### Caso 3: Dungeon Mid-Game
+
+```lua
+-- Knight lvl 35-60
+// 115 mana = balanceado
+// 4s cooldown = regulado
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_PHYSICALDAMAGE
+- **Callback:** CALLBACK_PARAM_SKILLVALUE
+- **Areas:** AREA_SQUARE1X1
+- **Effects:** CONST_ME_HITAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | Dano berserk combo |
+| **Dano Type** | COMBAT_PHYSICALDAMAGE |
+| **Fórmula** | min=(lvl/5)+(skill+attack)*0.5*1.1, max=(lvl/5)+(skill+attack)*1.5*1.1 |
+| **Mana** | 115 |
+| **Range** | 0 (melee) |
+| **Area** | AREA_SQUARE1X1 |
+| **Level** | 35 (mid) |
+| **Cooldown** | 4s |
+| **Premium** | Sim |
+| **Vocações** | Knight, Elite Knight |
+| **Padrão** | Skill+attack combo + multiplicador 1.1 |

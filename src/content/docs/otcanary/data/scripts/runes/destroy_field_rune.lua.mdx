@@ -1,0 +1,440 @@
+---
+title: "Spell/Rune - destroy_field_rune.lua"
+description: "Runa que destrói campos mágicos (fire, poison, etc) com validação de proteção e lista de campos deストóveis"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `destroy_field_rune.lua` |
+| **Localização** | `data/scripts/runes/` |
+| **Tipo de Script** | Spell/Rune |
+| **ID da Runa** | 30 |
+| **ID do Item (runeId)** | 3148 |
+| **Level Requerido** | 17 |
+| **Magic Level Requerido** | 3 |
+| **Grupo** | support |
+| **Cooldown** | 2s |
+| **Cargas** | 3 |
+| **Range** | 5 (distância) |
+| **Permite Far Use** | Sim |
+| **Agressividade** | Não |
+| **Linhas de Código** | 33 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Runa que destrói campos mágicos como fire, poison, pneus, etc. Bloqueia conjuração em Protection Zones e valida se campo está em lista de deströáveis antes de remover.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/runes/destroy_field_rune.lua
+```
+
+**Tipo Spell:** Rune (Spell)
+
+**Registração:**
+```lua
+rune:id(30)
+rune:runeId(3148)
+rune:level(17)
+rune:magicLevel(3)
+rune:range(5)
+rune:allowFarUse(true)
+rune:isAggressive(false)
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Destruição de Campos com Proteção e Validação**
+
+Esta runa implementa um **sistema seguro de limpeza de campos**:
+
+1. **Validação de PZ (Protection Zone):**
+   - Bloqueia se conjurador em PZ
+   - Protege contra abuso preventivo
+
+2. **Lista de Campos Deströáveis:**
+   - 15 IDs de campos permitidos
+   - Fire, poison, spike, etc
+   - Campos que NÃO estão = rejeitados
+
+3. **Type Check:** ITEM_TYPE_MAGICFIELD
+   - Garante que é campo, não outro item
+   - top-down para pegar visível
+
+**Fluxo:**
+```
+Aponta runa em campo
+├─ Valida PZ (conjurador)
+├─ Pega tile
+├─ Busca magic field (top-down)
+├─ Valida se está em lista deströável
+├─ Remove se válido
+└─ Feedback sucesso/falha
+```
+
+**Diferencial:** PZ protection + lista branca de campos.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+A runa `destroy_field_rune` oferece destruição controlada de campos:
+
+- **Alvo:** Magic fields em range 5
+- **Critérios:** Deve estar em lista de deströáveis (15 IDs)
+- **Restrições:** Bloqueada em PZ para evitar farma
+- **Range:** 5 tiles (distância)
+
+### Arquitetura
+
+Validações em cascata → busca campos → remoção:
+
+```
+onCastSpell(creature, variant, isHotkey)
+├─ Valida PZ (conjurador)
+├─ Pega position (variant)
+├─ Pega tile
+├─ Busca magic field tipo (top-down)
+├─ Valida se em lista deströável
+├─ Remove se valid
+└─ Efeito sucesso/falha
+```
+
+### Fluxo Lógico Resumido
+
+| Etapa | tipo | Resultado |
+|---|---|---|
+| **Valida PZ** | Validação | Se true, rejeita |
+| **Pega Position** | Extração | Position alvo |
+| **Pega Tile** | Busca | Tile object |
+| **Busca Field** | Busca | Magic field ou nil |
+| **Valida ID** | Validação | Em lista deströável? |
+| **Remove** | Ação | field:remove() |
+| **Efeito** | Feedback | POFF sucesso/falha |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Tabela Global: fields
+
+```lua
+local fields = { 105, 2118, 2119, 2120, 2121, 2122, 2123, 2124, 2125, 2126, 2132, 2133, 2134, 2135, 21465 }
+```
+
+**Propósito:** Lista de IDs de campos mágicos deströáveis.
+
+| ID | Tipo de Campo |
+|---|---|
+| 105 | Fire field (tipo base) |
+| 2118 | Fire variant |
+| 2119 | Fire variant |
+| 2120 | Fire variant |
+| 2121 | Fire/poison variant |
+| 2122 | Poison field |
+| 2123 | Poison variant |
+| 2124 | Poison variant |
+| 2125 | Energy field |
+| 2126 | Energy variant |
+| 2132 | Spike field |
+| 2133 | Spike variant |
+| 2134 | Spike variant |
+| 2135 | Damage field |
+| 21465 | Geyser/special |
+
+**Nota:** Não inclui todos os campos (algumas podem ser permanentes de boss, etc).
+
+---
+
+### Função Global: rune.onCastSpell
+
+```lua
+function rune.onCastSpell(creature, variant, isHotkey)
+	local inPz = creature:getTile():hasFlag(TILESTATE_PROTECTIONZONE)
+	if inPz then
+		creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local position = Variant.getPosition(variant)
+	local tile = Tile(position)
+	local field = tile and tile:getItemByType(ITEM_TYPE_MAGICFIELD)
+	if field and table.contains(fields, field:getId()) then
+		field:remove()
+		position:sendMagicEffect(CONST_ME_POFF)
+		return true
+	end
+
+	creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+	creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+	return false
+end
+```
+
+**Propósito:** Handler principal da runa ao conjuração.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Jogador conjurando |
+| `variant` | Variant | Position or field alvo |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Campo deストóído com sucesso |
+| `false` | PZ, sem field, ou ID não permitido |
+
+**Fluxo Detalhado:**
+
+1. **Valida PZ (Conjurador):**
+   ```lua
+   local inPz = creature:getTile():hasFlag(TILESTATE_PROTECTIONZONE)
+   if inPz then
+       -- Rejeita em PZ
+       return false
+   end
+   ```
+   - Impede uso em protection zones
+   - Proteção contra farming de loot
+
+2. **Extrai Position:**
+   ```lua
+   local position = Variant.getPosition(variant)
+   ```
+   - Position é parametrizado (range 5 permite distância)
+
+3. **Pega Tile:**
+   ```lua
+   local tile = Tile(position)
+   ```
+
+4. **Busca Magic Field:**
+   ```lua
+   local field = tile and tile:getItemByType(ITEM_TYPE_MAGICFIELD)
+   ```
+   - `getItemByType()`: Busca item por tipo (magic field type)
+   - Short-circuit: se ~tile, field = nil
+
+5. **Validação de Campo:**
+   ```lua
+   if field and table.contains(fields, field:getId()) then
+       -- Destruir
+   end
+   ```
+   - Field deve existir
+   - ID deve estar em lista branca
+
+6. **Remove Campo:**
+   ```lua
+   field:remove()
+   position:sendMagicEffect(CONST_ME_POFF)
+   return true
+   ```
+   - Efeito POFF na position
+   - Retorna true (sucesso)
+
+7. **Fallback:**
+   ```lua
+   creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+   creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+   return false
+   ```
+   - Se PZ ou sem field válido
+   - Efeito em posição do conjurador
+   - Mensagem de cancelamento
+
+---
+
+## 📊 Variáveis Locais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `fields` | table | Arquivo | IDs deströáveis |
+| `rune` | Spell | Arquivo | Instância da runa |
+| `inPz` | boolean | Função | Se conjurador em PZ |
+| `position` | Position | Função | Field alvo |
+| `tile` | Tile | Função | Tile na position |
+| `field` | Item | Função | Magic field encontrado |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: PZ Early Validation
+
+```lua
+local inPz = creature:getTile():hasFlag(TILESTATE_PROTECTIONZONE)
+if inPz then
+	-- Rejeita
+	return false
+end
+```
+
+**Benefício:** Proteção contra abuso antes de outras validações.
+
+### Padrão 2: Short-Circuit com AND
+
+```lua
+local field = tile and tile:getItemByType(ITEM_TYPE_MAGICFIELD)
+if field and table.contains(fields, field:getId()) then
+	-- Destruir
+end
+```
+
+**Benefício:** Se ~tile, field = nil e segunda validação falha também.
+
+### Padrão 3: Lista Branca
+
+```lua
+local fields = { 105, 2118, ... }
+-- Depois
+if field and table.contains(fields, field:getId()) then
+```
+
+**Benefício:** Apenas campos permitidos podem ser destruídos.
+
+### Padrão 4: Efeitos Condicionais
+
+```lua
+-- Sucesso
+position:sendMagicEffect(CONST_ME_POFF)
+
+-- Falha
+creature:getPosition():sendMagicEffect(CONST_ME_POFF)
+```
+
+**Benefício:** Feedback visual em posição diferente para sucesso/falha.
+
+---
+
+## 🤖 Documentação das Funções
+
+### rune.onCastSpell(creature, variant, isHotkey)
+
+**Descrição:** Destrói campo mágico permitido.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Conjurador |
+| `variant` | Variant | Position alvo (range 5) |
+| `isHotkey` | boolean | Via hotkey |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Campo destruído |
+| `false` | PZ, sem field, ou ID não permitido |
+
+**Validações:**
+- **PZ:** Bloqueia se conjurador em protection zone
+- **Type:** Deve ser ITEM_TYPE_MAGICFIELD
+- **ID:** Deve estar em lista branca (15 IDs)
+
+**Efeito:**
+- **Sucesso:** POFF na tile field
+- **Falha:** POFF em posição conjurador + mensagem
+
+**Exemplo:**
+
+```lua
+-- Fire field ID 105 na posição X
+rune.onCastSpell(player, positionVariant, false)
+// Conjurador não em PZ
+// Pega tile, busca field
+// field.getId() = 105
+// table.contains(fields, 105) = true
+// field:remove()
+// POFF effect em position
+// Resultado: Fire field destruído
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: Destruição de Fire Field
+
+```lua
+-- Conjurador vê fire field bloqueando caminho
+-- Aponta runa no field
+// Fire field ID 105 em lista
+// Field destruído
+// Resultado: Caminho livre
+```
+
+### Caso 2: PZ Protection
+
+```lua
+-- Conjurador em protection zone
+// inPz = true
+// Retorna false antes de buscar field
+// Resultado: Runa bloqueada em PZ
+```
+
+### Caso 3: Field Não-Permitido
+
+```lua
+-- Field especial ID 9999 (boss)
+// table.contains(fields, 9999) = false
+// Cascata falha
+// POFF effect, mensagem
+// Resultado: Field protegido
+```
+
+### Caso 4: Sem Field
+
+```lua
+-- Posição vazia (sem magic field)
+// tile:getItemByType(ITEM_TYPE_MAGICFIELD) = nil
+// field = nil
+// Cascata falha
+// Resultado: Nada para destruir
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Item API:** Item, ItemType
+- **Tile API:** Tile, getItemByType()
+- **Protection Zones:** TILESTATE_PROTECTIONZONE
+- **Field Types:** ITEM_TYPE_MAGICFIELD
+- **Field IDs:** 105, 2118-2135, 21465
+- **Magic Effects:** CONST_ME_POFF
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell/Rune |
+| **Função** | Destrói campos mágicos |
+| **Lista Branca** | 15 IDs permitidos |
+| **PZ Protection** | Bloqueia em zones |
+| **Range** | 5 tiles |
+| **Validações** | PZ + type + ID |
+| **Efeito Sucesso** | POFF no field |
+| **Efeito Falha** | POFF no conjurador |
+| **Padrão** | Early PZ + short-circuit + lista branca |

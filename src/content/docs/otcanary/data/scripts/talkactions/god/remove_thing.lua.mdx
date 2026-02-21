@@ -1,0 +1,300 @@
+---
+title: Remove Thing
+description: Comando GOD para remover criaturas e items
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | remove_thing.lua |
+| **Tipo de Sistema** | Object Removal (GOD) |
+| **Funcionalidade Principal** | Remover criaturas/items |
+| **Comando** | /r |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Modos** | Single removal ou bulk (all) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/remove_thing.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /r com 2 parâmetros (direction, param opt). Parse direction 4 direções (north, east, south, west) ou número (0-3). getNextPosition(direction). Tile(position). tile:getTopVisibleThing(player) filtragem por visibilidade. isCreature/isItem type check. param="all" para remover todos items naquela tile. Remove ground protection. RED magic effect.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo remove_thing.lua implementa comando versátil de object removal. Dispõe de removal direcional (4 direções), type filtering (creature/item), visibility check, bulk mode (all), ground protection, magic effects. Ferramenta essencial de cleanup.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **TalkAction /r**
+
+```lua
+local removeThing = TalkAction("/r")
+
+function removeThing.onSay(player, words, param)
+	logCommand(player, words, param)
+	
+	-- Parse parâmetros
+	local split = param:split(",")
+	local direction = split[1]:trim():lower()
+	local removeBulk = split[2] and split[2]:trim():lower() == "all" or false
+	
+	-- Mapeamento de direção
+	local directionMap = {
+		["north"] = NORTH,
+		["east"] = EAST,
+		["south"] = SOUTH,
+		["west"] = WEST,
+		["0"] = NORTH,
+		["1"] = EAST,
+		["2"] = SOUTH,
+		["3"] = WEST,
+	}
+	
+	local directionIndex = directionMap[direction]
+	if not directionIndex then
+		player:sendCancelMessage("Usage: /r <direction>, [all]")
+		player:sendCancelMessage("Valid directions: north, east, south, west")
+		return true
+	end
+	
+	-- Obter posição alvo
+	local targetPosition = player:getPosition():getNextPosition(directionIndex)
+	local tile = Tile(targetPosition)
+	
+	if not tile then
+		player:sendCancelMessage("Target tiles does not exist.")
+		return true
+	end
+	
+	-- Remover creature visível topo
+	local thing = tile:getTopVisibleThing(player)
+	
+	if removeBulk then
+		-- Modo ALL: remover todos items naquela tile
+		local things = tile:getThings()
+		if things then
+			for _, item in ipairs(things) do
+				if item:isItem() and not item:isGround() then
+					item:remove()
+				end
+			end
+		end
+		tile:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+		return true
+	end
+	
+	-- Single removal
+	if not thing then
+		player:sendCancelMessage("Nothing to remove.")
+		return true
+	end
+	
+	-- Verificar tipo
+	if thing:isCreature() then
+		thing:remove()
+		thing:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+		return true
+	elseif thing:isItem() then
+		-- Proteção: não remover ground
+		if thing:isGround() then
+			player:sendCancelMessage("That item is not movable (ground).")
+			return true
+		end
+		thing:remove()
+		thing:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+		return true
+	else
+		player:sendCancelMessage("Can't remove that type of thing.")
+		return true
+	end
+end
+
+removeThing:separator(" ")
+removeThing:groupType("god")
+removeThing:register()
+```
+
+**Comando:** `/r <direction> [all]`
+
+**Parâmetros:**
+| Param | Nome | Type | Valores |
+|---|---|---|---|
+| 1 | direction | string | north, east, south, west, 0, 1, 2, 3 |
+| 2 | bulk | opt | "all" |
+
+---
+
+## **Modos de Operação**
+
+### **Single Removal (padrão)**
+
+```
+/r north
+
+Fluxo:
+1. Obtém posição ao norte
+2. Busca tile válido
+3. getTopVisibleThing(player) - criatura/item topo visível
+4. isCreature? = remova criatura
+5. isItem? = remova (se não ground)
+6. MAGIC_RED effect
+
+Resultado:
+- TOP visible thing removido
+- Others na tile permanecem
+```
+
+---
+
+### **Bulk Removal (param="all")**
+
+```
+/r north, all
+
+Fluxo:
+1. Obtém posição ao norte
+2. Busca tile válido
+3. tile:getThings() - lista tous items
+4. Itera: isItem() and not isGround()
+5. Remove todos
+6. MAGIC_RED effect
+
+Resultado:
+- TODOS items (exceto ground) removidos
+- Criaturas permanecem
+```
+
+---
+
+## **Direções Suportadas**
+
+```
+Text Format:
+- north, east, south, west (case-insensitive)
+
+Numeric Format:
+- 0 = north
+- 1 = east
+- 2 = south
+- 3 = west
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /r north
+
+Estado:
+- Posição norte da GM: criatura + 2 items
+
+Fluxo:
+1. getNextPosition(NORTH) = north position
+2. tile:getTopVisibleThing()= Rat (creature)
+3. isCreature()? = SIM
+4. Rat:remove()
+5. MAGIC_RED
+6. Items permanecem na tile
+
+Resultado:
+- Rat removido
+- 2 items ainda lá
+
+---
+
+GM: /r south
+
+Estado:
+- Posição sul: 3 items
+
+Fluxo:
+1. getNextPosition(SOUTH) = south position
+2. tile:getTopVisibleThing() = item 1 (topo)
+3. isItem()? SIM, isGround()? NÃO
+4. item:remove()
+5. MAGIC_RED
+
+Resultado:
+- Item 1 (topo) removido
+- Item 2,3 permanecem
+
+---
+
+GM: /r east, all
+
+Estado:
+- Posição leste: 5 items (2 ground + 3 movable)
+
+Fluxo:
+1. getNextPosition(EAST) = east position
+2. tile:getThings() = [item1, ground1, item2, item3, ground2]
+3. Loop: isItem() AND NOT isGround()
+   - item1: SIM -> remove()
+   - ground1: NÃO (isGround)
+   - item2: SIM -> remove()
+   - item3: SIM -> remove()
+   - ground2: NÃO
+4. MAGIC_RED
+
+Resultado:
+- 3 items movable removidos
+- 2 ground items permanecem
+```
+
+---
+
+**Erros Comuns:**
+
+```
+Error: "That item is not movable (ground)."
+- Tentou remover ground floor
+
+Error: "Target tiles does not exist."
+- Direção fora do mapa/invalida
+
+Error: "Nothing to remove."
+- Tile vazio (nenhum visible thing)
+
+Error: "Can't remove that type of thing."
+- Objeto tipo não reconhecido
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `string:trim()` | Remove espaços |
+| `string:lower()` | Lowercase |
+| `player:getPosition()` | Posição GM |
+| `position:getNextPosition(dir)` | Próxima posição |
+| `Tile(position)` | Obtém tile |
+| `tile:getTopVisibleThing(player)` | Thing visível |
+| `tile:getThings()` | Lista all things |
+| `thing:isCreature()` | Valida criatura |
+| `thing:isItem()` | Valida item |
+| `thing:isGround()` | Valida ground |
+| `thing:remove()` | Remove thing |
+| `position:sendMagicEffect(effect)` | Efeito visual |
+
+**Constantes:**
+- `NORTH` (0), `EAST` (1), `SOUTH` (2), `WEST` (3)
+- `CONST_ME_MAGIC_RED`
+
+---
+
+## 📌 Resumo
+
+O arquivo remove_thing.lua é ferramenta de cleanup versátil. Implementação com direccional removal, single/bulk modes, type filtering, ground protection, visual feedback. Essencial para GMs limpar tiles. Design intuitivo com validações seguras.

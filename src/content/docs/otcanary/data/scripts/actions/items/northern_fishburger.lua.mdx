@@ -1,0 +1,198 @@
+---
+title: northern_fishburger.lua
+description: Fishburger do norte com boost de fishing skill
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="northern_fishburger.lua" icon="star">
+Script de ação Lua que implementa fishburger temático com buff de fishing skill.
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data/scripts/actions/items/northern_fishburger.lua`
+
+Fishburger (ID 9088) que aumenta fishing skill +50 por 1 hora. Condition pré-compilada com SUBID JeanPierreFishing. Cooldown compartilhado special-foods (10 min). FORCEUPDATE para refresh imediato. Emote "Smack.", efeito MAGIC_RED.
+</Aside>
+
+## 📄 Visão Geral do Código
+
+**Resumo Executivo**
+
+O script `northern_fishburger.lua` implementa fishburger temático com fishing skill +50 por 1 hora. Condition pré-compilada com SUBID JeanPierreFishing (nome da buff). FORCEUPDATE força aplicação imediata. Cooldown "special-foods-cooldown" (10 min) compartilhado com outras special foods. Emote "Smack.", mensagem "You felt fishing inspiration."
+
+**Estrutura de Funcionalidades**
+
+```
+[Pré-compile fishingCondition]
+    ├─ CONDITION_ATTRIBUTES type
+    ├─ SUBID: JeanPierreFishing (nome buff)
+    ├─ BUFF_SPELL: true (efeito positivo)
+    ├─ TICKS: 3.600.000ms (1h)
+    ├─ SKILL_FISHING: +50
+    └─ FORCEUPDATE: true (refresh imediato)
+
+[Create northernFishburger Action]
+    ↓
+[onUse function]
+    ├─ If hasExhaustion("special-foods-cooldown")
+    │   └─ "You need to wait before using it again."
+    │   └─ return true
+    ├─ addCondition(fishingCondition)
+    ├─ sendTextMessage: "You felt fishing inspiration."
+    ├─ player:say("Smack.", TALKTYPE_MONSTER_SAY)
+    ├─ sendMagicEffect(CONST_ME_MAGIC_RED)
+    ├─ setExhaustion("special-foods-cooldown", 10min)
+    ├─ item:remove(1)
+    └─ return true
+    ↓
+[Register on item ID 9088]
+```
+
+## Variáveis Globais
+
+### fishingCondition (local)
+
+```lua
+local fishingCondition = Condition(CONDITION_ATTRIBUTES)
+fishingCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreFishing)
+fishingCondition:setParameter(CONDITION_PARAM_BUFF_SPELL, 1)
+fishingCondition:setParameter(CONDITION_PARAM_TICKS, 60 * 60 * 1000)
+fishingCondition:setParameter(CONDITION_PARAM_SKILL_FISHING, 50)
+fishingCondition:setParameter(CONDITION_PARAM_FORCEUPDATE, true)
+```
+
+Condition pré-compilada para reutilização.
+
+**Parâmetros:**
+- SUBID: JeanPierreFishing (nome da buff)
+- BUFF_SPELL: 1 (true) efeito positivo
+- TICKS: 3.600.000ms (1 hora)
+- SKILL_FISHING: 50 (boost significant)
+- FORCEUPDATE: true (força recalc imediato)
+
+## Funções
+
+### northernFishburger.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+
+Callback que aplica buff fishing.
+
+**Parâmetros:**
+- player: Creature player
+- item: Fishburger sendo consumido
+- fromPosition: Posição original
+- target: Target opcional
+- toPosition: Posição destino
+- isHotkey: Boolean se via hotkey
+
+**Fluxo:**
+
+```lua
+1. If hasExhaustion("special-foods-cooldown")
+   ├─ "You need to wait before using it again."
+   └─ return true
+
+2. addCondition(fishingCondition)
+   └─ Fishing +50 por 1h
+
+3. sendTextMessage: "You felt fishing inspiration."
+
+4. player:say("Smack.", TALKTYPE_MONSTER_SAY)
+
+5. player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+
+6. setExhaustion("special-foods-cooldown", 600s)
+   └─ Cooldown shared 10 min
+
+7. item:remove(1) + return true
+```
+
+**Implementação:**
+
+```lua
+function northernFishburger.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	if player:hasExhaustion("special-foods-cooldown") then
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You need to wait before using it again.")
+		return true
+	end
+
+	player:addCondition(fishingCondition)
+	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You felt fishing inspiration.")
+	player:say("Smack.", TALKTYPE_MONSTER_SAY)
+	player:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+	player:setExhaustion("special-foods-cooldown", 10 * 60)
+	item:remove(1)
+	return true
+end
+```
+
+## Constantes e Variáveis
+
+| Nome | Tipo | Descrição |
+|------|------|-----------|
+| CONDITION_ATTRIBUTES | constant | Tipo condition |
+| JeanPierreFishing | constant | SUBID (nome buff) |
+| CONDITION_PARAM_BUFF_SPELL | param | Efeito positivo |
+| CONDITION_PARAM_TICKS | param | Duração ms |
+| CONDITION_PARAM_SKILL_FISHING | param | Fishing skill |
+| CONDITION_PARAM_FORCEUPDATE | param | Force recalc |
+| special-foods-cooldown | string | Cooldown key |
+
+## SUBID: JeanPierreFishing
+
+```lua
+fishingCondition:setParameter(CONDITION_PARAM_SUBID, JeanPierreFishing)
+```
+
+SUBID é identificador único da buff (customizável). Permite múltiplas buffs de mesmo tipo com SUBIDs diferentes.
+
+**Suporta**: Sobrescrever buff antiga com mesmo SUBID.
+
+## Comparação com Outras Special Foods
+
+| Item | Skill | Valor | Duração | Cooldown |
+|------|-------|-------|---------|----------|
+| northern_fishburger | Fishing | +50 | 1h | special-foods (10min) |
+| hireling_foods (29413) | Fishing | +30 | 1h | special-foods (10min) |
+
+Fishburger tem boost +50 maior que hireling +30.
+
+## Checkpoint de Aprendizagem
+
+**Conceitos-chave:**
+1. Condition ATTRIBUTES para skill buff
+2. SUBID para identificação única buffs
+3. BUFF_SPELL para marcar positivo
+4. FORCEUPDATE para força recalc
+5. Cooldown compartilhado special-foods
+6. TICKS em milissegundos
+7. Pré-compilação reutilizável
+
+**Responsabilidades:**
+1. Validar cooldown
+2. Aplicar condition fishing
+3. Enviar mensagem feedback
+4. Emitir emote
+5. Emitir efeito visual
+6. Setar cooldown 10 min
+7. Consumir item
+
+## 🤖 Informações da Documentação
+
+<Card title="Metadata" icon="document">
+**Tipo**: Script Lua (Action Handler)  
+**Tamanho**: 25 linhas  
+**Função**: 1 (onUse)  
+**Item ID**: 9088  
+**Condition**: ATTRIBUTES (Fishing +50)  
+**SUBID**: JeanPierreFishing  
+**Duração**: 1 hora  
+**Cooldown**: special-foods-cooldown (10 min)  
+**FORCEUPDATE**: Sim
+</Card>
+
+<Aside type="note">
+Fishburger com fishing skill +50 por 1 hora. Cooldown shared special-foods 10 min. SUBID JeanPierreFishing para id único. FORCEUPDATE força recalc imediato. Maior que hireling +30.
+</Aside>

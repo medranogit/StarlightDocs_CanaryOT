@@ -1,0 +1,233 @@
+---
+title: Goto House
+description: Comando GOD para teletransportar para casa própria ou de outro jogador
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | goto_house.lua |
+| **Tipo de Sistema** | House Teleportation (GOD) |
+| **Funcionalidade Principal** | Teleportar para casa |
+| **Comando** | /gotohouse |
+| **Requisito** | Acesso de God |
+| **Separador** | Espaço |
+| **Parâmetro** | playerName (opcional) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/goto_house.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** /gotohouse sem param = teleporta para casa própria (player:getHouse()). /gotohouse playerName = teleporta para casa do outro player. Busca Player(param), valida getHouse(), teleportTo(house:getExitPosition()). Feedback de erro se sem casa.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo goto_house.lua implementa comando de teleportação para casas. Dispõe de 2 modos (casa própria/outra), validações de existência, exit position lookup. Ferramenta essencial de house management travel.
+
+## 🔧 Estrutura de Funcionalidades
+
+### **TalkAction /gotohouse**
+
+```lua
+local sellHouse = TalkAction("/gotohouse")
+
+function sellHouse.onSay(player, words, param)
+	-- Modo 1: Teleportar para casa de outro player
+	local targetPlayer = Player(param)
+	if targetPlayer then
+		local targetHouse = targetPlayer:getHouse()
+		if not targetHouse then
+			targetPlayer:sendCancelMessage(string.format("The player %s not have house.", player:getName()))
+			return
+		end
+
+		targetPlayer:teleportTo(targetHouse:getExitPosition())
+	else
+		-- Modo 2: Teleportar para casa própria
+		local house = player:getHouse()
+		if not house then
+			player:sendCancelMessage("You not have house. For goto house of one player use the player name param, usage: /gotohouse playername")
+			return
+		end
+
+		player:teleportTo(house:getExitPosition())
+	end
+
+	return true
+end
+
+sellHouse:separator(" ")
+sellHouse:groupType("god")
+sellHouse:register()
+```
+
+**Comando:**
+```
+/gotohouse                          -- Teleporta para casa própria
+/gotohouse PlayerName               -- Teleporta para casa do player
+```
+
+---
+
+## **Modos de Operação**
+
+### **Modo 1: Casa Própria**
+
+```
+/gotohouse
+
+Fluxo:
+1. param vazio
+2. targetPlayer = Player("") = nil
+3. Vai para else
+4. player:getHouse() busca casa própria
+5. Valida se house existe
+6. getExitPosition() obtém saída
+7. player:teleportTo(exitPos)
+
+Resultado:
+- GM teleportado para saída da casa
+- Feedback silencioso
+```
+
+---
+
+### **Modo 2: Casa de Outro Player**
+
+```
+/gotohouse TestPlayer
+
+Fluxo:
+1. param = "TestPlayer"
+2. targetPlayer = Player("TestPlayer")
+3. Valida targetPlayer existe
+4. targetHouse = targetPlayer:getHouse()
+5. Valida house existe
+6. getExitPosition() obtém saída
+7. teleportTo(exitPos) teleporta
+
+Resultado:
+- GM teleportado para saída da casa de TestPlayer
+- Feedback de erro se TestPlayer sem casa
+```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /gotohouse
+
+Estado: GM tem casa
+
+Fluxo:
+1. getHouse() encontra casa
+2. getExitPosition() = Position(1000, 1000, 7)
+3. teleportTo(1000, 1000, 7)
+
+Resultado:
+- GM teleportado para frente da casa dele
+
+---
+
+GM: /gotohouse NoobPlayer
+
+Estado: NoobPlayer tem casa
+
+Fluxo:
+1. Player("NoobPlayer") encontrado
+2. getHouse() = House
+3. getExitPosition() = Position(850, 850, 7)
+4. teleportTo(850, 850, 7)
+
+Resultado:
+- GM teleportado para frente da casa de NoobPlayer
+
+---
+
+GM: /gotohouse
+
+Estado: GM sem casa
+
+Fluxo:
+1. getHouse() = nil
+2. Valida: not house = true
+3. sendCancelMessage(...)
+
+Feedback:
+"You not have house. For goto house of one player use the player name param, usage: /gotohouse playername"
+
+---
+
+GM: /gotohouse OfflinePlayer
+
+Estado: Player offline
+
+Fluxo:
+1. Player("OfflinePlayer") = nil
+2. targetPlayer = nil
+3. Vai para else
+4. getHouse() = nil (não encontra)
+5. sendCancelMessage
+
+Feedback:
+"You not have house..."
+```
+
+---
+
+**Fluxo Detalhado**
+
+```lua
+-- Se param informado (tentar outro player):
+if param filled then
+    targetPlayer = Player(param)
+    if targetPlayer exists then
+        house = targetPlayer:getHouse()
+        if house exists then
+            teleportTo(house:getExitPosition())
+        else
+            error: "player not have house"
+        end
+    else
+        -- Player not found, fall through
+end
+
+-- Se param vazio ou player not found:
+house = player:getHouse()  -- Própria casa
+if house exists then
+    teleportTo(house:getExitPosition())
+else
+    error: "You not have house..."
+end
+```
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `Player(name)` | Busca player online |
+| `player:getHouse()` | Obtém house do player |
+| `house:getExitPosition()` | Obtém saída da casa |
+| `player:teleportTo(position)` | Teleporta player |
+| `player:sendCancelMessage(msg)` | Envia erro |
+| `string.format(fmt, ...)` | Formata string |
+
+**Constantes:** Nenhuma
+
+**Retorno:** `true`
+
+---
+
+## 📌 Resumo
+
+O arquivo goto_house.lua é ferramenta simples de house teleportation. Implementação com 2 modos (self/other), validações de house existência, exit position lookup. Essencial para GMs visitar casas. Design minimalista focado em acessibilidade.

@@ -1,0 +1,449 @@
+---
+title: "Script Lib - defaults_move_event.lua"
+description: "Biblioteca de callbacks padrão para movimento e equipamento"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `defaults_move_event.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Library/Defaults |
+| **Tipo de Callbacks** | Movement & Equip Events |
+| **Linhas de Código** | 27 |
+| **Funções Globais** | 6 |
+| **Complexidade** | Trivial |
+| **Status** | Base implementation (stubs) |
+
+**Descrição:**
+Biblioteca que define callbacks padrão para eventos de movimento (step in/out, add item/remove item) e equipamento (equip/deequip). Serve como fallback quando nenhum handler customizado é definido em MoveEvent. Todos os handlers padrão retornam `true` (permitir ação) sem efeitos colaterais.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/defaults_move_event.lua
+```
+
+**Tipo de Carregamento:** Executado durante inicialização (antes de scripts de jogo)
+
+**Contexto de Uso:** MoveEvent system - callbacks para movimento em tiles e equipamento de items
+
+**Pré-requisitos:**
+- Global scope para registrar funções
+- MoveEvent API para associação
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de Default Callbacks (Fallback Handlers)**
+
+Em um sistema de eventos, é necessário ter handlers padrão:
+
+**Sem defaults:**
+```lua
+-- MoveEvent sem handler definido
+moveEvent:onStepIn(nil)  -- X Crash: handler inválido
+```
+
+**Com defaults:**
+```lua
+-- MoveEvent sem handler customizado
+moveEvent:onStepIn()     -- ✓ Usa defaultStepIn (permite ação)
+```
+
+**Quando Usado:**
+```
+MoveEvent("tile_123") 
+  ├─ Não tem onStepIn() definido
+  └─ Usa defaultStepIn() ← Allows movement
+```
+
+**Comportamento Padrão:**
+- Todos retornam `true` (permitir ação)
+- Sem efeitos colaterais (passthrough)
+- Serve como base para herança/override
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `defaults_move_event.lua` fornece **callbacks fallback** para sistema de movimento:
+
+- **Step In/Out:** Quando criatura entra/sai de tile
+- **Add/Remove Item:** Quando item é adicionado/removido de tile
+- **Equip/Deequip:** Quando item é equipado/desequipado por jogador
+
+### Arquitetura
+
+Script usa padrão de **default handler stubs**:
+
+```lua
+function defaultStepIn(...) return true end      -- Permite tudo
+function defaultStepOut(...) return true end     -- Permite tudo
+function defaultAddItem(...) return true end     -- Permite tudo
+-- ... etc
+```
+
+Cada função é global e pode ser referenciada quando nenhum handler customizado existe.
+
+### Fluxo Lógico Resumido
+
+| Evento | Handler Padrão | Comportamento | Retorno |
+|--------|----------------|---------------|---------|
+| **Criatura pisa em tile** | `defaultStepIn()` | Permite | `true` |
+| **Criatura sai de tile** | `defaultStepOut()` | Permite | `true` |
+| **Item adicionado a tile** | `defaultAddItem()` | Permite | `true` |
+| **Item removido de tile** | `defaultRemoveItem()` | Permite | `true` |
+| **Item equipado** | `defaultEquip()` | Permite | `true` |
+| **Item desequipado** | `defaultDeEquip()` | Permite | `true` |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função 1: defaultStepIn()
+
+```lua
+function defaultStepIn(creature, item, position, fromPosition)
+	return true
+end
+```
+
+**Propósito:** Callback padrão quando criatura pisa em tile.
+
+**Parâmetros:**
+- `creature` - Criatura que pisou (Player ou Creature)
+- `item` - Item no tile (tile object)
+- `position` - Posição atual (Position table: x, y, z)
+- `fromPosition` - Posição anterior (Position table)
+
+**Comportamento:** Sempre retorna `true` (permite movement)
+
+**Quando Chamado:**
+```
+Creature moves to tile
+  ├─ MoveEvent.onStepIn() definido?
+  ├─ Sim → Executa customizado
+  └─ Não → Executa defaultStepIn() ✓
+```
+
+**Casos de Uso Real:**
+```lua
+-- Customizado com efeito
+local event = MoveEvent(250)  -- floor ID
+function event.onStepIn(creature, item, pos, fromPos)
+	creature:say("Você pisou em um tile especial!")
+	return true
+end
+
+-- Sem customização
+local event2 = MoveEvent(100)  -- floor padrão
+-- Usa defaultStepIn() automaticamente
+```
+
+---
+
+### Função 2: defaultStepOut()
+
+```lua
+function defaultStepOut(creature, item, position, fromPosition)
+	return true
+end
+```
+
+**Propósito:** Callback padrão quando criatura sai de tile.
+
+**Parâmetros:** Idênticos a defaultStepIn
+- `creature` - Criatura saindo
+- `item` - Item no tile
+- `position` - Posição que saiu
+- `fromPosition` - (não usado tipicamente)
+
+**Comportamento:** Sempre retorna `true` (permite movimento)
+
+**Timeline de Movement:**
+```
+Criatura se move
+  ├─ defaultStepOut() (sai do tile anterior)
+  ├─ Posição é atualizada
+  └─ defaultStepIn() (entra no novo tile)
+```
+
+**Exemplo Customizado:**
+```lua
+local lava = MoveEvent(1)  -- lava floor
+function lava.onStepOut(creature, item, pos, fromPos)
+	-- Poderia aplicar dano ao SAIR (antes de mudar posição)
+	creature:addHealth(-10)
+	return true
+end
+```
+
+---
+
+### Função 3: defaultAddItem()
+
+```lua
+function defaultAddItem(moveitem, tileitem, pos)
+	return true
+end
+```
+
+**Propósito:** Callback padrão quando item é adicionado a um tile.
+
+**Parâmetros:**
+- `moveitem` - Item sendo movido (o item)
+- `tileitem` - Item no tile (item na posição destino, pode ser nil)
+- `pos` - Posição onde item está sendo adicionado
+
+**Comportamento:** Sempre retorna `true` (permite ação)
+
+**Quando Chamado:**
+```
+Jogador move item
+  ├─ Pickup item A
+  ├─ Drop em tile B
+  └─ MoveEvent.onAddItem() dispara
+     ├─ Custom handler?
+     └─ Senão: defaultAddItem() ✓
+```
+
+**Exemplo Customizado:**
+```lua
+local teleportTile = MoveEvent(100)  -- tile ID
+function teleportTile.onAddItem(moveItem, tileItem, pos)
+	if moveItem:getId() == 1234 then  -- Key ID
+		-- Teleporta jogador ao colocar chave
+		moveItem:getParent():remove(moveItem)
+		return false  -- Não permite drop normal
+	end
+	return true
+end
+```
+
+---
+
+### Função 4: defaultRemoveItem()
+
+```lua
+function defaultRemoveItem(moveitem, tileitem, pos)
+	return true
+end
+```
+
+**Propósito:** Callback padrão quando item é removido de um tile.
+
+**Parâmetros:**
+- `moveitem` - Item sendo removido
+- `tileitem` - Item que ocupava o place (tipicamente moveitem)
+- `pos` - Posição anterior
+
+**Comportamento:** Sempre retorna `true` (permite remoção)
+
+**Quando Chamado:**
+```
+Jogador pega item do chão
+  └─ MoveEvent.onRemoveItem() dispara
+     ├─ Custom handler?
+     └─ Senão: defaultRemoveItem() ✓
+```
+
+---
+
+### Função 5: defaultEquip()
+
+```lua
+function defaultEquip(player, item, slot, isCheck)
+	return true
+end
+```
+
+**Propósito:** Callback padrão quando jogador equipa item.
+
+**Parâmetros:**
+- `player` - Jogador equipando
+- `item` - Item sendo equipado
+- `slot` - Slot destino (CONST_SLOT_*)
+- `isCheck` - Boolean se é apenas verificação (sim/não)
+
+**Comportamento:** Sempre retorna `true` (permite equip)
+
+**Retorno Significado:**
+- `true` - Permite equipar
+- `false` - Nega equipamento
+
+**Quando Chamado:**
+```
+Jogador clica para equipar
+  ├─ isCheck=true → Apenas verifica se permitido
+  │  └─ Se true → Procede com equip
+  └─ isCheck=false → Equipa (efeitos aplicados)
+```
+
+**Exemplo Customizado:**
+```lua
+local cursedSword = 1234
+local event = MoveEvent()
+function event.onEquip(player, item, slot, isCheck)
+	if item:getId() == cursedSword then
+		if isCheck then
+			return true  -- Permite
+		else
+			-- Aplica curse ao jogador
+			player:addCondition(curseCondition)
+		end
+	end
+	return true
+end
+```
+
+---
+
+### Função 6: defaultDeEquip()
+
+```lua
+function defaultDeEquip(player, item, slot, isCheck)
+	return true
+end
+```
+
+**Propósito:** Callback padrão quando jogador desequipa item.
+
+**Parâmetros:** Idênticos a defaultEquip
+- `player` - Jogador
+- `item` - Item sendo desequipado
+- `slot` - Slot origem
+- `isCheck` - Verificação ou execução
+
+**Comportamento:** Sempre retorna `true` (permite deequip)
+
+**Retorno Significado:**
+- `true` - Permite remover item
+- `false` - Força manter equipado (curse, etc)
+
+**Exemplo Customizado:**
+```lua
+function event.onDeEquip(player, item, slot, isCheck)
+	if item:getId() == cursedSword then
+		return false  -- Não permite remover (cursed!)
+	end
+	return true  -- Item normal, permite remover
+end
+```
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Funções Globais Definidas
+
+| Função | Parâmetros | Retorno | Descrição |
+|--------|-----------|---------|-----------|
+| `defaultStepIn` | creature, item, position, fromPosition | boolean | Entrada em tile |
+| `defaultStepOut` | creature, item, position, fromPosition | boolean | Saída de tile |
+| `defaultAddItem` | moveitem, tileitem, pos | boolean | Item adicionado |
+| `defaultRemoveItem` | moveitem, tileitem, pos | boolean | Item removido |
+| `defaultEquip` | player, item, slot, isCheck | boolean | Item equipado |
+| `defaultDeEquip` | player, item, slot, isCheck | boolean | Item desequipado |
+
+### Valores de Retorno
+
+| Valor | Significado |
+|-------|-------------|
+| `true` | Permite ação (permite movimento/equip/etc) |
+| `false` | Nega ação (bloqueia movimento/equip/etc) |
+
+### Slots de Equipamento (Constantes)
+
+| Constante | Valor | Descrição |
+|-----------|-------|-----------|
+| `CONST_SLOT_HEAD` | 1 | Cabeça |
+| `CONST_SLOT_NECKLACE` | 2 | Colar |
+| `CONST_SLOT_BACKPACK` | 3 | Mochila |
+| `CONST_SLOT_ARMOR` | 4 | Armadura |
+| `CONST_SLOT_RIGHT` | 5 | Mão direita |
+| `CONST_SLOT_LEFT` | 6 | Mão esquerda |
+| `CONST_SLOT_LEGS` | 7 | Calças |
+| `CONST_SLOT_FEET` | 8 | Pés |
+| `CONST_SLOT_RING` | 9 | Anel |
+| `CONST_SLOT_AMMO` | 10 | Munição |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Fallback Handler Pattern
+
+**Técnica:** Fornecer implementação padrão que permite tudo quando não há customização.
+
+```lua
+-- Sem fallback: X Erro se handler não definido
+event.onStepIn = nil  -- Crash ao disparar
+
+-- Com fallback: Sistema checa
+if handler then
+	handler()
+else
+	defaultStepIn()  -- ✓ Seguro
+end
+```
+
+**Vantagem:**
+- Robustez: nunca há crash por handler faltante
+- Simplicidade: não precisa definir handler mínimo
+- Flexibilidade: pode ser override seletivamente
+
+**Aplicação:** Qualquer sistema de callbacks.
+
+---
+
+### Padrão 2: Early Returns para Validation
+
+**Técnica:** Usar padrão `isCheck` para separar validação de execução.
+
+```lua
+function defaultEquip(player, item, slot, isCheck)
+	if item:getLevel() > player:getLevel() then
+		return false  -- Válido para ambas fases
+	end
+	if not isCheck then
+		-- Apenas executa efeitos aqui
+		item:onEquipped(player)
+	end
+	return true
+end
+```
+
+**Vantagem:**
+- Separação clara: validação vs side-effects
+- Performance: check sem side-effects
+- Segurança: evita aplicar efeito duas vezes
+
+**Aplicação:** Validação com side-effects.
+
+---
+
+### Padrão 3: True Default (Allow-All)
+
+**Técnica:** Handlers padrão sempre retornam `true` (mais permissivo).
+
+```lua
+function defaultStepIn(...) return true end
+```
+
+**Vantagem:**
+- Seguro por padrão: não bloqueia gameplay
+- Explícito para negar: scripts devem retornar `false`
+- Evita surpresas: customização opta-in
+
+**Aplicação:** Qualquer sistema de permissões de jogador.

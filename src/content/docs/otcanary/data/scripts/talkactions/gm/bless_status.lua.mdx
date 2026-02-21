@@ -1,0 +1,124 @@
+---
+title: Bless Status
+description: Comando GM para visualizar status de bênçãos do jogador
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | `bless_status.lua` |
+| **Tipo de Sistema** | Comando Talk Action (GM) |
+| **Funcionalidade Principal** | Consultar status de bênçãos |
+| **Comando** | `/bless` |
+| **Requisito** | Acesso de Gamemaster |
+| **Parâmetro Obrigatório** | Não |
+| **Separador** | Espaço |
+| **Dependência** | `libs/systems/blessing.lua` |
+| **Método Chamado** | `player:sendBlessStatus()` |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/gm/bless_status.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando simples que carrega módulo de bênçãos via `dofile()` e chama método `sendBlessStatus()` no player. Este método envia para o jogador informações sobre suas bênçãos atuais (quais tem ativas, quais expiradas, etc via protocolo do cliente). Módulo de bênçãos é sistema separado em `libs/systems/blessing.lua`. Útil para GMs auditarem bênçãos de jogadores ou para testes de sistema de bênçãos.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo `bless_status.lua` implementa um comando TalkAction (`/bless`) que permite gamemasters visualizar o status de bênçãos de um jogador. O sistema carrega o módulo de sistema de bênçãos através de `dofile()`, invoca o método `sendBlessStatus()` no player que chamou o comando, que envia para o cliente informações estruturadas sobre bênçãos ativas e status. Comando simples sem parâmetros que consulta bênçãos do próprio GM que executou.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+-- 1. Carregar módulo de bênçãos
+dofile(CORE_DIRECTORY .. "/libs/systems/blessing.lua")
+
+-- 2. Instanciação do TalkAction
+local blessStatus = TalkAction("/bless")
+
+-- 3. Função Principal (onSay)
+function blessStatus.onSay(player, words, param)
+    -- Log automático do comando
+    logCommand(player, words, param)
+    
+    -- Enviar status de bênçãos ao jogador
+    -- Método definido em libs/systems/blessing.lua
+    player:sendBlessStatus()
+    
+    return true
+end
+
+-- 4. Configuração de Registro
+blessStatus:separator(" ")
+blessStatus:groupType("gamemaster")
+blessStatus:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **blessStatus.onSay(player, words, param)**
+
+**Descrição:** Função callback executada quando o comando `/bless` é utilizado. Envia informações de bênçãos ao jogador.
+
+**Parâmetros:**
+- `player` (Player): Jogador que executou o comando
+- `words` (string): Palavras do comando (`/bless`)
+- `param` (string): Parâmetros adicionais (não utilizado)
+
+**Fluxo de Execução:**
+1. Registra comando em log via `logCommand(player, words, param)`
+2. Chama método: `player:sendBlessStatus()`
+   - Envia ao cliente protocolo com informações de bênçãos
+   - Cliente exibe status visual (ícones, tooltips, etc)
+3. Retorna sucesso
+
+**Método Chamado: `player:sendBlessStatus()`**
+
+**Descrição:** Método definido em `libs/systems/blessing.lua` que envia protocolo ao cliente com status de bênçãos.
+
+**Parametrizando:** Nenhum (método sem parâmetros)
+
+**Saída:** Protocolo do cliente contendo:
+- Lista de bênçãos ativas
+- Níveis de bênção (1-5)
+- Durações ou timestamps de expiração
+- Status visual e ícones
+
+**Exemplo de Saída Esperada (visual do cliente):**
+```
+Blessed by the First Blessing
+Blessed by the Second Blessing
+Blessed by the Third Blessing
+...
+```
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+### **Dependência: libs/systems/blessing.lua**
+
+**Descrição:** Módulo de sistema de bênçãos carregado via `dofile()`.
+
+**Carregamento:**
+```lua
+dofile(CORE_DIRECTORY .. "/libs/systems/blessing.lua")
+```
+
+**Componentes Fornecidos:**
+- Função `player:sendBlessStatus()` - Envia informações de bênção
+- Lógica de sistema de bênçãos (não visível neste arquivo)
+
+**Const CORE_DIRECTORY:** Diretório de núcleo definido globalmente, geralmente `data/libs`
+
+---
+
+## 📌 Resumo
+
+O arquivo `bless_status.lua` é um comando GM minimalista para auditoria de sistema de bênçãos. Implementação que carrega módulo de bênçãos e delega processamento para método `sendBlessStatus()` definido externamente, mantendo architecture limpa. Útil para verificação de status de bênçãos, testes de sistema, e suporte a jogadores. Sem parâmetros ou customizações, consulta bênçãos do próprio usuário que executou.

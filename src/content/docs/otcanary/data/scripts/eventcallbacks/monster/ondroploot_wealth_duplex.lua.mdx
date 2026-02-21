@@ -1,0 +1,488 @@
+---
+title: "ondroploot_wealth_duplex.lua"
+description: "Sistema de wealth duplex loot drops com múltiplos rolls baseado em concoction ativa, aplicando diminishing factor e probabilistic rounding"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+**Descrição**: Event callback que implementa **sistema de wealth duplex loot bonus** quando um monstro morre e wealth duplex concoction está ativa em jogador(es). Coleta participants (solo ou party), valida existência de wealth duplex concoction, coleta taxa de chance baseada em concoction rate (não player-specific como prey), aplica diminishing factor por número de ativadores, converte fração em probabilidade (fractional rolling), gera múltiplos loot rolls acumulados se chance passar, e annexa mensagem. Padrão de **concoction-based multi-roll** similar a hazard mas baseado em consumível.
+
+**Caminho Original**: `data/scripts/eventcallbacks/monster/ondroploot_wealth_duplex.lua`
+
+**Tipo**: EventCallback (monsterOnDropLoot trigger)
+
+**Dependências**:
+- EventCallback API (engine C++)
+- Monster/Player/Corpse objects
+- Concoction API (Concoction.find, Concoction.Ids.WealthDuplex, concoction:active(), concoction.config.rate)
+- Logger utility
+- ConfigManager: `PARTY_SHARE_LOOT_BOOSTS`, `PARTY_SHARE_LOOT_BOOSTS_DIMINISHING_FACTOR`
+- Constants: `ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX`
+
+<Aside>
+Wealth Duplex é **concoction item** (consumível ativo com duração) que fornece multiplicador de loot chance. Diferente de prey (permanente), wealth duplex tem timer. Callback verifica se concoction existe (pode ser removed), depois valida quem tem ativo. Rate vem de concoction config, não de player attribute.
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O módulo `ondroploot_wealth_duplex.lua` implementa **gerador de loot multi-roll baseado em concoction wealth duplex** que intercepta `monsterOnDropLoot` e executa: (1) coleta participants (solo ou party), (2) valida se wealth duplex concoction existe (com logger warning se não), (3) acumula chance de cada participant se wealth duplex está ativo nele, (4) aplica diminishing factor exponencial, (5) converte chance em rolls via probabilistic rounding (fractional), (6) se rolls > 0, gera múltiplos loot rolls em loop acumulando, (7) anexa mensagem mostrando rolls extras se party sharing. Padrão de **concoction-aware multi-roll generator** com identical fractional rounding ao hazard.
+
+### Arquitetura de Componentes
+
+```
+Wealth Duplex Loot Handler
+│
+├─ PARTICIPANT COLLECTION (3 operações)
+│  ├── player = Player(corpse:getCorpseOwner())
+│  ├── canReceiveLoot() validation
+│  └── Party collection se PARTY_SHARE_LOOT_BOOSTS enabled
+│
+├─ CONCOCTION VALIDATION (2 operações)
+│  ├── wealthDuplex = Concoction.find(Concoction.Ids.WealthDuplex)
+│  └── if not exists: logger.debug + return
+│
+├─ CHANCE CALCULATION (4 operações)
+│  ├── chance = 0
+│  ├── for each participant:
+│  │  ├── if wealthDuplex:active(participant)
+│  │  │  └── chance += wealthDuplex.config.rate
+│  │  └── wealthActivators[] += participant:getName()
+│  │
+│  └── Apply diminishing: chance = chance / (numActivators ^ factor)
+│
+├─ FRACTIONAL ROLLING (3 operações)
+│  ├── rolls = chance / 100
+│  ├── if random(0, 100) < (rolls % 1) * 100: ceil
+│  └── else: floor
+│
+├─ LOOT GENERATION (1 loop)
+│  └── for _ = 1, rolls: accumulate lootTable
+│
+├─ MESSAGE ASSEMBLY (2 operações)
+│  ├── if PARTY_SHARE and rolls > 1: "X extra rolls"
+│  └─ else: generic "wealth duplex"
+│
+└─ ATTRIBUTION (2)
+   ├── corpse:addLoot(lootTable)
+   └── corpse:setAttribute(LOOTMESSAGE_SUFFIX, ...)
+```
+
+---
+
+## Detalhes da Função Global
+
+### `callback.monsterOnDropLoot(monster, corpse)`
+
+**Tipo**: EventCallback hook
+
+**Descrição**: Função disparada quando monstro morre. Valida wealth duplex concoction, coleta activators, calcula rolls com diminishing, e gera múltiplos loot rolls se chance passar.
+
+**Parâmetros**:
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `monster` | userdata | Monstro morto |
+| `corpse` | userdata | Corpse destination |
+
+**Retorna**: 
+- `nil` (implícito)
+
+**Algoritmo Completo**:
+
+```lua
+function callback.monsterOnDropLoot(monster, corpse)
+    -- 1. PLAYER VALIDATION
+    local player = Player(corpse:getCorpseOwner())
+    if not player or not player:canReceiveLoot() then
+        return
+    end
+
+    -- 2. MONSTER TYPE VALIDATION
+    local mType = monster:getType()
+    if not mType then
+        return
+    end
+
+    -- 3. INITIALIZE PARAMETERS
+    local factor = 1.0
+    local msgSuffix = ""
+    local participants = { player }
+
+    -- 4. COLLECT PARTICIPANTS (party or solo)
+    if configManager.getBoolean(configKeys.PARTY_SHARE_LOOT_BOOSTS) then
+        local party = player:getParty()
+        if party and party:isSharedExperienceEnabled() then
+            participants = party:getMembers()
+            table.insert(participants, party:getLeader())
+        end
+    end
+
+    -- 5. VALIDATE WEALTH DUPLEX CONCOCTION
+    local wealthDuplex = Concoction.find(Concoction.Ids.WealthDuplex)
+    if not wealthDuplex then
+        logger.debug("[Monster:onDropLoot] - Could not find WealthDuplex concoction.")
+        return  -- Concoction não existe: não pode ser ativado
+    end
+
+    -- 6. CALCULATE WEALTH DUPLEX CHANCE
+    local chance = 0
+    local wealthActivators = {}
+    
+    for _, participant in ipairs(participants) do
+        if participant and wealthDuplex:active(participant) then
+            -- Concoction ativa em participant: adiciona rate
+            chance = chance + wealthDuplex.config.rate
+            table.insert(wealthActivators, participant:getName())
+        end
+    end
+
+    -- 7. APPLY DIMINISHING FACTOR
+    if #wealthActivators > 0 then
+        local numActivators = #wealthActivators
+        chance = chance / numActivators ^ configManager.getFloat(configKeys.PARTY_SHARE_LOOT_BOOSTS_DIMINISHING_FACTOR)
+    end
+
+    -- 8. CONVERT CHANCE TO ROLLS (probabilistic)
+    local rolls = chance / 100
+    
+    if math.random(0, 100) < (rolls % 1) * 100 then
+        rolls = math.ceil(rolls)
+    else
+        rolls = math.floor(rolls)
+    end
+
+    -- 9. VALIDATE ROLLS
+    if rolls == 0 then
+        return  -- Nenhum roll: sem loot
+    end
+
+    -- 10. ASSEMBLE MESSAGE
+    local existingSuffix = corpse:getAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX) or ""
+
+    if configManager.getBoolean(configKeys.PARTY_SHARE_LOOT_BOOSTS) and rolls > 1 then
+        -- Party sharing + multiple rolls: show count
+        msgSuffix = string.len(existingSuffix) > 0 and 
+            string.format(", active wealth duplex %s extra rolls", rolls) or 
+            string.format("active wealth duplex %s extra rolls", rolls)
+    else
+        -- Single roll or no party: generic message
+        msgSuffix = string.len(existingSuffix) > 0 and ", active wealth duplex" or "active wealth duplex"
+    end
+
+    -- 11. GENERATE MULTIPLE LOOT ROLLS
+    local lootTable = {}
+    for _ = 1, rolls do
+        lootTable = mType:generateLootRoll({ factor = factor, gut = false }, lootTable, player)
+    end
+
+    -- 12. ADD LOOT AND ATTRIBUTE MESSAGE
+    corpse:addLoot(lootTable)
+    corpse:setAttribute(ITEM_ATTRIBUTE_LOOTMESSAGE_SUFFIX, existingSuffix .. msgSuffix)
+end
+```
+
+**Características Principais**:
+
+| Característica | Valor | Notas |
+|---|---|---|
+| Concoction Validation | Early return | Logger warning se missing |
+| Chance Source | concoction.config.rate | Fixed por concoction, não player |
+| Active Check | wealthDuplex:active(participant) | Boolean per participant |
+| Diminishing Factor | Exponencial | Igual a prey/hazard |
+| Fractional Rolling | Probabilístico | Igual a hazard |
+| Multiple Rolls | Loop acumulativo | Igual a hazard |
+| Rolls Validation | rolls == 0? return | Skip se sem rolls |
+
+---
+
+## Detalhes das Variáveis Locais
+
+### `player` (userdata | nil)
+
+**Tipo**: userdata (Player object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local player = Player(corpse:getCorpseOwner())`
+
+### `mType` (MonsterType | nil)
+
+**Tipo**: userdata
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local mType = monster:getType()`
+
+### `factor` (number)
+
+**Tipo**: number
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local factor = 1.0`
+
+### `msgSuffix` (string)
+
+**Tipo**: string
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local msgSuffix = ""`
+
+### `participants` (table)
+
+**Tipo**: table (number → userdata)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local participants = { player }`
+
+**Descrição**: Array de jogadores. Expandido se party sharing enabled.
+
+### `wealthDuplex` (Concoction | nil)
+
+**Tipo**: userdata (Concoction object)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local wealthDuplex = Concoction.find(Concoction.Ids.WealthDuplex)`
+
+**Descrição**: Referência ao concoction wealth duplex. Pode ser `nil` se não encontrado (logged).
+
+**Uso**:
+- `wealthDuplex:active(participant)` - Valida se ativo em player
+- `wealthDuplex.config.rate` - Acessa taxa de chance
+
+### `chance` (number)
+
+**Tipo**: number (0-N)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local chance = 0`
+
+**Descrição**: Chance acumulativa antes de diminishing factor.
+
+**Exemplo**:
+```lua
+-- Se 2 participants com duplex ativo, rate=50 cada:
+chance = 0
+chance = 0 + 50 = 50   (participant 1)
+chance = 50 + 50 = 100 (participant 2)
+-- Após diminishing: 100 / (2 ^ 0.5) ≈ 70.7
+```
+
+### `wealthActivators` (table)
+
+**Tipo**: table (number → string)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local wealthActivators = {}`
+
+**Descrição**: Array de nomes de participants com wealth duplex ativo. Coletado durante loop. Usado para message assembly e diminishing calculation.
+
+### `numActivators` (number)
+
+**Tipo**: number
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local numActivators = #wealthActivators`
+
+**Descrição**: Contagem de ativadores. Base para diminishing exponent.
+
+### `rolls` (number)
+
+**Tipo**: number (float antes de rounding, int depois)
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local rolls = chance / 100`
+
+**Descrição**: Número de rolls normalizado. Antes de rounding: 0.5, 1.3, etc. Após rounding: inteiro.
+
+**Exemplo**:
+```lua
+chance = 150
+rolls = 150 / 100 = 1.5
+random < 50% → rolls = ceil(1.5) = 2
+```
+
+### `lootTable` (table)
+
+**Tipo**: `table<number, item_struct>`
+
+**Escopo**: Local (função)
+
+**Inicialização**: `local lootTable = {}`
+
+**Descrição**: Array acumulativo. Cresce em cada rol do loop.
+
+---
+
+## Padrões & Implementação
+
+### 1. Padrão de Concoction-Based Activation
+
+Validar existência de concoction antes de usar:
+
+```lua
+-- Validação defensiva
+local wealthDuplex = Concoction.find(Concoction.Ids.WealthDuplex)
+if not wealthDuplex then
+    logger.debug("Could not find concoction")
+    return
+end
+
+-- Usar concoction
+if wealthDuplex:active(player) then
+    -- ...
+end
+```
+
+**Razão**:
+- Concoction pode ser removed/recreated
+- Precisa ser log-friendly se missing
+- Early return evita crashes
+
+### 2. Padrão de Conditional Rate Source
+
+Taxa pode vir de concoction config (fixed) ou player (variable):
+
+```lua
+-- Wealth Duplex: fixed rate from concoction
+chance = chance + wealthDuplex.config.rate
+
+-- Prey (alternativa): variable rate from player
+chance = chance + participant:getPreyLootPercentage(mType:raceId())
+```
+
+**Diferença**:
+- Wealth Duplex: todos com concoction ativo recebem mesma rate
+- Prey: cada player pode ter chances diferentes (skill/leveling)
+
+### 3. Padrão de Guard + Message Differentiation
+
+Mensagem muda baseado em config e rolls:
+
+```lua
+if PARTY_SHARE and rolls > 1 then
+    msgSuffix = format("X extra rolls", rolls)
+elseif rolls == 1 then
+    msgSuffix = "generic"
+else
+    msgSuffix = ""
+end
+```
+
+---
+
+## Fluxo de Operação
+
+### Caso: 2-Player Party com Wealth Duplex
+
+```
+[Monster Death - Party with Wealth Duplex]
+    │
+    ├─ PARTY_SHARE_LOOT_BOOSTS = true
+    ├─ participants = {player1, player2, leader}
+    │
+    ├─ wealthDuplex found ✓
+    ├─ wealthDuplex.config.rate = 50
+    │
+    ├─ Loop participants:
+    │  ├─ player1: wealthDuplex:active()? YES → chance += 50, chance = 50
+    │  ├─ player2: wealthDuplex:active()? YES → chance += 50, chance = 100
+    │  └─ leader: wealthDuplex:active()? NO → skip
+    │
+    ├─ wealthActivators = {"Player1", "Player2"}
+    ├─ numActivators = 2
+    │
+    ├─ chance = 100 / (2 ^ 0.5) = 100 / 1.41 ≈ 70.7
+    ├─ rolls = 70.7 / 100 = 0.707
+    │
+    ├─ random(0, 100) < 70.7%?
+    │  ├─ 65 < 70.7: YES → rolls = ceil(0.707) = 1
+    │  └─ 75 < 70.7: NO → rolls = floor(0.707) = 0 (return)
+    │
+    ├─ [Assume rolls = 1]
+    │
+    ├─ msgSuffix = "active wealth duplex" (1 roll não mostra count)
+    ├─ Loop 1: lootTable = generateLootRoll(...)
+    ├─ corpse:addLoot(lootTable)
+    │
+    └─ Party recebe: "You received loot. [active wealth duplex]"
+```
+
+### Caso: Wealth Duplex Não Encontrado
+
+```
+[Monster Death - Wealth Duplex Missing]
+    │
+    ├─ wealthDuplex = Concoction.find(...) → nil
+    │
+    ├─ if not wealthDuplex:
+    │  └─ logger.debug("[Monster:onDropLoot] - Could not find WealthDuplex...")
+    │  └─ return (early exit)
+    │
+    └─ [Nenhum loot wealth duplex gerado]
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+**Versão da Documentação**: 1.0
+
+**Última Atualização**: 2026-02-20
+
+**Tipo de Complexidade**: 🟡 **Média**
+- Arquivo com 66 linhas de código
+- 1 função callback
+- 9 variáveis locais
+- Lógica: participant collection + concoction validation + chance calculation + diminishing + fractional rolling + multi-roll generation
+- Padrões: concoction-based activation, conditional rate source, guard + message differentiation
+- Tempo estimado de aprendizado: 30-35 minutos
+
+**Cobertura de Tópicos**:
+- ✅ Variáveis locais (9)
+- ✅ Função global
+- ✅ Padrões de implementação
+- ✅ Fluxo de operação
+- ✅ Concoction integration
+
+**Referências Relacionadas**:
+- [ARQUITETURA_PROJETO.mdx](../../../ARQUITETURA_PROJETO.mdx)
+- ondroploot_hazard.lua - Similar fractional rolling pattern
+- ondroploot_prey.lua - Similar diminishing factor pattern
+- Concoction API documentation
+- Party API
+
+**Status de Implementação**: ✅ **Completamente Implementado**
+- Concoction validation operacional
+- Chance calculation com diminishing correto
+- Fractional rounding functional
+- Multi-roll accumulation verified
+
+**Padrões Principais Implementados**:
+1. ✅ Concoction-based activation
+2. ✅ Rate from config vs player attribute
+3. ✅ Conditional messaging by rolls count
+4. ✅ Early return on zero rolls
+5. ✅ Accumulative multi-roll generation
+
+**Notas para Futuros Desenvolvedores**:
+1. Concoction pode ser nil - sempre validar antes usar
+2. Logger.debug se concoction missing - normal (pode ser config)
+3. Fractional rounding é **identicamente como hazard** - ver hazard.lua para detalhes
+4. Rate vem de `concoction.config.rate` - não customizável por player
+5. Zero rolls pode ocorrer - msgSuffix vazio, return silencioso (OK)
+6. Party sharing rate não triplica - diminishing factor previne abuse
+

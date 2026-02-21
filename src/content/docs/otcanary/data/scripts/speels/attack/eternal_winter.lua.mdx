@@ -1,0 +1,458 @@
+---
+title: "Spell - eternal_winter.lua"
+description: "Spell de inverno eterno AOE 5x5 para druids level 60 self-target"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `eternal_winter.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 118 |
+| **Tipo de Dano** | COMBAT_ICEDAMAGE |
+| **Vocações** | Druid, Elder Druid |
+| **Level Requerido** | 60 |
+| **Mana Requerida** | 1050 (EXTREMAMENTE CUSTOSO!) |
+| **Words** | exevo gran mas frigo |
+| **Alcance** | 5 (self) |
+| **Área** | 5x5 Circle (25 tiles!) |
+| **Cooldown** | 40s |
+| **GroupCooldown** | 4s e 40s (dinâmico!) |
+| **Premium** | Sim |
+| **Fórmula** | Magic-level based (6-12 MLvl) - EXTREMAMENTE ALTA! |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_ETERNAL_WINTER |
+| **Requer Self-Target** | Sim (isSelfTarget: true) |
+| **Grupos** | attack, focus |
+| **Linhas de Código** | 32 |
+| **Complexidade** | Médium-Alto |
+
+**Descrição:**
+Spell de inverno eterno AOE mega para druids nível 60 (late-game). Dano gelo em área 5x5 (25 tiles!). Fórmula EXTREMAMENTE ALTA em MLvl (6-12 coef). Self-target obrigatório. 1050 mana (EXTREMAMENTE custoso!). Premium only. Cooldown 40/4s duplo (focus group). Efeito ICETORNADO. Muito poderoso!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/eternal_winter.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack", "focus")
+spell:id(118)
+spell:name("Eternal Winter")
+spell:words("exevo gran mas frigo")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_ETERNAL_WINTER)
+spell:level(60)
+spell:mana(1050)
+spell:isPremium(true)
+spell:range(5)
+spell:isSelfTarget(true)
+spell:cooldown(40 * 1000)
+spell:groupCooldown(4 * 1000, 40 * 1000)
+spell:needLearn(false)
+spell:vocation("druid;true", "elder druid;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Inverno Eterno - Mega AOE Gelo Self-Target**
+
+Este spell implementa um **sistema de AOE gelo EXTREMAMENTE potente com self-target obrigatório**:
+
+1. **Self-Target Mega AOE:**
+   - isSelfTarget: true (usa caster como centro)
+   - Não precisa target/direction
+   - AOE 5x5 = 25 tiles! (ENORME!)
+   - Area 5x5 Circle
+
+2. **Escalabilidade EXTREMAMENTE Alta:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 6)
+   - max = (level/5) + (maglevel × 12)
+   - Coef MLvl EXTREMAMENTE ALTOS (6-12!)
+   - Sem bônus fixo!
+
+3. **Late-Game Premium MEGA:**
+   - Level 60 (late!)
+   - 1050 mana (EXTREMAMENTE custoso!)
+   - Premium only
+   - Cooldown 40s (longo)
+   - Focus group (CD 4s grupo!)
+
+4. **Tipo Ice:**
+   - COMBAT_ICEDAMAGE
+   - Efeito ICETORNADO
+   - Area 5x5 (25 tiles = MASSIVE!)
+   - Druids apenas
+
+**Fórmula Visual:**
+```
+Druid lvl 60, mlvl 20:
+  min = 12 + 120 = 132
+  max = 12 + 240 = 252
+
+Druid lvl 100, mlvl 40:
+  min = 20 + 240 = 260
+  max = 20 + 480 = 500
+```
+
+**Diferencial:** Self-target ice mega AOE 5x5 com escalabilidade EXTREMA!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `eternal_winter` oferece AOE gelo EXTREMAMENTE potente:
+
+- **Dano:** COMBAT_ICEDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*6/12) (EXTREMA!)
+- **Mana:** 1050 (EXTREMAMENTE custoso)
+- **Level:** 60 (late-game)
+- **Área:** 5x5 (25 tiles - ENORME!)
+
+### Arquitetura
+
+Combat com self-target:
+
+```
+local combat = Combat()
+├─ Type: ICEDAMAGE
+├─ Effect: ICETORNADO
+├─ Area: CIRCLE5X5 (25 tiles)
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max potente extremo
+
+spell:isSelfTarget(true)
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ICEDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ICETORNADO)
+combat:setArea(createCombatArea(AREA_CIRCLE5X5))
+```
+
+**Propósito:** Combat de AOE gelo.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ICEDAMAGE | Dano gelo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ICETORNADO | Efeito tornado gelo |
+| `Area` | AREA_CIRCLE5X5 | 5x5 círculo (25 tiles!) |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 6)
+	local max = (level / 5) + (maglevel * 12)
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano gelo AOE potente.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 6)
+max = (level / 5) + (maglevel * 12)
+```
+
+**Pesos:**
+- Level: 0.2 por ponto (baixo)
+- Maglevel min: 6 (EXTREMAMENTE ALTO!)
+- Maglevel max: 12 (EXTREMAMENTE ALTO!)
+- Sem bônus fixo
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 60 | 20 | 132 | 252 |
+| 80 | 25 | 166 | 312 |
+| 100 | 30 | 206 | 372 |
+| 120 | 40 | 260 | 500 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Inverno ativado |
+| `false` | Validação falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com área 5x5 |
+| `spell` | Spell | Arquivo | Instância spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Self-Target Mega AOE
+
+```lua
+spell:isSelfTarget(true)
+combat:setArea(createCombatArea(AREA_CIRCLE5X5))
+```
+
+**Benefício:** Caster é centro AOE 5x5 (ENORME!).
+
+### Padrão 2: Escalabilidade EXTREMA MLvl
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 6)
+	local max = (level / 5) + (maglevel * 12)
+	return -min, -max
+end
+```
+
+**Benefício:** Dano escala EXTREMAMENTE com magic level.
+
+### Padrão 3: Área 5x5 (MEGA!)
+
+```lua
+combat:setArea(createCombatArea(AREA_CIRCLE5X5))
+```
+
+**Benefício:** 25 tiles = múltiplos targets EXTREMAMENTE multip.
+
+### Padrão 4: Mana EXTREMAMENTE Custosa
+
+```lua
+spell:mana(1050)
+```
+
+**Benefício:** Spell MEGA poderoso = mana EXTREMAMENTE cara.
+
+### Padrão 5: Dual Cooldown Group
+
+```lua
+spell:groupCooldown(4 * 1000, 40 * 1000)
+```
+
+**Benefício:** Focus group CD 4s + normal 40s.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano inverno gelo MEGA.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(druid, 80, 25)
+// min = 16 + 150 = 166
+// max = 16 + 300 = 316
+// Retorna: -166, -316
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Lança inverno eterno centrado.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druid conjurador |
+| `var` | Variant | (ignorado, usa caster pos) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Inverno ativado |
+| `false` | Validação falhou |
+
+**Requisitos:**
+- Level 60+
+- 1050 mana (MUITO!)
+- Self-target (sem reqs adicionais)
+- Premium account
+- Cooldown 40s (+ focus 4s)
+
+**Efeito:**
+- Efeito tornado gelo
+- Area 5x5 centrado caster
+- Dano magic-level EXTREMAMENTE escalável
+- Até 25 targets potencial!
+- Gelo
+
+**Exemplo:**
+
+```lua
+-- Druid lvl 80, MLvl 25
+spell.onCastSpell(druid, selfVariant)
+// Validações:
+//   ✓ Level 80 >= 60
+//   ✓ Mana 1050 disponível
+//   ✓ Self-target OK
+//   ✓ Premium account
+// Combat executa
+// Centro: caster position
+// Area: 5x5 círculo
+// 25 targets potencial
+// Dano: -166 a -316 cada
+// Efeito tornado gelo
+// Cooldown 40s (focus 4s)
+// Resultado: Inverno devastador!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: AOE Defensivo MEGA
+
+```lua
+-- Druid rodeado de MUITOS inimigos
+// Eternal Winter = mega AOE
+// Self-target = sem aiming
+// Multi-target 25 tiles = extremo
+```
+
+### Caso 2: Group PvE MEGA
+
+```lua
+-- Dungeon group com druids
+// Inverno = mega AOE todo mapa
+// 1050 mana = timing crítico
+// Escalabilidade EXTREMA compensa
+```
+
+### Caso 3: Boss Strategy MEGA
+
+```lua
+-- Boss com MUITOS adds
+// Self-target = fácil
+// 5x5 cobre TUDO
+// Dano gelo EXTREMAMENTE significante
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_ICEDAMAGE
+- **Callback:** CALLBACK_PARAM_LEVELMAGICVALUE
+- **Areas:** AREA_CIRCLE5X5
+- **Effects:** CONST_ME_ICETORNADO
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | AOE tornada gelo MEGA |
+| **Dano Type** | COMBAT_ICEDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*6), max=(lvl/5)+(mlvl*12) |
+| **Mana** | 1050 (EXTREMAMENTE custoso!) |
+| **Area** | 5x5 Circle (25 tiles - MEGA!) |
+| **Level** | 60 (late) |
+| **Cooldown** | 40s (+ focus 4s) |
+| **Premium** | Sim |
+| **Self-Target** | Sim (isSelfTarget) |
+| **Grupos** | attack, focus |
+| **Vocações** | Druid, Elder Druid |
+| **Padrão** | Self-target mega AOE + escalabilidade EXTREMA + mana custosa |

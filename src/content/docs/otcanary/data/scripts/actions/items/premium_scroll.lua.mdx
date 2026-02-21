@@ -1,0 +1,255 @@
+---
+title: premium_scroll.lua
+description: "Action script para scroll de premium que adiciona 30 dias com limite máximo de 365 dias"
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="premium_scroll.lua" icon="pencil">
+Scroll de premium que adiciona 30 dias com limite máximo de 365 dias, bloqueando compras excessivas.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/items/premium_scroll.lua`
+
+**Linhas:** 16 | **ID do Item:** 14758 | **Tipo:** Action Handler
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa um item consumível que adiciona 30 dias de premium ao jogador. Inclui validação de limite máximo (365 dias) para prevenir abuse. Quando bem-sucedido, consome o item e requer logout/login para ativar. O script demonstra validação de limite com mensagem de cancelamento.
+
+### Estrutura de Funcionalidades
+
+```
+premiumScroll (Action)
+  ├─ Constants
+  │   └─ maxDays = 365
+  │
+  ├─ onUse(player, item, fromPosition, target, toPosition, isHotkey)
+  │   ├─ getPremiumDays() <= 365?
+  │   │   ├─ SIM → Adicionar 30 dias
+  │   │   │       + remove(1)
+  │   │   │       + Effect TELEPORT
+  │   │   │       + Message relog
+  │   │   │
+  │   │   └─ NÃO → Rejeitar com mensagem limite
+  │   │
+  │   └─ return true
+  │
+  └─ register() → ID 14758
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| premiumScroll | Action | Objeto handler para o scroll premium |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+| Constante | Valor | Descrição |
+|-----------|-------|-----------|
+| maxDays | 365 | Limite máximo de dias de premium |
+| Dias Adicionados | 30 | Quantidade de dias por scroll |
+| Efeito Visual | CONST_ME_TELEPORT | Efeito ao usar o scroll |
+| ID do Item | 14758 | Id para trigger do handler |
+| Mensagem Relog | "You have activated your 30 day..." | Aviso para fazer logout/login |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+function premiumScroll.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Define limite máximo de dias
+	local maxDays = 365
+	
+	-- Verifica se jogador pode comprar mais premium
+	if player:getPremiumDays() <= maxDays then
+		-- Pode comprar: adiciona 30 dias
+		item:remove(1)
+		player:addPremiumDays(30)
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, 
+		  "You have activated your 30 day premium time, relog to make it effective.")
+		player:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+	else
+		-- Não pode: excederia limite
+		player:sendCancelMessage("You can not buy more than " .. maxDays .. " days of premium account.")
+	end
+	return true
+end
+```
+
+### Árvore de Decisão
+
+```
+Jogador ativa premium_scroll (14758)
+  │
+  ├─ getPremiumDays() <= maxDays (365)?
+  │   │
+  │   ├─ SIM (≤365) → Compra Autorizada
+  │   │   ├─ item:remove(1)
+  │   │   ├─ addPremiumDays(30)
+  │   │   ├─ Message: "You have activated... relog to make it effective."
+  │   │   ├─ Effect: TELEPORT
+  │   │   └─ return true
+  │   │
+  │   └─ NÃO (>365) → Compra Bloqueada
+  │       ├─ Cancel Message: "You can not buy more than 365 days..."
+  │       ├─ Item NÃO removido
+  │       └─ return true
+  │
+  └─ Sempre retorna true
+```
+
+### Logica de Validação
+
+```lua
+-- Implementação: checagem <= ao invés de <
+if player:getPremiumDays() <= maxDays then
+	-- Permite compra se: 0-365 dias (inclusive 365)
+else
+	-- Bloqueia se: > 365 dias (366+)
+end
+
+-- Exemplos:
+-- Dias Atuais | Pode Comprar? | Total Após
+-- 0           | SIM          | 30
+-- 200         | SIM          | 230
+-- 335         | SIM          | 365
+-- 365         | SIM          | 395 (ultrapassa)
+-- 400         | NÃO          | Mantém 400
+```
+
+### Diferença Entre os Limites
+
+```
+Comparação (<=):
+  ├─ 0 <= 365? → SIM (permite)
+  ├─ 335 <= 365? → SIM (permite)
+  └─ 365 <= 365? → SIM (permite, resultando em 395)
+
+Comparação (<):
+  ├─ 0 < 365? → SIM
+  ├─ 335 < 365? → SIM
+  └─ 365 < 365? → NÃO (bloquearia em 365)
+```
+
+**Nota:** A implementação usa `<=` ao invés de `<`, permitindo compra mesmo COM 365 dias exatos. Isso resulta no overflow possível de 395 dias. Comportamento intencional ou bug?
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **Limite de Recurso**: Máximo de 365 dias de premium para prevenir abuse
+- **Validação Preventiva**: Checar antes de consumir item
+- **getPremiumDays()**: Retorna total de dias de premium do jogador
+- **addPremiumDays()**: Adiciona dias ao totalizer premium
+- **Operador `<=`**: Permite compra se `<=` 365 (inclusivo)
+- **sendCancelMessage()**: Mensagem especial para operações rejeitadas
+- **Return Always True**: Item sempre funciona (não retorna false)
+- **Relog Message**: Informa jogador que precisa fazer logout/login
+- **Efeito Visual**: TELEPORT para feedback visual da ação
+
+### Responsabilidades do Handler
+
+1. **Validar limite**: Checkar se `getPremiumDays() <= 365`
+2. **Autorizar ou rejeitar**: Baseado na validação
+3. **Consumir item**: item:remove(1) SE autorizado
+4. **Adicionar premium**: player:addPremiumDays(30)
+5. **Enviar feedback**: Mensagem apropriada
+6. **Efeito visual**: TELEPORT effect
+7. **Sempre retornar**: return true para ambos os desfechos
+
+---
+
+## Patterns e Implementação
+
+### Padrão de Validação com Limite Máximo
+
+Este script demonstra implementação de cap-limit:
+
+```lua
+-- Padrão geral
+local maxLimit = 365
+if currentValue <= maxLimit then
+	-- Permitir ação
+	consumeItem()
+	updateValue(currentValue + 30)
+else
+	-- Rejeitar ação
+	sendCancelMessage("You can not exceed " .. maxLimit .. " units.")
+end
+```
+
+### Comparação: `<=` vs `<`
+
+| Operador | Teste | 365 Dias | 366 Dias | Resultado |
+|----------|-------|---------|---------|---|
+| `<= 365` | `current <= maxDays` | Sim | Não | Permite em 365 (overflow criador) |
+| `< 365` | `current < maxDays` | Não | Não | Bloqueia em 365 |
+
+A escolha de `<=` no script sugere design intencional que permite sobrepassar em pequenas quantidades.
+
+### Fluxo de Compra Múltipla
+
+```
+Primeira Compra:
+  ├─ Dias atual: 0
+  ├─ Checar: 0 <= 365? SIM
+  ├─ Add: 0 + 30 = 30
+  └─ Requer: relog
+
+Segunda Compra (mesmo dia):
+  ├─ Dias atual: 30
+  ├─ Checar: 30 <= 365? SIM
+  ├─ Add: 30 + 30 = 60
+  └─ Requer: relog
+
+No Limite:
+  ├─ Dias atual: 335
+  ├─ Checar: 335 <= 365? SIM
+  ├─ Add: 335 + 30 = 365
+  └─ Requer: relog
+
+Tentar Exceder:
+  ├─ Dias atual: 365
+  ├─ Checar: 365 <= 365? SIM (!)
+  ├─ Add: 365 + 30 = 395 (overflow!)
+  └─ Requer: relog
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: premium_scroll.lua" icon="star">
+Análise do handler de premium com validação de limite máximo, controle de cap-limit para prevenção de abuse e implementação questionável (≤ permite overflow em 365).
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Cap-limit com validação | Complexidade: Muito Baixa
+</Aside>

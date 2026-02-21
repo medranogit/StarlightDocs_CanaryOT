@@ -1,0 +1,218 @@
+---
+title: update_player_on_advanced_level.lua
+description: CreatureEvent "UpdatePlayerOnAdvancedLevel" que restaura HP/Mana e salva player ao fazer level-up.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="update_player_on_advanced_level.lua" icon="pencil">
+Listener de advance que restaura HP/Mana e persiste player.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/player/update_player_on_advanced_level.lua`
+
+**Linhas:** 11 | **Event:** CreatureEvent "UpdatePlayerOnAdvancedLevel" | **Tipo:** onAdvance Listener
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener de level-up trivial que restaura HP/Mana e salva. Valida se skill é SKILL_LEVEL e newLevel > oldLevel. Se sim: adiciona HP ao máximo (addHealth + getMaxHealth), adiciona Mana ao máximo, aplica getFinalLowLevelBonus(), persiste player.save(). Padrão simples de reward ao avançar.
+
+### Estrutura de Funcionalidades
+
+```
+EVENT: "UpdatePlayerOnAdvancedLevel"
+  └─ onAdvance(player, skill, oldLevel, newLevel)
+      ├─ Validação: skill == SKILL_LEVEL?
+      │   ├─ NÃO → return true
+      │   └─ SIM → Continua
+      │
+      ├─ Validação: newLevel > oldLevel?
+      │   ├─ NÃO → return true (downgrade ou igual)
+      │   └─ SIM → Continua (real level-up)
+      │
+      ├─ player:addHealth(player:getMaxHealth())
+      │   └─ Restaura HP ao máximo
+      │
+      ├─ player:addMana(player:getMaxMana())
+      │   └─ Restaura Mana ao máximo
+      │
+      ├─ player:getFinalLowLevelBonus()
+      │   └─ Aplica bônus low-level (se aplicável)
+      │
+      ├─ player:save()
+      │   └─ Persiste player no DB
+      │
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| updatePlayerOnAdvancedLevel | CreatureEvent | Listener de advance |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Player que avançou |
+| skill | número | ID da skill que avançou |
+| oldLevel | número | Level anterior |
+| newLevel | número | Novo level |
+
+### Skill Constants
+
+| Constante | Descrição |
+|-----------|-----------|
+| SKILL_LEVEL | Level-up (main skill) |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local updatePlayerOnAdvancedLevel = CreatureEvent("UpdatePlayerOnAdvancedLevel")
+
+function updatePlayerOnAdvancedLevel.onAdvance(player, skill, oldLevel, newLevel)
+	-- Validação: é skill_level?
+	if skill ~= SKILL_LEVEL or newLevel <= oldLevel then
+		return true
+	end
+
+	-- Restaurar HP
+	player:addHealth(player:getMaxHealth())
+	
+	-- Restaurar Mana
+	player:addMana(player:getMaxMana())
+	
+	-- Aplicar low-level bonus
+	player:getFinalLowLevelBonus()
+	
+	-- Persist
+	player:save()
+	return true
+end
+
+updatePlayerOnAdvancedLevel:register()
+```
+
+### Árvore de Decisão
+
+```
+Player faz level-up
+  │
+  ├─ Advance event disparado
+  │   └─ onAdvance(player, skill, oldLevel, newLevel)
+  │
+  ├─ skill == SKILL_LEVEL && newLevel > oldLevel?
+  │   ├─ NÃO → return true (skip)
+  │   │   (não é level-up válido)
+  │   │
+  │   └─ SIM → Processar
+  │       │
+  │       ├─ addHealth(getMaxHealth())
+  │       │   └─ Restaura HP ao máximo
+  │       │
+  │       ├─ addMana(getMaxMana())
+  │       │   └─ Restaura Mana ao máximo
+  │       │
+  │       ├─ getFinalLowLevelBonus()
+  │       │   └─ Aplica bônus low-level
+  │       │
+  │       ├─ save()
+  │       │   └─ Persiste no DB
+  │       │
+  │       └─ return true
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onAdvance**: Callback disparado ao avançar skill
+- **SKILL_LEVEL**: ID da skill de level (distinta de outras skills)
+- **Health Restoration**: addHealth + getMaxHealth para restore completo
+- **Mana Restoration**: addMana + getMaxMana para restore completo
+- **Low-Level Bonus**: Bônus aplicado em baixo-level (regeneration/stats)
+- **Player Persistence**: save() para DB
+- **Validation**: skill check + level check duplo
+
+### Responsabilidades do Handler
+
+1. **Validate**: skill == SKILL_LEVEL?
+2. **Validate**: newLevel > oldLevel?
+3. **Restore**: HP ao máximo
+4. **Restore**: Mana ao máximo
+5. **Apply**: Low-level bonus
+6. **Persist**: player:save()
+7. **Return**: true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Skill Level Validation
+
+Validar se é level-up:
+
+```lua
+if skill ~= SKILL_LEVEL or newLevel <= oldLevel then
+	return true
+end
+```
+
+### Padrão HP/Mana Restoration
+
+Restaurar ao máximo:
+
+```lua
+player:addHealth(player:getMaxHealth())
+player:addMana(player:getMaxMana())
+```
+
+### Padrão Player Persistence
+
+Salvar após mudanças:
+
+```lua
+player:getFinalLowLevelBonus()
+player:save()
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: update_player_on_advanced_level.lua" icon="star">
+Análise de listener de level-up. Demonstra skill level validation e HP/Mana restoration.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Level-up reward with full restoration | Complexidade: Trivial
+</Aside>

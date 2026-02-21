@@ -1,0 +1,312 @@
+---
+title: "Global Event - online_record.lua"
+description: "Global event para broadcast de novo recorde de online"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `online_record.lua` |
+| **Localização** | `data/scripts/globalevents/` |
+| **Tipo de Script** | GlobalEvent |
+| **Event Name** | `OnlineRecord` |
+| **Função Registrada** | `onRecord(current, old)` |
+| **Linhas de Código** | 7 |
+| **Complexidade** | Trivial |
+| **Status** | Simple announcement implementation |
+
+**Descrição:**
+Global event que dispara quando número de jogadores online quebra recorde anterior. Envia broadcast message ao servidor inteiro notificando novo recorde de players simultaneamente conectados.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/globalevents/online_record.lua
+```
+
+**Pré-requisitos:**
+- GlobalEvent API (`GlobalEvent` função global)
+- Game.broadcastMessage() function
+- MESSAGE_LOGIN constant
+- addEvent() function
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Fluxo de Online Record (Online Record)**
+
+Quando número de players online quebra o recorde anterior:
+
+1. **Trigger:** Sistema detecta novo recorde (current > old)
+2. **Callback:** onlineRecord.onRecord(current, old) dispara
+3. **Processamento:** Schedula broadcast message com delay
+4. **Ação:** Mensagem é enviada a TODOS os jogadores
+
+**Exemplo: Novo Recorde**
+```
+Recorde anterior: 87 players
+Atual: 86 players
+
+Player 88 conecta:
+  └─ Game.recordOnlineCount(88)
+     ├─ 88 > 87? YES
+     ├─ onlineRecord.onRecord(88, 87) dispara
+     ├─ addEvent(Game.broadcastMessage, 150ms)
+     │  └─ "New record: 88 players are logged in."
+     └─ [Todos jogadores recebem mensagem]
+
+Muda para novo recorde máximo: 88 players
+```
+
+**Propósito:** Informar jogadores de evento servidor (comunidade milestone)
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `online_record.lua` implementa notificação de recorde de online. Quando máximo de jogadores simultâneos é quebrado:
+
+- **Detecta novo recorde** (current > old)
+- **Schedule deferred broadcast** (150ms de delay)
+- **Notifica todos jogadores** no MESSAGE_LOGIN channel
+
+### Arquitetura
+
+O script usa um padrão simples de **deferred broadcast**:
+
+```
+GlobalEvent (onRecord triggered)
+  └─ onRecord(current, old)
+     └─ addEvent(Game.broadcastMessage, 150ms, message)
+        └─ [Message enviada após delay]
+```
+
+### Fluxo Lógico Resumido
+
+| Entrada | Processamento | Saída |
+|---------|---------------|-------|
+| `current, old` | Schedule broadcast | Message enviada em 150ms |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Função Principal (GlobalEvent)
+
+#### **onRecord(current, old)**
+
+```lua
+function onlineRecord.onRecord(current, old)
+	addEvent(Game.broadcastMessage, 150, "New record: " .. current .. " players are logged in.", MESSAGE_LOGIN)
+	return true
+end
+```
+
+**Propósito:** Entry point do evento. Notifica novo recorde de online.
+
+**Fluxo de Execução:**
+
+1. **Recebimento:** Callback disparado quando recorde é quebrado
+2. **Entrada:** Recebe `current` (novo número) e `old` (número anterior)
+3. **Processamento:**
+   - Monta mensagem: `"New record: [current] players are logged in."`
+   - Schedula broadcast com 150ms de delay
+4. **Return:** Retorna `true` para indicar sucesso
+
+**Parâmetros:**
+- `current` - Novo número de players online (recorde)
+- `old` - Número anterior (recorde antigo)
+
+**Retorno:**
+- `true` - Evento foi processado
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Locais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `onlineRecord` | GlobalEvent | GlobalEvent object |
+
+### Constantes Globais Referenciadas
+
+| Constante | Tipo | Descrição |
+|-----------|------|-----------|
+| `MESSAGE_LOGIN` | constant | Chat channel para mensagens de login/online |
+
+### Funções Globais Utilizadas
+
+| Função | Descrição |
+|--------|-----------|
+| `addEvent(func, delay, ...)` | Schedule função para executar após delay |
+| `Game.broadcastMessage(msg, type)` | Envia mensagem a todos jogadores |
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrão 1: Deferred Notification
+
+**Técnica:** Usar addEvent para scheduler notificação com delay.
+
+```lua
+addEvent(Game.broadcastMessage, 150, "New record: " .. current .. " players are logged in.", MESSAGE_LOGIN)
+```
+
+**Vantagem:** Não bloqueia main thread. Permite batch outros eventos. Sincronização temporal.
+
+**Aplicação:** Qualquer notificação que pode ser deferida (não precisa instantâneo).
+
+---
+
+### Padrão 2: String Concatenation for Message Building
+
+**Técnica:** Montar mensagem dinâmica com valor do recorde.
+
+```lua
+"New record: " .. current .. " players are logged in."
+```
+
+**Vantagem:** Simples, legível. Dinâmico com dados.
+
+**Aplicação:** Qualquer mensagem que dependa de variável (número, nome, etc).
+
+---
+
+### Padrão 3: Channel-Specific Broadcasting
+
+**Técnica:** Usar MESSAGE_LOGIN channel para dados de login/online.
+
+```lua
+Game.broadcastMessage(message, MESSAGE_LOGIN)
+```
+
+**Vantagem:** Organiza mensagens por tipo. Client-side filtering possível.
+
+**Aplicação:** Qualquer broadcast que tem tipo específico (login, event, announcements).
+
+---
+
+## ⚙️ Fluxo de Operação
+
+### Cenário 1: Novo recorde de 100 players
+
+```
+Server tem máximo anterior: 99 players
+
+Player 100 conecta:
+  └─ Game.recordOnlineCount(100)
+     ├─ 100 > 99? YES
+     ├─ onlineRecord.onRecord(100, 99) dispara
+     ├─ addEvent(Game.broadcastMessage, 150, "New record: 100 players are logged in.", MESSAGE_LOGIN)
+     │  └─ [Scheduled, não executa ainda]
+     └─ return true
+
+[150ms depois]
+     └─ Game.broadcastMessage("New record: 100 players are logged in.", MESSAGE_LOGIN)
+        ├─ Iterates all players
+        └─ Envia "New record: 100 players are logged in." a cada um
+
+Todos players recebem:
+  └─ [System message in MESSAGE_LOGIN channel]
+     "New record: 100 players are logged in."
+
+Recorde agora: 100 (até que numero maior conecte)
+```
+
+**Resultado:** Comunidade é notificada do novo milestone
+
+---
+
+### Cenário 2: Antes do novo recorde
+
+```
+Durante período onde máximo era 86:
+  └─ Player 87 conecta
+     └─ onlineRecord.onRecord(87, 86) dispara
+     └─ Broadcast: "New record: 87 players are logged in."
+
+Máximo de todos os tempos era 99, período anterior tinha 87
+  └─ Player 88, 89, ..., 99 conectam
+     └─ Cada um:
+        └─ onlineRecord.onRecord(N, N-1) dispara
+        └─ Broadcast: "New record: N players are logged in."
+
+... (muitos ticks)
+
+Chega em 99: "New record: 99 players are logged in." ← All-time record
+Player 100 conecta: "New record: 100 players are logged in." ← Quebra recorde global
+```
+
+**Resultado:** Cada step up envia broadcast (pode spam se muitos jogadores conectam)
+
+---
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|---|---|
+| **Complexidade** | Trivial |
+| **Estimativa de Aprendizado** | 5 minutos |
+| **Tópicos Principais** | Deferred notifications, String building, Channel-specific broadcasts |
+| **Padrões Documentados** | 3 padrões |
+| **Cenários Documentados** | 2 cenários (single milestone, cascading records) |
+| **Funções** | 1 (onRecord - globalEvent entry) |
+| **GlobalEvents Registrados** | OnlineRecord |
+| **Dependencies** | Game.broadcastMessage(), addEvent() |
+
+### Curva de Aprendizado
+
+**Trivial:** Uma função simples. Entender em ~5 minutos.
+
+### Online Record System
+
+Este callback é disparado por:
+
+```
+Player login → Game checks online count
+    ↓
+Game.recordOnlineCount(newCount)
+    ↓
+if newCount > maxRecord then
+  ├─ maxRecord = newCount
+  └─ onlineRecord.onRecord(newCount, oldRecord)  [THIS CALLBACK]
+```
+
+Callback é chamado apenas quando recorde é quebrado (não para cada login).
+
+### Deferred Execution (150ms delay)
+
+O delay de 150ms permite:
+- Batch outros events que podem ter ocorrido no mesmo frame
+- Garantir UI está atualizada
+- Evitar race conditions
+
+Sem delay:
+- Mensagem poderia chegar antes da UI do player mostrar ele conectou
+- Confusão semântica ("New record: 100 players" mas player ainda vê 99)
+
+### Melhorias Potenciais
+
+- [ ] Fazer delay configurável (não hardcoded 150ms)
+- [ ] Adicionar webhook notification (Discord, etc)
+- [ ] Implementar persistência (salvar recorde em arquivo)
+- [ ] Suportar different messages para "new session record" vs "all-time record"
+
+---
+
+**Documentado em:** February 20, 2026  
+**Versão do Script:** Canary (Latest)  
+**Status:** ✅ Complete - Simple deferred broadcast for milestones

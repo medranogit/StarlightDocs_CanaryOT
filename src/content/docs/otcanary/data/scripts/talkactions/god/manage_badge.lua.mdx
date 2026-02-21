@@ -1,0 +1,245 @@
+---
+title: Badge Management
+description: Comando GOD para adicionar badges (emblemas) a jogadores
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Detalhes |
+|---|---|
+| **Nome do Arquivo** | manage_badge.lua |
+| **Tipo de Sistema** | Badge Management (GOD) |
+| **Funcionalidade Principal** | Adicionar badges a jogadores |
+| **Comando** | /addbadge PlayerName, badgeID |
+| **Requisito** | Acesso de God |
+| **Separador** | Vírgula |
+| **Sistema** | Player Badges (cosmética) |
+
+## 📍 Caminho Original
+
+```
+data/scripts/talkactions/god/manage_badge.lua
+```
+
+<Aside>
+💡 **Dica de Implementação:** Comando simples de badge addition. Parse 2 parâmetros (playerName, badgeId). Valida param não vazio. Busca jogador por split[1]. Se encontrado, trimSpace, tonumber badgeId, chama player:addBadge(id). Valida se sucesso retorna mensagem formatada. Feedback: MESSAGE_EVENT_ADVANCE para ambos executor e target.
+</Aside>
+
+## 📄 Visão Geral do Código - Resumo Executivo
+
+O arquivo manage_badge.lua implementa comando TalkAction (/addbadge) que adiciona badges (emblemas visuais) a jogadores. O sistema valida parâmetros, busca jogador online, adiciona badge via API, feedback personalizado para executor e alvo. Ferramenta de badge cosmética management.
+
+## 🔧 Estrutura de Funcionalidades
+
+```lua
+local addBadge = TalkAction("/addbadge")
+
+function addBadge.onSay(player, words, param)
+	-- create log
+	logCommand(player, words, param)
+	
+	-- Validação: parâmetro vazio
+	if param == "" then
+		player:sendCancelMessage("Command param required.")
+		return true
+	end
+	
+	-- Parse: playerName, badgeID
+	local split = param:split(",")
+	if not split[2] then
+		player:sendCancelMessage("Insufficient parameters. Usage: /addbadge playerName, badgeID")
+		return true
+	end
+	
+	-- Buscar jogador
+	local target = Player(split[1])
+	if not target then
+		player:sendCancelMessage("A player with that name is not online.")
+		return true
+	end
+	
+	-- Adicionar badge
+	split[2] = split[2]:trimSpace()
+	local id = tonumber(split[2])
+	if target:addBadge(id) then
+		-- Feedback: executor
+		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format('You added a badge with ID "%i" to player "%s".', id, target:getName()))
+		-- Feedback: alvo
+		target:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("%s added a badge to you.", player:getName()))
+	end
+	return true
+end
+
+addBadge:separator(" ")
+addBadge:groupType("god")
+addBadge:register()
+```
+
+## 🤖 Documentação das Funções
+
+### **addBadge.onSay(player, words, param)**
+
+**Descrição:** Função callback que adiciona badge visual a jogador.
+
+**Parâmetros:**
+- `param` (string): `PlayerName, badgeID`
+
+**Formato de Comando:**
+```
+/addbadge TestPlayer, 1            -- Adiciona badge ID 1
+/addbadge OtherPlayer, 42          -- Adiciona badge ID 42
+```
+
+**Fluxo de Execução:**
+
+1. **Log do Comando:**
+   ```lua
+   logCommand(player, words, param)
+   ```
+
+2. **Validação de Parâmetro Vazio:**
+   ```lua
+   if param == "" then
+       player:sendCancelMessage("Command param required.")
+       return true
+   end
+   ```
+
+3. **Parse de Parâmetros:**
+   ```lua
+   local split = param:split(",")
+   -- split[1] = "TestPlayer"
+   -- split[2] = " 1"
+   ```
+
+4. **Validação de Parâmetro Duplo:**
+   ```lua
+   if not split[2] then
+       player:sendCancelMessage("Insufficient parameters. Usage: /addbadge playerName, badgeID")
+       return true
+   end
+   ```
+
+5. **Buscar Jogador:**
+   ```lua
+   local target = Player(split[1])
+   if not target then
+       player:sendCancelMessage("A player with that name is not online.")
+       return true
+   end
+   ```
+   - Busca por nome (case-sensitive)
+   - Se offline: "A player with that name is not online."
+
+6. **Trim e Conversão:**
+   ```lua
+   split[2] = split[2]:trimSpace()  -- Remove espaços
+   local id = tonumber(split[2])     -- Converte para número
+   ```
+
+7. **Adicionar Badge:**
+   ```lua
+   if target:addBadge(id) then
+       -- Sucesso
+   end
+   ```
+   - Chama player:addBadge(id)
+   - Retorna true se sucesso
+
+8. **Feedback Personalizado:**
+   ```lua
+   player:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format('You added a badge with ID "%i" to player "%s".', id, target:getName()))
+   target:sendTextMessage(MESSAGE_EVENT_ADVANCE, string.format("%s added a badge to you.", player:getName()))
+   ```
+
+   **Mensagem Executor:**
+   ```
+   You added a badge with ID "1" to player "TestPlayer".
+   ```
+
+   **Mensagem Alvo:**
+   ```
+   AdminName added a badge to you.
+   ```
+
+---
+
+**Exemplos de Uso:**
+
+```
+GM: /addbadge TestPlayer, 5
+
+Fluxo:
+1. Parse: split[1]="TestPlayer", split[2]=" 5"
+2. Busca TestPlayer online
+3. Converte "5" -> 5
+4. player:addBadge(5)
+
+Resultado:
+- GM vê: 'You added a badge with ID "5" to player "TestPlayer".'
+- TestPlayer vê: "AdminName added a badge to you."
+- Badge ID 5 aplicado visualmente ao TestPlayer
+
+---
+
+GM: /addbadge OfflinePlayer, 1
+
+Resultado:
+- "A player with that name is not online."
+
+---
+
+GM: /addbadge TestPlayer
+
+Resultado:
+- "Insufficient parameters. Usage: /addbadge playerName, badgeID"
+```
+
+---
+
+**Estrutura de Parâmetros**
+
+```
+/addbadge {PlayerName}, {badgeID}
+
+Exemplo:
+/addbadge TestPlayer, 42
+           ^^^^^^^^^^  ^^
+           split[1]   [2]
+```
+
+---
+
+**Validações**
+
+| Validação | Falha | Mensagem |
+|---|---|---|
+| Param vazio | param == "" | "Command param required." |
+| Falta badgeID | not split[2] | "Insufficient parameters. Usage: /addbadge playerName, badgeID" |
+| Player offline | not Player(name) | "A player with that name is not online." |
+
+---
+
+**Funções Globais Utilizadas:**
+
+| Função | Descrição |
+|---|---|
+| `logCommand(player, words, param)` | Log do comando |
+| `param:split(sep)` | Divide string |
+| `split:trimSpace()` | Remove espaços |
+| `tonumber(str)` | Converte número |
+| `Player(name)` | Busca player online |
+| `player:addBadge(id)` | Adiciona badge |
+| `player:getName()` | Obtém nome |
+| `player:sendTextMessage(type, msg)` | Envia mensagem |
+| `string.format(fmt, ...)` | Formata string |
+
+**Retorno:** `true` (comando executado com sucesso)
+
+---
+
+## 📌 Resumo
+
+O arquivo manage_badge.lua é ferramenta simples de badge cosmetic management. Implementação com parse 2 parâmetros, validações (empty, offline, incomplete), feedback personalizado (executor + alvo), string formatting. Essencial para GMs recompensar jogadores com emblemas visuais. Design minimalista focado em usabilidade.

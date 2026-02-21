@@ -1,0 +1,291 @@
+---
+title: large_seashell.lua
+description: Concha com RNG tri-branch (16% dano, 48% pérola, 36% nada), cooldown daily e item decay.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="large_seashell.lua" icon="pencil">
+Handler com RNG, achievement progress e item lifecycle (transform → decay).
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/actions/objects/large_seashell.lua`
+
+**Linhas:** 30 | **ID do Object:** 1 (197) | **Tipo:** Action Handler com RNG Branches
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script implementa concha interativa com RNG tri-branch: 16% chance de dano (200 HP fisico), 48% chance de pérola (item + achievement), 36% chance de nada. Cooldown daily compartilhado (20 horas). Após uso, transforma item para ID 198 e inicia decay automático. Diferentes mensagens por resultado.
+
+### Estrutura de Funcionalidades
+
+```
+HANDLER:
+  └─ largeSeashell.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+      ├─ hasExhaustion("delay-large-seashell")?
+      │   └─ SIM → Message + return true
+      ├─ chance = random(1-100)
+      ├─ if chance <= 16 (16%):
+      │   ├─ Dano: 200 HP physical
+      │   ├─ Message: "Ouch! Squeezed fingers"
+      │   └─ Achievement: nenhuma
+      ├─ elseif chance > 16 && <= 64 (48%):
+      │   ├─ Criar pérola (281 ou 282)
+      │   ├─ Message: "Found beautiful pearl"
+      │   └─ Achievement: "Shell Seeker" +100
+      ├─ else (36%):
+      │   └─ Message: "Nothing inside"
+      ├─ Cooldown: 20h
+      ├─ say(message)
+      ├─ item:transform(198)
+      ├─ item:decay()
+      ├─ Effect: BUBBLES
+      └─ return true
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| largeSeashell | Action | Objeto handler |
+
+---
+
+## Funções Locais
+
+Não há funções locais neste script.
+
+---
+
+## Constantes e Parâmetros
+
+### RNG Distribution
+
+| Chance | Range | Output | Percent |
+|--------|-------|--------|---------|
+| Damage | 1-16 | -200 HP | 16% |
+| Pearl | 17-64 | Pearl (281/282) | 48% |
+| Nothing | 65-100 | Nada | 36% |
+
+### Item Parameters
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| ID Original | 197 | Concha preenchida |
+| ID Transform | 198 | Concha vazia |
+| Cooldown | 20*60*60 | 72,000 seg = 20 horas |
+| Effect | CONST_ME_BUBBLES | Bolhas |
+
+---
+
+## Fluxo de Operação
+
+### Operação Principal
+
+```lua
+local largeSeashell = Action()
+
+function largeSeashell.onUse(player, item, fromPosition, target, toPosition, isHotkey)
+	-- Validação: Cooldown daily (20h)
+	if player:hasExhaustion("delay-large-seashell") then
+		player:say("You have already opened a shell today.", TALKTYPE_MONSTER_SAY, false, player, item:getPosition())
+		return true
+	end
+
+	-- RNG: 1-100
+	local chance = math.random(100)
+	local message = "Nothing is inside."
+
+	-- ========== BRANCH 1: DAMAGE (16%) ==========
+	if chance <= 16 then
+		doTargetCombatHealth(0, player, COMBAT_PHYSICALDAMAGE, -200, -200, CONST_ME_NONE)
+		message = "Ouch! You squeezed your fingers."
+	
+	-- ========== BRANCH 2: PEARL (48%) ==========
+	elseif chance > 16 and chance <= 64 then
+		Game.createItem(math.random(281, 282), 1, player:getPosition())
+		message = "You found a beautiful pearl."
+		player:addAchievementProgress("Shell Seeker", 100)
+	
+	-- ========== BRANCH 3: NOTHING (36%) ==========
+	-- else: message já é "Nothing is inside."
+	end
+
+	-- Efeitos finais
+	player:setExhaustion("delay-large-seashell", 20 * 60 * 60)
+	player:say(message, TALKTYPE_MONSTER_SAY, false, player, item:getPosition())
+	item:transform(198)
+	item:decay()
+	item:getPosition():sendMagicEffect(CONST_ME_BUBBLES)
+	return true
+end
+
+largeSeashell:id(197)
+largeSeashell:register()
+```
+
+### Árvore de Decisão
+
+```
+Jogador abre large_seashell (197)
+  │
+  ├─ hasExhaustion("delay-large-seashell")?
+  │   ├─ SIM (cooldown ativo) → Message + return true (sem consumir)
+  │   └─ NÃO → Continua
+  │
+  ├─ chance = random(1, 100)
+  │
+  ├─ if chance <= 16 (1-16):
+  │   │
+  │   ├─ DANO (16%)
+  │   ├─ doTargetCombatHealth: -200 HP
+  │   ├─ Message: "Ouch! Squeezed fingers"
+  │   └─ Achievement: nenhuma
+  │
+  ├─ elseif chance > 16 && <= 64 (17-64):
+  │   │
+  │   ├─ PÉROLA (48%)
+  │   ├─ Game.createItem(281 ou 282)
+  │   ├─ Message: "Found beautiful pearl"
+  │   └─ Achievement: "Shell Seeker" +100
+  │
+  ├─ else (65-100):
+  │   │
+  │   ├─ NADA (36%)
+  │   └─ Message: "Nothing inside" (default)
+  │
+  ├─ Cooldown: setExhaustion(20h)
+  │
+  ├─ say(message) → Audível ao jogador
+  │
+  ├─ Lifecycle:
+  │   ├─ item:transform(198) → ID muda para 198
+  │   ├─ item:decay() → Schedule remoção automática
+  │   └─ Effect: BUBBLES
+  │
+  └─ return true
+```
+
+### RNG Probability
+
+```
+math.random(100) retorna 1-100 equiprobável
+
+Branch 1 (Damage):
+  └─ if chance <= 16
+  └─ Probabilidade: 16/100 = 16.0%
+
+Branch 2 (Pearl):
+  └─ elseif chance > 16 && <= 64
+  └─ Probabilidade: (64-16)/100 = 48/100 = 48.0%
+
+Branch 3 (Nothing):
+  └─ else (implícito)
+  └─ Probabilidade: (100-64)/100 = 36/100 = 36.0%
+
+Total: 16 + 48 + 36 = 100% ✓
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **RNG Tri-Branch**: 3 outcomes distintos com ranges diferentes
+- **Range Validation**: chance > 16 and &lt;= 64 para middle range
+- **doTargetCombatHealth**: Função damage com source/tipo/min/max
+- **Game.createItem()**: Cria item na posição (não no inventory)
+- **math.random(281, 282)**: Range para pérola aleatória
+- **Achievement Progress**: addAchievementProgress() com valor
+- **item:transform()**: Muda ID sem remover
+- **item:decay()**: Schedule automático de remoção
+- **Cooldown Daily**: 20h = 72,000 segundos
+- **say() Local**: false, player, position para mensagem posicionada
+
+### Responsabilidades do Handler
+
+1. **Validar cooldown**: hasExhaustion("delay-large-seashell")
+2. **Gerar RNG**: math.random(100)
+3. **Branch 1 (≤16)**: Dano + message
+4. **Branch 2 (17-64)**: Pérola + achievement
+5. **Branch 3 (65-100)**: Nada (default message)
+6. **Cooldown**: setExhaustion(20h)
+7. **Message**: say(message local)
+8. **Lifecycle**: transform(198) + decay()
+9. **Efeito**: BUBBLES
+10. **Confirmar**: return true
+
+---
+
+## Patterns e Implementação
+
+### Padrão Tri-Branch RNG
+
+Três outcomes com ranges:
+
+```lua
+local chance = math.random(100)
+local message = "Nothing is inside."
+
+if chance <= 16 then
+	-- Branch 1 (16%)
+elseif chance > 16 and chance <= 64 then
+	-- Branch 2 (48%)
+else
+	-- Branch 3 (36%)
+end
+```
+
+### Padrão Item Lifecycle
+
+Transform → Decay:
+
+```lua
+item:transform(198)  -- Muda ID
+item:decay()         -- Schedule remoção automática
+```
+
+### Padrão Achievement Progress
+
+Incremento com valor:
+
+```lua
+player:addAchievementProgress("Shell Seeker", 100)
+```
+
+### Comparação: Large Seashell vs Voodoo Doll
+
+| Aspecto | Seashell | Voodoo |
+|---------|----------|--------|
+| Branches | 3 | 2 |
+| RNG | 1-100 | 1-100 |
+| Damage | Sim (200 HP) | Não |
+| Item Output | Sim (pérola) | Não |
+| Cooldown | Daily (20h) | Nenhuma |
+| Achievement | Sim (progress) | Sim (simples) |
+| Lifecycle | transform + decay | Nenhuma |
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: large_seashell.lua" icon="star">
+Análise de objeto interativo com RNG tri-branch, cooldown daily e lifecycle. Demonstra damage, item creation, achievement progress e item decay.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: RNG tri-branch com item lifecycle | Complexidade: Média
+</Aside>

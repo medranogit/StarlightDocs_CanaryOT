@@ -1,0 +1,688 @@
+---
+title: login.lua
+description: CreatureEvent "PlayerLoginGlobal" que coordena welcome, promotion, boosted creatures, VIP status, outfit fixes e inicialização de sistemas.
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+<Card title="login.lua" icon="pencil">
+Listener de login que orquestra múltiplos subsistemas de players.
+</Card>
+
+<Aside type="tip">
+**Caminho Original:** `data/scripts/creaturescripts/player/login.lua`
+
+**Linhas:** 170 | **Event:** CreatureEvent "PlayerLoginGlobal" | **Tipo:** onLogin Listener Enterprise
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código
+
+### Resumo Executivo
+
+O script registra listener complexo de login que coordena 17 operações diferentes. Função local `sendBoostMessage()` envia notificações de rate events. CreatureEvent "PlayerLoginGlobal" executa onLogin que valida primeiro login (outfit window, tutorial flag), promocion logic (premium vs non-premium), anuncia boosted creature/boss/rates, registra rewards, applica recruiter outfit, configura XP display com VIP bonuses, inicializa VIP status tracking, seta ghost mode para gamemasters, limpa exercise training, inicializa globals de stamina/rate events, persiste boss fight stats, aplica daily reward logic, corrige support outfits (crash prevention), inicializa loyalty system, registra event listeners, aplica monk bonus. Padrão enterprise de multi-initialization.
+
+### Estrutura de Funcionalidades
+
+```
+FUNÇÃO LOCAL: sendBoostMessage(player, category, isIncreased)
+  └─ Envia mensagem de boost formatada
+      └─ "Event! [category] is in/decreased"
+
+VALIDAÇÃO INICIAL:
+  ├─ if lastLoginSaved == 0:
+  │   ├─ "Please choose outfit"
+  │   ├─ sendOutfitWindow()
+  │   ├─ setStreakLevel(configManager)
+  │   └─ DB UPDATE istutorial = 0
+  │
+  └─ else:
+      └─ "Last visit: [date]"
+
+PROMOTION LOGIC:
+  ├─ if isPremium && hasPromotion KV:
+  │   └─ setVocation(promotion)
+  │
+  └─ elseif isPromoted && not isPremium:
+      └─ setVocation(demotion)
+
+ANNOUNCED:
+  ├─ Boosted creature (Game.getBoostedCreature)
+  ├─ Boosted boss (Game.getBoostedBoss)
+  ├─ Reward chest count
+  └─ Rate events: EXP, SPAWN, LOOT, BOSS_LOOT, SKILL
+
+RECRUITER OUTFIT:
+  ├─ Query: SELECT recruiter FROM accounts
+  ├─ sex = 1 ? lookType 746 : 745
+  └─ for addon 0-2: addOutfit + addOutfitAddon
+
+XP DISPLAY MODE:
+  ├─ baseRate = playerRate * 100
+  ├─ if VIP_ENABLED && isVip:
+  │   └─ baseRate *= (1 + vipBonus/100)
+  │
+  └─ setBaseXpGain(baseRate)
+
+VIP SYSTEM:
+  ├─ isCurrentlyVip = player:isVip()
+  ├─ hadVipStatus = kv():scoped("account"):get("vip-system")
+  ├─ if hadVipStatus != isCurrentlyVip:
+  │   ├─ if hadVipStatus: onRemoveVip()
+  │   └─ else: onAddVip(vipDays)
+  │
+  └─ if isCurrentlyVip: sendVipStatus()
+
+GAMEMASTERS:
+  └─ if groupId >= GAMEMASTER: setGhostMode(true)
+
+GLOBAL RESETS:
+  ├─ Exercise training cleanup
+  ├─ Stamina timers: NextUseStaminaTime[id] = 1
+  ├─ XP stamina: NextUseXpStamina[id] = 1
+  ├─ Concoction: NextUseConcoctionTime[id] = 1
+  └─ DailyReward.init(playerId)
+
+BOSS FIGHT:
+  ├─ stats = player:inBossFight()
+  ├─ if stats: stats.playerId = player:getId()
+  └─ if lastSave >= lastLogin: setRemoveBossTime(1)
+
+OUTFIT FIX:
+  ├─ if lookType in {75, 266, 302}: (support outfits)
+  │   ├─ lookType = 136
+  │   └─ lookAddons = 0
+
+SYSTEMS INIT:
+  ├─ initializeLoyaltySystem()
+  ├─ registerEvent("PlayerDeath")
+  ├─ registerEvent("DropLoot")
+  ├─ registerEvent("BossParticipation")
+  └─ registerEvent("UpdatePlayerOnAdvancedLevel")
+
+MONK BONUS:
+  └─ if monk: setKV("monk-basic-atk-bonus", 10)
+```
+
+---
+
+## Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| playerLoginGlobal | CreatureEvent | Listener de login |
+| _G.OnExerciseTraining | table | Global exercise training |
+| _G.NextUseStaminaTime | table | Global stamina timers |
+| _G.NextUseXpStamina | table | Global XP stamina timers |
+| _G.NextUseConcoctionTime | table | Global concoction timers |
+| SCHEDULE_EXP_RATE | número | Taxa de experiência |
+| SCHEDULE_SPAWN_RATE | número | Taxa de spawn |
+| SCHEDULE_LOOT_RATE | número | Taxa de loot |
+| SCHEDULE_BOSS_LOOT_RATE | número | Taxa de boss loot |
+| SCHEDULE_SKILL_RATE | número | Taxa de skill |
+| SERVER_NAME | string | Nome do servidor |
+
+### Referências Externas
+
+| Referência | Tipo | Descrição |
+|-----------|------|-----------|
+| configManager | módulo | Configuration access |
+| db | módulo | Database operations |
+| Result | classe | Database result handling |
+| Game | classe | Game global API |
+| DailyReward | sistema | Sistema de rewards diários |
+
+---
+
+## Funções Locais
+
+### sendBoostMessage(player, category, isIncreased)
+
+Envia mensagem de boost formatada:
+
+```lua
+local function sendBoostMessage(player, category, isIncreased)
+	return player:sendTextMessage(MESSAGE_BOOSTED_CREATURE, 
+		string.format("Event! %s is %screased. Happy Hunting!", 
+			category, 
+			isIncreased and "in" or "de"))
+end
+```
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Player alvo |
+| category | string | Nome da categoria (Exp Rate, Spawn Rate, etc) |
+| isIncreased | bool | Se aumentado ou reduzido |
+
+| Retorno | Tipo | Descrição |
+|---------|------|-----------|
+| result | número | Resultado da sendTextMessage |
+
+**Exemplos de Uso:**
+```lua
+-- Exp aumentado
+sendBoostMessage(player, "Exp Rate", true)
+-- Output: "Event! Exp Rate is increased. Happy Hunting!"
+
+-- Loot reduzido
+sendBoostMessage(player, "Loot Rate", false)
+-- Output: "Event! Loot Rate is decreased. Happy Hunting!"
+```
+
+---
+
+## Constantes e Parâmetros
+
+### Event Parameters
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| player | Player | Player fazendo login |
+
+### Message Types
+
+| Constante | Descrição |
+|-----------|-----------|
+| MESSAGE_LOGIN | Mensagens de login |
+| MESSAGE_BOOSTED_CREATURE | Mensagens de boosts |
+
+### Config Keys (configManager)
+
+| Key | Tipo | Descrição |
+|-----|------|-----------|
+| configKeys.START_STREAK_LEVEL | número | Level inicial de streak |
+| configKeys.XP_DISPLAY_MODE | bool | Modo de display de XP |
+| configKeys.VIP_SYSTEM_ENABLED | bool | Sistema VIP ativado |
+| configKeys.VIP_BONUS_EXP | número | Bônus EXP do VIP (percentual) |
+
+### Group IDs
+
+| Constante | Descrição |
+|-----------|-----------|
+| GROUP_TYPE_GAMEMASTER | GameMaster ID (>= para enable ghost) |
+
+### Vocation Constants
+
+| Constante | Descrição |
+|-----------|-----------|
+| VOCATION.BASE_ID.MONK | ID base de monk |
+
+### Outfit LookTypes
+
+| LookType | Descrição |
+|----------|-----------|
+| 75, 266, 302 | Support outfits (crash prevention) |
+| 136 | Default outfit (fallback) |
+
+---
+
+## Fluxo de Operação
+
+### onLogin - Event Handler Principal
+
+```lua
+local playerLoginGlobal = CreatureEvent("PlayerLoginGlobal")
+
+function playerLoginGlobal.onLogin(player)
+	-- 1. WELCOME MSG
+	local loginStr
+	if player:getLastLoginSaved() == 0 then
+		loginStr = "Please choose your outfit."
+		player:sendOutfitWindow()
+		local startStreakLevel = configManager.getNumber(configKeys.START_STREAK_LEVEL)
+		if startStreakLevel > 0 then
+			player:setStreakLevel(startStreakLevel)
+		end
+		db.query("UPDATE `players` SET `istutorial` = 0 WHERE `id` = " .. player:getGuid())
+	else
+		loginStr = string.format("Your last visit in %s: %s.", 
+			SERVER_NAME, os.date("%d %b %Y %X", player:getLastLoginSaved()))
+	end
+	player:sendTextMessage(MESSAGE_LOGIN, loginStr)
+
+	-- 2. PROMOTION LOGIC
+	local vocation = player:getVocation()
+	local promotion = vocation:getPromotion()
+	if player:isPremium() then
+		local hasPromotion = player:kv():get("promoted")
+		if not player:isPromoted() and hasPromotion then
+			player:setVocation(promotion)
+		end
+	elseif player:isPromoted() then
+		player:setVocation(vocation:getDemotion())
+	end
+
+	-- 3. BOOSTED ANNOUNCEMENTS
+	player:sendTextMessage(MESSAGE_BOOSTED_CREATURE, 
+		string.format("Today's boosted creature: %s.", Game.getBoostedCreature()))
+	player:sendTextMessage(MESSAGE_BOOSTED_CREATURE, 
+		string.format("Today's boosted boss: %s.", Game.getBoostedBoss()))
+
+	-- 4. REWARDS
+	local rewards = #player:getRewardList()
+	if rewards > 0 then
+		player:sendTextMessage(MESSAGE_LOGIN, 
+			string.format("You have %d reward%s in your reward chest.", 
+				rewards, rewards > 1 and "s" or ""))
+	end
+
+	-- 5. RATE EVENTS
+	if SCHEDULE_EXP_RATE ~= 100 then
+		sendBoostMessage(player, "Exp Rate", SCHEDULE_EXP_RATE > 100)
+	end
+	if SCHEDULE_SPAWN_RATE ~= 100 then
+		sendBoostMessage(player, "Spawn Rate", SCHEDULE_SPAWN_RATE > 100)
+	end
+	if SCHEDULE_LOOT_RATE ~= 100 then
+		sendBoostMessage(player, "Loot Rate", SCHEDULE_LOOT_RATE > 100)
+	end
+	if SCHEDULE_BOSS_LOOT_RATE ~= 100 then
+		sendBoostMessage(player, "Boss Loot Rate", SCHEDULE_BOSS_LOOT_RATE > 100)
+	end
+	if SCHEDULE_SKILL_RATE ~= 100 then
+		sendBoostMessage(player, "Skill Rate", SCHEDULE_SKILL_RATE > 100)
+	end
+
+	-- 6. RECRUITER OUTFIT
+	local resultId = db.storeQuery("SELECT `recruiter` FROM `accounts` WHERE `id`= " .. 
+		Game.getPlayerAccountId(getPlayerName(player)))
+	if resultId then
+		local recruiterStatus = Result.getNumber(resultId, "recruiter")
+		local sex = player:getSex()
+		local outfitId = (sex == 1) and 746 or 745
+		for outfitAddOn = 0, 2 do
+			if recruiterStatus >= outfitAddOn * 3 + 1 then
+				if not player:hasOutfit(outfitId, outfitAddOn) then
+					if outfitAddOn == 0 then
+						player:addOutfit(outfitId)
+					else
+						player:addOutfitAddon(outfitId, outfitAddOn)
+					end
+				end
+			end
+		end
+	end
+
+	-- 7. XP DISPLAY MODE
+	if configManager.getBoolean(configKeys.XP_DISPLAY_MODE) then
+		local baseRate = player:getFinalBaseRateExperience() * 100
+		if configManager.getBoolean(configKeys.VIP_SYSTEM_ENABLED) then
+			local vipBonusExp = configManager.getNumber(configKeys.VIP_BONUS_EXP)
+			if vipBonusExp > 0 and player:isVip() then
+				vipBonusExp = (vipBonusExp > 100 and 100) or vipBonusExp
+				baseRate = baseRate * (1 + (vipBonusExp / 100))
+				player:sendTextMessage(MESSAGE_BOOSTED_CREATURE, 
+					"Normal base xp is: " .. baseRate .. "%, because you are VIP, bonus of " .. vipBonusExp .. "%")
+			end
+		end
+		player:setBaseXpGain(baseRate)
+	end
+
+	player:setStaminaXpBoost(player:getFinalBonusStamina() * 100)
+	player:getFinalLowLevelBonus()
+
+	-- 8. VIP SYSTEM
+	if configManager.getBoolean(configKeys.VIP_SYSTEM_ENABLED) then
+		local isCurrentlyVip = player:isVip()
+		local hadVipStatus = player:kv():scoped("account"):get("vip-system") or false
+
+		if hadVipStatus ~= isCurrentlyVip then
+			if hadVipStatus then
+				player:onRemoveVip()
+			else
+				player:onAddVip(player:getVipDays())
+			end
+		end
+
+		if isCurrentlyVip then
+			player:sendVipStatus()
+		end
+	end
+
+	-- 9. GHOST MODE
+	if player:getGroup():getId() >= GROUP_TYPE_GAMEMASTER then
+		player:setGhostMode(true)
+	end
+
+	-- 10. RESETS
+	if _G.OnExerciseTraining[player:getId()] then
+		stopEvent(_G.OnExerciseTraining[player:getId()].event)
+		_G.OnExerciseTraining[player:getId()] = nil
+		player:setTraining(false)
+	end
+
+	local playerId = player:getId()
+	_G.NextUseStaminaTime[playerId] = 1
+	_G.NextUseXpStamina[playerId] = 1
+	_G.NextUseConcoctionTime[playerId] = 1
+	DailyReward.init(playerId)
+
+	-- 11. BOSS FIGHT
+	local stats = player:inBossFight()
+	if stats then
+		stats.playerId = player:getId()
+	end
+
+	if GetDailyRewardLastServerSave() >= player:getLastLoginSaved() then
+		player:setRemoveBossTime(1)
+	end
+
+	-- 12. OUTFIT FIX
+	local playerOutfit = player:getOutfit()
+	if table.contains({ 75, 266, 302 }, playerOutfit.lookType) then
+		playerOutfit.lookType = 136
+		playerOutfit.lookAddons = 0
+		player:setOutfit(playerOutfit)
+	end
+
+	-- 13. SYSTEMS INIT
+	player:initializeLoyaltySystem()
+	player:registerEvent("PlayerDeath")
+	player:registerEvent("DropLoot")
+	player:registerEvent("BossParticipation")
+	player:registerEvent("UpdatePlayerOnAdvancedLevel")
+
+	-- 14. MONK BONUS
+	if vocation and vocation:getBaseId() == VOCATION.BASE_ID.MONK then
+		local kv = player:kv()
+		if (kv:get("monk-basic-atk-bonus") or 0) < 10 then
+			logger.info("Setting monk basic attack bonus 10 for player: {}.", player:getName())
+			kv:set("monk-basic-atk-bonus", 10)
+		end
+	end
+	return true
+end
+
+playerLoginGlobal:register()
+```
+
+### Árvore de Decisão Completa
+
+```
+Player faz login
+  │
+  ├─ ========== 1. WELCOME MESSAGE ==========
+  │  └─ lastLoginSaved == 0?
+  │      ├─ SIM (novo player):
+  │      │   ├─ "Please choose outfit"
+  │      │   ├─ sendOutfitWindow()
+  │      │   ├─ startStreakLevel > 0?
+  │      │   │   └─ setStreakLevel(level)
+  │      │   └─ DB UPDATE istutorial = 0
+  │      │
+  │      └─ NÃO (returning):
+  │          └─ "Last visit: [date]"
+  │
+  ├─ ========== 2. PROMOTION ==========
+  │  ├─ isPremium && hasPromotion KV?
+  │  │   ├─ SIM && not isPromoted: setVocation(promotion)
+  │  │   └─ NÃO
+  │  │
+  │  └─ isPromoted && not isPremium?
+  │      └─ SIM: setVocation(demotion)
+  │
+  ├─ ========== 3. ANNOUNCEMENTS ==========
+  │  ├─ sendTextMessage("Boosted creature: [name]")
+  │  └─ sendTextMessage("Boosted boss: [name]")
+  │
+  ├─ ========== 4. REWARDS ==========
+  │  └─ rewards > 0?
+  │      └─ SIM: "You have X reward(s)"
+  │
+  ├─ ========== 5. RATE EVENTS ==========
+  │  ├─ SCHEDULE_EXP_RATE != 100?
+  │  │   └─ sendBoostMessage("Exp Rate", isIncreased)
+  │  ├─ SCHEDULE_SPAWN_RATE != 100?
+  │  │   └─ sendBoostMessage("Spawn Rate", ...)
+  │  ├─ SCHEDULE_LOOT_RATE != 100?
+  │  │   └─ sendBoostMessage("Loot Rate", ...)
+  │  ├─ SCHEDULE_BOSS_LOOT_RATE != 100?
+  │  │   └─ sendBoostMessage("Boss Loot Rate", ...)
+  │  └─ SCHEDULE_SKILL_RATE != 100?
+  │      └─ sendBoostMessage("Skill Rate", ...)
+  │
+  ├─ ========== 6. RECRUITER OUTFIT ==========
+  │  ├─ resultId = query SELECT recruiter
+  │  ├─ if resultId:
+  │  │   ├─ sex = 1 ? 746 : 745
+  │  │   └─ for addon 0-2:
+  │  │       └─ if recruiterStatus >= addon*3+1:
+  │  │           └─ addOutfit/addOutfitAddon
+  │
+  ├─ ========== 7. XP DISPLAY ==========
+  │  ├─ XP_DISPLAY_MODE enabled?
+  │  │   ├─ SIM:
+  │  │   │   ├─ baseRate = playerRate * 100
+  │  │   │   ├─ VIP_SYSTEM_ENABLED?
+  │  │   │   │   ├─ SIM && isVip:
+  │  │   │   │   │   ├─ vipBonus = getNumber(VIP_BONUS_EXP)
+  │  │   │   │   │   ├─ if > 100: vipBonus = 100
+  │  │   │   │   │   └─ baseRate *= (1 + vipBonus/100)
+  │  │   │   │   └─ NÃO
+  │  │   │   └─ setBaseXpGain(baseRate)
+  │  │   └─ NÃO
+  │  │
+  │  └─ setStaminaXpBoost(...) + getFinalLowLevelBonus()
+  │
+  ├─ ========== 8. VIP SYSTEM ==========
+  │  ├─ VIP_SYSTEM_ENABLED?
+  │  │   ├─ SIM:
+  │  │   │   ├─ isCurrentlyVip = player:isVip()
+  │  │   │   ├─ hadVipStatus = kv("account"):get("vip-system")
+  │  │   │   ├─ hadVipStatus != isCurrentlyVip?
+  │  │   │   │   ├─ SIM:
+  │  │   │   │   │   ├─ hadVipStatus? onRemoveVip()
+  │  │   │   │   │   └─ else: onAddVip(vipDays)
+  │  │   │   │   └─ NÃO
+  │  │   │   └─ isCurrentlyVip? sendVipStatus()
+  │  │   └─ NÃO
+  │
+  ├─ ========== 9. GHOST MODE ==========
+  │  └─ groupId >= GAMEMASTER?
+  │      └─ SIM: setGhostMode(true)
+  │
+  ├─ ========== 10. RESETS ==========
+  │  ├─ OnExerciseTraining[playerId]?
+  │  │   ├─ SIM:
+  │  │   │   ├─ stopEvent(event)
+  │  │   │   └─ = nil + setTraining(false)
+  │  │   └─ NÃO
+  │  │
+  │  └─ Initialize globals:
+  │      ├─ NextUseStaminaTime[id] = 1
+  │      ├─ NextUseXpStamina[id] = 1
+  │      ├─ NextUseConcoctionTime[id] = 1
+  │      └─ DailyReward.init(id)
+  │
+  ├─ ========== 11. BOSS FIGHT ==========
+  │  ├─ stats = inBossFight()?
+  │  │   ├─ SIM: stats.playerId = getId()
+  │  │   └─ NÃO
+  │  │
+  │  └─ GetDailyRewardLastServerSave() >= lastLoginSaved?
+  │      └─ SIM: setRemoveBossTime(1)
+  │
+  ├─ ========== 12. OUTFIT FIX ==========
+  │  ├─ lookType in {75, 266, 302}?
+  │  │   ├─ SIM (support outfit):
+  │  │   │   ├─ lookType = 136
+  │  │   │   ├─ lookAddons = 0
+  │  │   │   └─ setOutfit(playerOutfit)
+  │  │   └─ NÃO
+  │
+  ├─ ========== 13. SYSTEMS INIT ==========
+  │  ├─ initializeLoyaltySystem()
+  │  ├─ registerEvent("PlayerDeath")
+  │  ├─ registerEvent("DropLoot")
+  │  ├─ registerEvent("BossParticipation")
+  │  └─ registerEvent("UpdatePlayerOnAdvancedLevel")
+  │
+  ├─ ========== 14. MONK BONUS ==========
+  │  └─ vocation:getBaseId() == MONK?
+  │      └─ SIM:
+  │          └─ monk-basic-atk-bonus < 10?
+  │              └─ SIM: setKV("monk-basic-atk-bonus", 10)
+  │
+  └─ return true
+```
+
+---
+
+## Checkpoint de Aprendizagem
+
+### Conceitos-chave
+
+- **CreatureEvent onLogin**: Callback disparado ao fazer login
+- **First Login Detection**: lastLoginSaved == 0
+- **Outfit Window**: sendOutfitWindow() para novo player
+- **Promotion System**: Premium + KV flag + promotion/demotion
+- **Boosted Creatures**: Game.getBoostedCreature() + Game.getBoostedBoss()
+- **Reward System**: getRewardList() para reportar recompensas
+- **Rate Events**: SCHEDULE_* globals para eventos
+- **Recruiter Outfits**: Gender-based (746 vs 745) + addons por status
+- **XP Display Mode**: baseRate calculation com VIP bonuses
+- **VIP Tracking**: KV scoped + onAddVip/onRemoveVip callbacks
+- **Ghost Mode**: Gamemasters only (groupId >= GAMEMASTER)
+- **Global Resets**: Stamina/XP/Concoction timers = 1
+- **Boss Fight Persistence**: inBossFight() + playerId tracking
+- **Support Outfit Fix**: Crash prevention (75, 266, 302 → 136)
+- **Event Registration**: registerEvent para listeners adicionais
+- **Monk Initialization**: monk-basic-atk-bonus KV para vocação especial
+
+### Responsabilidades do Handler
+
+1. **Welcome**: Primeiro login vs returning (outfit window)
+2. **Promotion**: Validar premium + KV flag
+3. **Announce**: Boosted creatures/boss/rewards
+4. **Rates**: Anunciar rate events se != 100
+5. **Recruiter**: Aplicar outfit por status
+6. **XP**: Configurar display mode com VIP bonus
+7. **VIP**: Validar status change + callbacks
+8. **Ghost**: Setar para gamemasters
+9. **Reset**: Limpar globals + exercise training
+10. **Boss**: Persistir stats se ativo
+11. **Outfit**: Corrigir support outfits
+12. **Init**: Systems e event listeners
+13. **Monk**: Aplicar bonus se vocação monk
+14. **Return**: true (sucesso)
+
+---
+
+## Patterns e Implementação
+
+### Padrão First Login Detection
+
+Detectar novo player:
+
+```lua
+if player:getLastLoginSaved() == 0 then
+	player:sendOutfitWindow()
+	db.query("UPDATE `players` SET `istutorial` = 0 WHERE `id` = " .. player:getGuid())
+end
+```
+
+### Padrão Promotion with KV
+
+Validar promotion com KV storage:
+
+```lua
+if player:isPremium() then
+	local hasPromotion = player:kv():get("promoted")
+	if not player:isPromoted() and hasPromotion then
+		player:setVocation(promotion)
+	end
+elseif player:isPromoted() then
+	player:setVocation(vocation:getDemotion())
+end
+```
+
+### Padrão Rate Event Announcement
+
+Anunciar rate events condicional:
+
+```lua
+if SCHEDULE_EXP_RATE ~= 100 then
+	sendBoostMessage(player, "Exp Rate", SCHEDULE_EXP_RATE > 100)
+end
+```
+
+### Padrão Gender-based Outfit
+
+Outfit diferente por sexo:
+
+```lua
+local sex = player:getSex()
+local outfitId = (sex == 1) and 746 or 745
+```
+
+### Padrão VIP Bonus Calculation
+
+Calcular bonus com cap:
+
+```lua
+local vipBonusExp = configManager.getNumber(configKeys.VIP_BONUS_EXP)
+if vipBonusExp > 0 and player:isVip() then
+	vipBonusExp = (vipBonusExp > 100 and 100) or vipBonusExp
+	baseRate = baseRate * (1 + (vipBonusExp / 100))
+end
+```
+
+### Padrão VIP Status Tracking
+
+Comparar status anterior vs atual:
+
+```lua
+local isCurrentlyVip = player:isVip()
+local hadVipStatus = player:kv():scoped("account"):get("vip-system") or false
+
+if hadVipStatus ~= isCurrentlyVip then
+	if hadVipStatus then
+		player:onRemoveVip()
+	else
+		player:onAddVip(player:getVipDays())
+	end
+end
+```
+
+### Padrão Support Outfit Fix
+
+Crash prevention com outfit substitution:
+
+```lua
+local playerOutfit = player:getOutfit()
+if table.contains({ 75, 266, 302 }, playerOutfit.lookType) then
+	playerOutfit.lookType = 136
+	playerOutfit.lookAddons = 0
+	player:setOutfit(playerOutfit)
+end
+```
+
+### Padrão Global Initialization
+
+Resetar timers para player:
+
+```lua
+local playerId = player:getId()
+_G.NextUseStaminaTime[playerId] = 1
+_G.NextUseXpStamina[playerId] = 1
+_G.NextUseConcoctionTime[playerId] = 1
+DailyReward.init(playerId)
+```
+
+---
+
+## 🤖 Informações da Documentação
+
+<Card title="Documentação: login.lua" icon="star">
+Análise de listener de login enterprise com 14 operações. Demonstra first login detection, promotion system, VIP tracking, outfit correction e multi-system initialization.
+</Card>
+
+<Aside type="note">
+**Gerado em:** 19 de Fevereiro de 2026 | **Versão:** 1.0 | **Status:** ✅ Documentado
+
+Padrão: Player login with multi-initialization | Complexidade: Muito Alta
+</Aside>

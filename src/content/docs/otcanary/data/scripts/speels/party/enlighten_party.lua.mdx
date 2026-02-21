@@ -1,0 +1,474 @@
+---
+title: "Spell - enlighten_party.lua"
+description: "Spell de regeneração de mana para party monk exclusive"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `enlighten_party.lua` |
+| **Localização** | `data/scripts/spells/party/` |
+| **Tipo de Script** | Spell (Instant) |
+| **Tipo** | Party Support (Mana Regeneration) |
+| **Alvo** | Party Members (Area CIRCLE 5x5) |
+| **Mana Requerida** | 120 Base (Dinâmico) |
+| **Words** | utevo mas sio |
+| **Spell ID** | 278 |
+| **Cooldown** | 5 minutos Individual |
+| **GroupCooldown** | 2s |
+| **Premium** | Sim |
+| **Agressivo** | Não |
+| **Self Target** | Sim |
+| **Grupo** | support |
+| **Vocações** | Monk, Exalted Monk |
+| **Level** | 32 |
+| **Efeito Visual** | CONST_ME_MAGIC_BLUE |
+| **Som de Casting** | SOUND_EFFECT_TYPE_SPELL_HEAL_PARTY |
+| **Linhas de Código** | 82 |
+| **Complexidade** | Intermediária |
+
+**Descrição:**
+Spell de regeneração de mana para party. Aplica mana regen +50 mana a cada 3 segundos por 5 minutos. Condition `CONDITION_REGENERATION`. Area `CIRCLE5X5`. Mana dinâmica baseada em quantidade: `0.9^(n-1)*120*n`. Distance check `<= 36`. Validação party + members. Range distance 36 squares. Monk exclusive premium level 32. Words: `utevo mas sio`. Cooldown 5 minutos (longo!). Spell enlighten party monk mana regen!
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/party/enlighten_party.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:name("Enlighten Party")
+spell:words("utevo mas sio")
+spell:group("support")
+spell:vocation("monk;true", "exalted monk;true")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_HEAL_PARTY)
+spell:id(278)
+spell:cooldown(5 * 60 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:level(32)
+spell:mana(baseMana)
+spell:isSelfTarget(true)
+spell:isAggressive(false)
+spell:isPremium(true)
+spell:needLearn(false)
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Enlighten Party - Monk Mana Regeneration Support**
+
+Este spell oferece regeneração de mana para toda party:
+
+1. **Mana Regeneration:**
+   - Condition CONDITION_REGENERATION
+   - CONDITION_PARAM_MANAGAIN: +50 mana
+   - CONDITION_PARAM_MANATICKS: 3 segundos (interval)
+   - Duração: 5 minutos (300 segundos)
+   - Total: 50 * (300/3) = 50 * 100 = 5000 mana!
+
+2. **Mana Dinâmica Escalável:**
+   - Base: 120 mana
+   - Cálculo: 0.9^(members-1) * 120 * members
+   - Exemplo: 2 members = 120 * 2 = 240 total
+   - Exemplo: 3 members = 0.9 * 120 * 3 = 324 total
+   - Escalagem eficiente!
+
+3. **Cooldown Longo Estratégico:**
+   - Cooldown: 5 MINUTOS (muito longo!)
+   - GroupCooldown: 2s
+   - Uso estratégico apenas!
+
+4. **Party Logic Robusta:**
+   - Validação: party:getMembers()
+   - Inclui leader (membros + 1)
+   - Distance check por membro
+   - Mínimo 2 afetados!
+
+**Uso Típico:**
+```
+Monk lvl 32+ (Premium)
+// Cast "utevo mas sio"
+// Sistema obtém party + members
+// Valida distance <= 36
+// Calcula mana dinâmica
+// Aplica +50 mana per 3s
+// Duração 5 minutos
+// Total: 5000 mana regen!
+// Spell enlighten party mana regen!
+```
+
+**Diferencial:** Monk exclusive premium party mana regen com cooldown longo 5 minutos estratégico!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `enlighten_party` oferece regeneração de mana para membros da party com cooldown longo:
+
+- **Tipo:** Party Support (Mana Regeneration)
+- **Spell ID:** 278
+- **Vocações:** Monk, Exalted Monk
+- **Level:** 32 (premium!)
+- **Efeito:** +50 mana a cada 3s por 5 minutos (5000 total!)
+- **Area:** CIRCLE5X5 (raio ~5-6 squares)
+- **Mana Base:** 120
+- **Mana Dinâmica:** 0.9^(members-1) * 120 * members
+- **Distance Check:** `<= 36` squares
+- **Cooldown:** 5 minutos (LONGO!)
+- **Mínimo Afetados:** 2 membros
+
+### Arquitetura
+
+```
+local combat = Combat()
+├─ setArea(AREA_CIRCLE5X5)
+├─ setParameter(COMBAT_PARAM_EFFECT, CONST_ME_MAGIC_BLUE)
+├─ setParameter(COMBAT_PARAM_AGGRESSIVE, 0)
+└─ execute(creature, var)
+
+local condition = Condition(CONDITION_REGENERATION)
+├─ CONDITION_PARAM_SUBID: 1
+├─ CONDITION_PARAM_BUFF_SPELL: 1
+├─ CONDITION_PARAM_TICKS: 300000 (5 min)
+├─ CONDITION_PARAM_MANAGAIN: +50
+└─ CONDITION_PARAM_MANATICKS: 3000
+
+local baseMana = 120
+
+local spell = Spell("instant")
+├─ onCastSpell(creature, var)
+│  ├─ Obter party + members
+│  ├─ Distance check <= 36
+│  ├─ Calcular mana dinâmico
+│  ├─ Validar mana suficiente
+│  ├─ Execute combat
+│  └─ Adicionar condition a cada membro
+└─ Configuração spell
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+```
+
+**Propósito:** Instância Combat para área party com efeito.
+
+**Tipo:** Combat
+
+**Parâmetros Configurados:**
+- Area: AREA_CIRCLE5X5
+- Effect: CONST_ME_MAGIC_BLUE
+- Aggressive: 0 (não-agressivo)
+
+---
+
+### Variável Global: condition
+
+```lua
+local condition = Condition(CONDITION_REGENERATION)
+```
+
+**Propósito:** Condition para regeneração mana.
+
+**Tipo:** Condition (CONDITION_REGENERATION)
+
+**Parâmetros Configurados:**
+- SUBID: 1
+- BUFF_SPELL: 1 (é buff)
+- TICKS: 300000 (5 minutos)
+- MANAGAIN: +50 (mana por tick)
+- MANATICKS: 3000 (a cada 3s)
+
+---
+
+### Variável Global: baseMana
+
+```lua
+local baseMana = 120
+```
+
+**Propósito:** Mana base para cálculo dinâmico.
+
+**Tipo:** Integer
+
+**Valor:** 120
+
+---
+
+### Variável Global: spell
+
+```lua
+local spell = Spell("instant")
+```
+
+**Propósito:** Instância do spell.
+
+**Tipo:** Instant
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	local position = creature:getPosition()
+	local party = creature:getParty()
+	if not party then
+		creature:sendCancelMessage("No party members in range.")
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local membersList = party:getMembers()
+	if not membersList or type(membersList) ~= "table" then
+		creature:sendCancelMessage("No party members in range.")
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	membersList[#membersList + 1] = party:getLeader()
+
+	local affectedList = {}
+	for _, targetPlayer in ipairs(membersList) do
+		if targetPlayer:getPosition():getDistance(position) <= 36 then
+			affectedList[#affectedList + 1] = targetPlayer
+		end
+	end
+
+	local tmp = #affectedList
+	if tmp <= 1 then
+		creature:sendCancelMessage("No party members in range.")
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	local mana = math.ceil((0.9 ^ (tmp - 1) * baseMana) * tmp)
+	if creature:getMana() < mana then
+		creature:sendCancelMessage(RETURNVALUE_NOTENOUGHMANA)
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	if not combat:execute(creature, var) then
+		creature:sendCancelMessage(RETURNVALUE_NOTPOSSIBLE)
+		position:sendMagicEffect(CONST_ME_POFF)
+		return false
+	end
+
+	creature:addMana(-(mana - baseMana), false)
+	creature:addManaSpent((mana - baseMana))
+
+	for _, targetPlayer in ipairs(affectedList) do
+		targetPlayer:addCondition(condition)
+	end
+
+	return true
+end
+```
+
+**Propósito:** Regenera mana de party members.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (monk) |
+| `var` | Variant | Variant (self) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Regeneração aplicada |
+| `false` | Erro (sem party, sem mana, etc) |
+
+**Lógica Detalhada:**
+
+1. **Validação Party:**
+   - getParty() do creature
+   - Se não existe: erro
+
+2. **Obtenção Members:**
+   - getMembers() da party
+   - Validação: not nil, table type
+   - Adiciona leader: `membersList[#membersList + 1] = party:getLeader()`
+
+3. **Distance Check:**
+   - ITera cada member
+   - Valida distance `<= 36` squares
+   - Cria affectedList
+
+4. **Mínimo Afetados:**
+   - Valida tmp (affected count) > 1
+   - Se ≤ 1: erro
+
+5. **Cálculo Mana Dinâmica:**
+   - `mana = math.ceil((0.9 ^ (tmp - 1) * baseMana) * tmp)`
+   - Escalagem eficiente com decay
+
+6. **Validação Mana:**
+   - Verifica creature:getMana() >= mana
+   - Se insuficiente: erro
+
+7. **Execute Combat:**
+   - Execute area combat
+   - Se falha: erro
+
+8. **Mana Gasto:**
+   - Subtrai (mana - baseMana) como custo extra
+   - Registra gasto
+
+9. **Aplicar Condition:**
+   - ITera cada member afetado
+   - Adiciona condition REGENERATION +50
+   - Duração 5 minutos
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Instância Combat area |
+| `condition` | Condition | Arquivo | Instância condition regeneration |
+| `baseMana` | Integer | Arquivo | Base mana 120 |
+| `spell` | Spell | Arquivo | Instância spell |
+
+### Variáveis Locais (onCastSpell)
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `position` | Position | Posição do caster |
+| `party` | Party | Party do caster |
+| `membersList` | Table | Membros + leader |
+| `affectedList` | Table | Membros dentro de range |
+| `tmp` | Integer | Quantidade afetada |
+| `mana` | Integer | Mana total requerida |
+| `targetPlayer` | Player | Iteração members |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Party Validation com Tipo Check
+
+```lua
+local membersList = party:getMembers()
+if not membersList or type(membersList) ~= "table" then
+	-- erro
+end
+membersList[#membersList + 1] = party:getLeader()
+```
+
+**Benefício:** Valida existência + tipo antes de adicionar leader!
+
+### Padrão 2: Distance Filtering por Membro
+
+```lua
+for _, targetPlayer in ipairs(membersList) do
+	if targetPlayer:getPosition():getDistance(position) <= 36 then
+		affectedList[#affectedList + 1] = targetPlayer
+	end
+end
+```
+
+**Benefício:** Filtra por distance máximo 36 squares!
+
+### Padrão 3: Mana Dinâmica com Decay 0.9x
+
+```lua
+local mana = math.ceil((0.9 ^ (tmp - 1) * baseMana) * tmp)
+```
+
+**Benefício:** Evita explosion de mana com muitos members!
+
+### Padrão 4: Aplicação Condition a Todos
+
+```lua
+for _, targetPlayer in ipairs(affectedList) do
+	targetPlayer:addCondition(condition)
+end
+```
+
+**Benefício:** Condition pré-criada aplicada a todos!
+
+---
+
+## 🤖 Documentação das Funções
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Regenera mana (+50 a cada 3s por 5min) de party members em range.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Caster (monk lvl 32+) |
+| `var` | Variant | Variant (self) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Regeneração aplicada a party |
+| `false` | Erro (sem party/mana/range) |
+
+**Requisitos:**
+- Ter party (mínimo 2 membros)
+- Members dentro de 36 squares
+- Mana suficiente (dinâmica)
+- Monk ou Exalted Monk
+- Level 32+
+- Premium account
+
+**Mana Regeneration Details:**
+
+| Feature | Value |
+|---|---|
+| Mana por Tick | +50 |
+| Interval | 3 segundos |
+| Duração Total | 5 minutos (300s) |
+| Ticks Totais | 100 (5min / 3s) |
+| Mana Total Regen | 5000 mana! |
+
+**Exemplo de Uso:**
+```lua
+-- Monk lvl 32+, in party com 2 membros
+-- Cast "utevo mas sio"
+-- Sistema obtém party + members
+-- Filtra por distance <= 36
+-- Calcula mana: ceil(0.9^1 * 120 * 2) = 216
+// Se tem mana: apply condition +50 mana per 3s
+// Duração 5 minutos para cada membro
+// Total: 5000 mana regenerado!
+// Efeito CONST_ME_MAGIC_BLUE
+// Cooldown 5 minutos!
+// Spell enlighten party mana regen!
+```
+
+---
+
+## 📌 Resumo
+
+**Enlighten Party** é um spell monk exclusive premium que oferece regeneração de mana para membros da party. Com condition CONDITION_REGENERATION (+50 mana a cada 3 segundos por 5 minutos = 5000 total!), área CIRCLE5X5, distance check 36 squares, mana dinâmica 0.9^(n-1)*120*n escalável, validação party completa, mínimo 2 afetados, spell ID 278, palabras "utevo mas sio", som SOUND_EFFECT_TYPE_SPELL_HEAL_PARTY, level 32, cooldown 5 minutos (longo!), groupCooldown 2s, isSelfTarget true, isAggressive false, isPremium true. Spell enlighten party monk mana regeneration support!

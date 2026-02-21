@@ -1,0 +1,417 @@
+---
+title: "Spell - chill_out.lua"
+description: "Spell de gelo AOE com onda direcionada para druids level 1"
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `chill_out.lua` |
+| **Localização** | `data/scripts/spells/attack/` |
+| **Tipo de Script** | Spell (Instant) |
+| **ID do Spell** | 173 |
+| **Tipo de Dano** | COMBAT_ICEDAMAGE |
+| **Vocações** | Druid, Elder Druid |
+| **Level Requerido** | 1 |
+| **Mana Requerida** | 8 |
+| **Words** | exevo infir frigo hur |
+| **Alcance** | 1 |
+| **Área** | WAVE4 + AREADIAGONAL_WAVE4 (ondas direcionadas) |
+| **Cooldown** | 4s |
+| **GroupCooldown** | 2s |
+| **Premium** | Não |
+| **Fórmula** | Magic-level based (0.3-0.6 MLvl) |
+| **Som Conjura** | SOUND_EFFECT_TYPE_SPELL_CHILL_OUT |
+| **Requer Direction** | Sim (não target, direção!) |
+| **Bloqueia Walls** | Não |
+| **Linhas de Código** | 38 |
+| **Complexidade** | Médium |
+
+**Descrição:**
+Spell de gelo com ondas direcionadas para druids nível 1 (acesso imediato). Dano gelo escalável baixo (0.3-0.6 MLvl). Mana baato (8). Alcance 1, requer direção (não target!). Áreas wave4 + diagonal (cobertura onda direcionada). Sem premium. Cooldown 4s. Efeito ICEAREA.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/spells/attack/chill_out.lua
+```
+
+**Tipo Spell:** Instant
+
+**Registração:**
+```lua
+spell:group("attack")
+spell:id(173)
+spell:name("Chill Out")
+spell:words("exevo infir frigo hur")
+spell:castSound(SOUND_EFFECT_TYPE_SPELL_CHILL_OUT)
+spell:level(1)
+spell:mana(8)
+spell:isPremium(false)
+spell:range(1)
+spell:needDirection(true)
+spell:cooldown(4 * 1000)
+spell:groupCooldown(2 * 1000)
+spell:needLearn(false)
+spell:vocation("druid;true", "elder druid;true")
+spell:register()
+```
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Ondas de Gelo - Direcionado Free-Play**
+
+Este spell implementa um **sistema de AOE direcionado com ondas**:
+
+1. **Áreas Wave Direcionadas:**
+   - AREA_WAVE4 (linha onda)
+   - AREADIAGONAL_WAVE4 (diagonais)
+   - Cobertura direcionada progressive
+
+2. **Magic-Level Escalável:**
+   - Usa CALLBACK_PARAM_LEVELMAGICVALUE
+   - min = (level/5) + (maglevel × 0.3) + 2
+   - max = (level/5) + (maglevel × 0.6) + 4
+   - Escalabilidade baixa (iniciante)
+
+3. **Level 1 Instant:**
+   - Acesso IMEDIATO novo druid
+   - 8 mana (spam possível)
+   - Sem premium
+   - Direcionado (não target)
+
+4. **Direção, Não Target:**
+   - needDirection: true (clique direção)
+   - Sem needTarget
+   - AOE projetado direção
+
+**Fórmula Visual:**
+```
+Druid lvl 1, mlvl 0:
+  min = 0.2 + 0 + 2 = 2.2
+  max = 0.2 + 0 + 4 = 4.2
+
+Druid lvl 50, mlvl 20:
+  min = 10 + 6 + 2 = 18
+  max = 10 + 12 + 4 = 26
+```
+
+**Diferencial:** Wave AOE direccionado level 1!
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O spell `chill_out` oferece AOE gelo direcionado:
+
+- **Dano:** COMBAT_ICEDAMAGE magic-level based
+- **Fórmula:** (level/5) + (maglevel*0.3/0.6) + bônus
+- **Mana:** 8 (barato)
+- **Level:** 1 (imediato!)
+- **Área:** Wave4 + diagonal (direcionada)
+
+### Arquitetura
+
+Combat com áreas wave:
+
+```
+local combat = Combat()
+├─ Type: ICEDAMAGE
+├─ Effect: ICEAREA
+├─ Area: WAVE4
+├─ Area: AREADIAGONAL_WAVE4
+└─ Callback: onGetFormulaValues (LEVELMAGIC)
+
+onGetFormulaValues(player, level, maglevel)
+└─ min/max escalável
+
+spell.onCastSpell()
+└─ combat:execute()
+```
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variável Global: combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PARAM_TYPE, COMBAT_ICEDAMAGE)
+combat:setParameter(COMBAT_PARAM_EFFECT, CONST_ME_ICEAREA)
+combat:setArea(createCombatArea(AREA_WAVE4, AREADIAGONAL_WAVE4))
+```
+
+**Propósito:** Combat de AOE gelo direcionado.
+
+**Parâmetros:**
+
+| Parâmetro | Valor | Significado |
+|---|---|---|
+| `COMBAT_PARAM_TYPE` | COMBAT_ICEDAMAGE | Dano gelo |
+| `COMBAT_PARAM_EFFECT` | CONST_ME_ICEAREA | Efeito gelo |
+| `Area 1` | AREA_WAVE4 | Onda linha |
+| `Area 2` | AREADIAGONAL_WAVE4 | Onda diagonal |
+
+---
+
+### Função Global: onGetFormulaValues
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 0.3) + 2
+	local max = (level / 5) + (maglevel * 0.6) + 4
+	return -min, -max
+end
+```
+
+**Propósito:** Calcula dano gelo AOE.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level |
+| `maglevel` | number | Magic level |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Fórmula:**
+```
+min = (level / 5) + (maglevel * 0.3) + 2
+max = (level / 5) + (maglevel * 0.6) + 4
+```
+
+**Pesos:**
+- Level: 0.2 por ponto
+- Maglevel min: 0.3 (baixo)
+- Maglevel max: 0.6 (baixo)
+- Bônus: 2/4 (moderado)
+
+**Exemplos:**
+
+| Level | MLvl | Min | Max |
+|---|---|---|---|
+| 1 | 0 | 2 | 4 |
+| 30 | 10 | 12 | 18 |
+| 60 | 25 | 21 | 39 |
+| 100 | 50 | 32 | 64 |
+
+---
+
+### Registração do Callback
+
+```lua
+combat:setCallback(CALLBACK_PARAM_LEVELMAGICVALUE, "onGetFormulaValues")
+```
+
+---
+
+### Função Global: spell.onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+	return combat:execute(creature, var)
+end
+```
+
+**Propósito:** Handler simples.
+
+**Retorno:**
+
+| Valor | Significado |
+|---|---|
+| `true` | Chill out ativado |
+| `false` | Direction falhou |
+
+---
+
+## 📊 Variáveis Globais
+
+| Nome | Tipo | Escopo | Descrição |
+|---|---|---|---|
+| `combat` | Combat | Arquivo | Com áreas wave |
+| `spell` | Spell | Arquivo | Instância do spell |
+
+**Variáveis Locais (em onGetFormulaValues):**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `min` | number | Dano mínimo |
+| `max` | number | Dano máximo |
+
+---
+
+## 🎯 Padrões Identificados
+
+### Padrão 1: Áreas Wave Direcionadas
+
+```lua
+combat:setArea(createCombatArea(AREA_WAVE4, AREADIAGONAL_WAVE4))
+```
+
+**Benefício:** Múltiplas ondas em direção.
+
+### Padrão 2: Need Direction
+
+```lua
+spell:needDirection(true)
+```
+
+**Benefício:** Clique direção, não target.
+
+### Padrão 3: Magic-Level Escalável
+
+```lua
+function onGetFormulaValues(player, level, maglevel)
+	local min = (level / 5) + (maglevel * 0.3) + 2
+	local max = (level / 5) + (maglevel * 0.6) + 4
+	return -min, -max
+end
+```
+
+**Benefício:** Escalável com skill mago.
+
+---
+
+## 🤖 Documentação das Funções
+
+### onGetFormulaValues(player, level, maglevel)
+
+**Descrição:** Calcula dano gelo AOE direcionado.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `player` | Player | Conjurador |
+| `level` | number | Level jogador |
+| `maglevel` | number | Magic level jogador |
+
+**Retorno:**
+
+| Valor | Tipo | Descrição |
+|---|---|---|
+| `-min` | number | Dano mínimo |
+| `-max` | number | Dano máximo |
+
+**Exemplo:**
+
+```lua
+onGetFormulaValues(druid, 30, 10)
+// min = 6 + 3 + 2 = 11
+// max = 6 + 6 + 4 = 16
+// Retorna: -11, -16
+```
+
+---
+
+### spell.onCastSpell(creature, var)
+
+**Descrição:** Conjura ondas gelo em direção.
+
+**Parâmetros:**
+
+| Nome | Tipo | Descrição |
+|---|---|---|
+| `creature` | Creature | Druida |
+| `var` | Variant | Direction (não target) |
+
+**Retorno:**
+
+| Valor | Descrição |
+|---|---|
+| `true` | Ondas ativadas |
+| `false` | Direction falhou |
+
+**Requisitos:**
+- Level 1+
+- 8 mana
+- Direction required
+- Sem target
+
+**Efeito:**
+- Efeito gelo área
+- Wave4 + diagonal
+- Dano magic-level based
+- Direção livre
+
+**Exemplo:**
+
+```lua
+-- Druid lvl 30, MLvl 10
+spell.onCastSpell(druid, directionVariant)
+// Validações OK (1+ level, 8 mana)
+// Combat executa em direção
+// Wave4 + diagonal ondas
+// Dano: -11 a -16
+// Efeito gelo visual
+// Resultado: Ondas gelo direcionadas!
+```
+
+---
+
+## 📝 Casos de Uso
+
+### Caso 1: AOE Direcionado
+
+```lua
+-- Novo druid level 1
+// Chill Out = primeiro AOE
+// Direção clique (não target)
+// Wave pattern coverage
+```
+
+### Caso 2: Spam Training
+
+```lua
+-- Farming monstros em fila
+// 8 mana = spam possível
+// 4s cooldown = regulado
+// Direção = controle perfeito
+```
+
+---
+
+## 🔗 Referências Relacionadas
+
+- **Combat API:** Spell Combat
+- **Damage:** COMBAT_ICEDAMAGE
+- **Areas:** AREA_WAVE4, AREADIAGONAL_WAVE4
+- **Effects:** CONST_ME_ICEAREA
+
+---
+
+## 📌 Sumário
+
+| Aspecto | Detalhes |
+|---|---|
+| **Tipo** | Spell (Instant) |
+| **Função** | AOE gelo direcionado |
+| **Dano Type** | COMBAT_ICEDAMAGE |
+| **Fórmula** | min=(lvl/5)+(mlvl*0.3)+2, max=(lvl/5)+(mlvl*0.6)+4 |
+| **Mana** | 8 |
+| **Range** | 1 |
+| **Área** | WAVE4 + AREADIAGONAL_WAVE4 |
+| **Level** | 1 (imediato!) |
+| **Cooldown** | 4s |
+| **Premium** | Não |
+| **Vocações** | Druid, Elder Druid |
+| **Padrão** | Direction AOE + wave areas + level 1 |

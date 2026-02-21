@@ -1,0 +1,1001 @@
+---
+title: "Script Lib - register_monster_type.lua"
+description: "Sistema massivo de registro de propriedades MonsterType com 30+ parsers e DSL declarativa"
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## 🛠️ Informações do Arquivo
+
+| Propriedade | Valor |
+|---|---|
+| **Arquivo** | `register_monster_type.lua` |
+| **Localização** | `data/scripts/lib/` |
+| **Tipo de Script** | Registration System / DSL Framework |
+| **Padrão** | Metatable Multi-Parser Dispatcher |
+| **Linhas de Código** | 962 |
+| **Parser Functions** | 30+ |
+| **Funções Globais** | 2 (MonsterType:createLoot, readSpell) |
+| **Funções Locais** | 6 (configureLootAttributes, addChildrenLoot, loadcastSound, loadImpactSound, loadSpellSoundType, SortLootByChance) |
+| **Complexidade** | Complexo |
+| **Status** | Complete monster configuration framework |
+
+**Descrição:**
+Sistema de registro massivo que fornece interface DSL (Domain Specific Language) completo para configurar MonsterType com 30+ propriedades. Implementa padrão de metatable dispatcher com parsers especializados para cada aspecturos: básico (name, health), combate (attacks, defenses, elements), comportamento (strategiesTarget, changeTarget, faction), loot (sistema hierarchical com validação), sounds (mapeamento automático de efeitos para sons), spells/castings complexos via `readSpell()`. Suporta nested tables, validação em cascata, e geração automática de sons baseado em tipo de spell.
+
+---
+
+## 📍 Caminho Original
+
+```
+data/scripts/lib/register_monster_type.lua
+```
+
+**Tipo de Carregamento:** Executado durante inicialização, estende MonsterType class
+
+**Contexto de Uso:** Monster registration - configuração declarativa de todos monstrós do servidor via XML/Lua
+
+**Pré-requisitos:**
+- Classe global `MonsterType` (native C++)
+- Classe `MonsterSpell` para spell parsing
+- Logger system
+- configManager para config keys
+- ItemType class para loot validation
+- Game/Spell/Creature globais para references
+- COMBAT_*, CONST_ANI_*, SOUND_EFFECT_TYPE_* constants
+
+---
+
+## 💡 Tip
+
+<Aside type="tip">
+**Propósito de Monster Registration (Declarative Configuration)**
+
+Configurar um monstro requer 100+ propriedades (health, spells, loot, sounds, etc):
+
+**Sem registration DSL:**
+```lua
+local mtype = MonsterType()
+mtype:name("Rat")
+mtype:health(15)
+mtype:experience(5)
+mtype:corpseId(3058)
+-- ... 50 linhas mais, repetitivas
+local spell = MonsterSpell()
+spell:setType("melee")
+spell:setAttackValue(5, 10)
+mtype:addAttack(spell)
+-- Verbose demais
+```
+
+**Com registration (declarative):**
+```lua
+MonsterType():register({
+	name = "Rat",
+	health = 15,
+	experience = 5,
+	corpse = 3058,
+	attacks = {
+		{
+			name = "melee",
+			attack = 5,
+			skill = 10
+		}
+	}
+})
+```
+
+**Pattern:**
+```
+registerMonsterType metatable
+  ├─ __call intercepta
+  ├─ Itera 30+ parsers
+  ├─ Cada parser valida/aplica sua seção
+  └─ Monstrço configurado completo
+```
+
+**Benefício:** DSL limpa, reutilizável, validável, mantenível
+</Aside>
+
+---
+
+## 📄 Visão Geral do Código (Resumo Executivo)
+
+### Propósito Principal
+
+O script `register_monster_type.lua` implementa **monster configuration DSL**:
+
+- **Define registerMonsterType** metatable com dispatcher e 30+ parsers
+- **Estende MonsterType** com método `.register(definitionTable)`
+- **Suporta nested configuration** (Bestiary, flags, sounds, loot hierarchical)
+- **Valida inputs** em time real com logging de erros
+- **Auto-mapeia sounds** baseado em tipo de spell e effect
+- **Processa loot hierarchical** com parent/child items e validação de IDs
+- **Lê spells complexos** com suporte a melee, combat, condition, custom scripts
+
+### Arquitetura
+
+Script usa padrão de **massive multi-parser dispatcher**:
+
+```lua
+registerMonsterType = {}
+setmetatable(registerMonsterType, {
+	__call = function(self, mtype, mask)
+		for _, parse in pairs(self) do
+			parse(mtype, mask)
+		end
+	end,
+})
+```
+
+Mais 30 parsers especializados: `name`, `description`, `variant`, `experience`, `Bestiary`, `bosstiary`, `flags`, `light`, `attacks`, `defenses`, `loot`, `elements`, `reflects`, etc.
+
+### Fluxo Lógico Resumido
+
+| Fase | Ação | Validação |
+|------|------|-----------|
+| **Definição** | Table com proprietades é passado | Cada propriedade é chave do parser |
+| **Dispatch** | `__call` intercepta | Itera todos parsers em registerMonsterType |
+| **Per-Parser** | Parser específico executa se mask.propriedade existe | `if mask.propriedade then` |
+| **Validação** | Nested validators (ex: Bestiary, flags, sounds) | Conditional checks cascata |
+| **Aplicação** | Chama metodos C++ do MonsterType | `mtype:method(value)` |
+| **Persistência** | Configuração é salva no MonsterType | Sobrevive ao jogo |
+
+---
+
+## 🔧 Estrutura de Funcionalidades
+
+### Categorias Principais de Parsers
+
+O arquivo organiza parsers em categorias lógicas:
+
+1. **Basic Properties** (name, description, variant, experience, raceId)
+2. **Bestiary System** (Bestiary, bosstiary - nested tables)
+3. **Visual & Audio** (skull, outfit, light, sounds, voices)
+4. **Health & Stats** (maxHealth, health, race, manaCost, speed, corpse)
+5. **Behavior Strategy** (changeTarget, strategiesTarget, targetPreferPlayer)
+6. **Flags & Booleans** (flags - nested: 20+ sub-flags)
+7. **Faction System** (faction, enemyFactions)
+8. **Combat System** (attacks, defenses, elements, reflects, heals, immunities)
+9. **Configuration** (respawnType, summon, events, loot)
+
+---
+
+### Parser: registerMonsterType.name
+
+```lua
+registerMonsterType.name = function(mtype, mask)
+	if mask.name then
+		mtype:name(mask.name)
+		-- Try register hazard monsters
+		mtype.onSpawn = function(monster, spawnPosition)
+			HazardMonster.onSpawn(monster, spawnPosition)
+		end
+	end
+end
+```
+
+**Propósito:** Definir nome do monstro e registrar hook HazardMonster.
+
+**Operações:**
+1. Chama `mtype:name(mask.name)` - define nome nativo
+2. Estende onSpawn com HazardMonster hook - suporte a hazard monsters
+
+**Efeito Colateral:** Todos monstros com name tem HazardMonster.onSpawn registrado
+
+---
+
+### Parser: registerMonsterType.Bestiary (Complex Nested)
+
+```lua
+registerMonsterType.Bestiary = function(mtype, mask)
+	if mask.Bestiary then
+		if mask.Bestiary.race then
+			mtype:Bestiaryrace(mask.Bestiary.race)
+		end
+		if mask.Bestiary.class then
+			mtype:Bestiaryclass(mask.Bestiary.class)
+		end
+		if mask.Bestiary.toKill then
+			mtype:BestiarytoKill(mask.Bestiary.toKill)
+		end
+		-- ... 5 mais
+	end
+end
+```
+
+**Propósito:** Configurar Bestiary metadata for monster encyclopedia.
+
+**Sub-propriedades:**
+- `race` - Bestiary race type
+- `class` - Bestiary classification
+- `toKill` - Kills required for unlock
+- `FirstUnlock` - First unlock description
+- `SecondUnlock` - Second unlock description
+- `CharmsPoints` - Points awarded by charms
+- `Stars` - Bestiary stars (difficulty)
+- `Occurrence` - Frequency/location frequency
+- `Locations` - Places onde monster spawna
+
+**Validação:** Cada sub-propriedade checado com `if mask.Bestiary.propriedade then`
+
+---
+
+### Parser: registerMonsterType.bosstiary (Complex with Logic)
+
+```lua
+registerMonsterType.bosstiary = function(mtype, mask)
+	local bossClass = nil
+	if mask.bosstiary then
+		if mask.bosstiary.bossRace then
+			if mask.bosstiary.bossRace == RARITY_BANE then
+				bossClass = "Bane"
+			elseif mask.bosstiary.bossRace == RARITY_ARCHFOE then
+				bossClass = "Archfoe"
+			elseif mask.bosstiary.bossRace == RARITY_NEMESIS then
+				bossClass = "Nemesis"
+			end
+		end
+		if bossClass == nil then
+			logger.error("Attempting to register a bosstiary boss without a race. Boss name: {}", mtype:name())
+			return
+		end
+		if mask.bosstiary.bossRaceId then
+			mtype:bossRaceId(mask.bosstiary.bossRaceId)
+		else
+			logger.error("Attempting to register a bosstiary boss without a raceId. Boss name: {}", mtype:name())
+		end
+		mtype:bossRace(mask.bosstiary.bossRace, bossClass)
+	end
+end
+```
+
+**Propósito:** Registrar boss no sistema Bosstiary (boss encyclopedia).
+
+**Fluxo:**
+
+1. **Map bossRace (enum) para bossClass (string)**
+   ```lua
+   if mask.bosstiary.bossRace == RARITY_BANE then
+       bossClass = "Bane"
+   ```
+   - Converte numeric RARITY enum para string readable
+
+2. **Validação Obrigatória: bossClass**
+   ```lua
+   if bossClass == nil then
+       logger.error(...)
+       return
+   ```
+   - Se nenhum race válido, falha com log e retorna
+
+3. **Registrar raceId**
+   ```lua
+   if mask.bosstiary.bossRaceId then
+       mtype:bossRaceId(...)
+   ```
+   - bossRaceId é obrigatório
+
+4. **Aplicar Race**
+   ```lua
+   mtype:bossRace(mask.bosstiary.bossRace, bossClass)
+   ```
+
+**Error Handling:** Validation em cascata, return early se falha
+
+---
+
+### Parser: registerMonsterType.flags (Massive Nested)
+
+```lua
+registerMonsterType.flags = function(mtype, mask)
+	if mask.flags then
+		if mask.flags.attackable ~= nil then
+			mtype:isAttackable(mask.flags.attackable)
+		end
+		if mask.flags.convinceable ~= nil then
+			mtype:isConvinceable(mask.flags.convinceable)
+		end
+		-- ... 20+ mais
+		if mask.flags.rewardBoss then
+			mtype:isRewardBoss(mask.flags.rewardBoss)
+			mtype.onSpawn = function(monster, spawnPosition)
+				monster:setReward(true)
+			end
+		end
+		-- ... mais
+	end
+end
+```
+
+**Propósito:** Centralizar 20+ boolean/numeric flags em uma seção.
+
+**Sub-flags (20+):**
+- `attackable` - Pode ser atacado
+- `convinceable` - Pode ser convinced
+- `summonable` - Pode ser summoned
+- `isPreyable` - Pode ser prey
+- `isPreyExclusive` - Exclusive prey
+- `illusionable` - Pode ser ilusionado
+- `hostile` - É hostil
+- `healthHidden` - Health bar oculta
+- `pushable` - Pode ser empurrado
+- `familiar` - É familiar (pet)
+- `rewardBoss` - É reward boss (auto-summon reward)
+- `canPushItems` - Poder empurrar items
+- `canPushCreatures` - Poder empurrar criaturas
+- `critChance` - Critical strike chance
+- `targetDistance` - Distância de target
+- `runHealth` - Health % para correr
+- `staticAttackChance` - Chance fixa de ataque
+- `canWalkOnEnergy` - Immunidade energy floor
+- `canWalkOnFire` - Immunidade fire floor
+- `canWalkOnPoison` - Immunidade poison floor
+- `isBlockable` - Pode ser blocado
+- `isForgeCreature` - Pode ser upgradado via forge
+
+**Special Case: rewardBoss**
+```lua
+if mask.flags.rewardBoss then
+	mtype:isRewardBoss(mask.flags.rewardBoss)
+	mtype.onSpawn = function(monster, spawnPosition)
+		monster:setReward(true)
+	end
+end
+```
+
+Además de set flag, também stende onSpawn para auto-summon reward quando monstro morre.
+
+---
+
+### Parser: registerMonsterType.light (Nested Table)
+
+```lua
+registerMonsterType.light = function(mtype, mask)
+	if mask.light then
+		local color = 0
+		if mask.light.color then
+			color = mask.light.color
+		end
+		if mask.light.level then
+			mtype:light(color, mask.light.level)
+		end
+	end
+end
+```
+
+**Propósito:** Configurar luz emitida pelo monstro.
+
+**Lógica:**
+- `color` - Cor (RGB hex, default 0)
+- `level` - Intensidade (aplicado só se level existe)
+
+**Validação:** Light é aplicado apenas se `mask.light.level` existe (evita defaults desnecessários)
+
+---
+
+### Parser: registerMonsterType.attacks
+
+```lua
+registerMonsterType.attacks = function(mtype, mask)
+	if type(mask.attacks) == "table" then
+		for _, attack in pairs(mask.attacks) do
+			mtype:addAttack(readSpell(attack, mtype))
+		end
+	end
+end
+```
+
+**Propósito:** Adicionar ataques (spells) ao monstro.
+
+**Fluxo:**
+1. Valida `mask.attacks` é table
+2. Para cada attack em array/table
+3. Chama `readSpell(attack, mtype)` - processa spell complexo
+4. Adiciona resultado com `mtype:addAttack()`
+
+---
+
+### Parser: registerMonsterType.loot
+
+```lua
+registerMonsterType.loot = function(mtype, mask)
+	if type(mask.loot) == "table" then
+		mtype:createLoot(mask.loot)
+	end
+end
+```
+
+**Propósito:** Registrar loot table do monstro.
+
+**Delegação:** Chama `MonsterType:createLoot()` (função global) que processa estrutura hierarchical com parent/child items.
+
+---
+
+### Função Global: MonsterType:createLoot(lootTable)
+
+```lua
+function MonsterType:createLoot(lootTable)
+	SortLootByChance(lootTable)
+	local lootError = false
+
+	for _, loot in pairs(lootTable) do
+		local parent = Loot()
+		if loot.name then
+			if not parent:setIdFromName(loot.name) then
+				lootError = true
+			end
+		else
+			if not isInteger(loot.id) or loot.id < 1 then
+				lootError = true
+			end
+			parent:setId(loot.id)
+		end
+
+		configureLootAttributes(parent, loot)
+
+		if loot.child and addChildrenLoot(parent, loot.child) then
+			lootError = true
+		end
+
+		self:addLoot(parent)
+	end
+
+	if lootError then
+		logger.warn("[MonsterType:createLoot] - Monster: {} loot could not be loaded correctly", self:getName())
+	end
+end
+```
+
+**Propósito:** Carregar em hierarquia de loot com validação em cascata.
+
+**Fluxo:**
+
+1. **Ordenar por Chance**
+   ```lua
+   SortLootByChance(lootTable)
+   ```
+   - Se config diz para ordenar, ordena (opcional)
+
+2. **Para cada item loot**
+   ```lua
+   for _, loot in pairs(lootTable) do
+   ```
+
+3. **Criar Loot object**
+   ```lua
+   local parent = Loot()
+   ```
+
+4. **Definir Item ID (por nome ou ID)**
+   ```lua
+   if loot.name then
+       if not parent:setIdFromName(loot.name) then
+           lootError = true
+       end
+   else
+       -- ... setId
+   end
+   ```
+
+5. **Configurar Atributos**
+   ```lua
+   configureLootAttributes(parent, loot)
+   ```
+   - Chama função local
+
+6. **Processar Children (opcional)**
+   ```lua
+   if loot.child and addChildrenLoot(parent, loot.child) then
+       lootError = true
+   end
+   ```
+   - Hierarquia: item principal pode ter items filhos
+
+7. **Adicionar ao MonsterType**
+   ```lua
+   self:addLoot(parent)
+   ```
+
+8. **Log de Erros (graceful)**
+   ```lua
+   if lootError then
+       logger.warn(...)
+   end
+   ```
+   - Loga warning, não falha
+
+**Estrutura de Loot Esperada:**
+```lua
+loot = {
+	{
+		name = "Gold Coin",
+		chance = 100,
+		minCount = 50,
+		maxCount = 100
+	},
+	{
+		id = 3031,
+		chance = 50,
+		minCount = 1,
+		maxCount = 3,
+		child = {
+			{
+				name = "Longsword",
+				chance = 100,
+				aid = 1000
+			}
+		}
+	}
+}
+```
+
+---
+
+### Função Local: configureLootAttributes()
+
+```lua
+local function configureLootAttributes(lootObject, lootProperties)
+	if lootProperties.subType or lootProperties.charges then
+		lootObject:setSubType(lootProperties.subType or lootProperties.charges)
+	else
+		local itemType = ItemType(lootProperties.name or lootProperties.itemId)
+		if itemType and itemType:getCharges() > 1 then
+			lootObject:setSubType(itemType:getCharges())
+		end
+	end
+
+	lootObject:setChance(lootProperties.chance or 0)
+	if lootProperties.minCount ~= nil then
+		lootObject:setMinCount(lootProperties.minCount)
+	end
+	if lootProperties.maxCount ~= nil then
+		lootObject:setMaxCount(lootProperties.maxCount)
+	end
+	-- ... 8 mais setAttributes
+end
+```
+
+**Propósito:** Configurar todos atributos de um item loot (chance, quantidade, propriedades customizadas).
+
+**Atributos Configurados:**
+- `subType/charges` - Sub-tipo (poção charges, etc)
+- `chance` - Chance de drop (%)
+- `minCount/maxCount` - Range de quantidade
+- `actionId` - ID para quest tracking
+- `text` - Descrição customizada
+- `nameItem` - Nome customizado
+- `article` - Artigo (a, an, the)
+- `attack/defense/armor` - Stats do item
+- `shootRange` - Range se é arma
+- `unique` - Item único
+
+---
+
+### Função Local: addChildrenLoot()
+
+```lua
+local function addChildrenLoot(parent, childrenLoot)
+	SortLootByChance(childrenLoot)
+	for _, child in pairs(childrenLoot) do
+		local childLoot = Loot()
+		if child.name then
+			if not childLoot:setIdFromName(child.name) then
+				return true  -- Erro
+			end
+		else
+			if not isInteger(child.id) or child.id < 1 then
+				return true  -- Erro
+			end
+			childLoot:setId(child.id)
+		end
+		configureLootAttributes(childLoot, child)
+		parent:addChildLoot(childLoot)
+	end
+	return false
+end
+```
+
+**Propósito:** Processar items filhos em estrutura hierarchical de loot.
+
+**Validação:** Retorna true se erro (previne corrupta do loot hierárquico)
+
+---
+
+### Função Global: readSpell(incomingLua, mtype)
+
+Função complexa (100+ linhas) que lê configuração de spell e cria MonsterSpell object.
+
+**Propósito:** Parser centralizado para todas tipos de spells (melee, combat, condition, custom script).
+
+**Tipos Suportados:**
+
+1. **Melee Attack**
+   ```lua
+   if incomingLua.name == "melee" then
+       spell:setType("melee")
+       -- attack, skill, minDamage, maxDamage, interval, effect
+   ```
+
+2. **Combat Spell**
+   ```lua
+   -- type = COMBAT_FIRE, COMBAT_ENERGY, etc
+   -- minDamage, maxDamage, range, radius, spread, length
+   ```
+
+3. **Condition Spell**
+   ```lua
+   -- Poison, drunk, speed, etc
+   -- duration, interval, speedChange, radius
+   ```
+
+4. **Custom Script**
+   ```lua
+   elseif incomingLua.script then
+       spell:setScriptName("monster/" .. incomingLua.script .. ".lua")
+   ```
+
+**Auto Sound Generation:**
+Se não especificado soundCast/impactCast:
+```lua
+if not hasImpactSound or not hasCastSound then
+	local sounds = loadSpellSoundType(incomingLua, mtype)
+	-- Auto-map sounds baseado spell type
+end
+```
+
+---
+
+### Função Local: loadSpellSoundType()
+
+```lua
+local function loadSpellSoundType(incomingLua, mtype)
+	local castSound, impactSound = SOUND_EFFECT_TYPE_SILENCE, SOUND_EFFECT_TYPE_MONSTER_CLOSE_ATK_FIST
+
+	if incomingLua.shootEffect ~= nil then
+		castSound = loadcastSound(incomingLua.shootEffect, incomingLua, mtype)
+	end
+
+	impactSound = loadImpactSound(incomingLua, mtype)
+	return { cast = castSound, impact = impactSound }
+end
+```
+
+**Propósito:** Gerar castSound e impactSound automaticamente baseado spell type.
+
+**Delegação:**
+- `loadcastSound()` - Mapeia shootEffect → castSound (throw, crossbow, bow, magical)
+- `loadImpactSound()` - Mapeia spell type/damage → impactSound (200+ casos)
+
+---
+
+### Função Local: loadcastSound()
+
+Mapeia `shootEffect` (CONST_ANI_*) para castSound (SOUND_EFFECT_TYPE_*):
+
+```lua
+if effect == CONST_ANI_SPEAR or effect == CONST_ANI_THROWINGSTAR then
+	return SOUND_EFFECT_TYPE_DIST_ATK_THROW
+elseif effect == CONST_ANI_BOLT or ... then
+	return SOUND_EFFECT_TYPE_DIST_ATK_CROSSBOW
+else
+	return SOUND_EFFECT_TYPE_SILENCE
+end
+```
+
+**Categorias:**
+- Throw animations → DIST_ATK_THROW
+- Crossbow → DIST_ATK_CROSSBOW
+- Bow → DIST_ATK_BOW
+- Magical (fire, energy, ice, etc) → MAGICAL_RANGE_ATK
+
+---
+
+### Função Local: loadImpactSound() (Complex 200+ lines)
+
+Mapeia spell type, damage type, radius → impactSound específico.
+
+**Exemplos:**
+```lua
+if incomingLua.name == "melee" then
+	-- Melee: FIST, CLAW, BITE (close) ou RIP, MAGIC (ranged)
+elseif incomingLua.name == "combat" then
+	-- Combat: type = COMBAT_FIRE/ENERGY/etc
+	-- Se tem radius: SMALL_AREA_* ou LARGE_AREA_*
+	-- Se tem length/spread: WAVE_*
+	-- Senão: SINGLE_TARGET_*
+elseif incomingLua.name == "drunk" then
+	return incomingLua.duration > superDrunkDuration ?
+		SOUND_EFFECT_TYPE_MONSTER_SPELL_SUPER_DRUNKEN :
+		SOUND_EFFECT_TYPE_MONSTER_SPELL_DRUNKEN
+end
+```
+
+**Mapeamento:**
+- melee + distance ≤ 1 → FIST/CLAW/BITE
+- melee + distance > 1 → RIP/MAGIC
+- combat + radius ≤ 3 → SMALL_AREA_*
+- combat + radius > 3 → LARGE_AREA_*
+- combat + length/spread → WAVE_*
+- spell type (drunk, speed, outfit, etc) → efeito específico
+
+**Resultado:** 200+ switch cases para validar cada combinação
+
+---
+
+## 📊 Variáveis Locais & Globais
+
+### Variáveis Locais de Scope
+
+```lua
+local smallAreaRadius = 3
+local superDrunkDuration = 4000
+local playerElements = { COMBAT_PHYSICALDAMAGE, COMBAT_ENERGYDAMAGE, ... }
+```
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `smallAreaRadius` | number | Threshold de area pequena (3 tiles) |
+| `superDrunkDuration` | number | Threshold de "super drunk" (4000ms) |
+| `playerElements` | table | Array de 7 combat types de jogadores |
+
+### Variável Global Criada
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `registerMonsterType` | table (dispatcher) | Global | Metatable com 30+ parsers |
+
+### Métodos Estendidos
+
+| Classe | Método Adicionado | Descrição |
+|--------|------------------|-----------|
+| `MonsterType` | `.register(mask)` | Delega para registerMonsterType |
+| `MonsterType` | `:createLoot(lootTable)` | Processa loot hierarchical |
+
+### Estruturas de Dados Esperadas
+
+#### Definition Table (mask) - exemplo
+
+```lua
+{
+	name = "Rat",
+	description = "A rat",
+	experience = 5,
+	maxHealth = 15,
+	health = 15,
+	race = "blood",
+	corpse = 3058,
+	
+	Bestiary = {
+		race = "rodent",
+		class = "critter"
+	},
+	
+	flags = {
+		attackable = true,
+		convinceable = true,
+		hostile = false,
+		pushable = true
+	},
+	
+	attacks = {
+		{
+			name = "melee",
+			attack = 5,
+			skill = 10,
+			minDamage = 0,
+			maxDamage = 20
+		}
+	},
+	
+	loot = {
+		{
+			name = "Gold Coin",
+			chance = 100,
+			minCount = 50,
+			maxCount = 100
+		}
+	}
+}
+```
+
+---
+
+## 🎯 Padrões & Boas Práticas
+
+### Padrón 1: Multi-Parser Dispatcher Pattern
+
+**Técnica:** Iterar table de functions, cada parser é una função única.
+
+```lua
+registerMonsterType = {}
+setmetatable(registerMonsterType, {
+	__call = function(self, mtype, mask)
+		for _, parse in pairs(self) do
+			parse(mtype, mask)
+		end
+	end,
+})
+
+registerMonsterType.name = function(...) ... end
+registerMonsterType.health = function(...) ... end
+-- ... 30+ parsers
+```
+
+**Vantagem:**
+- Modular: cada parser é isolado
+- Extendable: adicionar novo parser = uma função
+- Order-independent: parsers executam sem ordem
+- Compartmented concerns: cada parser foca em uma coisa
+
+**Aplicação:** Massive configuration systems.
+
+---
+
+### Padrón 2: Nested Table Validation
+
+**Técnica:** Validar sub-propriedades em cascata antes de aplicar.
+
+```lua
+registerMonsterType.Bestiary = function(mtype, mask)
+	if mask.Bestiary then
+		if mask.Bestiary.race then
+			mtype:Bestiaryrace(...)
+		end
+		if mask.Bestiary.class then
+			mtype:Bestiaryclass(...)
+		end
+		-- ... cada uma validada
+	end
+end
+```
+
+**Vantagem:**
+- Safe: não falha se sub-propriedade falta
+- Flexible: sub-propriedades são todas opcionais
+- Logged: erros são trackáveis
+
+**Aplicação:** Complex nested configurations.
+
+---
+
+### Padrón 3: Loot Hierarchical with Parent-Child
+
+**Técnica:** Items podem ter items filhos (nested loot).
+
+```lua
+loot = {
+	{
+		name = "Backpack",
+		chance = 10,
+		child = {
+			{
+				name = "Longsword",
+				chance = 100
+			}
+		}
+	}
+}
+```
+
+**Implementação:**
+```lua
+parent:addChildLoot(childLoot)  -- Aninha
+```
+
+**Vantagem:**
+- Realistic: backpack contém items
+- Flexible: profundidade ilimitada
+- Logical: fácil de entender
+
+**Aplicação:** Complex loot hierarchies.
+
+---
+
+### Padrón 4: Auto Sound Mapping from Spell Type
+
+**Técnica:** Gerar sounds automaticamente se não especificado manualmente.
+
+```lua
+if not hasImpactSound then
+	local sounds = loadSpellSoundType(incomingLua, mtype)
+	if sounds.impact ~= SOUND_EFFECT_TYPE_SILENCE then
+		spell:castSound(sounds.impact)
+	end
+end
+```
+
+**Lógica:**
+- Melee close → Fist/Claw/Bite sounds
+- Melee ranged → Rip/Magic sounds
+- Combat fire + area → Fire area sounds
+- Drunk duration > 4s → Super drunk voice
+- etc (200+ mapas)
+
+**Vantagem:**
+- Automático: monstros com sounds corretos sem manual config
+- Sensible: defaults baseado em lógica física
+- Overridable: manual soundCast/impactCast sobrescreve
+
+**Aplicação:** Audio generation from spell mechanics.
+
+---
+
+### Padrón 5: Cascading Filter with Early Return
+
+**Técnica:** Validar obrigatoriedades, return early se falha.
+
+```lua
+if mask.bosstiary then
+	if mask.bosstiary.bossRace then
+		-- Map race
+	end
+	if bossClass == nil then
+		logger.error(...)
+		return  -- Early exit
+	end
+	-- Continue só se válido
+end
+```
+
+**Vantagem:**
+- Clear: falha points são óbvios
+- Efficient: não processa se inválido
+- Logged: erro é rastreado
+
+**Aplicação:** Validation with prerequisites.
+
+---
+
+### Padrón 6: Graceful Error Handling in Batch
+
+**Técnica:** Validar items em lote, logar erros, continuar.
+
+```lua
+local lootError = false
+for _, loot in pairs(lootTable) do
+	-- Process loot
+	if problem then
+		lootError = true
+	end
+end
+if lootError then
+	logger.warn("[...] loot could not be loaded correctly")
+end
+```
+
+**Vantagem:**
+- Robust: um item inválido não quebra tudo
+- Informative: sabe qual monstro tem problema
+- Recoverable: carrega máximo possível
+
+**Aplicação:** Batch processing with partial failures.
+
+---
+
+## 🤖 Informações da Documentação
+
+| Meta | Valor |
+|------|-------|
+| **Arquivo Documentado** | register_monster_type.lua |
+| **Versão de Análise** | v1 (962 linhas) |
+| **Linguagem** | Lua 5.1+ com Canary extensions |
+| **Parsers Documentados** | 30+ |
+| **Funções Globais** | 2 (MonsterType:createLoot, readSpell) |
+| **Funções Locais** | 6 (configureLootAttributes, addChildrenLoot, loadcastSound, loadImpactSound, loadSpellSoundType, SortLootByChance) |
+| **Padrões Identificados** | 6 |
+| **Data de Documentação** | February 20, 2026 |
+
+**Notas de Análise:**
+- Arquivo é o maior de registration systems (962 linhas)
+- `readSpell()` é função complexa com 100+ linhas de parsing
+- `loadImpactSound()` tem 200+ casos de switch (damage types × area types)
+- Loot system suporta hierarchical com validação em cascata
+- Auto-sound generation é feature avançada (não manual)
+- HazardMonster.onSpawn é injetato em qualquer monstro com name
+
+**Possíveis Melhorias:**
+- Refatorar loadImpactSound para switch statements mais compactos
+- Adicionar Sound constant definitions como table (não 200+ ifs)
+- Split readSpell em sub-parsers (melee, combat, condition, script)
+- Add caching de ImpactSounds calculados para perf
