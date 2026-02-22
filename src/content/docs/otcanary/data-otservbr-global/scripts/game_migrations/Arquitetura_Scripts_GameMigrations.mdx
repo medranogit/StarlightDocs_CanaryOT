@@ -1,0 +1,1134 @@
+---
+title: Arquitetura - Game Migrations
+description: Documentação técnica da arquitetura e estrutura dos scripts de Game Migrations do servidor Canary
+sidebar:
+    order: 1
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🔄 Arquitetura - Game Migrations
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts de **Game Migrations** do servidor OTServ Canary. Entenda como implementar transformações, migrações de dados e atualizações estruturais do jogo.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/game_migrations/` contém scripts **Lua** que implementam **migrações de dados** - transformações únicas executadas uma única vez durante o *boot* do servidor. Cada migration move dados de um formato antigo para um novo formato, atualiza estruturas de dados, ou realiza operações administrativas que devem acontecer automaticamente sem intervenção manual. Migrations são críticas para manter a integridade dos dados quando o servidor é atualizado com mudanças estruturais.
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Migrar dados para novo sistema**: Converter storage antigo para novo KV (key-value)
+- **Estruturar dados de players**: Reorganizar informações de contas, achievements, quests
+- **Atualizar configurações globais**: Resetar charms, remover sistemas obsoletos, limpar bugs
+- **Converter diferentes formatos**: Storage → KV, bits → boolean, números → strings
+- **Processar em lote**: Aplicar transformações a todos os players automaticamente
+- **Executar uma única vez**: Garantir que operações críticas rodem apenas no boot
+- **Preservar dados antigos**: Ler dados legados e convertê-los para novo sistema
+- **Auditoria e logging**: Registrar o que foi migrado para rastreamento
+- **Sincronização de dados**: Alinharem múltiplos sistemas relacionados
+- **Cleanup automático**: Remover dados obsoletos após migração bem-sucedida
+</Card>
+
+<Card title="Estrutura da Pasta" icon="list">
+A pasta `scripts/game_migrations/` é organizada por **data/hora de criação**:
+
+```
+game_migrations/
+├── 20231128213358_move_hireling_data_to_kv.lua
+├── 20241708000535_move_achievement_to_kv.lua
+├── 20241708362079_move_vip_system_to_kv.lua
+├── 20241715984294_quests_storages_to_kv.lua
+└── 20251737599334_reset_old_charms.lua
+```
+
+**Padrão de Nomeação**: `[TIMESTAMP]_[DESCRIÇÃO].lua`
+- TIMESTAMP: Identifica ordem de execução
+- DESCRIÇÃO: Explica o que a migration faz
+- Cada migration é registrada automaticamente no sistema
+
+**Total**: 5 scripts documentados, cobrindo sistemas de hirellings, achievements, VIP, quests e charms.
+
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Ciclo de Vida de Migrations](#ciclo-de-vida-de-migrations)
+3. [Padrões de Implementação](#padrões-de-implementação)
+4. [Sistemas KV vs Storage](#sistemas-kv-vs-storage)
+5. [Exemplos Práticos](#exemplos-práticos)
+6. [Criando uma Migration](#criando-uma-migration)
+7. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="O que é um Script de Migration?" icon="document">
+
+Um **Game Migration** é um script que:
+- **Executa uma única vez** no boot do servidor
+- **Transforma dados** de um formato antigo para novo
+- **Processa todos os players** automaticamente
+- **Registra progresso** com logging detalhado
+- **Garante integridade** dos dados após execução
+- **Não pode ser executado novamente** (idempotência)
+
+### Estrutura Básica
+
+```lua
+-- 1. Criar função de transformação
+local function migrateDataForPlayer(player)
+    -- Lógica de migração aqui
+    return true  -- Sucesso
+end
+
+-- 2. Criar instância Migration
+local migration = Migration("TIMESTAMP_description")
+
+-- 3. Implementar callback onExecute
+function migration:onExecute()
+    self:forEachPlayer(migrateDataForPlayer)
+end
+
+-- 4. Registrar
+migration:register()
+```
+
+### Parâmetros da Função de Callback
+
+```lua
+function migrateDataForPlayer(player)
+    --
+    -- player: Objeto Player a ser migrado
+    --   - player:getName()  (nome do player)
+    --   - player:getLevel()  (nível)
+    --   - player:getStorageValue(key)  (ler storage antigo)
+    --   - player:setStorageValue(key, value)  (resetar storage antigo)
+    --   - player:kv()  (novo sistema KV - account level)
+    --   - player:questKV(questName)  (KV específico de quest)
+    --   - Métodos específicos do sistema (addAchievement, enableHirelingOutfit, etc)
+    --
+    -- Return: true = sucesso, false = erro (interrompe para este player)
+
+    if not player then
+        return false
+    end
+
+    -- Implementação
+    return true
+end
+```
+
+### Ciclo de Execução
+
+```
+Server Boot (Inicia)
+    ↓
+Game Migrations carregados (ordem por TIMESTAMP)
+    ↓
+Para cada migration registrada:
+    ↓
+    Para cada player online/offline:
+        ↓
+        migration:onExecute() chamada
+        ↓
+        callback executado para player
+        ↓
+        Resultado registrado (sucesso/erro)
+    ↓
+Migration marcada como completa
+    ↓
+Próxima migration ou servidor pronto
+```
+
+### Métodos Disponíveis
+
+```lua
+local migration = Migration("timestamp_name")
+
+-- Iterar sobre todos os players
+function migration:onExecute()
+    self:forEachPlayer(function(player)
+        -- Executado para cada player (online ou offline)
+    end)
+end
+
+-- Acessar contexto de migration
+function migration:onExecute()
+    -- self:migrationId()  - Retorna ID único
+    -- self:executed()  - Verifica se já rodou
+end
+
+migration:register()  -- Registra para ser executada
+```
+
+</Card>
+
+---
+
+## 🔄 Ciclo de Vida de Migrations
+
+<Card title="Quando e Como Migrations Executam" icon="clock">
+
+### Fase 1: Carregamento
+
+```lua
+-- Ao iniciar o servidor, todas as migrations em game_migrations/ são carregadas
+-- Ordenadas por TIMESTAMP (ordem crescente)
+-- Cada uma é registrada com migration:register()
+```
+
+### Fase 2: Execução
+
+```lua
+-- Se ainda não foi executada (checado no banco de dados):
+-- 
+-- 1. Logger registra inicio
+-- 2. Migration:onExecute() é chamada
+-- 3. forEachPlayer() itera todos os players
+-- 4. Callback executado para cada player
+-- 5. Erros são capturados e logados
+-- 6. Logger registra conclusão + estatísticas
+-- 7. Migration marcada como completa no banco
+```
+
+### Fase 3: Idempotência
+
+```lua
+-- Uma migration NUNCA é executada duas vezes
+-- Sistema verifica no banco: "Já rodou?"
+-- Se sim: Ignora
+-- Se não: Executa
+-- 
+-- Por isso o TIMESTAMP é importante:
+-- - Identifica cada migration unicamente
+-- - Define ordem de execução
+-- - Garante não há duplicates
+```
+
+### Padrão de Logging
+
+```lua
+-- Todo migration deve registrar:
+logger.info("[Migration] Starting migration...")
+logger.debug("Processing player: {}", player:getName())
+logger.warn("Unexpected value: {}", value)
+logger.error("Failed to process player: {}", player:getName())
+logger.info("[Migration] Completed. {} players processed.", count)
+```
+
+### Exemplo: Cronologia De Execução
+
+```
+Boot: 2024-01-20 10:00:00
+
+Load migrations from disk:
+  ✓ 20231128213358_move_hireling_data_to_kv
+  ✓ 20241708000535_move_achievement_to_kv
+  ✓ 20241708362079_move_vip_system_to_kv
+  ✓ 20241715984294_quests_storages_to_kv
+  ✓ 20251737599334_reset_old_charms
+
+Execute in order:
+  
+  [1/5] 20231128213358 - Start: 10:00:01
+        Processing 50 players...
+        Completion: 10:00:05 ✓
+  
+  [2/5] 20241708000535 - Start: 10:00:06
+        Processing 50 players...
+        Completion: 10:00:10 ✓
+  
+  ... (migrations 3-5 continue)
+  
+  All migrations complete: 10:00:25
+  Server ready at 10:00:26
+```
+
+</Card>
+
+---
+
+## 🏗️ Padrões de Implementação
+
+<Card title="Padrões Comuns de Migrations" icon="wrench">
+
+### Padrão 1: Storage para KV (Key-Value)
+
+```lua
+-- Migra dados de storage antigo para novo sistema KV
+
+local OLD_STORAGE_KEY = 12345
+local KV_KEY = "my-data"
+
+local function migrateToKV(player)
+    -- Lê do storage antigo
+    local oldData = player:getStorageValue(OLD_STORAGE_KEY)
+    
+    if oldData > 0 then
+        logger.debug("Migrating data for player: {}", player:getName())
+        
+        -- Escreve para novo KV
+        player:kv():set(KV_KEY, oldData)
+        
+        -- Reseta storage antigo (limpeza)
+        player:setStorageValue(OLD_STORAGE_KEY, -1)
+    end
+    
+    return true
+end
+
+local migration = Migration("20250101000000_storage_to_kv")
+
+function migration:onExecute()
+    self:forEachPlayer(migrateToKV)
+end
+
+migration:register()
+```
+
+### Padrão 2: Bits para Boolean/Simples
+
+```lua
+-- Converte bits (flags) para valores simples
+
+local BITS_STORAGE = 150001
+
+local function migrateBitsToBoolean(player)
+    local flags = player:getStorageValue(BITS_STORAGE)
+    
+    if flags > 0 then
+        -- Verifica flag específica
+        if hasBitSet(flags, 1) then  -- Bit 0 ativo?
+            player:kv():scoped("account"):set("is-premium", true)
+        end
+        
+        if hasBitSet(flags, 2) then  -- Bit 1 ativo?
+            player:kv():scoped("account"):set("is-special", true)
+        end
+        
+        -- Limpeza
+        player:setStorageValue(BITS_STORAGE, -1)
+    end
+    
+    return true
+end
+
+local migration = Migration("20250102000000_bits_to_boolean")
+
+function migration:onExecute()
+    self:forEachPlayer(migrateBitsToBoolean)
+end
+
+migration:register()
+```
+
+### Padrão 3: Conversão com Tabelas
+
+```lua
+-- Migra dados convertendo tipos usando tabelas de referência
+
+local OLD_SKILL_STORAGE = 28800
+
+local skillNames = {
+    BANKER = "banker",
+    COOKING = "cooking",
+    STEWARD = "steward",
+    TRADER = "trader",
+}
+
+local function migrateSkillNames(player)
+    local skillFlags = player:getStorageValue(OLD_SKILL_STORAGE)
+    
+    if skillFlags > 0 then
+        for oldName, newName in pairs(skillNames) do
+            if hasBitSet(skillFlags, skillMapping[oldName]) then
+                -- Habilita novo sistema
+                player:enableHirelingSkill(newName)
+                logger.debug("Enabled skill: {}", newName)
+            end
+        end
+        
+        -- Limpeza
+        player:setStorageValue(OLD_SKILL_STORAGE, -1)
+    end
+    
+    return true
+end
+
+local migration = Migration("20250103000000_skill_migration")
+
+function migration:onExecute()
+    self:forEachPlayer(migrateSkillNames)
+end
+
+migration:register()
+```
+
+### Padrão 4: Múltiplas Tabelas com Dados Relacionados
+
+```lua
+-- Migra múltiplos storages relacionados
+
+local migrationData = {
+    { oldKey = 10061, questName = "quest1" },
+    { oldKey = 10062, questName = "quest2" },
+    { oldKey = 10063, questName = "quest3" },
+    -- ... 55 quests
+}
+
+local function migrateQuestsToKV(player)
+    for _, item in ipairs(migrationData) do
+        local questStatus = player:getStorageValue(item.oldKey)
+        
+        if questStatus > 0 then
+            -- Marca quest como completa no novo sistema
+            player:questKV(item.questName):set("completed", true)
+            
+            -- Limpeza do storage antigo
+            player:setStorageValue(item.oldKey, -1)
+        end
+    end
+    
+    return true
+end
+
+local migration = Migration("20250104000000_quests_migration")
+
+function migration:onExecute()
+    self:forEachPlayer(migrateQuestsToKV)
+end
+
+migration:register()
+```
+
+### Padrão 5: Cálculo e Agregação
+
+```lua
+-- Calcula valores agregados durante migração
+
+local OLD_PROGRESS_STORAGE = 20000
+local OLD_COMPLETED_STORAGE = 30000
+
+local function migrateAndCalculate(player)
+    local totalPoints = 0
+    
+    -- Coleta dados de múltiplas fontes
+    for id = 1, 100 do
+        local progress = player:getStorageValue(OLD_PROGRESS_STORAGE + id)
+        local completed = player:getStorageValue(OLD_COMPLETED_STORAGE + id)
+        
+        if completed > 0 then
+            -- Incrementa total baseado em dados antigos
+            totalPoints = totalPoints + 10
+            
+            -- Marca no novo sistema
+            player:addAchievementPoints(10)
+            player:setStorageValue(OLD_COMPLETED_STORAGE + id, -1)
+        end
+    end
+    
+    logger.info("Calculated {} points for player {}", totalPoints, player:getName())
+    return true
+end
+
+local migration = Migration("20250105000000_calculate_points")
+
+function migration:onExecute()
+    self:forEachPlayer(migrateAndCalculate)
+end
+
+migration:register()
+```
+
+### Padrão 6: Limpeza/Reset Global
+
+```lua
+-- Reseta dados globais sem migração
+
+local function resetCharms(player)
+    -- Chama função especializada de reset
+    player:resetOldCharms()
+    
+    -- Pode ter validação
+    logger.debug("Reset charms for: {}", player:getName())
+    
+    return true
+end
+
+local migration = Migration("20250106000000_reset_charms")
+
+function migration:onExecute()
+    local totalPlayers = 0
+    
+    self:forEachPlayer(function(player)
+        if resetCharms(player) then
+            totalPlayers = totalPlayers + 1
+        end
+    end)
+    
+    logger.info("Successfully reset charms for {} players", totalPlayers)
+end
+
+migration:register()
+```
+
+</Card>
+
+---
+
+## 🔑 Sistemas KV vs Storage
+
+<Card title="Entendendo a Transição de Storage para KV" icon="layers">
+
+### Sistema Antigo: Storage
+
+```lua
+-- Storage: Números inteiros simples (podem ser bits)
+-- Chave: inteiro (ex: 28800)
+-- Valor: inteiro (ex: 15, onde bits representam flags)
+-- Escopo: Player global
+
+-- Exemplo 1: Bit flagging
+local flags = player:getStorageValue(28800)  -- Valor: 15 (binário: 1111)
+if hasBitSet(flags, 1) then        -- Bit 0 ativo?
+    -- Tem BANKER skill
+end
+
+-- Exemplo 2: Simples estado
+local vipStatus = player:getStorageValue(150001)
+if vipStatus > 0 then  -- 1 = VIP, -1 = não VIP
+    -- É VIP
+end
+
+-- Limitações:
+-- - Apenas inteiros
+-- - Sem tipo de dados complexos
+-- - Difícil para muitos dados relacionados
+-- - Em escopo flat (sem hierarquia)
+```
+
+### Sistema Novo: KV (Key-Value)
+
+```lua
+-- KV: Pares chave-valor com estrutura hierárquica
+-- Chave: String (ex: "vip-system", "achievements/progress")
+-- Valor: Qualquer tipo (string, número, boolean, JSON)
+-- Escopo: Múltiplos (player, account, quest, etc)
+
+-- Exemplo 1: Account-scoped
+player:kv():scoped("account"):set("vip-system", true)
+
+-- Exemplo 2: Quest-specific
+player:questKV("my-quest"):set("completed", true)
+player:questKV("my-quest"):set("progress", 50)
+
+-- Vantagens:
+-- + Strings legíveis (não números)
+-- + Hierarquia clara (account, quest, etc)
+-- + Múltiplos tipos de dados
+-- + Melhor para dados relacionados
+-- + Mais fácil de entender no código
+```
+
+### Padrão de Migração
+
+```lua
+-- Lê do antigo storage simples → Escreve para novo KV estruturado
+
+-- ANTES (Storage)
+local isVipStorage = 150001
+local vipValue = player:getStorageValue(isVipStorage)  -- Retorna: 1, -1, ou não definido
+
+-- DEPOIS (KV)
+player:kv():scoped("account"):set("vip-system", true)  -- Armazena boolean
+
+-- Migration faz essa conversão:
+local function migrateVIP(player)
+    local isVipValue = player:getStorageValue(150001)
+    if isVipValue > 0 then  -- Se era VIP no sistema antigo
+        player:kv():scoped("account"):set("vip-system", true)
+        player:setStorageValue(150001, -1)  -- Marca como migrado
+    end
+end
+```
+
+### Comparação Visual
+
+| Aspecto | Storage Antigo | KV Novo |
+|---------|---|---|
+| **Tipo de Chave** | Inteiro (28800) | String ("vip-system") |
+| **Tipo de Valor** | Inteiro | Qualquer tipo |
+| **Estrutura** | Flat | Hierárquica (scoped) |
+| **Legibilidade** | Números mágicos | Nomes claros |
+| **Flexibilidade** | Limitada | Alta |
+| **Use Case** | Flags simples | Dados complexos |
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Storage → KV">
+
+**Migração simples de um valor storage para KV**
+
+```lua
+local OLD_STORAGE_KEY = 150001
+
+local function migrateVIPStatus(player)
+    local vipValue = player:getStorageValue(OLD_STORAGE_KEY)
+    
+    if vipValue > 0 then
+        -- Escreve para novo sistema
+        player:kv():scoped("account"):set("vip-system", true)
+        
+        -- Limpa storage antigo
+        player:setStorageValue(OLD_STORAGE_KEY, -1)
+        
+        logger.debug("Migrated VIP status for: {}", player:getName())
+    end
+    
+    return true
+end
+
+local migration = Migration("20250201000000_migrate_vip")
+
+function migration:onExecute()
+    self:forEachPlayer(migrateVIPStatus)
+end
+
+migration:register()
+```
+
+</TabItem>
+
+<TabItem label="Bits → Simples">
+
+**Conversão de bits para valores booleanos**
+
+```lua
+local SKILLS_STORAGE = 28800
+
+local skillMap = {
+    BANKER = 1,
+    COOKING = 2,
+    STEWARD = 4,
+    TRADER = 8,
+}
+
+local function migrateBitsToFlags(player)
+    local flags = player:getStorageValue(SKILLS_STORAGE)
+    
+    if flags > 0 then
+        for skillName, bitValue in pairs(skillMap) do
+            if hasBitSet(flags, bitValue) then
+                player:enableHirelingSkill(skillName)
+                logger.debug("Enabled skill for {}: {}", player:getName(), skillName)
+            end
+        end
+        
+        player:setStorageValue(SKILLS_STORAGE, -1)
+    end
+    
+    return true
+end
+
+local migration = Migration("20250202000000_migrate_skills")
+
+function migration:onExecute()
+    self:forEachPlayer(migrateBitsToFlags)
+end
+
+migration:register()
+```
+
+</TabItem>
+
+<TabItem label="Tabela → KV">
+
+**Migração de múltiplos quests armazenados em tabela**
+
+```lua
+local QUEST_DATA = {
+    { storage = 10061, name = "behemoth1" },
+    { storage = 10062, name = "behemoth2" },
+    { storage = 10063, name = "behemoth3" },
+    { storage = 10064, name = "behemoth4" },
+}
+
+local function migrateQuests(player)
+    for _, questInfo in ipairs(QUEST_DATA) do
+        local questStatus = player:getStorageValue(questInfo.storage)
+        
+        if questStatus > 0 then
+            player:questKV(questInfo.name):set("completed", true)
+            player:setStorageValue(questInfo.storage, -1)
+        end
+    end
+    
+    return true
+end
+
+local migration = Migration("20250203000000_migrate_quests")
+
+function migration:onExecute()
+    self:forEachPlayer(migrateQuests)
+end
+
+migration:register()
+```
+
+</TabItem>
+
+<TabItem label="Reset Global">
+
+**Reseta um sistema inteiramente**
+
+```lua
+local function resetAllCharms(player)
+    -- Chama método especializado do player
+    player:resetOldCharms()
+    
+    -- Log para auditoria
+    logger.debug("Reset charms for: {}", player:getName())
+    
+    return true
+end
+
+local migration = Migration("20250204000000_reset_charms")
+
+function migration:onExecute()
+    local totalProcessed = 0
+    local totalSuccess = 0
+    
+    self:forEachPlayer(function(player)
+        totalProcessed = totalProcessed + 1
+        if resetAllCharms(player) then
+            totalSuccess = totalSuccess + 1
+        end
+    end)
+    
+    logger.info("[Migration] Reset charms for {}/{} players", totalSuccess, totalProcessed)
+end
+
+migration:register()
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🛠️ Criando uma Migration
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Gerar Timestamp
+
+```bash
+# Use timestamp atual (YYYYMMDDHHMMSS)
+# 2025-02-05 14:32:17 → 20250205143217
+
+# Ou use ferramentas:
+# https://www.epochconverter.com/
+# date +%Y%m%d%H%M%S (Linux/Mac)
+# Get-Date -Format "yyyyMMddHHmmss" (PowerShell)
+```
+
+### Passo 2: Criar Arquivo
+
+```bash
+# Padrão: [TIMESTAMP]_[DESCRIÇÃO].lua
+# Exemplos:
+# 20250205143217_migrate_vip_to_kv.lua
+# 20250205143218_migrate_quests_to_kv.lua
+# 20250205143219_reset_old_data.lua
+```
+
+### Passo 3: Implementar Básico
+
+```lua
+local migration = Migration("20250205143217_describe_migration")
+
+function migration:onExecute()
+    self:forEachPlayer(function(player)
+        -- Sua lógica aqui
+    end)
+end
+
+migration:register()
+```
+
+### Passo 4: Adicionar Lógica
+
+```lua
+local OLD_STORAGE = 99999
+
+local function migratePlayerData(player)
+    -- Validação
+    if not player then
+        return false
+    end
+    
+    -- Ler dado antigo
+    local oldValue = player:getStorageValue(OLD_STORAGE)
+    
+    -- Validar existência
+    if oldValue <= 0 then
+        return true  -- Nada para migrar
+    end
+    
+    -- Transformar e escrever para novo sistema
+    player:kv():set("my-key", oldValue)
+    
+    -- Limpar antigo
+    player:setStorageValue(OLD_STORAGE, -1)
+    
+    -- Log
+    logger.debug("Migrated player: {}", player:getName())
+    
+    return true
+end
+
+local migration = Migration("20250205143217_my_migration")
+
+function migration:onExecute()
+    self:forEachPlayer(migratePlayerData)
+end
+
+migration:register()
+```
+
+### Passo 5: Adicionar Logging
+
+```lua
+function migration:onExecute()
+    local totalPlayers = 0
+    local successCount = 0
+    local errorCount = 0
+    
+    logger.info("[Migration {}] Starting...", migration:migrationId())
+    
+    self:forEachPlayer(function(player)
+        totalPlayers = totalPlayers + 1
+        
+        if migratePlayerData(player) then
+            successCount = successCount + 1
+        else
+            errorCount = errorCount + 1
+            logger.warn("Failed to migrate: {}", player:getName())
+        end
+    end)
+    
+    logger.info("[Migration {}] Complete. Success: {}, Errors: {}", 
+        migration:migrationId(), successCount, errorCount)
+end
+```
+
+### Passo 6: Testar
+
+```bash
+# 1. Adicione migration ao diretório
+cp 20250205143217_my_migration.lua data-otservbr-global/scripts/game_migrations/
+
+# 2. Inicie servidor (migration roda automaticamente)
+./start.sh
+
+# 3. Verifique logs
+# [Migration 20250205143217] Starting...
+# [Migration 20250205143217] Complete. Success: 50, Errors: 0
+
+# 4. Valide dados do player
+# /queryplayer <name> (ver dados em novo KV)
+```
+
+### Exemplo Completo
+
+```lua
+-- 20250205143217_migrate_vip_status.lua
+
+local OLD_VIP_STORAGE = 150001
+local KV_KEY = "vip-system"
+
+-- Função base de migração
+local function migrateVIPForPlayer(player)
+    if not player then
+        return false
+    end
+    
+    -- Lê o valor antigo
+    local oldVIPStatus = player:getStorageValue(OLD_VIP_STORAGE)
+    
+    -- Se não existia, nada para fazer
+    if oldVIPStatus <= 0 then
+        return true
+    end
+    
+    -- Converte data antigo para novo formato
+    local isVIP = oldVIPStatus > 0  -- Simples boolean
+    
+    -- Escreve para novo sistema
+    player:kv():scoped("account"):set(KV_KEY, isVIP)
+    
+    -- Marca storage antigo como migrado (-1 = vazio)
+    player:setStorageValue(OLD_VIP_STORAGE, -1)
+    
+    -- Log individual (debug level)
+    logger.debug("Migrated VIP status for: {} (was {})", player:getName(), oldVIPStatus)
+    
+    return true
+end
+
+-- Criar migration
+local migration = Migration("20250205143217_migrate_vip_status")
+
+-- Executar para todos os players
+function migration:onExecute()
+    local totalProcessed = 0
+    local totalMigrated = 0
+    
+    logger.info("[Migration {}] Starting VIP migration", migration:migrationId())
+    
+    self:forEachPlayer(function(player)
+        totalProcessed = totalProcessed + 1
+        
+        if migrateVIPForPlayer(player) then
+            totalMigrated = totalMigrated + 1
+        else
+            logger.error("Failed to migrate player: {}", player:getName())
+        end
+    end)
+    
+    logger.info("[Migration {}] Completed. Migrated: {}/{} players", 
+        migration:migrationId(), totalMigrated, totalProcessed)
+end
+
+-- Registrar para ser executada automaticamente
+migration:register()
+```
+
+</Card>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Migration não executa
+
+**Causa**: Arquivo não está em `game_migrations/` ou não tem `.register()` chamado  
+**Solução**:
+```lua
+-- ✅ Correto
+local migration = Migration("timestamp_name")
+
+function migration:onExecute()
+    self:forEachPlayer(function(player)
+        -- implementação
+    end)
+end
+
+migration:register()  -- Essencial!
+
+-- ❌ Errado - Sem register()
+local migration = Migration("timestamp_name")
+-- ... (sem migration:register())
+```
+
+### Problema: Migration executa mas não faz nada
+
+**Causa**: Iteração sobre `forEachPlayer()` está vazia ou silent  
+**Solução**:
+```lua
+-- ✅ Correto - Verificar se players existem
+function migration:onExecute()
+    local count = 0
+    self:forEachPlayer(function(player)
+        count = count + 1
+        logger.debug("Processing: {}", player:getName())
+    end)
+    logger.info("Processed {} players", count)
+end
+
+-- ❌ Errado - Sem verificação
+function migration:onExecute()
+    self:forEachPlayer(function(player)
+        -- Silencioso, sem logs
+    end)
+end
+```
+
+### Problema: Storage antigo não resetado
+
+**Causa**: Esqueceu de chamar `player:setStorageValue(oldKey, -1)`  
+**Solução**:
+```lua
+-- ✅ Correto - Reseta storage antigo depois
+local oldValue = player:getStorageValue(OLD_KEY)
+if oldValue > 0 then
+    player:kv():set("new-key", oldValue)
+    player:setStorageValue(OLD_KEY, -1)  -- ← Importantíssimo!
+end
+
+-- ❌ Errado - Deixa storage antigo
+-- Cria duplicação de dados!
+local oldValue = player:getStorageValue(OLD_KEY)
+player:kv():set("new-key", oldValue)
+-- Storage antigo jamais é resetado
+```
+
+### Problema: Dados duplicados após migração
+
+**Causa**: Migration rodou múltiplas vezes (não é idempotente)  
+**Solução**:
+```lua
+-- ✅ Correto - Verifica se já foi migrado
+if oldValue > 0 then  -- Só processa se não vazio
+    -- Migra
+    player:setStorageValue(oldKey, -1)  -- Marca como processado
+end
+
+-- ❌ Errado - Sempre processa
+player:kv():set("key", player:getStorageValue(oldKey))
+-- Se rodar 2x, duplica dados!
+```
+
+### Problema: Timestamp está duplicado
+
+**Causa**: Dois arquivos com mesmo timestamp  
+**Solução**:
+```bash
+# Timestamps devem ser únicos
+❌ 20250205143217_migration1.lua
+❌ 20250205143217_migration2.lua  (CONFLITO!)
+
+✅ 20250205143217_migration1.lua
+✅ 20250205143218_migration2.lua  (Incrementa 1 segundo)
+```
+
+### Problema: Migration perde player mid-process
+
+**Causa**: Player desconectou durante migração, dados perdidos  
+**Solução**:
+```lua
+-- ✅ Correto - Sempre valida player
+local function migrate(player)
+    if not player then  -- ← Essencial!
+        return false
+    end
+    -- ... resto da lógica
+    return true
+end
+
+-- ✅ Correto - forEachPlayer já lida com offline
+-- Migrations podem processar até players offline (via banco)
+self:forEachPlayer(function(player)
+    -- player pode estar online ou offline
+end)
+```
+
+### Problema: Logs não aparecem
+
+**Causa**: Log level está alto (não mostra debug)  
+**Solução**:
+```lua
+-- Use logger.info() em vez de logger.debug() para migrations importantes
+logger.info("[Migration] Starting...")  -- ✅ Aparece sempre
+logger.debug("Detail: {}", value)       -- ⚠️ Pode não aparecer
+logger.warn("Warning")                  -- ✅ Aparece sempre
+logger.error("Error")                   -- ✅ Aparece sempre
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Estrutura Padrão de Migration**:
+```lua
+local migration = Migration("TIMESTAMP_description")
+
+function migration:onExecute()
+    self:forEachPlayer(function(player)
+        -- Validar
+        if not player then return false end
+        
+        -- Ler antigo
+        local oldData = player:getStorageValue(OLD_KEY)
+        if oldData <= 0 then return true end
+        
+        -- Escrever novo
+        player:kv():set("key", oldData)
+        
+        -- Limpar antigo
+        player:setStorageValue(OLD_KEY, -1)
+        
+        return true
+    end)
+end
+
+migration:register()
+```
+
+**Métodos Comuns**:
+- `Migration("id")` - Criar migration
+- `migration:onExecute()` - Callback principal
+- `self:forEachPlayer(callback)` - Iterar todos os players
+- `player:getStorageValue(key)` - Ler storage antigo
+- `player:setStorageValue(key, -1)` - Resetar storage
+- `player:kv():set(key, value)` - Escrever KV novo
+- `player:kv():scoped(scope):set(key, value)` - KV com escopo
+- `migration:register()` - Registrar para execução
+
+**Boas Práticas**:
+- ✅ Sempre resete storage antigo (`-1`)
+- ✅ Sempre valide se player existe
+- ✅ Sempre faça log do processo
+- ✅ Use timestamps únicos
+- ✅ Teste com múltiplos players
+- ✅ Seja idempotente (rode 1x)
+
+**Ordem de Execução**:
+- Migrações rodam em ordem de TIMESTAMP
+- Nunca rodam 2x para mesma instância
+- Executam durante boot do servidor
+- Todos os players processados (online/offline)
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_GameMigrations.mdx](#)
+2. **Analise Migrations Existentes**: Examine os 5 scripts fornecidos
+3. **Crie Sua Primeira Migration**: Comece com uma simples Storage → KV
+4. **Teste Completamente**: Valide dados antes e depois
+5. **Automatize Futuras**: Use migrations para cada mudança estrutural
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Migrations Documentadas:** 5  
+**Categoria**: Data Migration & System Updates
+
+Para dúvidas, consulte o arquivo de catálogo ou analise migrations similares.
+</Aside>

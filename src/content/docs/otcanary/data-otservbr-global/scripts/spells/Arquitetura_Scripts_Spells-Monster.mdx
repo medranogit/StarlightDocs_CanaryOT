@@ -1,0 +1,800 @@
+---
+title: Arquitetura - Monster Spells
+description: Documentação técnica da arquitetura e estrutura dos scripts de Monster Spells do servidor Canary
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🏗️ Arquitetura - Monster Spells
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts de **Monster Spells** do servidor OTServ Canary. Entenda como os feitiços de monstros são implementados, organizados e como criar novos.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/spells/monster/` contém todos os scripts **Lua** responsáveis pelos feitiços e habilidades mágicas de **monstros e chefes**. Cada spell define o comportamento, efeitos visuais, dano, condições e áreas de ataque quando o monstro usa suas habilidades contra jogadores.
+</Card>
+
+<Card title="Casos de Uso" icon="information">
+Você utilizará essa pasta quando precisar:
+
+- **Criar nova magia de monstro**: Definir spell words, tipo de dano, efeitos visuais
+- **Modificar dano/efeito**: Ajustar parâmetros de combat, fórmulas de dano, ticks de condições
+- **Implementar condições**: Paralisia, veneno, queimadura, redução de skill
+- **Definir áreas de ataque**: Criar padrões de wave, cone, blast para ataques em área
+- **Adicionar efeitos especiais**: Distância, visualização de partículas, sons
+- **Balancear boss fights**: Ajustar timing, potência e frequência de ataques especiais
+- **Debug de spell**: Investigar por que monstro não está usando spell corretamente
+</Card>
+
+<Card title="Estrutura da Pasta" icon="information">
+Os scripts de mongo spells são organizados por **boss/criatura**:
+
+- Arquivos nomeados descritivamente: `abyssador_paralyze.lua`, `dragon_fire_wave.lua`, etc.
+- Cada arquivo contém uma função `spell.onCastSpell(creature, var)` que executa o combat
+- Configurações via `spell:parameter()` (name, words, aggressive, needTarget, etc.)
+- Combat system integrado com condições, áreas e efeitos visuais
+
+Estrutura típica:
+1. Definir `Combat()` e seus parâmetros
+2. Adicionar condições (se aplicável)
+3. Definir área de ataque (se não é single target)
+4. Criar instância `Spell()` e registrar
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Componentes Principais](#componentes-principais)
+3. [Sistema de Combat](#sistema-de-combat)
+4. [Condições de Efeito](#condições-de-efeito)
+5. [Áreas de Ataque](#áreas-de-ataque)
+6. [Padrões Comuns](#padrões-comuns)
+7. [Como Criar um Novo Spell](#como-criar-um-novo-spell)
+8. [Exemplos Práticos](#exemplos-práticos)
+9. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="Organização de Diretórios" icon="document">
+
+```
+data-otservbr-global/scripts/spells/monster/
+├── abyssador_paralyze.lua
+├── abyssador_poison_wave.lua
+├── abyssador_skill_reducer_1.lua
+├── abyssador_skill_reducer_2.lua
+├── [... mais scripts por boss/tipo ...]
+│
+└── Catalogo_Scripts_Spells-Monster.mdx (documentação)
+└── Arquitetura_Scripts_Spells-Monster.mdx (este arquivo)
+```
+
+**Nomenclatura de Arquivos:**
+- Padrão: `{nome_boss}_{tipo_efeito}.lua`
+- Exemplo: `abyssador_paralyze.lua`, `dragon_lord_summon.lua`
+- Múltiplas variantes: `{nome_boss}_{tipo_efeito}_{numero}.lua`
+
+**Total de Scripts:** 591 arquivos  
+**Series Documentadas:** A-Z (26 séries)  
+**Categorias de Efeito:** 11 principais
+
+</Card>
+
+---
+
+## 🧩 Componentes Principais
+
+<Tabs>
+<TabItem label="Combat System">
+
+### Sistema de Combat
+
+Todo spell de monstro começa com um objeto `Combat()` que define o tipo de dano e parâmetros de ataque.
+
+```lua
+-- Estrutura básica
+local combat = Combat()
+combat:setParameter(COMBAT_PHYSICALDAMAGE, -50, 0)
+combat:setParameter(COMBAT_MAGICDAMAGE, true)
+combat:setParameter(COMBAT_LIFEDRAIN, true)
+
+-- Tipos de Combat disponíveis:
+-- COMBAT_PHYSICALDAMAGE    - Dano físico direto
+-- COMBAT_MAGICDAMAGE       - Dano mágico geral
+-- COMBAT_FIREDAMAGE        - Dano de fogo
+-- COMBAT_ICEDAMAGE         - Dano de gelo
+-- COMBAT_ENERGYDAMAGE      - Dano energético
+-- COMBAT_DEATHDAMAGE       - Dano de morte
+-- COMBAT_EARTHDAMAGE       - Dano de terra
+-- COMBAT_LIFEDRAIN         - Drenar vida
+-- COMBAT_MANADRAIN         - Drenar maná
+-- COMBAT_DROWNDAMAGE       - Dano de afogamento
+```
+
+**Exemplo Completo:**
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PHYSICALDAMAGE, -100, -150)  -- -100 a -150 de dano
+combat:setParameter(COMBAT_LIFEDRAIN, true)
+combat:setArea(createCuboidArea(Vector3(0, 0, 0), Vector3(3, 3, 0)))
+
+function onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+```
+
+</TabItem>
+
+<TabItem label="Spell Object">
+
+### Objeto Spell
+
+O objeto `Spell` registra e configura metadados do feitiço.
+
+```lua
+local spell = Spell("instant")  -- ou "rune"
+
+-- Configurações básicas
+spell:words("###100")           -- Comando de ativação
+spell:name("Paralyze")          -- Nome do spell
+spell:description("Paralisa alvo")
+
+-- Parâmetros comportamentais
+spell:needTarget(true)          -- Requer alvo?
+spell:isAggressive(true)        -- É ataque?
+spell:blockWalls(true)          -- Bloqueado por paredes?
+spell:range(4)                  -- Alcance em tiles
+
+-- Configurar combat associado
+function spell.onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+
+-- Registrar
+spell:register()
+```
+
+**Atributos Principais:**
+| Atributo | Tipo | Descrição |
+|----------|------|-----------|
+| `words` | string | Comando do spell (###XXX) |
+| `name` | string | Nome descritivo |
+| `needTarget` | boolean | Requer seleção de alvo |
+| `isAggressive` | boolean | É ataque agressivo |
+| `blockWalls` | boolean | Bloqueado por walls |
+| `range` | number | Alcance em tiles |
+| `cooldown` | number | Cooldown em ms |
+
+</TabItem>
+
+<TabItem label="Área de Efeito">
+
+### Sistema de Áreas
+
+Define onde e como o spell afeta múltiplos tiles.
+
+```lua
+-- Área quadrada
+local area = createCuboidArea(Vector3(0, 0, 0), Vector3(3, 3, 0))
+
+-- Área circular
+local area = createCircleArea(Vector3(0, 0, 0), 3)
+
+-- Validações
+if not combat:setArea(area) then
+    print("Erro ao definir área")
+end
+```
+
+**Tipos de Áreas Comuns:**
+
+```lua
+-- Wave frontal (cone)
+createCuboidArea(Vector3(0, 0, 0), Vector3(5, 2, 0))
+
+-- Explosão circular
+createCircleArea(Vector3(0, 0, 0), 4)
+
+-- Linha reta
+createCuboidArea(Vector3(0, 0, 0), Vector3(1, 5, 0))
+
+-- Grande área
+createCuboidArea(Vector3(-3, -3, 0), Vector3(3, 3, 0))
+```
+
+</TabItem>
+
+<TabItem label="Efeito Visual">
+
+### Sistema de Efeitos Visuais
+
+Adiciona animações e feedback visual para o jogador.
+
+```lua
+-- Efeitos de impacto
+combat:setParameter(COMBAT_PHYSICALDAMAGE, -50, 0)
+-- Adicionar efeito visual
+combat:addArea(area, CONST_ME_EXPLOSIONAREA)
+
+-- Exemplos de efeitos
+CONST_ME_BLOCKABILITA              -- Bloqueio especial
+CONST_ME_EXPLOSIONAREA             -- Explosão
+CONST_ME_FIREAREA                  -- Área de fogo
+CONST_ME_ICEAREA                   -- Área de gelo
+CONST_ME_ENERGYAREA                -- Área de energia
+CONST_ME_POISONAREA                -- Nuvem de veneno
+CONST_ME_HOLYAREA                  -- Área sagrada
+CONST_ME_WATERSPLASH               -- Respingo de água
+CONST_ME_STONE_STORM               -- Tempestade de pedras
+CONST_ME_SUMMONDARK                -- Invocação sombria
+CONST_ME_TELEPORT                  -- Teletransporte
+const_me_poff                      -- Desabilitação
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## ⚡ Sistema de Combat
+
+<Card title="Fórmulas de Dano" icon="zap">
+
+### Cálculo de Dano
+
+O dano é calculado por uma fórmula configurável:
+
+```lua
+local combat = Combat()
+
+-- Formato: combat:setParameter(tipo, minDano, maxDano)
+combat:setParameter(COMBAT_PHYSICALDAMAGE, -50, -100)
+-- Resultado: Dano aleatório entre -50 e -100
+
+-- Modificadores
+combat:setParameter(COMBAT_MAGICDAMAGE, true)      -- Usa magic shield
+combat:setParameter(COMBAT_LIFEDRAIN, true)       -- Drena vida
+combat:setParameter(COMBAT_MANADRAIN, true)       -- Drena maná
+```
+
+### Ajustes por Skill/Level
+
+```lua
+function damage(level, magicLevel)
+    local min = math.max(-30, -(level / 5 + magicLevel * 1.1))
+    local max = math.max(-50, -(level / 3 + magicLevel * 1.4))
+    return min, max
+end
+
+combat:setParameter(COMBAT_FIREDAMAGE, damage(creature:getLevel(), creature:getMagicLevel()))
+```
+
+</Card>
+
+---
+
+## 🌀 Condições de Efeito
+
+<Card title="Sistema de Condições" icon="shapes">
+
+### Tipos de Condições
+
+As condições aplicam efeitos persistentes ao alvo.
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PHYSICALDAMAGE, -50, -80)
+
+-- Aplicar paralisia
+local condition = Condition(CONDITION_PARALYZE)
+condition:setParameter(CONDITION_PARAM_TICKS, 20000)  -- 20 segundos
+condition:setFormula(-0.70, 0, -0.85, 0)              -- Reduz velocidade em 70-85%
+combat:addCondition(condition)
+
+function onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+```
+
+### Condições Disponíveis
+
+```lua
+CONDITION_PARALYZE          -- Paralisia (reduz velocidade)
+CONDITION_POISON            -- Veneno (dano contínuo)
+CONDITION_FIRE              -- Fogo (queimadura)
+CONDITION_ENERGY            -- Energia (choque)
+CONDITION_CURSE             -- Maldição (debilidade)
+CONDITION_DROWN             -- Afogamento
+CONDITION_FREEZING          -- Congelamento
+CONDITION_DAZZLED           -- Atordoamento
+CONDITION_DRUNK             -- Embriaguez
+CONDITION_EXHAUSTED         -- Exaustão
+CONDITION_FEARED            -- Medo
+```
+
+**Parâmetros de Condição:**
+```lua
+condition:setParameter(CONDITION_PARAM_TICKS, 20000)           -- Duração em ms
+condition:setParameter(CONDITION_PARAM_HEALTHTICKS, 1000)      -- Ticks de dano
+condition:setParameter(CONDITION_PARAM_HEALTHVALUE, -50)       -- Valor do dano
+condition:setFormula(minMul, minBase, maxMul, maxBase)         -- Redução de atributos
+```
+
+</Card>
+
+---
+
+## 🎯 Áreas de Ataque
+
+<Card title="Padrões de Área" icon="target">
+
+### Padrões Comuns
+
+```lua
+-- 1. SINGLE TARGET (sem área)
+-- Afeta apenas o alvo selecionado
+local combat = Combat()
+combat:setParameter(COMBAT_PHYSICALDAMAGE, -50, -100)
+-- Sem setArea() - ataque direto
+
+-- 2. WAVE FRONTAL (cone)
+local area = createCuboidArea(Vector3(0, 0, 0), Vector3(5, 2, 0))
+combat:setArea(area)
+
+-- 3. EXPLOSÃO CIRCULAR (raio)
+local area = createCircleArea(Vector3(0, 0, 0), 4)
+combat:setArea(area)
+
+-- 4. LINHA RETA (beam)
+local area = createCuboidArea(Vector3(0, 0, 0), Vector3(1, 6, 0))
+combat:setArea(area)
+
+-- 5. GRANDE ÁREA (maldição em círculo grande)
+local area = createCuboidArea(Vector3(-4, -4, 0), Vector3(4, 4, 0))
+combat:setArea(area)
+
+-- 6. PADRÃO X (explosão cruzada)
+-- Combinar duas áreas
+local area1 = createCuboidArea(Vector3(-3, 0, 0), Vector3(3, 0, 0))
+local area2 = createCuboidArea(Vector3(0, -3, 0), Vector3(0, 3, 0))
+```
+
+</Card>
+
+---
+
+## 📐 Padrões Comuns
+
+<Card title="Estruturas Padrão" icon="layers">
+
+### Padrão 1: Ataque Simples (Single Target)
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_PHYSICALDAMAGE, -50, -100)
+combat:setParameter(COMBAT_LIFEDRAIN, true)
+
+local spell = Spell("instant")
+spell:words("###100")
+spell:name("Simple Attack")
+spell:needTarget(true)
+spell:isAggressive(true)
+
+function spell.onCastSpell(creature, var)
+    if creature:getTarget() then
+        return combat:execute(creature, var)
+    end
+    return false
+end
+
+spell:register()
+```
+
+### Padrão 2: Ataque em Área com Condição
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_FIREDAMAGE, -80, -120)
+
+-- Adicionar paralisia
+local condition = Condition(CONDITION_PARALYZE)
+condition:setParameter(CONDITION_PARAM_TICKS, 15000)
+condition:setFormula(-0.70, 0, -0.85, 0)
+combat:addCondition(condition)
+
+-- Definir área (cone/wave)
+local area = createCuboidArea(Vector3(0, 0, 0), Vector3(4, 2, 0))
+combat:setArea(area)
+
+local spell = Spell("instant")
+spell:words("###200")
+spell:name("Fire Wave")
+spell:isAggressive(true)
+spell:blockWalls(true)
+
+function spell.onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+
+spell:register()
+```
+
+### Padrão 3: Invocação (Summon)
+
+```lua
+local spell = Spell("instant")
+spell:words("###300")
+spell:name("Summon Minion")
+spell:isAggressive(false)
+
+function spell.onCastSpell(creature, var)
+    local summon = Game.createMonster("minion", creature:getPosition())
+    if summon then
+        summon:setMaster(creature)
+        return true
+    end
+    return false
+end
+
+spell:register()
+```
+
+### Padrão 4: Skill Reducer
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_MAGICDAMAGE, -30, -50)
+
+-- Redução de habilidades
+local condition = Condition(CONDITION_PARALYZE)
+condition:setParameter(CONDITION_PARAM_TICKS, 10000)
+condition:setFormula(-0.50, 0, -0.70, 0)  -- Reduz 50-70% de ataque
+combat:addCondition(condition)
+
+-- Área grande
+local area = createCuboidArea(Vector3(-3, -3, 0), Vector3(3, 3, 0))
+combat:setArea(area)
+
+local spell = Spell("instant")
+spell:words("###400")
+spell:name("Skill Reducer")
+spell:isAggressive(true)
+
+function spell.onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+
+spell:register()
+```
+
+</Card>
+
+---
+
+## 🛠️ Como Criar um Novo Spell
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Criar o Arquivo
+
+```bash
+# Arquivo: {nome_boss}_{tipo_efeito}.lua
+# Exemplo: mymonster_fireball.lua
+```
+
+### Passo 2: Definir Combat
+
+```lua
+local combat = Combat()
+combat:setParameter(COMBAT_FIREDAMAGE, -50, -100)  -- Tipo e dano
+```
+
+### Passo 3: Adicionar Condições (opcional)
+
+```lua
+local condition = Condition(CONDITION_FIRE)
+condition:setParameter(CONDITION_PARAM_TICKS, 10000)  -- 10 segundos
+condition:setParameter(CONDITION_PARAM_HEALTHTICKS, 2000)  -- Tick de dano a cada 2s
+condition:setParameter(CONDITION_PARAM_HEALTHVALUE, -20)  -- -20 de dano por tick
+combat:addCondition(condition)
+```
+
+### Passo 4: Definir Área (opcional)
+
+```lua
+local area = createCuboidArea(Vector3(0, 0, 0), Vector3(3, 3, 0))
+combat:setArea(area)
+```
+
+### Passo 5: Criar Objeto Spell
+
+```lua
+local spell = Spell("instant")
+spell:words("###500")  -- Substitua por número único
+spell:name("Fire Ball")
+spell:description("Lança uma bola de fogo em área")
+spell:needTarget(false)  -- true = requer alvo
+spell:isAggressive(true)  -- true = dano/ataque
+spell:blockWalls(true)  -- true = bloqueado por paredes
+```
+
+### Passo 6: Implementar Função onCastSpell
+
+```lua
+function spell.onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+```
+
+### Passo 7: Registrar
+
+```lua
+spell:register()
+```
+
+### Arquivo Completo Exemplo
+
+```lua
+-- mymonster_fireball.lua
+
+local combat = Combat()
+combat:setParameter(COMBAT_FIREDAMAGE, -50, -100)
+
+local condition = Condition(CONDITION_FIRE)
+condition:setParameter(CONDITION_PARAM_TICKS, 10000)
+condition:setParameter(CONDITION_PARAM_HEALTHTICKS, 2000)
+condition:setParameter(CONDITION_PARAM_HEALTHVALUE, -20)
+combat:addCondition(condition)
+
+local area = createCuboidArea(Vector3(0, 0, 0), Vector3(3, 3, 0))
+combat:setArea(area)
+
+local spell = Spell("instant")
+spell:words("###500")
+spell:name("Fire Ball")
+spell:description("Lança uma bola de fogo em área")
+spell:needTarget(false)
+spell:isAggressive(true)
+spell:blockWalls(true)
+
+function spell.onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+
+spell:register()
+```
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Paralyze">
+
+```lua
+-- abyssador_paralyze.lua
+
+local combat = Combat()
+combat:setParameter(COMBAT_MAGICDAMAGE, -20, -30)
+
+local condition = Condition(CONDITION_PARALYZE)
+condition:setParameter(CONDITION_PARAM_TICKS, 20000)
+condition:setFormula(-0.70, 0, -0.85, 0)
+combat:addCondition(condition)
+
+local spell = Spell("instant")
+spell:words("###86")
+spell:name("Paralyze")
+spell:needTarget(true)
+spell:isAggressive(true)
+spell:blockWalls(true)
+
+function spell.onCastSpell(creature, var)
+    if creature:getTarget() then
+        return combat:execute(creature, var)
+    end
+    return false
+end
+
+spell:register()
+```
+
+</TabItem>
+
+<TabItem label="Wave">
+
+```lua
+-- abyssador_poison_wave.lua
+
+local combat = Combat()
+combat:setParameter(COMBAT_EARTHDAMAGE, -40, -80)
+
+local area = createCuboidArea(Vector3(0, 0, 0), Vector3(4, 2, 0))
+combat:setArea(area)
+
+local spell = Spell("instant")
+spell:words("###87")
+spell:name("Poison Wave")
+spell:isAggressive(true)
+spell:blockWalls(true)
+spell:range(4)
+
+function spell.onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+
+spell:register()
+```
+
+</TabItem>
+
+<TabItem label="Summon">
+
+```lua
+-- alptramun_summon.lua
+
+local spell = Spell("instant")
+spell:words("###100")
+spell:name("Summon")
+spell:isAggressive(false)
+
+function spell.onCastSpell(creature, var)
+    local position = creature:getPosition()
+    local offset = {
+        {x = -1, y = 0},
+        {x = 1, y = 0},
+        {x = 0, y = -1},
+        {x = 0, y = 1}
+    }
+    
+    for _, pos in ipairs(offset) do
+        local summonPos = Position(position.x + pos.x, position.y + pos.y, position.z)
+        local summon = Game.createMonster("dud", summonPos)
+        if summon then
+            summon:setMaster(creature)
+        end
+    end
+    return true
+end
+
+spell:register()
+```
+
+</TabItem>
+
+<TabItem label="Skill Reducer">
+
+```lua
+-- abyssador_skill_reducer_1.lua
+
+local combat = Combat()
+combat:setParameter(COMBAT_MAGICDAMAGE, -30, -50)
+
+local condition = Condition(CONDITION_PARALYZE)
+condition:setParameter(CONDITION_PARAM_TICKS, 15000)
+condition:setFormula(-0.70, 0, -0.85, 0)
+combat:addCondition(condition)
+
+local area = createCuboidArea(Vector3(-2, -2, 0), Vector3(2, 2, 0))
+combat:setArea(area)
+
+local spell = Spell("instant")
+spell:words("###88")
+spell:name("Skill Reducer 1")
+spell:isAggressive(true)
+
+function spell.onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+
+spell:register()
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Spell não executa
+
+**Causa:** Função `onCastSpell` ausente ou mal nomeada  
+**Solução:**
+```lua
+function spell.onCastSpell(creature, var)
+    return combat:execute(creature, var)
+end
+```
+
+### Problema: Dano muito fraco/forte
+
+**Causa:** Parâmetros de dano incorretos  
+**Solução:** Ajustar valores
+```lua
+-- Fraco: -10, -20
+combat:setParameter(COMBAT_PHYSICALDAMAGE, -50, -100)  -- Mais forte
+```
+
+### Problema: Spell não atinge múltiplos alvos
+
+**Causa:** Área não definida corretamente  
+**Solução:** Verificar `createCuboidArea` ou `createCircleArea`
+```lua
+local area = createCircleArea(Vector3(0, 0, 0), 4)  -- Raio 4
+combat:setArea(area)
+```
+
+### Problema: Condição não aplica
+
+**Causa:** Condição não adicionada ao combat  
+**Solução:**
+```lua
+combat:addCondition(condition)  -- Garantir que está adicionado
+```
+
+### Problema: Spell bloqueia ao colidir com paredes
+
+**Isto é esperado!** Configurar com:
+```lua
+spell:blockWalls(false)  -- Para atravessar paredes
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Spell Words Format:**
+- `###XXX`: Formato padrão (ex: ###86, ###100, ###500)
+- `##XXX`: Formato alternativo (2 dígitos)
+- `#XXXXXX`: Formato estendido (6 dígitos)
+
+**Combat Types:**
+- PHYSICALDAMAGE, MAGICDAMAGE
+- FIREDAMAGE, ICEDAMAGE, ENERGYDAMAGE, DEATHDAMAGE
+- EARTHDAMAGE, LIFEDRAIN, MANADRAIN
+
+**Condition Formulas:**
+- `setFormula(minMul, minBase, maxMul, maxBase)`
+- Exemplo: `(-0.70, 0, -0.85, 0)` = reduz 70-85%
+
+**Criação de Áreas:**
+- `createCuboidArea(min, max)` - Retângulo
+- `createCircleArea(center, radius)` - Círculo
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_Spells-Monster.mdx](./Catalogo_Scripts_Spells-Monster.mdx)
+2. **Analise Scripts Existentes**: Examine arquivos como `abyssador_paralyze.lua`
+3. **Teste Localmente**: Crie um novo spell e teste em um servidor de teste
+4. **Implemente Seus Próprios**: Combine padrões para criar spells únicos
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Scripts Documentados:** 591  
+
+Para dúvidas ou sugestões, consulte a documentação oficial ou o arquivo de catálogo.
+</Aside>

@@ -1,0 +1,762 @@
+---
+title: "Arquitetura: Scripts de Sistemas"
+description: "Documentação técnica da arquitetura e estrutura dos scripts de sistemas do servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# ⚙️ Arquitetura - Sistemas
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts de **Sistemas** do servidor OTServ Canary. Entenda como implementar mecânicas sistêmicas complexas, zonas hazard, eventos coordenados e muito mais.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/systems/` contém todos os scripts **Lua** responsáveis por **mecânicas sistêmicas complexas** que afetam o gameplay geral do servidor. Diferentemente de scripts simples que executam uma única ação, os sistemas requerem coordenação entre múltiplos componentes: eventos encadeados, zonas especiais, configurações globais e integração com APIs avançadas.
+
+Um sistema de script implementa:
+- **Zonas Especiais**: Áreas do mapa com modificadores (Hazard System, Dungeons Especiais)
+- **Eventos Coordenados**: MoveEvent, ZoneEvent, CreatureEvent trabalhando em conjunto
+- **Estado Persistente**: Atributos customizados em items, storage em players
+- **Loot Dinâmico**: Recompensas baseadas em performance, pontos ou condições
+- **Feedback Complexo**: Mensagens, efeitos visuais, damage, transformações
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Criar novo sistema de zona**: Dungeon com modificadores especiais
+- **Implementar loot dinâmico**: Rewards baseados em desempenho ou pontos
+- **Coordenar múltiplos eventos**: Spawn → Morte → Loot em sequência
+- **Sistema de pontos**: Acumular e usar points para rewards
+- **Itens temporários**: Items com timer que explode/desaparece/transforma
+- **Boss waves com regras**: Spawn condicional de monstros especiais
+- **Mechânicas de dungeon**: Excludir áreas, aplicar debuffs, criar puzzles
+- **Estado global**: Modificadores permanentes em zona específica
+- **Eventos em cascata**: Uma ação dispara múltiplos efeitos
+- **Integração avançada**: Usar configManager, APIs customizadas, coordenação complexa
+</Card>
+
+<Card title="Estrutura da Pasta" icon="list">
+A pasta `scripts/systems/` é organizada por **tipo de sistema**:
+
+```
+systems/
+├── hazard_primal.lua       (Sistema Hazard - Gnomprona)
+└── (expandir conforme necessário)
+```
+
+**Características**:
+- Scripts são **complexos e únicos** (não reutilizáveis como Actions)
+- Cada script é **self-contained** com todas as dependências
+- Coordena múltiplos tipos de eventos em um único arquivo
+- Usa APIs avançadas: Hazard, Zone, configManager
+
+**Total**: 1 sistema documentado (Hazard Primal)
+
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Componentes Principais](#componentes-principais)
+3. [Padrões de Implementação](#padrões-de-implementação)
+4. [Sistema Hazard Detalhado](#sistema-hazard-detalhado)
+5. [Exemplos Práticos](#exemplos-práticos)
+6. [Criando um Novo Sistema](#criando-um-novo-sistema)
+7. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="Anatomia de um Sistema" icon="document">
+
+Um script de sistema encadeia múltiplos componentes para criar uma **experiência coesa**:
+
+```
+┌─────────────────────────────────────┐
+│ 1. DEFINIÇÃO DE ZONA                │
+│    (Hazard.new + posições)          │
+│    └─ Aplica modificadores          │
+│    └─ Exclui subareas               │
+└────────────┬────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────┐
+│ 2. EVENTOS DE SPAWN                 │
+│    (ZoneEvent.onSpawn)              │
+│    └─ Registra behaviors customizados│
+│    └─ Prepara monstro para sistema  │
+└────────────┬────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────┐
+│ 3. INTERAÇÕES EM COMBATE            │
+│    (Modificadores aplicados)        │
+│    └─ Critical, Dodge, Damage, Def  │
+└────────────┬────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────┐
+│ 4. MORTE & LOOT DINÂMICO            │
+│    (CreatureEvent.onDeath)          │
+│    └─ Calcula recompensas           │
+│    └─ Cria items/monstros           │
+└────────────┬────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────┐
+│ 5. EVENTOS AGENDADOS                │
+│    (addEvent com delays)            │
+│    └─ Timers, transformações        │
+│    └─ Limpeza automática            │
+└─────────────────────────────────────┘
+```
+
+### Componentes Coexistindo
+
+```lua
+-- COMPONENTE 1: Zona
+local hazard = Hazard.new({...})
+hazard:register()
+
+-- COMPONENTE 2: Interação com Item
+local moveEvent = MoveEvent()
+function moveEvent.onStepIn(creature, item, position, fromPosition)
+    -- Lógica de pisada em item
+end
+moveEvent:register()
+
+-- COMPONENTE 3: Spawn
+local spawnEvent = ZoneEvent(hazard)
+function spawnEvent.onSpawn(monster, position)
+    -- Lógica de spawn do monstro
+end
+spawnEvent:register()
+
+-- COMPONENTE 4: Morte
+local deathEvent = CreatureEvent("EventName")
+function deathEvent.onDeath(creature)
+    -- Lógica de morte e loot
+end
+deathEvent:register()
+
+-- COMPONENTE 5: Eventos Agendados
+local function delayedAction(position)
+    -- Ação após delay
+end
+addEvent(delayedAction, 5000, targetPosition)
+```
+
+</Card>
+
+---
+
+## 🎛️ Componentes Principais
+
+<Card title="5 Componentes Essenciais" icon="layers">
+
+### 1️⃣ Definição de Zona (Hazard)
+
+```lua
+-- Define a área onde o sistema opera
+local hazard = Hazard.new({
+    name = "hazard.location-name",     -- ID único
+    from = Position(x1, y1, z),        -- Canto NO
+    to = Position(x2, y2, z),          -- Canto SE
+    maxLevel = 12,                      -- Opcional
+    
+    -- Modificadores booleanos
+    crit = true,                        -- Critical chance
+    dodge = true,                       -- Dodge chance
+    damageBoost = true,                -- Damage +X%
+    defenseBoost = true,               -- Defense +X%
+})
+
+hazard:register()
+```
+
+**Propósito**: Define onde o sistema funciona e que modificadores aplicar
+
+---
+
+### 2️⃣ Exclusão de Subareas
+
+```lua
+-- Remove locais específicos do sistema
+local zone = Zone.getByName("hazard.location-name")
+
+zone:subtractArea(
+    { x = x1, y = y1, z = z },
+    { x = x2, y = y2, z = z }
+)
+```
+
+**Propósito**: Permite exceções dentro da zona (boss fights, áreas de descanso)
+
+---
+
+### 3️⃣ Evento de Interação (MoveEvent)
+
+```lua
+-- Captura quando jogador interage com item
+local moveEvent = MoveEvent()
+function moveEvent.onStepIn(creature, item, position, fromPosition)
+    local player = creature:getPlayer()
+    if not player then return end
+    
+    -- Processar interação
+    return true
+end
+
+moveEvent:id(ITEM_ID)
+moveEvent:register()
+```
+
+**Propósito**: Reagir a ações do jogador (pisar em item)
+
+---
+
+### 4️⃣ Evento de Spawn (ZoneEvent)
+
+```lua
+-- Captura quando monstro spawna na zona
+local spawnEvent = ZoneEvent(zone)
+function spawnEvent.onSpawn(monster, position)
+    -- Registrar eventos no monstro
+    monster:registerEvent("DeathEventName")
+end
+spawnEvent:register()
+```
+
+**Propósito**: Preparar monstro com comportamentos especiais
+
+---
+
+### 5️⃣ Evento de Morte (CreatureEvent)
+
+```lua
+-- Captura morte do monstro
+local deathEvent = CreatureEvent("DeathEventName")
+function deathEvent.onDeath(creature)
+    local monster = creature:getMonster()
+    
+    -- Processar morte
+    -- Calcular rewards
+    -- Spawnar loot
+    
+    return true
+end
+deathEvent:register()
+```
+
+**Propósito**: Implementar loot dinâmico e recompensas
+
+</Card>
+
+---
+
+## 🏗️ Padrões de Implementação
+
+<Card title="4 Padrões Avançados" icon="wrench">
+
+### Padrão 1: Zona com Modificadores
+
+**Quando usar**: Dungeon com bonus de stat ou difficulty
+
+```lua
+local hazard = Hazard.new({
+    name = "hazard.my-dungeon",
+    from = Position(100, 100, 7),
+    to = Position(200, 200, 10),
+    crit = true,
+    dodge = true,
+})
+
+hazard:register()
+```
+
+---
+
+### Padrão 2: Item Interativo com Timer
+
+**Quando usar**: Item que explode/desaparece após tempo
+
+```lua
+local function onTimer(position)
+    -- Executar após delay
+    Game.createMonster("BossName", position, false, true)
+end
+
+function createTimedItem(position)
+    local item = Game.createItem(ITEM_ID, 1, position)
+    if item then
+        -- Armazenar timestamp
+        item:setCustomAttribute("Timer", os.time() * 1000)
+        -- Agendar ação
+        addEvent(onTimer, 8000, item:getPosition())
+    end
+end
+```
+
+---
+
+### Padrão 3: Loot Dinâmico em Cascata
+
+**Quando usar**: Múltiplas chances de drop com fallback
+
+```lua
+function deathEvent.onDeath(creature)
+    -- Chance 1: Item especial
+    local chance1 = math.random(1, 10000)
+    if chance1 <= (points * MULT1) then
+        createSpecialItem()
+        return true
+    end
+    
+    -- Chance 2: Boss adicional
+    local chance2 = math.random(1, 100000)
+    if chance2 <= (points * MULT2) then
+        createAdditionalBoss()
+        return true
+    end
+    
+    -- Fallback: Sem loot especial
+    return true
+end
+```
+
+---
+
+### Padrão 4: Coordenação com configManager
+
+**Quando usar**: Sistema ativar/desativar dinamicamente
+
+```lua
+function moveEvent.onStepIn(creature, item, position, fromPosition)
+    -- Verificar se sistema está habilitado
+    if not configManager.getBoolean(configKeys.TOGGLE_SYSTEM) then
+        return false
+    end
+    
+    -- Ler valores de config
+    local damage = configManager.getNumber(configKeys.DAMAGE_VALUE)
+    
+    -- Processar
+    return true
+end
+```
+
+</Card>
+
+---
+
+## 📚 Sistema Hazard Detalhado
+
+<Card title="Estudo de Caso: Hazard Primal" icon="target">
+
+O **Hazard Primal** implementa um sistema completo de dungeon com:
+
+| Aspecto | Implementação |
+|---------|--------------|
+| **Zona** | Gnomprona Gardens (3 níveis, 150k tiles) |
+| **Modificadores** | Critical, Dodge, Damage, Defense (4 ativos) |
+| **Subareas** | 2 exceções (Magma Bubble, outro local) |
+| **Pontos** | Sistema de progression acumulativa |
+| **Loot 1** | Primal Pods (0.5% por ponto) |
+| **Loot 2** | Plunder Patriarch (0.25% por ponto) |
+| **Timer de Pod** | 8000ms até explosão |
+| **Dano de Pod** | % HP + pontos + fixo |
+
+### Fluxo Completo
+
+```
+1. Jogador entra em Gnomprona
+   ↓
+2. Modificadores aplicados automaticamente
+   ↓
+3. Monstro spawna → ZoneEvent registra evento de morte
+   ↓
+4. Combate com modificadores ativas (crit, dodge, etc)
+   ↓
+5. Monstro morre → CreatureEvent.onDeath dispara
+   ↓
+6. Calcula pontos do jogador
+   ↓
+7. Chance 1 (0.5%): Primal Pod spawna ← Timer de 8s
+      └─ Jogador pisa antes de 3s: Seguro
+      └─ Jogador pisa 3-8s: Recebe dano
+      └─ Espera 8s: Pod explode → Fungosaurus spawna
+   ↓
+8. Chance 2 (0.25%): Plunder Patriarch spawna
+   ↓
+9. Loot normal do monstro + sistema rewards
+```
+
+</Card>
+
+---
+
+## 🛠️ Exemplos Práticos
+
+<Tabs>
+<TabItem label="Zona Simples">
+
+**Criar uma zona hazard básica**
+
+```lua
+local hazard = Hazard.new({
+    name = "hazard.my-dungeon",
+    from = Position(32100, 32100, 10),
+    to = Position(32200, 32200, 12),
+    maxLevel = 20,
+    crit = true,
+    dodge = true,
+})
+
+hazard:register()
+
+-- Opcional: Excluir boss area
+local zone = Zone.getByName("hazard.my-dungeon")
+zone:subtractArea(
+    { x = 32150, y = 32150, z = 11 },
+    { x = 32160, y = 32160, z = 11 }
+)
+```
+
+</TabItem>
+
+<TabItem label="Item com Timer">
+
+**Item que explode após delay**
+
+```lua
+local function explode(position)
+    position:sendMagicEffect(CONST_ME_EXPLOSIONAREA)
+    Game.createMonster("Demon", position)
+end
+
+local function createBomb(position)
+    local bomb = Game.createItem(ITEM_BOMB, 1, position)
+    if bomb then
+        bomb:setCustomAttribute("Timer", os.time() * 1000)
+        addEvent(explode, 5000, position)
+    end
+end
+```
+
+</TabItem>
+
+<TabItem label="Loot Dinâmico">
+
+**Sistema de loot em cascata**
+
+```lua
+local deathEvent = CreatureEvent("DynamicLoot")
+
+function deathEvent.onDeath(creature)
+    local monster = creature:getMonster()
+    if not monster then return true end
+    
+    local player, points = hazard:getHazardPlayerAndPoints(monster:getDamageMap())
+    if points < 1 then return true end
+    
+    -- Chance de item especial
+    if math.random(1, 10000) <= (points * 0.005) then
+        createSpecialItem(monster:getPosition())
+        return true
+    end
+    
+    -- Chance de boss adicional
+    if math.random(1, 100000) <= (points * 0.0025) then
+        createAdditionalBoss(monster:getPosition())
+        return true
+    end
+    
+    return true
+end
+
+deathEvent:register()
+```
+
+</TabItem>
+
+<TabItem label="Guard Clauses">
+
+**Validação robusta**
+
+```lua
+function moveEvent.onStepIn(creature, item, position, fromPosition)
+    -- Guard 1: Sistema ativo?
+    if not configManager.getBoolean(configKeys.TOGGLE_SYSTEM) then
+        item:remove()
+        return
+    end
+    
+    -- Guard 2: É jogador?
+    local player = creature:getPlayer()
+    if not player then
+        return
+    end
+    
+    -- Guard 3: Validar item
+    if not item or not item:getId() then
+        return
+    end
+    
+    -- Implementação após todas validações
+    player:say("Sistema ativo!")
+    return true
+end
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🛠️ Criando um Novo Sistema
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Planejar Arquitetura
+
+```
+Pergunta: O que meu sistema precisa fazer?
+- Zona com modificadores?
+- Itens interativos?
+- Loot dinâmico?
+- Eventos encadeados?
+```
+
+### Passo 2: Definir Zona
+
+```lua
+-- scripts/systems/my_system.lua
+
+local mySystem = Hazard.new({
+    name = "hazard.my-system",
+    from = Position(x1, y1, z),
+    to = Position(x2, y2, z),
+})
+
+mySystem:register()
+```
+
+### Passo 3: Implementar Eventos
+
+```lua
+-- Evento de spawn
+local spawnEvent = ZoneEvent(Zone.getByName("hazard.my-system"))
+function spawnEvent.onSpawn(monster, position)
+    monster:registerEvent("MySystemDeath")
+end
+spawnEvent:register()
+
+-- Evento de morte
+local deathEvent = CreatureEvent("MySystemDeath")
+function deathEvent.onDeath(creature)
+    -- Lógica aqui
+    return true
+end
+deathEvent:register()
+```
+
+### Passo 4: Adicionar Interações Especiais
+
+```lua
+-- Evento de movimento/item se necessário
+local moveEvent = MoveEvent()
+function moveEvent.onStepIn(creature, item, position, fromPosition)
+    -- Lógica aqui
+    return true
+end
+
+moveEvent:id(ITEM_ID)
+moveEvent:register()
+```
+
+### Passo 5: Integrar configManager
+
+```lua
+-- No início do arquivo
+if not configManager.getBoolean(configKeys.TOGGLE_MY_SYSTEM) then
+    return  -- Não load se desativado
+end
+```
+
+### Passo 6: Adicionar Logging/Debug
+
+```lua
+-- Para troubleshooting
+print("[MySystem] Sistema carregado com sucesso")
+print("[MySystem] Zona: " .. Zone.getByName("hazard.my-system"):getName())
+```
+
+</Card>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Sistema não carrega
+
+**Causa**: Arquivo Lua com erro de sintaxe  
+**Solução**:
+```bash
+# Verificar console do servidor para erros
+# Procurar por linhas como:
+# [ERROR] Failed to load script: systems/my_system.lua
+```
+
+### Problema: Zona não funciona
+
+**Causa**: Hazard não registrado ou nome incorreto  
+**Solução**:
+```lua
+-- ✅ Correto
+local hazard = Hazard.new({name = "hazard.my-dungeon", ...})
+hazard:register()
+
+local zone = Zone.getByName("hazard.my-dungeon")
+
+-- ❌ Errado
+local zone = Zone.getByName("my-dungeon")  -- Falta "hazard."
+```
+
+### Problema: Evento de morte não dispara
+
+**Causa**: Monster não tem evento registrado no spawn  
+**Solução**:
+```lua
+-- ✅ Correto
+local spawnEvent = ZoneEvent(hazardZone)
+function spawnEvent.onSpawn(monster, position)
+    monster:registerEvent("MyDeathEvent")  ← Registrar aqui!
+end
+spawnEvent:register()
+```
+
+### Problema: Loot nunca aparece
+
+**Causa**: Chances muito baixas ou jogador sem pontos  
+**Solução**:
+```lua
+-- Verificar multiplicadores
+print("Points: " .. points)
+print("Chance 1: " .. (points * 0.005))
+print("Chance 2: " .. (points * 0.0025))
+
+-- Aumentar multiplicadores se necessário
+```
+
+### Problema: Item não remove
+
+**Causa**: Chamada item:remove() falhando  
+**Solução**:
+```lua
+-- ✅ Correto
+if item then
+    item:remove()
+end
+
+-- ❌ Errado
+item:remove()  -- Item pode ser nil!
+```
+
+### Problema: Timer não executa
+
+**Causa**: Posição inválida quando addEvent executa  
+**Solução**:
+```lua
+-- ✅ Correto - validar posição
+local function delayedAction(position)
+    local tile = Tile(position)
+    if tile then
+        -- Executar apenas se tile existe
+    end
+end
+addEvent(delayedAction, 5000, pos)
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Estrutura Padrão de Sistema**:
+```lua
+-- 1. Zona
+local system = Hazard.new({...})
+system:register()
+
+-- 2. Eventos
+local spawnEvent = ZoneEvent(...)
+function spawnEvent.onSpawn(monster, position) end
+spawnEvent:register()
+
+local deathEvent = CreatureEvent(...)
+function deathEvent.onDeath(creature) end
+deathEvent:register()
+```
+
+**Métodos Comuns**:
+- `Hazard.new({...})` - Criar zona
+- `hazard:register()` - Registrar zona
+- `Zone.getByName(name)` - Obter zona
+- `zone:subtractArea(pos1, pos2)` - Excluir subárea
+- `monster:registerEvent(name)` - Registrar evento no monstro
+- `Game.createMonster(name, pos, script, ignoreArmor)` - Criar monstro
+- `Game.createItem(id, count, pos)` - Criar item
+- `configManager.getBoolean(key)` - Ler bool config
+- `configManager.getNumber(key)` - Ler número config
+- `addEvent(func, delay, ...)` - Agendar ação
+
+**Tipos de Eventos**:
+- `MoveEvent` - Movimento/pisada em item
+- `ZoneEvent` - Spawn de criatura em zona
+- `CreatureEvent` - Morte/ação de criatura
+- `GlobalEvent` - Eventos globais
+
+**Boas Práticas**:
+- ✅ Sempre validar player/monster antes de usar
+- ✅ Usar guard clauses no início da função
+- ✅ Aplicar configManager para toggle on/off
+- ✅ Adicionar logging para debug
+- ✅ Verificar se tile/position existe antes de usar
+- ✅ Retornar `true` em CreatureEvent para permitir morte
+- ✅ Documentar variáveis magic (IDs, storage keys, delays)
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_Systems.mdx](#)
+2. **Analise o Hazard Primal**: Examine implementação completa
+3. **Crie uma Zona Simples**: Comece com zona básica sem loot
+4. **Adicione Eventos**: Implemente spawn/death handlers
+5. **Teste Completamente**: Valide com múltiplos players
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Sistemas Documentados:** 1  
+**Padrões Documentados:** 4
+
+Para dúvidas, consulte o arquivo de catálogo ou analise o Hazard Primal como referência.
+</Aside>

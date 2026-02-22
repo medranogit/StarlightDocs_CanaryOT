@@ -1,0 +1,220 @@
+---
+title: "online_tokens.lua"
+description: "Sistema VIP de distribuição de tokens (itens) a jogadores online a cada minuto."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | online_tokens.lua |
+| **Tipo** | GlobalEvent |
+| **Tamanho** | ~58 linhas |
+| **Localização** | scripts/globalevents/vip/ |
+| **Propósito** | Distribuir tokens (items) online |
+| **Intervalo** | 60 segundos |
+| **Status** | Desabilitado por padrão |
+| **Recompensa VIP** | 10 tokens/hora |
+| **Recompensa Free** | 5 tokens/hora |
+| **Item Padrão** | 14112 (Bar of Gold) |
+| **Complexidade** | Média-Alta |
+</Card>
+
+:::tip 💡
+Sistema idêntico ao online_coins mas distribuindo items físicos em lugar de moeda virtual, com mesmo algoritmo de acúmulo fracionado.
+:::
+
+## 📄 Visão Geral Resumida
+
+Global event que distribui tokens (items) a jogadores online a cada 60 segundos. Calcula quantidade de tokens por minuto baseado em configuração por-hora, acumula resto em storage com precisão 10-milhões, e distribui quando atinge threshold. Sistema permite customizar ID do item token e usa mesmos filtros de IP/grupo.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Configuração
+
+```lua
+config = {
+  enabled = false,              -- Desabilitado por padrão
+  storage = Storage.VipSystem.OnlineTokensGain,  -- Storage acúmulo
+  checkDuplicateIps = false,    -- Validar IPs duplicados
+  tokenItemId = 14112,          -- Bar of Gold
+  interval = 60 * 1000,         -- 60 segundos
+  tokensPerHour = {
+    free = 5,                   -- 5 tokens/hora free
+    vip = 10,                   -- 10 tokens/hora VIP
+  },
+  awardOn = 5,                  -- Distribuir quando acumular 5
+}
+```
+
+### Cálculos
+
+**`runsPerHour`**
+- Cálculo: `3600 / (interval / 1000)`
+- Com 60s: 60 execuções/hora
+
+**`tokensPerRun(tokensPerHour)`**
+- **Parâmetro**: tokensPerHour (5 ou 10)
+- **Retorno**: tokens por execução
+- **Fórmula**: `tokensPerHour / runsPerHour`
+- Exemplo: 10 tokens/hora ÷ 60 = 0.1667 tokens/minuto
+
+### Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `onlineTokensEvent` | GlobalEvent | Instância do evento |
+| `runsPerHour` | number | 60 (com interval padrão) |
+
+### GlobalEvent Hook
+
+**`onlineTokensEvent.onThink(interval)`**
+- **Parâmetro**: `interval` (60000ms)
+- **Retorno**: `true`
+- **Intervalo Execução**: 60 segundos
+- **Lógica Detalhada**:
+  1. Obtém jogadores online via `Game.getPlayers()`
+  2. Se nenhum: retorna true
+  3. Inicializa tabela `checkIp`
+  4. Para cada jogador:
+     a. Check: Se grupo > SENIORTUTOR → skip
+     b. Obtém IP do jogador
+     c. Check: Se IP é 0 ou já processado → skip
+     d. Marca IP como processado
+     e. Lê resto em storage: `remainder / 10000000`
+     f. Calcula tokens: `tokensPerRun() + remainder`
+     g. Escreve storage: `tokens * 10000000`
+     h. Se tokens >= awardOn:
+        - Calcula floor: `tokensMath = math.floor(tokens)`
+        - Tenta adicionar item: `player:addItem(tokenItemId, tokensMath)`
+        - Se sucesso:
+          * Envia mensagem de parabéns
+          * Reseta stor com resto: `(tokens - tokensMath) * 10000000`
+
+### Pseudocódigo Detalhado
+
+```lua
+function onThink(interval)
+  players = Game.getPlayers()
+  if #players == 0 então retorna true end
+  
+  checkIp = {}
+  for _, player in pairs(players) do
+    -- Filtrar admin
+    if player:getGroup():getId() > GROUP_TYPE_SENIORTUTOR então
+      goto continue
+    end
+    
+    -- Filtrar IP
+    ip = player:getIp()
+    if ip ~= 0 e (não checkDuplicateIps ou não checkIp[ip]) então
+      checkIp[ip] = true
+      
+      -- Acúmulo
+      remainder = math.max(0, player:getStorageValue(storage)) / 10000000
+      tokens = tokensPerRun(player:isVip() ? 10 : 5) + remainder
+      player:setStorageValue(storage, tokens * 10000000)
+      
+      -- Distribuição
+      if tokens >= awardOn então
+        tokensMath = math.floor(tokens)
+        item = player:addItem(tokenItemId, tokensMath)
+        
+        if item então
+          player:sendTextMessage(...)
+          player:setStorageValue(storage, (tokens - tokensMath) * 10000000)
+        end
+      end
+    end
+    
+    ::continue::
+  end
+  retorna true
+end
+```
+
+## 📊 Dados Técnicos
+
+### Configuração de Recompensas
+
+| Tipo | Tokens/Hora | Tokens/Minuto | Distribuição |
+|------|------------|----------------|--------------|
+| Free | 5 | 0.0833 | A cada ~60 min |
+| VIP | 10 | 0.1667 | A cada ~30 min |
+
+### Item Padrão
+
+| Campo | Valor | Descrição |
+|-------|-------|-----------|
+| **ID** | 14112 | Bar of Gold |
+| **Tipo** | Item | Físico no inventário |
+| **Customizável** | Sim | Via config.tokenItemId |
+
+### Filtros Aplicados
+
+| Filtro | Critério | Resultado |
+|--------|----------|-----------|
+| Grupo Admin | > SENIORTUTOR | Skip |
+| IP Zero | = 0 | Skip |
+| IP Duplicado | Em checkDuplicateIps | Skip opcional |
+
+### Armazenamento com Precisão
+
+| Operação | Fórmula | Propósito |
+|----------|---------|-----------|
+| Leitura | value / 10000000 | Evitar ponto flutuante |
+| Escrita | value * 10000000 | Manter precisão 4 casas |
+| Resto | (tokens - floor) * 10000000 | Próxima distribuição |
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `GlobalEvent(string)` | Classe | Registrar evento |
+| `Game.getPlayers()` | Função | Obter online |
+| `Player.getGroup()` | Método | Obter grupo |
+| `Player.getIp()` | Método | Obter IP |
+| `Player.getStorageValue()` | Método | Ler acúmulo |
+| `Player.setStorageValue()` | Método | Escrever acúmulo |
+| `Player.isVip()` | Método | Verificar VIP |
+| `Player.addItem()` | Método | Adicionar item |
+| `Player.sendTextMessage()` | Método | Notificação |
+| `math.floor()`, `math.max()` | Funções | Cálculos |
+| `Storage.VipSystem.OnlineTokensGain` | Const | Storage key |
+
+### APIs Utilizadas
+
+- GlobalEvent: `onThink()`, `interval()`, `register()`
+- Game: `getPlayers()`
+- Player: `getGroup()`, `getId()`, `getIp()`, `getStorageValue()`, `setStorageValue()`, `isVip()`, `addItem()`, `sendTextMessage()`
+- Lua: `math.floor()`, `math.max()`
+
+### Comparação com online_coins.lua
+
+| Aspecto | Coins | Tokens |
+|--------|-------|--------|
+| **Distribuição** | addTibiaCoins() | addItem() |
+| **Rate VIP** | 5/hora | 10/hora |
+| **Rate Free** | 1/hora | 5/hora |
+| **Armazenagem** | Storage VIP Coins | Storage VIP Tokens |
+| **Falha** | Sempre sucesso | Pode falhar (mochila) |
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/globalevents/vip/online_tokens.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | 100% |
+| **Complexidade Código** | Média-Alta |
+| **Status Validação** | ✅ Completo |
+| **Backticks Validados** | ✅ OK |

@@ -1,0 +1,333 @@
+---
+title: "door_level.lua - Tabela de Portas por Level"
+description: "Documentação técnica da tabela de configuração de portas que requerem level mínimo no servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🚪 door_level.lua
+
+Arquivo de tabela responsável pela configuração de **portas com sistema de level** - portas que só abrem para players com level mínimo específico.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/door_level.lua` |
+| **Tipo** | Tabela de Configuração - Portas |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Nenhuma (dados estáticos) |
+| **Total de Linhas** | 113 linhas |
+| **Função Principal** | Configurar portas com requisito de level |
+| **Carregado por** | `tables/load.lua` |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/door_level.lua`
+
+Define tabela global `LevelDoorAction` com portas que requerem level mínimo para abrir. Action IDs seguem padrão: 1[level] (ex: 1020 = level 20).
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+Configuração de **portas com requisito de level**:
+
+**Sistema de Numeração Única**:
+```
+Padrão: 1[level]
+1020  = Level 20
+1050  = Level 50
+1100  = Level 100
+1250  = Level 250
+```
+
+**Estrutura**:
+```lua
+[1020] = {
+    itemId = false,
+    itemPos = { {x, y, z}, ... }
+}
+```
+
+**Verificação**: Player level >= [level extraído do action ID]
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Portas Level" icon="layers">
+
+```
+┌─────────────────────────────────┐
+│  SISTEMA DE PORTAS POR LEVEL    │
+└────────────┬────────────────────┘
+             │
+         ┌───┴────┐
+         │        │
+         ▼        ▼
+    Action ID   Player Level
+    (1[level])  (Verificação)
+         │        │
+         ├─1020   ├─ player:getLevel() >= 20?
+         ├─1050   ├─ player:getLevel() >= 50?
+         ├─1100   └─ player:getLevel() >= 100?
+         └─Script verifica
+
+Numeração: 1[level] → automático
+1010 = 10, 1020 = 20, ..., 1250 = 250
+```
+
+**Parsing do Level**:
+```lua
+-- Script extrai level do action ID
+local actionId = 1050  -- Level 50
+local requiredLevel = tonumber(tostring(actionId):sub(2))
+-- requiredLevel = 50
+```
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### LevelDoorAction
+
+**Propósito**: Definir portas com requisito de level
+
+**Estrutura**:
+```lua
+LevelDoorAction = {
+    [levelActionId] = {
+        itemId = false,  -- Sempre false
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = xx},
+            -- múltiplas posições possíveis
+        }
+    }
+}
+```
+
+**Campos**:
+- `levelActionId`: Action ID em formato 1[level]
+- `itemId`: Sempre `false` (porta)
+- `itemPos`: Array de posições
+
+**Format Action ID**:
+- Sempre começa com `1`
+- Seguido por 2-3 dígitos do level
+- Ex: 1010, 1025, 1030, 1040, 1100, 1250
+
+</Card>
+
+---
+
+## 📝 Exemplos do Código
+
+<Tabs>
+<TabItem label="Porta Level Simples">
+
+```lua
+-- Doors for level 20
+[1020] = {
+    itemId = false,
+    itemPos = {
+        {x = 32673, y = 32100, z = 8}
+    }
+}
+```
+
+- **Level Requirement**: 20
+- **Action ID**: 1020 (1 + 20)
+- **Uma porta** nesta localização
+- **Qualquer player** level ≥ 20 pode abrir
+
+</TabItem>
+
+<TabItem label="Porta com Múltiplas Instâncias">
+
+```lua
+-- Doors for level 30
+[1030] = {
+    itemId = false,
+    itemPos = {
+        {x = 33302, y = 31691, z = 11},
+        {x = 33302, y = 31692, z = 11},
+        {x = 32567, y = 31969, z = 3},
+        {x = 32479, y = 32174, z = 15}
+    }
+}
+```
+
+- **4 portas** requerem level 30
+- **Distribuídas em 4 posições**
+- **Mesma lógica**: level >= 30 abre
+
+</TabItem>
+
+<TabItem label="Progressão de Levels">
+
+```lua
+-- Level 20
+[1020] = { itemId = false, itemPos = {...} },
+
+-- Level 25
+[1025] = { itemId = false, itemPos = {...} },
+
+-- Level 30
+[1030] = { itemId = false, itemPos = {...} },
+
+-- Level 40
+[1040] = { itemId = false, itemPos = {...} }
+
+-- Level 100
+[1100] = { itemId = false, itemPos = {...} }
+```
+
+- **Escalação de dificuldade**
+- **Players progridem conforme levam up**
+- **Diferentes áreas desbloqueadas**
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Padrões de Uso
+
+<Card title="Boas Práticas" icon="star">
+
+### Sistema de Numeração
+
+```lua
+-- ✅ CORRETO: 1[level]
+[1010] = {...}  -- Level 10
+[1050] = {...}  -- Level 50
+[1100] = {...}  -- Level 100
+[1250] = {...}  -- Level 250
+
+-- ❌ ERRADO: Formato incorreto
+[2050] = {...}  -- Não funciona (não começa com 1)
+[1500] = {...}  -- Ambíguo (15 ou 150?)
+```
+
+### Ao Adicionar Nova Porta Level
+
+1. **Decidir level**:
+   - Level 10-250 típico
+   - Match com suas áreas
+
+2. **Format action ID**:
+   - 1[level]
+   - 1010 = 10, 1100 = 100, etc
+
+3. **Adicionar entradas**:
+   ```lua
+   [1045] = {
+       itemId = false,
+       itemPos = { {x, y, z} }
+   }
+   ```
+
+4. **Testar**:
+   - Player abaixo level = blocked
+   - Player acima level = open
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Como Funciona" icon="link">
+
+**Em `door_level.lua`**:
+```lua
+LevelDoorAction = {
+    [1020] = {itemId = false, itemPos = {...}}
+}
+```
+
+**Em movimento script**:
+```lua
+function mvEvent.onStepIn(creature, item, position, ...)
+    local player = creature:getPlayer()
+    if not player then return true end
+    
+    -- Pega action ID
+    local actionId = item:getAttribute(ITEM_ATTRIBUTE_ACTIONID)
+    
+    -- Extrai level necessário
+    -- actionId = 1020 → requiredLevel = 20
+    local requiredLevel = tonumber(tostring(actionId):sub(2))
+    
+    -- Verifica level
+    if player:getLevel() >= requiredLevel then
+        door:open(player)
+    else
+        player:sendCancelMessage("You need level " .. requiredLevel)
+    end
+end
+```
+
+**Lógica**:
+1. Player pisa na porta
+2. Script lê action ID (ex: 1020)
+3. Extrai level (20)
+4. Verifica `getLevel()`
+5. Se >= 20, abre; senão, bloqueia
+
+</Card>
+
+---
+
+## 🗺️ Distribuição de Áreas
+
+<Card title="Áreas Tipicamente Protegidas" icon="map">
+
+| Level | Áreas | Exemplo |
+|-------|----|----|
+| 10-20 | Starter dungeons | Fibula, Dawnport |
+| 30-40 | Intermediate | Orc Fortress, Venore |
+| 50-75 | Advanced | Yalahar, Liberty Bay |
+| 100+ | Elite | Dragon Lair, Spike swamps |
+| 200+ | End-game | Deep dungeon, boss areas |
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: 113  
+**Tabelas Globais**: 1 (LevelDoorAction)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ LevelDoorAction (portas por level)
+
+**Sistema Único**:
+- Action ID format: 1[level]
+- Parsing automático
+- Simple e eficiente
+
+Este arquivo define portas que requerem level mínimo, usado para controlar progressão de players.
+</Aside>

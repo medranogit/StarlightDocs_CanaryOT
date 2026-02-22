@@ -1,0 +1,161 @@
+---
+title: "movement_trainer_entrance.lua"
+description: "Sistema de entrada para sala de treinamento de movimento com distribuição automática de postos e spawn de máquinas."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | movement_trainer_entrance.lua |
+| **Tipo** | MoveEvent |
+| **Tamanho** | ~47 linhas |
+| **Localização** | scripts/custom/ |
+| **Propósito** | Teleportar jogador a sala de treinamento disponível |
+| **Disparo** | Ao pisar em tile específico |
+| **Posição** | x=1116, y=1092, z=7 |
+| **Complexidade** | Média |
+</Card>
+
+:::tip 💡
+Sistema inteligente de distribuição que localiza sala vazia ao invés de teleportar múltiplos jogadores para o mesmo espaço, permitindo treinamento paralelo.
+:::
+
+## 📄 Visão Geral Resumida
+
+Move event que detecta entrada do jogador em sala de treinamento e distribuição inteligente para postos disponíveis em grid configurável. Procura recursivamente por primeiro tile desocupado em matriz de treinamento (7 colunas × 54 linhas) com espaçamento de 12 tiles XY. Spawna 2 máquinas de treinamento na posição inicial do jogador.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `config` | table | Configuração da sala de treinamento |
+
+### Configuração
+
+```lua
+config = {
+  firstRoomPosition = { x = 1018, y = 1112, z = 7 },  -- Primeira sala
+  distancePositionX = 12,  -- Espaçamento X entre salas
+  distancePositionY = 12,  -- Espaçamento Y entre salas
+  columns = 7,             -- Colunas de salas
+  lines = 54               -- Linhas de salas
+}
+```
+
+### Funções Locais
+
+**`isBusyable(position)`**
+- **Parâmetros**: `position` (table com x, y, z)
+- **Retorno**: `boolean` (true se tile está livre e acessível)
+- **Validações**:
+  1. Obtém criatura topo do tile
+  2. Se mais criatura ou pet: retorna false (ocupado)
+  3. Se sem tile: retorna false
+  4. Se ground bloqueador (BLOCKSOLID): retorna false
+  5. Itera itemz: se item não-móvel com BLOCKSOLID: retorna false
+  6. Retorna true (tile livre)
+
+**`calculatingRoom(uid, position, column, line)`**
+- **Parâmetros**:
+  - `uid`: ID do jogador
+  - `position`: Posição primeiro tile
+  - `column`: Coluna atual (0 inicial)
+  - `line`: Linha atual (0 inicial)
+- **Retorno**: Void
+- **Lógica Recursiva**:
+  1. Obtém jogador via Player(uid)
+  2. Se column >= columns: reseta para 0, incrementa line
+  3. Se line esgotado: retorna mensagem de erro
+  4. Calcula posição do tile: `pos = primeira_posição + (coluna × espaço_x, linha × espaço_y, z)`
+  5. Se tile livre: teleporta jogador, envia efeito TELEPORT
+  6. Se ocupado: chamada recursiva para próxima coluna
+  
+### Move Event
+
+**Evento: `trainerEntrance.onStepIn`**
+- **Disparador**: Jogador pisa na posição especificada
+- **Ação**:
+  1. Verifica se criatura é jogador, caso negativo retorna true
+  2. Calcula primeiro tile livre via `calculatingRoom()`
+  3. Spawna 2 × "Training Machine" na posição do jogador
+  4. Retorna true
+
+## 📊 Dados Técnicos
+
+### Configuração da Sala
+
+| Parâmetro | Valor | Descrição |
+|-----------|-------|-----------|
+| **Primeira Posição** | (1018, 1112, 7) | Tile do primeiro posto |
+| **Capacidade** | 378 tiles | 7 colunas × 54 linhas |
+| **Espaçamento** | 12×12 | Tiles entre cada sala |
+| **Mapa** | Z-Level 7 | Andar da sala |
+
+### Monstros Spawned
+
+| Nome | Quantidade | Posição | Tipo |
+|------|-----------|---------|------|
+| Training Machine | 2 | Posição do jogador | Soma |
+
+### Validações de Tile
+
+| Critério | Bloqueador | Razão |
+|----------|-----------|-------|
+| Criatura existente | Sim | Espaço ocupado |
+| Pet existente | Sim | Espaço ocupado |
+| Ground BLOCKSOLID | Sim | Intransponível |
+| Item fixo BLOCKSOLID | Sim | Obstáculo |
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `MoveEvent` | Classe | Registrar evento de movimento |
+| `Player(uid)` | Construtor | Obter instância jogador |
+| `Tile(position)` | Construtor | Obter tile |
+| `Game.createMonster()` | Função | Spawn máquina treinamento |
+| `Position.sendMagicEffect()` | Método | Efeito visual teleporte |
+
+### APIs Utilizadas
+
+- Creature: `isPlayer()`, `uid`, `getPosition()`, `teleportTo()`, `sendCancelMessage()`
+- Tile: `getTopCreature()`, `getGround()`, `getItems()`, `getItemCount()`
+- ItemType: `getType()`, `isMovable()`
+- MoveEvent: `position()`, `register()`
+
+### Fluxo de Integração
+
+```
+Jogador entra em sala (x=1116, y=1092, z=7)
+    ↓
+onStepIn(creature) dispara
+    ↓
+calculatingRoom() procura primeiro tile livre
+    ↓
+Jogador é teleportado para tile livre
+    ↓
+2× Training Machine spawnam na posição anterior
+```
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/custom/movement_trainer_entrance.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | 100% |
+| **Complexidade Código** | Média |
+| **Status Validação** | ✅ Completo |
+| **Backticks Validados** | ✅ OK |

@@ -1,0 +1,1146 @@
+---
+title: Arquitetura - Actions
+description: Documentação técnica da arquitetura e estrutura dos scripts de Actions do servidor Canary
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# ⚙️ Arquitetura - Actions
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts de **Actions** do servidor OTServ Canary. Entenda como implementar interações com itens, alavancas, botões, teleportes e muito mais.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/actions/` contém todos os scripts **Lua** responsáveis por interações com itens específicos usando **Action IDs (AIDs)**, **Unique IDs (UIDs)** e **Item IDs**. Cada action define o comportamento quando um jogador usa um item, ativa uma alavanca, toca um botão, sobe uma escada, entra em um teleporte, ou interage com objetos especiais no mapa. Actions são o componente interativo do servidor - transformam itens estáticos em sistemas dinâmicos e responsivos.
+</Card>
+
+<Card title="Casos de Uso" icon="information">
+Você utilizará essa pasta quando precisar:
+
+- **Criar interações com itens**: Botões, alavancas, cofres, portas mágicas, teleportes
+- **Implementar gating (restrições)**: Level gates, vocational checks, quest requirements, premium-only
+- **Controlar arenas/salas**: Teleportar múltiplos jogadores simultaneamente com validação
+- **Desenvolver sistemas de crafting**: Receitas, transformações de itens, culinária
+- **Sincronizar estado**: Múltiplos tiles/objetos que precisam funcionar juntos (alavancas + portas)
+- **Aplicar efeitos especiais**: Transformações temporárias, spawns, mudanças ambientais
+- **Lógica condicional avançada**: Storage-based progression, múltiplos destinos, fallbacks
+- **Debug de interações**: Investigar por que um item não responde ou se comporta incorretamente
+- **Modificar comportamento existente**: Ajustar requisitos, rewards, efeitos visuais, mensagens
+</Card>
+
+<Card title="Estrutura da Pasta" icon="information">
+A pasta `scripts/actions/` é organizada por **região/sistema**:
+
+```
+actions/
+├── arena_pvp/              (Sistemas de arenas PvP)
+├── adventurers_guild/      (Guild de aventureiros)
+├── dawnport/               (Região inicial)
+├── falcons/                (Relacionado a falcões)
+├── farmine/                (Região de Farmine)
+├── kazordoon/              (Elevadores, vagões)
+├── mounts/                 (Sistema de montarias)
+├── object/                 (Objetos especiais)
+├── oramond/                (Teleportes de Oramond)
+├── other/                  (Funcionalidades diversas)
+├── rookgaard/              (Quests da região inicial)
+├── roshamuul/              (Controle de acesso)
+├── shrines/                (Santuários)
+├── soulpit/                (Arena de guild wars)
+├── system/                 (Sistemas centrais)
+├── tools/                  (Ferramentas de ação)
+├── valuables/              (Itens valiosos)
+└── worldchanges/           (Mudanças globais)
+```
+
+**Total**: 93 scripts em 18 categorias, cobrindo sistemas de teleportação, arena, crafting, domesticação, transformação, acesso condicional, culinária, ferramentas e quests.
+
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Tipos de Actions](#tipos-de-actions)
+3. [Sistema de Registro](#sistema-de-registro)
+4. [Padrões de Implementação](#padrões-de-implementação)
+5. [Exemplos Práticos](#exemplos-práticos)
+6. [Criando um Action](#criando-um-action)
+7. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="O que é um Action Script?" icon="document">
+
+Um **Action** é um script que:
+- **Responde a interações** do player com um item específico (uso, ativação)
+- **É associado** a um Action ID (AID), Unique ID (UID), ou Item ID
+- **Executa código** quando o player usa o item ou interage com ele
+- **Pode acessar** player, item, posição, e fazer qualquer modificação no servidor
+
+### Tipos de Gatilhos
+
+#### 1. Action ID (AID)
+```lua
+-- Qualquer item com este AID ativa a action
+local action = Action()
+action:aid(5001)  -- Todos os items com AID 5001
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Implementação
+    return true
+end
+
+action:register()
+```
+
+#### 2. Unique ID (UID)
+```lua
+-- Apenas ESTE item específico ativa a action
+local action = Action()
+action:uid(3150)  -- Apenas o item com UID 3150
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Implementação
+    return true
+end
+
+action:register()
+```
+
+#### 3. Item ID
+```lua
+-- Qualquer instância deste item ativa a action
+local action = Action()
+action:itemid(2195)  -- Todos os items com ID 2195
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Implementação
+    return true
+end
+
+action:register()
+```
+
+### Estrutura Básica
+
+```lua
+-- 1. Criar instância Action
+local myAction = Action()
+
+-- 2. Vincular a um identificador (AID, UID ou ItemID)
+myAction:aid(5001)
+
+-- 3. Implementar função de callback
+function myAction.onUse(player, item, fromPosition, target, toPosition)
+    -- Sua implementação aqui
+    return true
+end
+
+-- 4. Registrar
+myAction:register()
+```
+
+### Parâmetros da Função onUse
+
+```lua
+function action.onUse(player, item, fromPosition, target, toPosition)
+    --
+    -- player: Objeto Player que usou o item
+    --   - player:getLevel()
+    --   - player:say("texto")
+    --   - player:addExperience(1000)
+    --   - player:addItem(2195, 1)
+    --   - player:getStorageValue(key)
+    --   - etc...
+    --
+    -- item: Objeto Item que foi usado
+    --   - item:getId()  (Item ID)
+    --   - item:getActionId()  (AID)
+    --   - item:getUniqueId()  (UID)
+    --   - item:getPosition()
+    --   - item:remove()
+    --   - item:transform(2195)
+    --
+    -- fromPosition: Position (posição do jogador que usou)
+    --   - fromPosition:sendMagicEffect(CONST_ME_POFF)
+    --
+    -- target: Object alvo (pode ser um item ou criatura alvo)
+    --   - Usado em ações que requerem um target
+    --
+    -- toPosition: Position alvo (se houver um target)
+
+    return true  -- Sucesso
+    -- return false  -- Falha
+end
+```
+
+</Card>
+
+---
+
+## 🎛️ Tipos de Actions
+
+<Card title="Padrões de Ação Comuns" icon="layers">
+
+### Padrão 1: Teleporte Simples
+
+```lua
+local action = Action()
+action:aid(5001)
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Verifica nível
+    if player:getLevel() < 100 then
+        player:sendCancelMessage("Você precisa de level 100+")
+        return false
+    end
+
+    -- Teleporta
+    player:teleportTo(Position(32256, 32206, 7))
+    Position(32256, 32206, 7):sendMagicEffect(CONST_ME_TELEPORT)
+
+    return true
+end
+
+action:register()
+```
+
+### Padrão 2: Teleporte Bidirecional
+
+```lua
+local action = Action()
+action:aid(5002)
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    local pos1 = Position(32100, 32100, 7)
+    local pos2 = Position(32200, 32200, 7)
+
+    -- Detecta posição atual e teleporta para a outra
+    if player:getPosition():getDistance(pos1) <= 1 then
+        player:teleportTo(pos2)
+        pos2:sendMagicEffect(CONST_ME_TELEPORT)
+    else
+        player:teleportTo(pos1)
+        pos1:sendMagicEffect(CONST_ME_TELEPORT)
+    end
+
+    return true
+end
+
+action:register()
+```
+
+### Padrão 3: Crafting/Transformação
+
+```lua
+local action = Action()
+action:aid(5003)
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Verifica se tem os itens necessários
+    if player:getItemCount(1234) < 2 or player:getItemCount(5678) < 1 then
+        player:sendCancelMessage("Items insuficientes!")
+        return false
+    end
+
+    -- Remove items usados
+    player:removeItem(1234, 2)
+    player:removeItem(5678, 1)
+
+    -- Cria o novo item
+    local result = player:addItem(9999, 1)
+    if result then
+        player:say("Crafting concluído!")
+        fromPosition:sendMagicEffect(CONST_ME_POFF)
+        return true
+    end
+
+    return false
+end
+
+action:register()
+```
+
+### Padrão 4: Storage-Based Logic
+
+```lua
+local action = Action()
+action:aid(5004)
+
+-- Define storage key para fácil referência
+local QUEST_STORAGE = 50000
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    local questProgress = player:getStorageValue(QUEST_STORAGE)
+
+    if questProgress < 0 then
+        -- Não iniciou quest
+        player:say("Bem-vindo à quest!")
+        player:setStorageValue(QUEST_STORAGE, 1)
+        return true
+    elseif questProgress == 1 then
+        -- Completou primeira etapa
+        player:addItem(2195, 1)
+        player:say("Parabéns! Aqui está seu reward!")
+        player:setStorageValue(QUEST_STORAGE, 2)
+        return true
+    else
+        -- Já completou
+        player:sendCancelMessage("Você já completou esta quest!")
+        return false
+    end
+end
+
+action:register()
+```
+
+### Padrão 5: Multi-Target Teleport (Arena)
+
+```lua
+local action = Action()
+action:aid(5005)
+
+-- Posições para cada player (máximo 10)
+local arenaPositions = {
+    Position(32256, 32178, 9),
+    Position(32256, 32188, 9),
+    Position(32256, 32198, 9),
+    Position(32256, 32208, 9),
+    Position(32256, 32218, 9),
+    -- ... até 10 posições
+}
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Coleta players na área de entrada
+    local playersInArena = {}
+    local centerPosition = Position(32256, 32188, 8)
+
+    -- Busca players em range
+    local spectators = Spectators(centerPosition, false, false, true, 10, 10, 10, 10)
+    if spectators then
+        for _, creature in pairs(spectators) do
+            if creature:isPlayer() then
+                table.insert(playersInArena, creature)
+                -- Evita mais de 10 players
+                if #playersInArena >= 10 then break end
+            end
+        end
+    end
+
+    -- Verifica quantidade
+    if #playersInArena < 2 then
+        player:sendCancelMessage("Você precisa de pelo menos 2 players!")
+        return false
+    end
+
+    -- Teleporta todos para as posições
+    for i, p in ipairs(playersInArena) do
+        if arenaPositions[i] then
+            p:teleportTo(arenaPositions[i])
+            arenaPositions[i]:sendMagicEffect(CONST_ME_TELEPORT)
+        end
+    end
+
+    return true
+end
+
+action:register()
+```
+
+### Padrão 6: Transformação de Item
+
+```lua
+local action = Action()
+action:itemid(2195)  -- Todos os items com ID 2195
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Transforma o item de 2195 para 2196
+    item:transform(2196)
+
+    -- Adiciona timeout para reverter
+    addEvent(function()
+        if item then
+            item:transform(2195)
+            player:say("O item reverteu!")
+        end
+    end, 60000)  -- 60 segundos
+
+    return true
+end
+
+action:register()
+```
+
+</Card>
+
+---
+
+## 🔌 Sistema de Registro
+
+<Card title="AIDs, UIDs e Item IDs" icon="link">
+
+### Action ID (AID) - Mais Comum
+
+```lua
+-- Qualquer item COM este AID ativa a action
+-- Usado para ações que devem funcionar em múltiplos items com mesmo AID
+
+local action = Action()
+action:aid(5001)  -- Todos os items com AID 5001
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- item:getActionId() == 5001
+    return true
+end
+
+action:register()
+```
+
+**Quando Usar**:
+- ✅ Múltiplos items do mesmo tipo (alavancas semelhantes, portas iguais, teleportes padrão)
+- ✅ Itens gerados no mapa que compartilham funcionalidade
+- ✅ Sistemas reutilizáveis (teleportes genéricos, crafting padrão)
+
+### Unique ID (UID) - Específico
+
+```lua
+-- Apenas ESTE item específico ativa a action
+-- Usado para ações que devem funcionar em um item específico único
+
+local action = Action()
+action:uid(3150)  -- Apenas o item com UID 3150 (único)
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- item:getUniqueId() == 3150
+    return true
+end
+
+action:register()
+```
+
+**Quando Usar**:
+- ✅ Items únicos/especiais (baú especial, porta mágica, artefato)
+- ✅ Ações que devem funcionar apenas para um item específico
+- ✅ Controle fino e garantia de execução em um único item
+
+### Item ID - Baseado em Tipo
+
+```lua
+-- Qualquer item COM este ID ativa a action
+-- Usado para ações que devem funcionar em todos os items deste tipo
+
+local action = Action()
+action:itemid(2195)  -- Todos os items com ID 2195
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- item:getId() == 2195
+    return true
+end
+
+action:register()
+```
+
+**Quando Usar**:
+- ✅ Ações que devem funcionar em qualquer instância do item (poções, ferramentas comuns)
+- ✅ Sistemas globais (pescar com qualquer vara, atacar com qualquer espada)
+- ✅ Quando AID não é possível ou não existe configuração
+
+### Comparação
+
+| Aspecto | AID | UID | Item ID |
+|---------|-----|-----|---------|
+| **Escopo** | Múltiplos items com mesmo AID | Um item específico | Todos os items do tipo |
+| **Configuração** | XML do mapa | Lua/Database | Database de items |
+| **Uso Comum** | Teleportes, alavancas, portas | Baús únicos, tesouros | Poções, ferramentas |
+| **Flexibilidade** | Alta | Máxima | Média |
+| **Desempenho** | Bom | Excelente | Bom |
+
+### Configurando no XML
+
+```xml
+<!-- Configurar AID em item no mapa -->
+<item id="1946" actionid="5001" x="100" y="200" z="7" />
+
+<!-- Configurar UID em item -->
+<item id="2595" uniqueid="3150" x="100" y="200" z="7" />
+
+<!-- Item ID é definido no banco de dados de items, não precisa configuração -->
+```
+
+</Card>
+
+---
+
+## 🏗️ Padrões de Implementação
+
+<Card title="Padrões Avançados de Actions" icon="wrench">
+
+### Padrão 1: Guard Clauses para Validação
+
+```lua
+local action = Action()
+action:aid(5100)
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Guard clause 1: Level check
+    if player:getLevel() < 50 then
+        player:sendCancelMessage("Level 50+ requerido!")
+        return false
+    end
+
+    -- Guard clause 2: Storage check
+    if player:getStorageValue(QUEST_KEY) < 1 then
+        player:sendCancelMessage("Você não completou a quest!")
+        return false
+    end
+
+    -- Guard clause 3: Item check
+    if player:getItemCount(2195) < 1 then
+        player:sendCancelMessage("Você precisa de um báculo!")
+        return false
+    end
+
+    -- Guard clause 4: Position check (não está em PZ)
+    if fromPosition:getTile():hasFlag(TILESTATE_PROTECTIONZONE) then
+        player:sendCancelMessage("Você está em zona protegida!")
+        return false
+    end
+
+    -- Implementação principal
+    player:say("Ação executada!")
+    return true
+end
+
+action:register()
+```
+
+### Padrão 2: Fallback com Múltiplas Opções
+
+```lua
+local action = Action()
+action:aid(5101)
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    local position = player:getPosition()
+
+    -- Múltiplos caminhos baseado em condição
+    if player:getStorageValue(QUEST_KEY) == 1 then
+        -- Rota 1: Quest etapa 1
+        player:teleportTo(Position(32100, 32100, 7))
+        player:say("Vá para o primeiro local!")
+    elseif player:getStorageValue(QUEST_KEY) == 2 then
+        -- Rota 2: Quest etapa 2
+        player:teleportTo(Position(32200, 32200, 7))
+        player:say("Vá para o segundo local!")
+    elseif player:getStorageValue(QUEST_KEY) == 3 then
+        -- Rota 3: Quest etapa 3 - completo
+        player:teleportTo(Position(32300, 32300, 7))
+        player:addItem(2195, 1)
+        player:say("Você completou a quest!")
+        player:setStorageValue(QUEST_KEY, 4)
+    else
+        -- Fallback: Não iniciou
+        player:sendCancelMessage("Use /startquest para iniciar!")
+        return false
+    end
+
+    return true
+end
+
+action:register()
+```
+
+### Padrão 3: Efeitos e Mensagens Customizadas
+
+```lua
+local action = Action()
+action:aid(5102)
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    local effects = {
+        CONST_ME_POFF,
+        CONST_ME_TELEPORT,
+        CONST_ME_EXPLOSIONAREA,
+    }
+
+    local messages = {
+        "Você ativou o dispositivo!",
+        "Um brilho mágico se manifesta!",
+        "A energia é liberada!",
+    }
+
+    -- Random effect and message
+    local randomEffect = effects[math.random(1, #effects)]
+    local randomMessage = messages[math.random(1, #messages)]
+
+    fromPosition:sendMagicEffect(randomEffect)
+    player:say(randomMessage)
+
+    return true
+end
+
+action:register()
+```
+
+### Padrão 4: Timeout e Cooldown
+
+```lua
+local action = Action()
+action:aid(5103)
+
+-- Storage para cooldown
+local COOLDOWN_STORAGE = 51000
+local COOLDOWN_DURATION = 30  -- 30 segundos
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    local lastUse = player:getStorageValue(COOLDOWN_STORAGE)
+    local currentTime = os.time()
+
+    -- Verifica cooldown
+    if lastUse > 0 and currentTime < lastUse then
+        local timeRemaining = lastUse - currentTime
+        player:sendCancelMessage("Aguarde " .. timeRemaining .. " segundos!")
+        return false
+    end
+
+    -- Executa ação
+    player:say("Ação executada!")
+
+    -- Define novo tempo de cooldown
+    player:setStorageValue(COOLDOWN_STORAGE, os.time() + COOLDOWN_DURATION)
+
+    return true
+end
+
+action:register()
+```
+
+### Padrão 5: Sistema de Consumo com Reward
+
+```lua
+local action = Action()
+action:aid(5104)
+
+local COSTS = {
+    gold = 100,
+    level = 20,
+}
+
+local REWARDS = {
+    { id = 2195, count = 1 },
+    { id = 2196, count = 2 },
+}
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Verifica gold
+    if player:getMoney() < COSTS.gold then
+        player:sendCancelMessage("Você precisa de " .. COSTS.gold .. " gold!")
+        return false
+    end
+
+    -- Verifica level
+    if player:getLevel() < COSTS.level then
+        player:sendCancelMessage("Você precisa de level " .. COSTS.level .. "!")
+        return false
+    end
+
+    -- Remove custo
+    player:removeMoney(COSTS.gold)
+
+    -- Adiciona rewards
+    for _, reward in ipairs(REWARDS) do
+        player:addItem(reward.id, reward.count)
+    end
+
+    player:say("Transação concluída!")
+    fromPosition:sendMagicEffect(CONST_ME_POFF)
+
+    return true
+end
+
+action:register()
+```
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Teleporte Simples">
+
+**Action básico de teleportação**
+
+```lua
+local action = Action()
+action:aid(4001)
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Destino: Templo de Thais
+    local destination = Position(32369, 32241, 7)
+
+    -- Verifica se está em proteção
+    if fromPosition:getTile():hasFlag(TILESTATE_PROTECTIONZONE) then
+        player:sendCancelMessage("Você está em zona protegida!")
+        return false
+    end
+
+    -- Teleporta
+    player:teleportTo(destination)
+    destination:sendMagicEffect(CONST_ME_TELEPORT)
+
+    return true
+end
+
+action:register()
+```
+
+</TabItem>
+
+<TabItem label="Crafting">
+
+**Action de fabricação/crafting**
+
+```lua
+local action = Action()
+action:aid(4002)
+
+-- Define receita
+local RECIPE = {
+    requires = {
+        { id = 3954, count = 2 },  -- Copper ore x2
+        { id = 3952, count = 1 },  -- Iron ore x1
+    },
+    produces = { id = 3956, count = 1 },  -- Bronze plate
+    level = 30,
+}
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Verifica level
+    if player:getLevel() < RECIPE.level then
+        player:sendCancelMessage("Você precisa de level " .. RECIPE.level)
+        return false
+    end
+
+    -- Verifica items
+    for _, requirement in ipairs(RECIPE.requires) do
+        if player:getItemCount(requirement.id) < requirement.count then
+            player:sendCancelMessage("Items insuficientes!")
+            return false
+        end
+    end
+
+    -- Remove componentes
+    for _, requirement in ipairs(RECIPE.requires) do
+        player:removeItem(requirement.id, requirement.count)
+    end
+
+    -- Cria produto
+    player:addItem(RECIPE.produces.id, RECIPE.produces.count)
+    player:say("Crafting concluído!")
+    fromPosition:sendMagicEffect(CONST_ME_POFF)
+
+    return true
+end
+
+action:register()
+```
+
+</TabItem>
+
+<TabItem label="Puzzle Solver">
+
+**Action para resolver puzzle com verificação**
+
+```lua
+local action = Action()
+action:aid(4003)
+
+local PUZZLE_STORAGE = 52000
+local STEPS = {
+    { storage = 52000, value = 1, position = Position(32100, 32100, 7) },
+    { storage = 52001, value = 1, position = Position(32101, 32101, 7) },
+    { storage = 52002, value = 1, position = Position(32102, 32102, 7) },
+}
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Verifica se já ativou todos os passos
+    for _, step in ipairs(STEPS) do
+        if player:getStorageValue(step.storage) ~= step.value then
+            player:sendCancelMessage("Você precisa ativar todas as partes!")
+            return false
+        end
+    end
+
+    -- Abre porta/libera reward
+    player:addItem(2195, 1)
+    player:say("Parabéns! O puzzle foi resolvido!")
+    fromPosition:sendMagicEffect(CONST_ME_EXPLOSIONAREA)
+
+    return true
+end
+
+action:register()
+```
+
+</TabItem>
+
+<TabItem label="Conditional Teleport">
+
+**Teleporte condicional com múltiplos destinos**
+
+```lua
+local action = Action()
+action:aid(4004)
+
+local DESTINATIONS = {
+    [1] = { pos = Position(32000, 32000, 7), city = "Thais" },
+    [2] = { pos = Position(32500, 32500, 7), city = "Carlin" },
+    [3] = { pos = Position(33000, 33000, 7), city = "Ankrahmun" },
+}
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Pega escolha baseada em storage
+    local choice = player:getStorageValue(50100) or 1
+
+    if choice > #DESTINATIONS then
+        choice = 1
+    end
+
+    local destination = DESTINATIONS[choice]
+
+    -- Teleporta para destino
+    player:teleportTo(destination.pos)
+    destination.pos:sendMagicEffect(CONST_ME_TELEPORT)
+    player:say("Você foi para " .. destination.city)
+
+    return true
+end
+
+action:register()
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🛠️ Criando um Action
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Determinar Tipo
+
+Você quer:
+- **Teleporte?** → Use AID em um item do mapa com action ID configurado
+- **Crafting?** → Use AID em um item específico
+- **Transformação?** → Use ItemID ou UID
+- **Quest/Storage?** → Use UID ou AID com storage checks
+- **Múltiplas locações?** → Use AID com lógica condicional
+
+### Passo 2: Criar Arquivo
+
+```bash
+# Arquivo: scripts/actions/{categoria}/{nome}.lua
+# Exemplos:
+# scripts/actions/mounts/mounts.lua
+# scripts/actions/teleport/temple.lua
+# scripts/actions/crafting/enchanting.lua
+```
+
+### Passo 3: Implementar Básico
+
+```lua
+local action = Action()
+action:aid(5000)  -- Use seu ID!
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Sua implementação aqui
+    return true
+end
+
+action:register()
+```
+
+### Passo 4: Adicionar Lógica
+
+```lua
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Step 1: Validar
+    if not player then
+        return false
+    end
+
+    -- Step 2: Verificar requisitos
+    if player:getLevel() < 50 then
+        player:sendCancelMessage("Level 50+ requerido!")
+        return false
+    end
+
+    -- Step 3: Executar ação
+    player:say("Ação executada!")
+
+    -- Step 4: Retornar resultado
+    return true
+end
+```
+
+### Passo 5: Configurar no XML
+
+```xml
+<!-- No arquivo de items do mapa -->
+<item id="1946" actionid="5000" x="100" y="200" z="7" />
+
+<!-- Ou com UID -->
+<item id="2595" uniqueid="3000" x="100" y="200" z="7" />
+```
+
+### Passo 6: Testar
+
+```bash
+# Reiniciar servidor
+# Usar o item no mapa
+# Verificar se funciona corretamente
+# Adicionar logs se necessário
+```
+
+### Exemplo Completo
+
+```lua
+-- scripts/actions/custom/my_reward.lua
+
+local action = Action()
+action:aid(50000)
+
+-- Storage para evitar repetição
+local REWARD_STORAGE = 60000
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    -- Validar
+    if not player then
+        return false
+    end
+
+    -- Verificar se já recebeu o reward
+    if player:getStorageValue(REWARD_STORAGE) > 0 then
+        player:sendCancelMessage("Você já recebeu seu reward!")
+        return false
+    end
+
+    -- Verificar level
+    if player:getLevel() < 100 then
+        player:sendCancelMessage("Você precisa de level 100!")
+        return false
+    end
+
+    -- Dar reward
+    player:addItemEx(Item(2195), true)
+    player:addExperience(10000)
+
+    -- Marcar como recebido
+    player:setStorageValue(REWARD_STORAGE, 1)
+
+    -- Feedback
+    player:say("Você recebeu seu reward!")
+    fromPosition:sendMagicEffect(CONST_ME_POFF)
+
+    return true
+end
+
+action:register()
+```
+
+</Card>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Action não executa
+
+**Causa**: Action ID não configurado no XML ou arquivo não carregado  
+**Solução**:
+```xml
+<!-- ✅ Correto - AID configurado -->
+<item id="1946" actionid="5000" x="100" y="200" z="7" />
+
+<!-- ❌ Errado - Sem AID -->
+<item id="1946" x="100" y="200" z="7" />
+```
+
+### Problema: Erro "function expected" ao usar item
+
+**Causa**: `function action.onUse` definida incorretamente  
+**Solução**:
+```lua
+-- ✅ Correto
+local action = Action()
+action:aid(5000)
+function action.onUse(player, item, fromPosition, target, toPosition)
+    return true
+end
+action:register()
+
+-- ❌ Errado - função fora do action
+function onUse(player, item, fromPosition, target, toPosition)
+    return true
+end
+```
+
+### Problema: Action executa mas não faz nada
+
+**Causa**: Função retorna depois de validar sem executar lógica  
+**Solução**:
+```lua
+function action.onUse(player, item, fromPosition, target, toPosition)
+    if not player then return false end
+    -- ✅ Implementação continue AQUI
+    player:say("Isso executa!")
+    return true
+end
+```
+
+### Problema: Item desaparece sem motivo
+
+**Causa**: Chamando `item:remove()` quando não deveria  
+**Solução**:
+```lua
+-- ✅ Remover apenas se necessário
+if shouldRemove then
+    item:remove()
+end
+
+-- ❌ Não remover itens consumíveis automaticamente
+-- Deixe para configuração no XML
+```
+
+### Problema: Teleportação não funciona
+
+**Causa**: Posição inválida ou player em PZ  
+**Solução**:
+```lua
+-- ✅ Validar posição e PZ
+if fromPosition:getTile():hasFlag(TILESTATE_PROTECTIONZONE) then
+    player:sendCancelMessage("Você está em PZ!")
+    return false
+end
+
+local dest = Position(32256, 32206, 7)
+if not dest:getTile() then
+    player:sendCancelMessage("Destino inválido!")
+    return false
+end
+
+player:teleportTo(dest)
+```
+
+### Problema: Storage não persiste
+
+**Causa**: Usando variável local em vez de storage  
+**Solução**:
+```lua
+-- ✅ Correto - usa storage
+player:setStorageValue(50000, 1)
+local value = player:getStorageValue(50000)
+
+-- ❌ Errado - variável local
+local myVar = 1
+-- myVar será resetado na próxima ação!
+```
+
+### Problema: Action registrada múltiplas vezes
+
+**Causa**: Arquivo carregado múltiplas vezes  
+**Solução**:
+```lua
+-- ✅ Registre apenas UMA VEZ por arquivo
+local action = Action()
+action:aid(5000)
+-- ... implementação ...
+action:register()  -- Apenas uma chamada!
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Estrutura Padrão de Action**:
+```lua
+local action = Action()
+action:aid(5000)  -- ou :uid(3000) ou :itemid(2195)
+
+function action.onUse(player, item, fromPosition, target, toPosition)
+    return true
+end
+
+action:register()
+```
+
+**Métodos Comuns do Player**:
+- `player:getLevel()` - Level atual
+- `player:say("texto")` - Falar
+- `player:addExperience(1000)` - Ganhar XP
+- `player:addItem(itemId, count)` - Receber item
+- `player:removeItem(itemId, count)` - Remover item
+- `player:getStorageValue(key)` - Ler storage
+- `player:setStorageValue(key, value)` - Escrever storage
+- `player:teleportTo(position)` - Teleportar
+- `player:sendCancelMessage("texto")` - Mostrar erro
+
+**Métodos do Item**:
+- `item:getId()` - Item ID
+- `item:getActionId()` - AID
+- `item:getUniqueId()` - UID
+- `item:remove()` - Deletar item
+- `item:transform(newId)` - Transformar em outro item
+
+**Tipos de Registro**:
+- `action:aid(5000)` - Action ID (múltiplos items)
+- `action:uid(3000)` - Unique ID (um item específico)
+- `action:itemid(2195)` - Item ID (todos do tipo)
+
+**Boas Práticas**:
+- ✅ Use guard clauses para validação
+- ✅ Sempre verifique player existe
+- ✅ Forneça feedback ao player (mensagens)
+- ✅ Use storage para rastrear progressão
+- ✅ Teste com múltiplos players
+- ✅ Documente requisitos e comportamentos
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_Actions.mdx](#)
+2. **Analise Scripts Existentes**: Examine ações em diferentes categorias
+3. **Crie um Action Simples**: Comece com um teleporte básico
+4. **Expanda Funcionalidade**: Adicione validações, efeitos, rewards
+5. **Teste Completamente**: Verifique em múltiplas situações
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Actions Documentadas:** 93  
+**Categorias**: 18
+
+Para dúvidas, consulte o arquivo de catálogo ou analise scripts similares.
+</Aside>

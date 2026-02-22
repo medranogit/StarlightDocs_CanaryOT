@@ -1,0 +1,324 @@
+---
+title: "tile_pick.lua - Tabela de Itens Colhíveis"
+description: "Documentação técnica da tabela de configuração de itens que podem ser colhidos no servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🌾 tile_pick.lua
+
+Arquivo de tabela responsável por **itens colhíveis** - objetos que players podem coletar de certas posições usando ação especial.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/tile_pick.lua` |
+| **Tipo** | Tabela de Configuração - Items |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Nenhuma |
+| **Total de Linhas** | Pequeno (< 30 linhas) |
+| **Função Principal** | Configurar itens colhíveis |
+| **Carregado por** | `tables/load.lua` |
+| **Action ID** | 101 (exclusivo) |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/tile_pick.lua`
+
+Define tabela global `TilePickAction` com action ID reservado 101 para itens colhíveis - geralmente usados em quests específicas.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+**Estado**: Arquivo pequeno e simples
+
+**Propósito**: Items colhíveis em tiles
+
+**Estrutura**:
+```lua
+[101] = {  -- Action ID 101 (fixo)
+    itemId = false,
+    itemPos = { {x, y, z}, ... }
+}
+```
+
+**Exemplo**: The Explorer Society quest - 16 posições colhíveis
+
+**Acionamento**: Player executa ação especial para coletar
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Coleta" icon="layers">
+
+```
+┌────────────────────────────────┐
+│   SISTEMA DE ITENS COLHÍVEIS   │
+└────────────┬───────────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    ▼                 ▼
+Tile Positions    Player Action
+(Collectibles)    (Pick)
+    │                 │
+Item locations       ├─ executa pick
+Item types           ├─ Coleta item
+16 positions         └─ Position+1
+```
+
+**Fluxo**:
+1. Item em tile específico
+2. Player executa "pick" action
+3. Item coletado
+4. Contagem para quest
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### TilePickAction
+
+**Estado**: Template com action ID 101
+
+```lua
+TilePickAction = {
+    [101] = {  -- Action ID 101 (fixo e exclusivo)
+        itemId = false,
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = xx},
+            -- múltiplas posições
+        }
+    }
+}
+```
+
+**Campos**:
+- `101`: Action ID fixo (reservado)
+- `itemId`: false (itens invisíveis)
+- `itemPos`: Posições colhíveis
+
+**Característica Única**: 
+- Todos os pickables usam action ID 101
+- Multiple positions para mesma quest
+
+</Card>
+
+---
+
+## 📝 Exemplo The Explorer Society
+
+<Tabs>
+<TabItem label="Estrutura Básica">
+
+```lua
+[101] = {
+    itemId = false,
+    itemPos = {
+        {x = 32456, y = 31654, z = 6},
+        {x = 32457, y = 31654, z = 6},
+        {x = 32458, y = 31654, z = 6},
+        -- ... mais 13 posições
+    }
+}
+```
+
+- **Action ID**: 101
+- **16 posições** (The Explorer Society)
+- **Todas colhíveis** com mesma ação
+- **Todas para mesma quest**
+
+</TabItem>
+
+<TabItem label="Em Sequência Mapeada">
+
+```lua
+[101] = {
+    itemId = false,
+    itemPos = {
+        -- The Explorer Society positions
+        {x = 32456, y = 31654, z = 6},   -- 1
+        {x = 32457, y = 31654, z = 6},   -- 2
+        {x = 32458, y = 31654, z = 6},   -- 3
+        {x = 32459, y = 31654, z = 6},   -- 4
+        {x = 32460, y = 31654, z = 6},   -- 5
+        {x = 32461, y = 31654, z = 6},   -- 6
+        {x = 32502, y = 31700, z = 6},   -- 7
+        {x = 32503, y = 31700, z = 6},   -- 8
+        {x = 32550, y = 31750, z = 6},   -- 9
+        {x = 32551, y = 31750, z = 6},   -- 10
+        {x = 32552, y = 31750, z = 6},   -- 11
+        {x = 32553, y = 31750, z = 6},   -- 12
+        {x = 32600, y = 31800, z = 6},   -- 13
+        {x = 32601, y = 31800, z = 6},   -- 14
+        {x = 32602, y = 31800, z = 6},   -- 15
+        {x = 32603, y = 31800, z = 6}    -- 16
+    }
+}
+```
+
+- **16 posições ordénadas**
+- **Espalhadas**
+- **Mesma Z-level**
+- **Colhíveis em qualquer ordem**
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Padrão de Uso
+
+<Card title="Boas Práticas" icon="star">
+
+### Ao Adicionar Item Colhível
+
+1. **Usar Action ID 101** (fixo):
+   ```lua
+   [101] = {
+       itemId = false,
+       itemPos = { {x, y, z} }
+   }
+   ```
+
+2. **Adicionar múltiplas posições**:
+   ```lua
+   itemPos = {
+       {x = ..., y = ..., z = ...},
+       {x = ..., y = ..., z = ...},
+       -- múltiplas
+   }
+   ```
+
+3. **Documentar quest**:
+   - Registrar quest name
+   - Total de itens
+   - Area onde colhidos
+
+4. **Script de coleta**:
+   - Action 101 em action script
+   - Incrementar storage para quest
+   - Dar feedback ao player
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Como Funciona" icon="link">
+
+**Em `tile_pick.lua`**:
+```lua
+TilePickAction = {
+    [101] = {
+        itemId = false,
+        itemPos = {
+            {x = 32456, y = 31654, z = 6},
+            {x = 32457, y = 31654, z = 6},
+            -- ... 14 mais
+        }
+    }
+}
+```
+
+**Em action script** (`actions/other/tile_pick.lua`):
+```lua
+local tilePickAction = Action()
+tilePickAction:id(101)
+
+function tilePickAction.onUse(player, item, fromPos, target, toPos)
+    local storageKey = Storage.Quest.TheExplorerSociety.Collected
+    
+    -- Verifica se já colheu este
+    if hasCalled[player:getId()] and hasCalled[player:getId()][toPos.x .. ',' .. toPos.y] then
+        player:sendCancelMessage("You have already picked this.")
+        return true
+    end
+    
+    -- Incrementa contador
+    local count = player:getStorageValue(storageKey) or 0
+    count = count + 1
+    player:setStorageValue(storageKey, count)
+    
+    -- Feedback
+    player:sendTextMessage(MESSAGE_STATUS, "You picked item (" .. count .. "/16)")
+    
+    -- Check se completou
+    if count == 16 then
+        player:sendTextMessage(MESSAGE_STATUS, "You completed The Explorer Society!")
+    end
+    
+    return true
+end
+
+tilePickAction:register()
+```
+
+</Card>
+
+---
+
+## 💡 Característica Única
+
+<Card title="Por Que Action ID 101?" icon="lightbulb">
+
+**Centralização**:
+- Todos os pickables usam 101
+- Script único para todas coletas
+- Escalável para múltiplas quests
+
+**Prós**:
+- ✅ Código simples e centralizado
+- ✅ Fácil de manter
+- ✅ Performance otimizada
+
+**Implementação**:
+- Script onUse(action 101)
+- Verifica posição `{x, y, z}`
+- Mapeia para quest específica
+- Incrementa contador apropriado
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: < 30  
+**Tabelas Globais**: 1 (TilePickAction)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ TilePickAction (items colhíveis)
+
+**Características**:
+- Action ID 101 fixo
+- Arquivo pequeno e simples
+- Suporta múltiplas quests
+- Multiple position support
+
+Este arquivo define items colhíveis em quests, principalmente usados em The Explorer Society e quests similares.
+</Aside>

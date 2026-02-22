@@ -1,0 +1,368 @@
+---
+title: "storage_keys_update.lua - Tabela de Migração de Storage Keys"
+description: "Documentação técnica da tabela de versioning e atualização de storage keys para tracking de quest progression"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🔄 storage_keys_update.lua
+
+Arquivo de tabela responsável pelo **sistema de migração e versioning de storage keys** - rastreamento de mudanças nas chaves de armazenamento de quests ao longo das atualizações do servidor.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/storage_keys_update.lua` |
+| **Tipo** | Tabela de Configuração - Migrations |
+| **Escopo** | Global (carregado ÚLTIMO no startup) |
+| **Dependências** | Storage.Quest constants |
+| **Total de Linhas** | 278 linhas |
+| **Função Principal** | Mapear atualizações de storage keys |
+| **Carregado por** | `tables/load.lua` (GARANTIDAMENTE ÚLTIMO) |
+| **Criticidade** | ⚠️ MUITO IMPORTANTE |
+
+</Card>
+
+<Aside type="caution" title="Arquivo Crítico!">
+**Deve ser carregado POR ÚLTIMO** - garante que todos os storage keys antigos sejam convertidos para novos antes de qualquer lógica rodar.
+
+Este arquivo mapeia migrações: `(oldKey, oldValue) → (newKey, newValue)`
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+**Propósito**: Versioning de storage keys
+
+**O Problema**:
+- Servidor evolui, storage keys mudam
+- Old players têm valores nos antigos
+- Novos jogadores usam novos keys
+- Inconsistência de dados!
+
+**A Solução**: QuestKeysUpdate
+
+```lua
+[versionNumber].latest = 4  -- Versão atual
+[versionNumber][oldKey] = newKey  -- Mapear migração
+```
+
+**Exemplo**:
+```
+Storage.Quest.BansheeQuest.OldKey (obsoleto)
+    ↓ (migração)
+Storage.Quest.BansheeQuest.NewKey (atual)
+```
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Migrations" icon="layers">
+
+```
+┌──────────────────────────────┐
+│  SISTEMA DE VERSIONING       │
+└────────────┬─────────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    ▼                 ▼
+QuestKeysUpdate    Old Players
+(Versões)          (Update)
+    │                 │
+├─ latest = 4        ├─ Load character
+├─ [1] = ...         ├─ Apply migration
+├─ [2] = ...         ├─ Convert old→new
+├─ [3] = ...         └─ Save updated
+└─ [4] = ...
+```
+
+**Versioning**:
+- Cada versão mapeia mudanças
+- latest = versão atual
+- Backward compatible
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### QuestKeysUpdate
+
+**Propósito**: Definir migrações de storage keys
+
+**Estrutura**:
+```lua
+QuestKeysUpdate = {
+    [0].latest = 4,  -- Versão mais recente
+    
+    [1] = {
+        [Storage.Quest.BansheeQuest.OldKey1] = Storage.Quest.BansheeQuest.NewKey1,
+        [Storage.Quest.BansheeQuest.OldKey2] = Storage.Quest.BansheeQuest.NewKey2,
+    },
+    
+    [2] = {
+        -- Migrações da versão 1→2
+    },
+    
+    [3] = {
+        -- Migrações da versão 2→3
+    },
+    
+    [4] = {
+        -- Migrações da versão 3→4
+    }
+}
+```
+
+**Campos**:
+- `[0].latest`: Número da versão atual
+- `[version]`: Hash de migrações para essa versão
+- `oldKey → newKey`: Mapeamento
+
+</Card>
+
+---
+
+## 📝 Exemplos de Estrutura
+
+<Tabs>
+<TabItem label="Migração Simples">
+
+```lua
+[1] = {
+    -- Versão 1: Atualizou Banshee Quest
+    [Storage.Quest.TheQueenOfTheBanshees.OldDoorKey] 
+        = Storage.Quest.TheQueenOfTheBanshees.DoorKey
+}
+```
+
+- **Um storage key** mapeado
+- **Renomeação simples**
+- **Valor mantido igual**
+
+</TabItem>
+
+<TabItem label="Múltiplas Migrações por Versão">
+
+```lua
+[2] = {
+    -- Versão 2: Mudaram 5 keys
+    [Storage.Quest.Quest1.OldKey1] = Storage.Quest.Quest1.NewKey1,
+    [Storage.Quest.Quest1.OldKey2] = Storage.Quest.Quest1.NewKey2,
+    [Storage.Quest.Quest2.OldKey] = Storage.Quest.Quest2.NewKey,
+    [Storage.Quest.Quest3.OldKey1] = Storage.Quest.Quest3.NewKey1,
+    [Storage.Quest.Quest3.OldKey2] = Storage.Quest.Quest3.NewKey2,
+}
+```
+
+- **5 migrações** nesta versão
+- **2 quests afetadas**
+- **Todas mapeadas**
+
+</TabItem>
+
+<TabItem label="Histórico Completo">
+
+```lua
+QuestKeysUpdate = {
+    [0].latest = 4,
+    
+    [1] = {
+        -- Migrações da v0→v1
+        [OLD_STORAGE_1] = NEW_STORAGE_1,
+    },
+    
+    [2] = {
+        -- Migrações da v1→v2
+        [OLD_STORAGE_2] = NEW_STORAGE_2,
+    },
+    
+    [3] = {
+        -- Migrações da v2→v3
+        [OLD_STORAGE_3] = NEW_STORAGE_3,
+    },
+    
+    [4] = {
+        -- Migrações da v3→v4
+        [OLD_STORAGE_4] = NEW_STORAGE_4,
+    }
+}
+```
+
+- **4 versões** rastreadas
+- **Progressão clara**
+- **Última é current**
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔄 Fluxo de Migração
+
+<Card title="Como Funciona a Atualização" icon="flow">
+
+**Quando Player Faz Login**:
+
+1. **Carrega character**:
+   ```lua
+   playerStorages = {
+       [OLD_STORAGE_1] = value1,
+       [OLD_STORAGE_2] = value2,
+       -- valores antigos
+   }
+   ```
+
+2. **Verifica versão**:
+   ```lua
+   playerVersion = player:getStorageValue(STORAGE_PLAYER_VERSION)
+   if playerVersion < QuestKeysUpdate[0].latest then
+       -- Precisa atualizar
+   end
+   ```
+
+3. **Aplica migrações**:
+   ```lua
+   for v = playerVersion + 1, QuestKeysUpdate[0].latest do
+       for oldKey, newKey in pairs(QuestKeysUpdate[v]) do
+           if playerStorages[oldKey] then
+               playerStorages[newKey] = playerStorages[oldKey]
+               playerStorages[oldKey] = nil
+           end
+       end
+   end
+   ```
+
+4. **Atualiza versão**:
+   ```lua
+   player:setStorageValue(STORAGE_PLAYER_VERSION, QuestKeysUpdate[0].latest)
+   ```
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Uso em Conjunto" icon="link">
+
+**Em `storage_keys_update.lua`**:
+```lua
+QuestKeysUpdate = {
+    [0].latest = 4,
+    [1] = {
+        [Storage.Quest.BansheeQuest.DoorOld] = Storage.Quest.BansheeQuest.Door
+    }
+}
+```
+
+**Em `startup/others/functions.lua`** (ou similar):
+```lua
+function updateKeysStorage(player)
+    local playerVersion = player:getStorageValue(STORAGE_PLAYER_VERSION) or 0
+    
+    if playerVersion >= QuestKeysUpdate[0].latest then
+        return  -- Already up to date
+    end
+    
+    -- Aplica migrações progressivas
+    for version = playerVersion + 1, QuestKeysUpdate[0].latest do
+        for oldKey, newKey in pairs(QuestKeysUpdate[version]) do
+            local oldValue = player:getStorageValue(oldKey)
+            if oldValue > 0 then
+                player:setStorageValue(newKey, oldValue)
+                player:setStorageValue(oldKey, -1)  -- Clear old
+            end
+        end
+    end
+    
+    -- Atualiza versão do player
+    player:setStorageValue(STORAGE_PLAYER_VERSION, QuestKeysUpdate[0].latest)
+end
+```
+
+**No Login** (creaturescripts):
+```lua
+local function onLogin(player)
+    updateKeysStorage(player)
+    return true
+end
+```
+
+</Card>
+
+---
+
+## 💡 Por Que É Importante
+
+<Card title="Impacto do Sistema" icon="lightbulb">
+
+### Cenário SEM Migração:
+```
+Server v1:
+- Storage.Quest.X = 1000
+
+Server v2 (renomeou para NewX = 5000):
+- Players with v1 data: Perderam progresso!
+- Quest broken, impossível continuar
+```
+
+### Cenário COM Migração:
+```
+Server v1:
+- Storage.Quest.X = 1000
+
+Server v2:
+- QuestKeysUpdate[1] = {[1000] = 5000}
+- Login: Player's 1000 → 5000 automaticamente
+- Quest continua funcionando!
+```
+
+**Resultado**: Continuidade garantida mesmo com alterações de keys.
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Configuração - Migrations  
+**Total de Linhas**: 278  
+**Tabelas Globais**: 1 (QuestKeysUpdate)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ QuestKeysUpdate (migration mappings)
+
+**Características**:
+- Versioning system (atual: v4)
+- Backward compatibility
+- Progressive migrations
+- Data preservation
+
+**CRÍTICO**: 
+- ⚠️ Carregado ÚLTIMO no startup
+- ✅ Garante integridade de dados
+- ✅ Suporta evolução de quests
+
+Este arquivo é essencial para manter compatibilidade de dados antigos quando storage keys são renomeados.
+</Aside>

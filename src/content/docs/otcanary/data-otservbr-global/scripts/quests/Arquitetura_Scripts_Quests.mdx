@@ -1,0 +1,911 @@
+---
+title: Arquitetura - Quests
+description: Documentação técnica da arquitetura e estrutura dos scripts de Quests do servidor Canary
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🏗️ Arquitetura - Quests
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts de **Quests** do servidor OTServ Canary. Entenda como as missões são implementadas, organizadas e como criar novas.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/quests/` contém todos os scripts **Lua** responsáveis pelas **missões, desafios e progressão de jogadores**. Cada quest define comportamentos, recompensas, condições de conclusão, armazenamento de progresso e integração com a história do servidor.
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Criar nova quest**: Definir missão, objetivos, NPCs envolvidos, recompensas
+- **Modificar condições**: Ajustar requisitos de conclusão, itens necessários, locais
+- **Implementar progressão**: Quest multi-etapa com múltiplas missões
+- **Adicionar recompensas**: Experience, items, unlock de abilities, access a áreas
+- **Debug de quest**: Investigar por que jogador não completa quest corretamente
+- **Balancear dificuldade**: Ajustar requisitos, enemy stats, rewards
+- **Integrar com NPCs**: Conectar quest a diálogos, triggers, behaviors
+</Card>
+
+<Card title="Estrutura da Pasta" icon="list">
+Os scripts de quests são organizados por **quest/progression system**:
+
+- Arquivos nomeados descritivamente: `example_quest.lua`, `boss_quest_name.lua`, etc.
+- Cada arquivo contém definições de **Quest** e suas **Missions**
+- Sistema de storage: Progress tracked via `questValue()` em player:kv
+- Estados persistentes: Quest data salva no banco de dados
+- Múltiplas missões por quest: Cada mission com seus próprios objetivos
+
+Estrutura típica:
+1. Criar instância `Quest()` com ID único
+2. Definir **Missions** (etapas da quest)
+3. Adicionar **Actions** (eventos que disparam lógica)
+4. Implementar **Behaviors** (coisas que mudam quando quest progride)
+5. Registrar quest
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Componentes Principais](#componentes-principais)
+3. [Sistema de Quest Storage](#sistema-de-quest-storage)
+4. [Estados e Progressão](#estados-e-progressão)
+5. [Missões Multi-Etapa](#missões-multi-etapa)
+6. [Comportamentos e Triggers](#comportamentos-e-triggers)
+7. [Recompensas](#recompensas)
+8. [Como Criar uma Nova Quest](#como-criar-uma-nova-quest)
+9. [Exemplos Práticos](#exemplos-práticos)
+10. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="Organização de Diretórios" icon="document">
+
+```
+data-otservbr-global/scripts/quests/
+├── example_quest.lua
+├── boss_quest_name.lua
+├── multi_stage_progression.lua
+├── [... mais scripts por quest ...]
+│
+├── lib/ (bibliotecas compartilhadas)
+│   ├── quest_utils.lua
+│   └── reward_helpers.lua
+│
+└── Catalogo_Scripts_Quests.mdx (documentação - lista)
+└── Arquitetura_Scripts_Quests.mdx (este arquivo - como funciona)
+```
+
+**Nomenclatura de Arquivos:**
+- Padrão: `{nome_quest}.lua`
+- Exemplo: `example_quest.lua`, `dragon_slayer_quest.lua`
+- Múltiplas quests relacionadas: Mesma série de arquivos
+
+**Total de Scripts:** 954 arquivos  
+**Quest IDs:** Único para cada quest (número inteiro)  
+**Categorias:** 22+ diferentes
+
+</Card>
+
+---
+
+## 🧩 Componentes Principais
+
+<Tabs>
+<TabItem label="Quest Object">
+
+### Objeto Quest
+
+O objeto `Quest` define metadados e configura a quest.
+
+```lua
+local quest = Quest()
+quest:id(123)               -- ID único da quest
+quest:name("Example Quest") -- Nome visível
+quest:description("Descrição da quest")
+quest:defaultStartMission(1) -- Missão inicial (ID)
+```
+
+**Atributos Principais:**
+
+| Atributo | Tipo | Descrição |
+|----------|------|-----------|
+| `id` | number | ID único (obrigatório) |
+| `name` | string | Nome da quest |
+| `description` | string | Descrição breve |
+| `defaultStartMission` | number | ID da primeira missão |
+
+**Registração:**
+```lua
+quest:register()  -- Após configurar tudo
+```
+
+</TabItem>
+
+<TabItem label="Mission Object">
+
+### Objeto Mission
+
+Cada missão é uma etapa da quest com seus próprios objetivos.
+
+```lua
+local mission = quest:newMission(1)  -- missão ID 1
+mission:setName("Kill the boss")
+mission:setDescription("Derrote o boss no calabouço")
+```
+
+**Configurações Comuns:**
+```lua
+mission:setName("Nome da Missão")
+mission:setDescription("Descrição detalhada")
+
+-- Condições de conclusão
+mission:addGoal("task", "Kill 5 enemies")
+mission:addGoal("item", "Coletar 10 items")
+mission:addGoal("location", "Visitar local específico")
+```
+
+</TabItem>
+
+<TabItem label="Storage System">
+
+### Sistema de Armazenamento de Progresso
+
+Usa Key-Value store para rastrear progresso de quests.
+
+```lua
+-- Armazenar progresso
+player:setKV(questKey .. "_progress", 50)  -- Progresso em %
+player:setKV(questKey .. "_mission", 2)     -- Missão atual
+player:setKV(questKey .. "_started", os.time())  -- Data inicial
+
+-- Recuperar progresso
+local progress = player:getKV(questKey .. "_progress")
+local currentMission = player:getKV(questKey .. "_mission")
+```
+
+**Padrão de Chaves:**
+```lua
+local questKey = "quest_" .. quest:id()  -- "quest_123"
+player:getKV(questKey .. "_progress")     -- Armazena progresso geral
+player:getKV(questKey .. "_completed")    -- true/false quando termina
+player:getKV(questKey .. "_reward_claimed")  -- Se recompensa foi recebida
+```
+
+</TabItem>
+
+<TabItem label="Actions">
+
+### Sistema de Actions (Eventos)
+
+Actions vinculam eventos do jogo a lógica de quest.
+
+```lua
+-- Quando jogador mata monstro
+quest:newAction():type("kill")
+    :aid(monsterId)  -- ID do monstro
+    :event(function(player, creature)
+        -- Lógica aqui
+        local questKey = "quest_" .. quest:id()
+        local kills = player:getKV(questKey .. "_kills") or 0
+        player:setKV(questKey .. "_kills", kills + 1)
+        
+        if kills >= 5 then
+            player:setKV(questKey .. "_mission", 2)  -- Avança para próxima missão
+            player:sendTextMessage(MESSAGE_INFO_DESCR, "Progresso: 5/5 monstros derrotados!")
+        end
+    end)
+```
+
+**Tipos de Actions Comuns:**
+```lua
+-- Kill actions
+quest:newAction():type("kill"):aid(monsterId)
+
+-- Item pickup
+quest:newAction():type("item"):itemid(itemId)
+
+-- Login actions
+quest:newAction():type("login"):event(function(player)
+    -- Verificar progresso ao fazer login
+end)
+
+-- Movement actions (andar em uma localização)
+quest:newAction():type("movement"):pos({x=100, y=100, z=7})
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 💾 Sistema de Quest Storage
+
+<Card title="Rastreamento de Progresso" icon="database">
+
+### Chaves de Armazenamento Padrão
+
+```lua
+-- Para quest ID 123:
+local questKey = "quest_123"
+
+player:setKV(questKey .. "_progress", 0-100)      -- Progresso percentual
+player:setKV(questKey .. "_mission", 1)            -- Missão atual (ID)
+player:setKV(questKey .. "_started", timestamp)   -- Data inicial
+player:setKV(questKey .. "_completed", true)      -- Quest concluída?
+player:setKV(questKey .. "_reward_claimed", true) -- Recompensa recebida?
+
+-- Contadores específicos
+player:setKV(questKey .. "_kills", 5)              -- Inimigos mortos
+player:setKV(questKey .. "_items", 3)              -- Items coletados
+player:setKV(questKey .. "_visits", 2)             -- Locais visitados
+```
+
+### Exemplo de Verificação Completa
+
+```lua
+function isQuestCompleted(player, questId)
+    return player:getKV("quest_" .. questId .. "_completed") or false
+end
+
+function getQuestProgress(player, questId)
+    return player:getKV("quest_" .. questId .. "_progress") or 0
+end
+
+function getCurrentMission(player, questId)
+    return player:getKV("quest_" .. questId .. "_mission") or 1
+end
+
+-- Uso
+if isQuestCompleted(player, 123) then
+    player:say("Quest concluída!")
+else
+    local progress = getQuestProgress(player, 123)
+    local mission = getCurrentMission(player, 123)
+    player:say("Progresso: " .. progress .. "% - Missão " .. mission)
+end
+```
+
+</Card>
+
+---
+
+## 🔄 Estados e Progressão
+
+<Card title="Ciclo de Vida da Quest" icon="repeat">
+
+### Estados de Quest
+
+```
+[NOT_STARTED] → [IN_PROGRESS] → [COMPLETED] → [REWARD_CLAIMED] → [FINISHED]
+```
+
+**Estado: NOT_STARTED**
+```lua
+-- Quest não iniciada
+-- Jogador ainda não tem nenhum KV da quest
+if not player:getKV("quest_123_started") then
+    player:say("Você ainda não iniciou essa quest")
+end
+```
+
+**Estado: IN_PROGRESS**
+```lua
+-- Quest ativa, jogador está progredindo
+local mission = player:getKV("quest_123_mission") or 1
+local progress = player:getKV("quest_123_progress") or 0
+player:say("Missão " .. mission .. " - Progresso: " .. progress .. "%")
+```
+
+**Estado: COMPLETED**
+```lua
+-- Todas as missões terminadas, aguardando recompensa
+if player:getKV("quest_123_completed") and not player:getKV("quest_123_reward_claimed") then
+    player:say("Quest concluída! Fale comigo para receber a recompensa.")
+end
+```
+
+**Estado: FINISHED**
+```lua
+-- Quest totalmente terminada com recompensa recebida
+if player:getKV("quest_123_reward_claimed") then
+    player:say("Você já completou essa quest")
+end
+```
+
+</Card>
+
+---
+
+## 📊 Missões Multi-Etapa
+
+<Card title="Estrutura de Múltiplas Missões" icon="list">
+
+### Exemplo: Quest com 3 Missões
+
+```lua
+local quest = Quest()
+quest:id(200)
+quest:name("Multi-Stage Quest")
+quest:defaultStartMission(1)
+
+-- MISSÃO 1: Coleta de items
+local mission1 = quest:newMission(1)
+mission1:setName("Coleta de Recursos")
+mission1:setDescription("Coleta 10 cristais no calabouço norte")
+
+-- MISSÃO 2: Derrota de inimigos
+local mission2 = quest:newMission(2)
+mission2:setName("Derrota do Boss")
+mission2:setDescription("Derrote o Bone Lord no calabouço")
+
+-- MISSÃO 3: Entrega
+local mission3 = quest:newMission(3)
+mission3:setName("Entrega Final")
+mission3:setDescription("Retorne ao NPC para receber recompensa")
+
+quest:register()
+```
+
+### Progresso Entre Missões
+
+```lua
+-- Item pickup avança missão 1 → 2
+quest:newAction():type("item"):itemid(crystalId)
+    :event(function(player)
+        local questKey = "quest_200"
+        local items = player:getKV(questKey .. "_items") or 0
+        items = items + 1
+        player:setKV(questKey .. "_items", items)
+        
+        if items >= 10 then
+            player:setKV(questKey .. "_mission", 2)  -- Avança para missão 2
+            player:sendTextMessage(MESSAGE_IMPORTANT, "Você coletou todos os cristais! Agora derrote o boss.")
+        end
+    end)
+
+-- Kill do boss avança missão 2 → 3
+quest:newAction():type("kill"):aid(boneLordId)
+    :event(function(player, creature)
+        player:setKV("quest_200" .. "_mission", 3)
+        player:sendTextMessage(MESSAGE_IMPORTANT, "Boss derrotado! Retorne ao NPC.")
+    end)
+```
+
+</Card>
+
+---
+
+## 🎭 Comportamentos e Triggers
+
+<Card title="Eventos e Reações" icon="zap">
+
+### Login Trigger (Verificar Quest Segue Ativa)
+
+```lua
+quest:newAction():type("login")
+    :event(function(player)
+        local questKey = "quest_" .. quest:id()
+        local isCompleted = player:getKV(questKey .. "_completed")
+        
+        if isCompleted and not player:getKV(questKey .. "_reward_claimed") then
+            player:sendTextMessage(MESSAGE_IMPORTANT, "Quest concluída! Fale com o NPC para receber recompensa.")
+        end
+    end)
+```
+
+### Movement Trigger (Entrar em Localização)
+
+```lua
+-- Quando jogador entra na zona de boss
+quest:newAction():type("movement"):pos({x=100, y=100, z=7})
+    :event(function(player)
+        local questKey = "quest_" .. quest:id()
+        local mission = player:getKV(questKey .. "_mission")
+        
+        if mission == 2 then  -- Se está na missão para derrotar boss
+            player:sendTextMessage(MESSAGE_INFO_DESCR, "Você chegou ao calabouço. O boss está por aqui!")
+        end
+    end)
+```
+
+### Comportamento Condicional (NPC fala diferente baseado em progresso)
+
+```lua
+function npcGreeting(player)
+    local questKey = "quest_" .. questId
+    local completed = player:getKV(questKey .. "_completed")
+    local progress = player:getKV(questKey .. "_progress") or 0
+    
+    if completed then
+        return "Parabéns! Você completou a quest!"
+    elseif progress > 0 then
+        return "Continue progredindo... Você está " .. progress .. "% completo"
+    else
+        return "Gostaria de aceitar uma nova quest?"
+    end
+end
+```
+
+</Card>
+
+---
+
+## 🎁 Recompensas
+
+<Card title="Sistema de Rewards" icon="gift">
+
+### Tipos de Recompensas
+
+```lua
+-- Experiência
+player:addExperience(10000)
+
+-- Itens
+local item = Game.createItem(itemId)
+player:addItemEx(item)
+
+-- Acesso a Áreas (setando flags)
+player:setKV("access_dragon_tower", true)
+
+-- Skills/Passivas
+player:setKV("skill_fire_resistance", player:getKV("skill_fire_resistance", 0) + 10)
+
+-- Unlock de NPCs/Quests
+player:setKV("npc_blacksmith_available", true)
+```
+
+### Função Helper para Recompensas
+
+```lua
+function grantQuestReward(player, questId)
+    local questKey = "quest_" .. questId
+    
+    -- Verificar se já recebeu
+    if player:getKV(questKey .. "_reward_claimed") then
+        return false, "Você já recebeu a recompensa dessa quest"
+    end
+    
+    -- Dar experience
+    player:addExperience(5000)
+    
+    -- Dar item
+    local item = Game.createItem(12345)  -- ID do item
+    player:addItemEx(item)
+    
+    -- Marcar como recebido
+    player:setKV(questKey .. "_reward_claimed", true)
+    player:setKV(questKey .. "_completed", true)
+    
+    player:sendTextMessage(MESSAGE_INFO_DESCR, "Quest concluída! Você recebeu experiência e uma recompensa.")
+    return true
+end
+```
+
+</Card>
+
+---
+
+## 🛠️ Como Criar uma Nova Quest
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Criar o Arquivo
+
+```bash
+# Arquivo: {nome_quest}.lua
+# Exemplo: my_awesome_quest.lua
+```
+
+### Passo 2: Criar Instância Quest
+
+```lua
+local quest = Quest()
+quest:id(500)  -- Número único (verifique não está em uso)
+quest:name("My Awesome Quest")
+quest:description("Uma quest incrível com 2 missões")
+```
+
+### Passo 3: Definir Missões
+
+```lua
+-- Missão 1
+local mission1 = quest:newMission(1)
+mission1:setName("Coleta")
+mission1:setDescription("Coleta 5 items")
+
+-- Missão 2
+local mission2 = quest:newMission(2)
+mission2:setName("Entrega")
+mission2:setDescription("Entrega ao NPC")
+```
+
+### Passo 4: Adicionar Actions (Eventos)
+
+```lua
+quest:newAction():type("item"):itemid(123)
+    :event(function(player)
+        local questKey = "quest_500"
+        local items = (player:getKV(questKey .. "_items") or 0) + 1
+        player:setKV(questKey .. "_items", items)
+        
+        if items >= 5 then
+            player:setKV(questKey .. "_mission", 2)
+            player:sendTextMessage(MESSAGE_IMPORTANT, "Missão 1 concluída!")
+        end
+    end)
+```
+
+### Passo 5: Implementar Recompensa
+
+```lua
+-- Quando NPC é interado na missão 2
+quest:newAction():type("npc"):value("npc_name")
+    :event(function(player)
+        local questKey = "quest_500"
+        if player:getKV(questKey .. "_mission") == 2 then
+            grantQuestReward(player, 500)
+        end
+    end)
+```
+
+### Passo 6: Registrar
+
+```lua
+quest:register()
+```
+
+### Arquivo Completo Exemplo
+
+```lua
+-- my_awesome_quest.lua
+
+local quest = Quest()
+quest:id(500)
+quest:name("My Awesome Quest")
+quest:description("Uma quest incrível")
+quest:defaultStartMission(1)
+
+-- Missões
+local mission1 = quest:newMission(1)
+mission1:setName("Coleta Items")
+mission1:setDescription("Coleta 5 cristais")
+
+local mission2 = quest:newMission(2)
+mission2:setName("Entrega")
+mission2:setDescription("Entrega ao NPC")
+
+-- Action: Item pickup
+quest:newAction():type("item"):itemid(123)
+    :event(function(player)
+        local questKey = "quest_500"
+        local items = (player:getKV(questKey .. "_items") or 0) + 1
+        player:setKV(questKey .. "_items", items)
+        
+        if items >= 5 then
+            player:setKV(questKey .. "_mission", 2)
+            player:sendTextMessage(MESSAGE_IMPORTANT, "Você coletou todos! Volte ao NPC.")
+        end
+    end)
+
+-- Action: Entrega
+quest:newAction():type("npc"):value("npc_master")
+    :event(function(player)
+        local questKey = "quest_500"
+        if player:getKV(questKey .. "_mission") == 2 then
+            player:addExperience(5000)
+            local item = Game.createItem(456)
+            player:addItemEx(item)
+            player:setKV(questKey .. "_completed", true)
+            player:setKV(questKey .. "_reward_claimed", true)
+            player:sendTextMessage(MESSAGE_INFO_DESCR, "Quest concluída!")
+        end
+    end)
+
+quest:register()
+```
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Simple Quest">
+
+**Quest Simples: Kill e Entrega**
+
+```lua
+-- simple_monster_quest.lua
+
+local quest = Quest()
+quest:id(100)
+quest:name("Monster Slayer")
+quest:description("Derrote 3 monstros e retorne")
+quest:defaultStartMission(1)
+
+local mission1 = quest:newMission(1)
+mission1:setName("Slayer")
+mission1:setDescription("Derrote 3 ghouls")
+
+-- Kill action
+quest:newAction():type("kill"):aid(ghoulId)
+    :event(function(player, creature)
+        local questKey = "quest_100"
+        local kills = (player:getKV(questKey .. "_kills") or 0) + 1
+        player:setKV(questKey .. "_kills", kills)
+        player:sendTextMessage(MESSAGE_STATUS_SMALL, "Mortos: " .. kills .. "/3")
+        
+        if kills >= 3 then
+            player:setKV(questKey .. "_completed", true)
+            player:sendTextMessage(MESSAGE_IMPORTANT, "Volte ao NPC para receber recompensa!")
+        end
+    end)
+
+quest:register()
+```
+
+</TabItem>
+
+<TabItem label="Multi-Stage">
+
+**Quest com 3 Estágios**
+
+```lua
+-- treasure_hunt_quest.lua
+
+local quest = Quest()
+quest:id(200)
+quest:name("Treasure Hunt")
+quest:description("Procure por 3 tesouros em locais diferentes")
+quest:defaultStartMission(1)
+
+-- Missão 1: Encontrar tesouro 1
+local mission1 = quest:newMission(1)
+mission1:setName("Tesouro do Rio")
+
+local mission2 = quest:newMission(2)
+mission2:setName("Tesouro da Caverna")
+
+local mission3 = quest:newMission(3)
+mission3:setName("Tesouro da Torre")
+
+-- Tesouro 1
+quest:newAction():type("movement"):pos({x=100, y=100, z=7})
+    :event(function(player)
+        if player:getKV("quest_200_mission") == 1 then
+            player:setKV("quest_200_mission", 2)
+            player:sendTextMessage(MESSAGE_IMPORTANT, "Você encontrou o 1º tesouro! Procure pelo próximo.")
+        end
+    end)
+
+-- Tesouro 2
+quest:newAction():type("movement"):pos({x=200, y=200, z=7})
+    :event(function(player)
+        if player:getKV("quest_200_mission") == 2 then
+            player:setKV("quest_200_mission", 3)
+            player:sendTextMessage(MESSAGE_IMPORTANT, "Você encontrou o 2º tesouro! Um mais...")
+        end
+    end)
+
+-- Tesouro 3 - Conclusão
+quest:newAction():type("movement"):pos({x=300, y=300, z=7})
+    :event(function(player)
+        if player:getKV("quest_200_mission") == 3 then
+            player:setKV("quest_200_completed", true)
+            player:addExperience(20000)
+            local item = Game.createItem(789)
+            player:addItemEx(item)
+            player:setKV("quest_200_reward_claimed", true)
+            player:sendTextMessage(MESSAGE_INFO_DESCR, "Quest concluída! Todos os tesouros coletados!")
+        end
+    end)
+
+quest:register()
+```
+
+</TabItem>
+
+<TabItem label="Complex">
+
+**Quest Complexa: Multi-Objetivo**
+
+```lua
+-- dragon_slayer_quest.lua
+
+local quest = Quest()
+quest:id(300)
+quest:name("Dragon Slayer")
+quest:description("Derrote dragões e coleta items para o ritual de força")
+quest:defaultStartMission(1)
+
+local mission1 = quest:newMission(1)
+mission1:setName("Derrota Dragões")
+
+local mission2 = quest:newMission(2)
+mission2:setName("Coleta Cristais")
+
+local mission3 = quest:newMission(3)
+mission3:setName("Ritual")
+
+-- Kill dragão avança para próxima fase
+quest:newAction():type("kill"):aid(dragonId)
+    :event(function(player, creature)
+        local questKey = "quest_300"
+        if player:getKV(questKey .. "_mission") == 1 then
+            player:setKV(questKey .. "_mission", 2)
+            player:setKV(questKey .. "_started_ritual", os.time())
+            player:sendTextMessage(MESSAGE_IMPORTANT, "Dragão derrotado! Agora coleta os cristais necessários.")
+        end
+    end)
+
+-- Coleta de cristais
+quest:newAction():type("item"):itemid(dragonCrystalId)
+    :event(function(player)
+        local questKey = "quest_300"
+        if player:getKV(questKey .. "_mission") == 2 then
+            local crystals = (player:getKV(questKey .. "_crystals") or 0) + 1
+            player:setKV(questKey .. "_crystals", crystals)
+            
+            if crystals >= 5 then
+                player:setKV(questKey .. "_mission", 3)
+                player:sendTextMessage(MESSAGE_IMPORTANT, "Cristais coletados! Retorne ao NPC para o ritual final.")
+            end
+        end
+    end)
+
+-- Ritual final no NPC
+quest:newAction():type("npc"):value("the_dragonmaster")
+    :event(function(player)
+        local questKey = "quest_300"
+        if player:getKV(questKey .. "_mission") == 3 then
+            player:addExperience(50000)
+            local reward = Game.createItem(legendaryWeaponId)
+            player:addItemEx(reward)
+            player:setKV(questKey .. "_completed", true)
+            player:setKV(questKey .. "_reward_claimed", true)
+            player:sendTextMessage(MESSAGE_INFO_DESCR, "Ritual completo! Você é um verdadeiro Dragon Slayer!")
+        end
+    end)
+
+quest:register()
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Quest não inicia
+
+**Causa:** Quest não está registrada ou ID não configurado  
+**Solução:**
+```lua
+quest:id(123)  -- Garantir que tem ID
+quest:register()  -- Registrar no final
+```
+
+### Problema: Jogador não progride na missão
+
+**Causa:** Action event não está configurado corretamente  
+**Solução:** Verificar if/conditions no event
+```lua
+quest:newAction():type("item"):itemid(123)
+    :event(function(player)
+        local questKey = "quest_" .. quest:id()
+        -- Debug
+        print("Player picked item. Mission: " .. (player:getKV(questKey .. "_mission") or 1))
+        player:setKV(questKey .. "_mission", 2)
+    end)
+```
+
+### Problema: Recompensa não é dada
+
+**Causa:** Condição not checking mission state ou reward já foi recebido  
+**Solução:**
+```lua
+if player:getKV(questKey .. "_reward_claimed") then
+    player:say("Você já recebeu a recompensa")
+    return
+end
+
+-- Dar reward
+player:addExperience(10000)
+player:setKV(questKey .. "_reward_claimed", true)
+```
+
+### Problema: Data de progresso não persiste após logout
+
+**Causa:** Não usando KV storage corretamente  
+**Solução:** Garantir uso de `player:setKV()` em vez de variáveis locais
+```lua
+-- ❌ Errado - perde ao logout
+local myVar = 5
+
+-- ✅ Correto - persiste
+player:setKV("quest_123_progress", 5)
+```
+
+### Problema: Múltiplas quests conflitarem
+
+**Causa:** IDs duplicados ou actions compartilhadas  
+**Solução:** Verificar IDs únicos, usar questKey específica
+```lua
+local questId = 300  -- Verificar unicidade!
+local questKey = "quest_" .. questId
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Estrutura Básica:**
+```lua
+local quest = Quest()
+quest:id(XXX)
+quest:name("Name")
+quest:defaultStartMission(1)
+
+local mission = quest:newMission(1)
+mission:setName("Name")
+
+quest:newAction():type("TYPE"):VALUE()
+    :event(function(player) ... end)
+
+quest:register()
+```
+
+**Action Types:**
+- `kill`: Morte de monstro - `:aid(monsterId)`
+- `item`: Pickup de item - `:itemid(itemId)`
+- `login`: Login do player - nenhum parâmetro
+- `movement`: Movimento para local - `:pos({x, y, z})`
+- `npc`: Interação NPC - `:value("npcName")`
+
+**Chaves de Storage:**
+- `quest_{id}_mission`: Missão atual
+- `quest_{id}_completed`: Quest completa?
+- `quest_{id}_progress`: % de progresso
+- `quest_{id}_reward_claimed`: Recompensa recebida?
+
+**Recompensas:**
+- `player:addExperience(amount)`
+- `player:addItemEx(item)`
+- `player:setKV(key, value)`
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_Quests.mdx](#)
+2. **Analise Quests Existentes**: Examine arquivos como `example_quest.lua`
+3. **Teste Localmente**: Crie uma quest de teste em um servidor local
+4. **Implemente Suas Próprias**: Combine padrões para criar quests únicas
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Quests Documentadas:** 954  
+
+Para dúvidas ou sugestões, consulte a documentação oficial ou o arquivo de catálogo.
+</Aside>

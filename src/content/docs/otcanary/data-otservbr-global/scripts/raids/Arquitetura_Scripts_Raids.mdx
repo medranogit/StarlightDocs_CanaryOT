@@ -1,0 +1,1085 @@
+---
+title: Arquitetura - Raids Scripts
+description: Documentação técnica da arquitetura e estrutura dos scripts de Raids do servidor Canary
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🏰 Arquitetura - Raids Scripts
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts **Raids** do servidor OTServ Canary. Entenda como implementar eventos periódicos que spawnam bosses e monstros em zonas específicas.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/raids/` contém scripts **Lua** que implementam **eventos periódicos de invasão/spawning** - 21 raids no total que ocorrem em horários aleatórios, com spawns de monstros e bosses em zonas específicas. Cada raid script define a zona, probabilidade de ocorrência, quantidade mínima de players, e sequência de spawns. Raids são eventos globais que afetam toda a comunidade, com duração variando de instantâneo (bosses) até 21 horas (invasões prolongadas).
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Boss Raids**: Eventos periódicos com spawn de bosses únicos
+- **Wave-Based Events**: Spawns em ondas (wave 1, wave 2, etc)
+- **Zone-Based Invasions**: Invasão de monstros em áreas específicas
+- **Server-Wide Events**: Eventos que afetam todo servidor
+- **Probabilistic Encounters**: Chance variável de ocorrência
+- **Time-Gated Content**: Minigap entre raids + day scheduling
+- **Broadcast Messages**: Avisos globais ao iniciar raid
+- **Difficulty Scaling**: Min players + spawn amounts
+- **Random Positions**: Bosses aparecem em múltiplos pontos
+- **Duration Management**: Auto-advance em timers predefinidos
+</Card>
+
+<Card title="Estrutura da Pasta" icon="list">
+A pasta `scripts/raids/` é organizada por **tipo/localização de raid**:
+
+```
+raids/
+├── bosses/
+│   ├── arachir_the_ancient_one.lua  (Boss único)
+│   └── battlemaster_zunzu.lua       (Boss único)
+├── monsters/
+│   ├── draptor.lua                  (Wave invasão)
+│   └── midnight_panther.lua         (Boss aleatório)
+└── thais/
+    └── rats.lua                     (Invasão progressiva)
+```
+
+**Padrão de Organização**: 21 raids totais, organizados por tipo/localização.
+
+**Total**: 21 raids documentadas, cobrindo 14+ zonas do servidor (25 scripts com variações diferentes)
+
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Componentes de Raid](#componentes-de-raid)
+3. [Tipos de Raids](#tipos-de-raids)
+4. [Configuração de Probabilidade](#configuração-de-probabilidade)
+5. [Padrões de Implementação](#padrões-de-implementação)
+6. [Wave-Based Raids](#wave-based-raids)
+7. [Exemplos Práticos](#exemplos-práticos)
+8. [Criando um Raid Script](#criando-um-raid-script)
+9. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="Entendendo Raids Scripts" icon="document">
+
+Um **Raid Script** é um script que:
+- **Define uma invasão/evento periódico** com horários e probabilidades
+- **Especifica uma zona** (area com coordenadas X/Y/Z)
+- **Configura condições de spawn** (min players, dias, chance)
+- **Sequencia spawns** de monstros/bosses em fases
+- **Afeta todo o servidor** (evento global)
+
+### Ciclo de Vida de um Raid
+
+```lua
+-- 1. Criar Zone
+local zone = Zone("raid.name")
+zone:addArea(Position(x1, y1, z), Position(x2, y2, z))
+
+-- 2. Criar Raid com config
+local raid = Raid("raid.id", {
+    zone = zone,
+    allowedDays = {"Monday", "Tuesday", ...},
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    -- ... mais config
+})
+
+-- 3. Adicionar fases de spawn
+raid
+    :addSpawnMonsters({...})
+    :autoAdvance("delay")
+    :addBroadcast("Mensagem")
+    :autoAdvance("delay")
+
+-- 4. Registrar
+raid:register()
+```
+
+### Padrão Básico
+
+```lua
+-- 1. Zone definição
+local zone = Zone("locacao.raid_name")
+zone:addArea(Position(x1, y1, z), Position(x2, y2, z))
+
+-- 2. Raid object
+local raid = Raid("locacao.raid_name", {
+    zone = zone,
+    allowedDays = { "Monday", "Tuesday", "Wednesday", ... },
+    minActivePlayers = 2,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+})
+
+-- 3. Spawns e fases
+raid
+    :addSpawnMonsters({
+        { name = "Boss Name", amount = 1, position = Position(x,y,z) }
+    })
+    :autoAdvance("24h")
+
+-- 4. Registrar
+raid:register()
+```
+
+### Componentes Principais
+
+```lua
+-- Config Table
+{
+    zone = Zone("..."),                    -- Área onde raid ocorre
+    allowedDays = {"Monday", ...},         -- Dias da semana permitidos
+    minActivePlayers = 3,                  -- Mínimo players online
+    initialChance = 0.02,                  -- Chance inicial (2%)
+    targetChancePerDay = 0.02,             -- Chance por dia
+    maxChancePerCheck = 0.8,               -- Chance máxima (80%)
+    minGapBetween = "12h",                 -- Tempo mínimo entre raids
+}
+
+-- Métodos
+:addSpawnMonsters({...})                   -- Spawn de wave
+:addBroadcast("Text")                      -- Mensagem global
+:autoAdvance("delay")                      -- Avança após delay
+:register()                                -- Registra raid
+```
+
+</Card>
+
+---
+
+## 🎪 Componentes de Raid
+
+<Card title="Elementos que Compõem um Raid" icon="layers">
+
+### Componente 1: Zone (Área de Ação)
+
+```lua
+-- Define retângulo onde raid ocorre
+local zone = Zone("drefia.arachir")
+zone:addArea(
+    Position(32963, 32399, 12),  -- Canto superior esquerdo
+    Position(32965, 32401, 12)   -- Canto inferior direito
+)
+
+-- Cálculo: Área = (65-63) × (401-399) = 2 × 2 = 4 tiles
+```
+
+**Propósito**: Delimitar onde monstros podem spawnar.
+
+**Flexibility**:
+- Pequena: 2×2 tiles (bosses únicos)
+- Média: 50×50 tiles (invasões)
+- Grande: 100×100 tiles (eventos massivos)
+
+### Componente 2: Raid Configuration
+
+```lua
+{
+    zone = zone,                           -- Obrigatório
+    allowedDays = {...},                   -- Obrigatório
+    minActivePlayers = 3,                  -- Obrigatório
+    
+    -- Probabilidade (opcional)
+    initialChance = 0.02,                  -- 2% inicial
+    targetChancePerDay = 0.02,             -- +2% por dia
+    maxChancePerCheck = 0.8,               -- Máximo 80%
+    
+    -- Timing (opcional)
+    minGapBetween = "12h",                 -- 12h entre raids
+}
+```
+
+**initialChance**: Chance base quando server inicia  
+**targetChancePerDay**: Aumenta a cada dia sem raid  
+**maxChancePerCheck**: Teto máximo de probabilidade  
+**minGapBetween**: Força espera mínima entre ocorrências
+
+### Componente 3: Spawn Wave
+
+```lua
+raid:addSpawnMonsters({
+    {
+        name = "Monster Name",
+        amount = 5,
+        position = Position(x, y, z)  -- Opcional
+    },
+    {
+        name = "Boss Name",
+        amount = 1
+        -- Sem position = spread na zone
+    }
+})
+```
+
+**Options**:
+- `name`: Exato do monstro no servidor
+- `amount`: Quantidade a spawnar
+- `position`: (Opcional) Posição fixa ou aleatória na zone
+
+### Componente 4: Delay e Avanço
+
+```lua
+raid
+    :addSpawnMonsters({...})      -- Spawn wave 1
+    :autoAdvance("30s")            -- Espera 30s
+    
+    :addBroadcast("Invasão!")      -- Mensagem
+    :autoAdvance("5s")             -- Espera 5s
+    
+    :addSpawnMonsters({...})       -- Spawn wave 2
+    :autoAdvance("2m")             -- Espera 2 minutos
+```
+
+**Delays Comuns**:
+- Instantâneo: "0s" ou omitir
+- Curto: "5s", "10s", "30s"
+- Médio: "2m", "5m", "10m"
+- Longo: "1h", "24h"
+
+### Componente 5: Broadcast
+
+```lua
+raid:addBroadcast("Rat Plague in Thais!")
+    :autoAdvance("5s")
+```
+
+**Propósito**: Avisar jogadores sobre evento global
+
+**Timing**: Geralmente no início do raid
+
+</Card>
+
+---
+
+## 🏰 Tipos de Raids
+
+<Card title="Padrões e Classificações de Raids" icon="zap">
+
+### Tipo 1: Boss Único (Simple)
+
+```lua
+-- Spawna 1 boss em posição fixa
+local raid = Raid("drefia.boss", {
+    zone = zone,
+    allowedDays = { "Monday", "Tuesday", ... },
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+})
+
+raid:addSpawnMonsters({
+    { name = "Arachir the Ancient One", amount = 1, position = Position(...) }
+})
+:autoAdvance("24h")
+
+raid:register()
+```
+
+**Características**:
+- 1 boss apenas
+- Posição fixa ou opcional
+- Duration: 24h (automático)
+- Minigap: Sem limite
+
+### Tipo 2: Boss Random Position
+
+```lua
+-- Spawna 1 boss em um de múltiplos pontos aleatórios
+local possiblePositions = {
+    Position(32847, 32697, 7),
+    Position(32871, 32717, 7),
+    Position(32856, 32738, 7),
+}
+
+raid:addSpawnMonsters({
+    {
+        name = "Midnight Panther",
+        amount = 1,
+        position = possiblePositions[math.random(1, #possiblePositions)],
+    },
+})
+:autoAdvance("24h")
+```
+
+**Características**:
+- 1 boss com random spawn
+- 3 posições possíveis
+- Mais desafiante (players não sabem onde)
+
+### Tipo 3: Wave-Based (Progressivo)
+
+```lua
+-- Múltiplas waves com delay entre elas
+raid:addBroadcast("Dragons invaded!"):autoAdvance("5s")
+
+for i = 1, 3 do
+    raid:addSpawnMonsters({
+        { name = "Dragon", amount = 50 }
+    }):autoAdvance("2m")
+end
+
+for i = 1, 8 do
+    raid:addSpawnMonsters({
+        { name = "Draptor", amount = 1 }
+    }):autoAdvance("10s")
+end
+```
+
+**Características**:
+- Broadcast inicial
+- Múltiplas waves (3+)
+- Escalação de dificuldade
+- Timing progressivo
+
+### Tipo 4: Multi-Monster Event (Invasão)
+
+```lua
+-- Múltiplos tipos de monstro em sequência
+raid:addBroadcast("Rat Plague in Thais!"):autoAdvance("5s")
+
+raid:addSpawnMonsters({
+    { name = "Rat", amount = 10 },
+    { name = "Cave Rat", amount = 10 },
+}):autoAdvance("10m")
+
+raid:addSpawnMonsters({
+    { name = "Rat", amount = 20 },
+    { name = "Cave Rat", amount = 20 },
+}):autoAdvance("10m")
+```
+
+**Características**:
+- Múltiplos tipos simultâneos
+- Escalação de quantidade
+- Longo duration (20m total)
+- Alto minGapBetween (36h)
+
+</Card>
+
+---
+
+## 📊 Configuração de Probabilidade
+
+<Card title="Sistema de Chance de Raid" icon="target">
+
+### Probabilidade Inicial vs Diária
+
+```lua
+initialChance = 0.02      -- 2% quando server inicia
+targetChancePerDay = 0.02 -- +2% por dia sem raid
+maxChancePerCheck = 0.8   -- Máximo 80%
+
+-- Progresso:
+-- Dia 0: 2%
+-- Dia 1: 4%
+-- Dia 2: 6%
+-- ...
+-- Dia 39+: 80% (pico)
+```
+
+**Fórmula Simulada**:
+```
+Hoje: initialChance = 0.02 (2%)
+Amanhã (se não acontecer): 0.02 + 0.02 = 0.04 (4%)
+Dia 3: 0.06 (6%)
+...
+Limite: 0.80 (80%)
+```
+
+### Minigap Between
+
+```lua
+minGapBetween = "12h"    -- Mínimo 12h entre raids
+
+-- Exemplos:
+minGapBetween = "12h"    -- 12 horas (bosses)
+minGapBetween = "24h"    -- 24 horas (padrão)
+minGapBetween = "36h"    -- 36 horas (invasões big)
+```
+
+**Propósito**: Preventar spam de raids  
+**Efeito**: Force espera mínima depois de última ocorrência
+
+### Min Active Players
+
+```lua
+minActivePlayers = 0      -- Qualquer um pode trigger
+minActivePlayers = 2      -- Mínimo 2 players
+minActivePlayers = 3      -- Mínimo 3 players
+minActivePlayers = 5      -- Mínimo 5 players
+```
+
+**Lógica**:
+```
+IF isTimeToRaid() THEN
+    IF getActivePlayers() >= minActivePlayers THEN
+        :spawn()
+    ELSE
+        :skip() -- Espera mais players
+    END
+END
+```
+
+### Exemplo Real: Rats (Testes Alta)
+
+```lua
+targetChancePerDay = 30    -- 30% de chance
+maxChancePerCheck = 50     -- Máximo 50%
+minGapBetween = "36h"      -- 36 horas mínimo
+minActivePlayers = 0       -- Qualquer um
+```
+
+**Efeito**: Invasão comum (alta chance), frequente (36h min), sempre permite (0 players)
+
+</Card>
+
+---
+
+## 🏗️ Padrões de Implementação
+
+<Card title="Padrões Avançados para Raid Scripts" icon="wrench">
+
+### Padrão 1: Boss Único Simples
+
+```lua
+local zone = Zone("zone.boss")
+zone:addArea(Position(x1, y1, z), Position(x2, y2, z))
+
+local raid = Raid("zone.boss", {
+    zone = zone,
+    allowedDays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" },
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+})
+
+raid
+    :addSpawnMonsters({
+        {
+            name = "Boss Name",
+            amount = 1,
+            position = Position(x, y, z),
+        },
+    })
+    :autoAdvance("24h")
+
+raid:register()
+```
+
+### Padrão 2: Boss Random Position
+
+```lua
+local possiblePositions = {
+    Position(x1, y1, z),
+    Position(x2, y2, z),
+    Position(x3, y3, z),
+}
+
+raid
+    :addSpawnMonsters({
+        {
+            name = "Boss",
+            amount = 1,
+            position = possiblePositions[math.random(1, #possiblePositions)],
+        },
+    })
+    :autoAdvance("24h")
+```
+
+### Padrão 3: Wave-Based com Progressão
+
+```lua
+raid:addBroadcast("Event started!"):autoAdvance("5s")
+
+-- Waves 1-3: 50 de cada
+for i = 1, 3 do
+    raid
+        :addSpawnMonsters({
+            {
+                name = "Common Monster",
+                amount = 50,
+            },
+        })
+        :autoAdvance("2m")
+end
+
+-- Waves 4-11: Bosses progressivos
+for i = 1, 8 do
+    raid
+        :addSpawnMonsters({
+            {
+                name = "Boss Name",
+                amount = 1,
+            },
+        })
+        :autoAdvance("10s")
+end
+
+-- Final: Boss supremo
+raid
+    :addSpawnMonsters({
+        {
+            name = "Final Boss",
+            amount = 1,
+        },
+    })
+    :autoAdvance("10s")
+```
+
+### Padrão 4: Multi-Type Invasão
+
+```lua
+raid:addBroadcast("Invasion in Town!"):autoAdvance("5s")
+
+-- Wave 1: 10+10
+raid
+    :addSpawnMonsters({
+        { name = "Type A", amount = 10 },
+        { name = "Type B", amount = 10 },
+    })
+    :autoAdvance("10m")
+
+-- Wave 2: 20+20
+raid
+    :addSpawnMonsters({
+        { name = "Type A", amount = 20 },
+        { name = "Type B", amount = 20 },
+    })
+    :autoAdvance("10m")
+```
+
+### Padrão 5: Timing Customizado
+
+```lua
+raid
+    :addBroadcast("Broadcast")
+    :autoAdvance("5s")
+    
+    :addSpawnMonsters({...})
+    :autoAdvance("30s")
+    
+    :addBroadcast("Second wave!")
+    :autoAdvance("2s")
+    
+    :addSpawnMonsters({...})
+    :autoAdvance("1h")  -- Long duration
+```
+
+</Card>
+
+---
+
+## 💥 Wave-Based Raids
+
+<Card title="Implementando Raids com Múltiplas Fases" icon="zap">
+
+### Anatomy of Wave Raid
+
+```lua
+-- Array de waves
+for i = 1, 3 do              -- 3 waves
+    raid
+        :addSpawnMonsters({
+            {
+                name = "Dragon",
+                amount = 50,
+            },
+        })
+        :autoAdvance("2m")     -- 2m entre waves
+end
+
+-- Resultado:
+-- t=0s: Broadcast
+-- t=5s: Wave 1 (50 Dragons)
+-- t=125s: Wave 2 (50 Dragons)
+-- t=245s: Wave 3 (50 Dragons)
+-- t=365s: Final bosses
+```
+
+### Wave Control
+
+```lua
+-- 3 waves iguais
+for i = 1, 3 do
+    raid
+        :addSpawnMonsters({...})
+        :autoAdvance("2m")
+end
+
+-- Waves customizadas
+raid:addSpawnMonsters({...}):autoAdvance("1m")
+raid:addSpawnMonsters({...}):autoAdvance("3m")
+raid:addSpawnMonsters({...}):autoAdvance("5m")
+
+-- Conditional spawns
+if dayOfWeek() == "Monday" then
+    raid:addSpawnMonsters({...})
+end
+```
+
+### Escalation Pattern
+
+```lua
+-- Começa pequeno, cresce
+raid:addSpawnMonsters({
+    { name = "Weak", amount = 5 }
+}):autoAdvance("1m")
+
+raid:addSpawnMonsters({
+    { name = "Medium", amount = 10 }
+}):autoAdvance("1m")
+
+raid:addSpawnMonsters({
+    { name = "Strong", amount = 20 }
+}):autoAdvance("1m")
+
+raid:addSpawnMonsters({
+    { name = "Boss", amount = 1 }
+}):autoAdvance("30m")
+```
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Boss Único">
+
+**Arachir the Ancient One (Drefia)**
+
+```lua
+local zone = Zone("drefia.arachir")
+zone:addArea(Position(32963, 32399, 12), Position(32965, 32401, 12))
+
+local raid = Raid("drefia.arachir", {
+    zone = zone,
+    allowedDays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" },
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+})
+
+raid
+    :addSpawnMonsters({
+        {
+            name = "Arachir the Ancient One",
+            amount = 1,
+            position = Position(32964, 32400, 12),
+        },
+    })
+    :autoAdvance("24h")
+
+raid:register()
+```
+
+</TabItem>
+
+<TabItem label="Boss Random">
+
+**Midnight Panther (Tiquanda)**
+
+```lua
+local zone = Zone("tiquanda.midnight-panther")
+zone:addArea(Position(32847, 32697, 7), Position(32871, 32738, 7))
+
+local possiblePositions = {
+    Position(32847, 32697, 7),
+    Position(32871, 32717, 7),
+    Position(32856, 32738, 7),
+}
+
+local raid = Raid("tiquanda.midnight-panther", {
+    zone = zone,
+    allowedDays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" },
+    minActivePlayers = 3,
+    initialChance = 0.03,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.9,
+})
+
+raid
+    :addSpawnMonsters({
+        {
+            name = "Midnight Panther",
+            amount = 1,
+            position = possiblePositions[math.random(1, #possiblePositions)],
+        },
+    })
+    :autoAdvance("24h")
+
+raid:register()
+```
+
+</TabItem>
+
+<TabItem label="Wave Event">
+
+**Draptor (Farmine)**
+
+```lua
+local zone = Zone("farmine.draptor")
+zone:addArea(Position(33195, 31160, 7), Position(33286, 31247, 7))
+
+local raid = Raid("farmine.draptor", {
+    zone = zone,
+    allowedDays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" },
+    minActivePlayers = 2,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.6,
+    minGapBetween = "12h",
+})
+
+raid:addBroadcast("Dragons invaded!"):autoAdvance("30s")
+
+for i = 1, 3 do
+    raid
+        :addSpawnMonsters({
+            { name = "Dragon", amount = 50 }
+        })
+        :autoAdvance("2m")
+end
+
+for i = 1, 8 do
+    raid
+        :addSpawnMonsters({
+            { name = "Draptor", amount = 1 }
+        })
+        :autoAdvance("10s")
+end
+
+raid
+    :addSpawnMonsters({
+        { name = "Grand Mother Foulscale", amount = 1 }
+    })
+    :autoAdvance("10s")
+
+raid:register()
+```
+
+</TabItem>
+
+<TabItem label="Invasão">
+
+**Rats (Thais)**
+
+```lua
+local zone = Zone("thais.rats")
+zone:addArea(Position(32331, 32182, 7), Position(32426, 32261, 7))
+
+local raid = Raid("thais.rats", {
+    zone = zone,
+    allowedDays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" },
+    minActivePlayers = 0,
+    targetChancePerDay = 30,
+    maxChancePerCheck = 50,
+    minGapBetween = "36h",
+})
+
+raid:addBroadcast("Rat Plague in Thais!"):autoAdvance("5s")
+
+raid
+    :addSpawnMonsters({
+        { name = "Rat", amount = 10 },
+        { name = "Cave Rat", amount = 10 },
+    })
+    :autoAdvance("10m")
+
+raid
+    :addSpawnMonsters({
+        { name = "Rat", amount = 20 },
+        { name = "Cave Rat", amount = 20 },
+    })
+    :autoAdvance("10m")
+
+raid:register()
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🛠️ Criando um Raid Script
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Determinar Tipo
+
+Escolha qual padrão melhor se encaixa:
+- **Boss Único**: 1 monstro/boss em posição fixa
+- **Boss Random**: 1 boss com múltiplas posições possíveis
+- **Invasão**: Múltiplos tipos de monstro em sequence
+- **Wave Event**: Progressão de waves com escalação
+
+### Passo 2: Definir Zone
+
+```lua
+-- Identificar localização no mapa
+local zone = Zone("area.raid_name")
+zone:addArea(
+    Position(x1, y1, z1),  -- Canto 1
+    Position(x2, y2, z2)   -- Canto 2
+)
+```
+
+### Passo 3: Configurar Raid
+
+```lua
+local raid = Raid("area.raid_name", {
+    zone = zone,
+    allowedDays = { "Monday", "Tuesday", ... },
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+    -- minGapBetween = "12h",  -- Opcional
+})
+```
+
+### Passo 4: Adicionar Spawns
+
+```lua
+raid
+    :addBroadcast("Mensaje opcional")
+    :autoAdvance("5s")
+    
+    :addSpawnMonsters({
+        { name = "Monster", amount = 5 },
+        { name = "Boss", amount = 1 },
+    })
+    :autoAdvance("2m")
+```
+
+### Passo 5: Registrar
+
+```lua
+raid:register()
+```
+
+### Exemplo Completo
+
+```lua
+-- scripts/raids/custom/my_raid.lua
+
+local zone = Zone("area.my_raid")
+zone:addArea(Position(1000, 1000, 7), Position(1100, 1100, 7))
+
+local raid = Raid("area.my_raid", {
+    zone = zone,
+    allowedDays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" },
+    minActivePlayers = 2,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+})
+
+raid
+    :addBroadcast("My Raid is happening!")
+    :autoAdvance("5s")
+    
+    :addSpawnMonsters({
+        { name = "My Monster", amount = 10 }
+    })
+    :autoAdvance("5m")
+    
+    :addSpawnMonsters({
+        { name = "My Boss", amount = 1 }
+    })
+    :autoAdvance("20m")
+
+raid:register()
+```
+
+</Card>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Raid não spawna
+
+**Causa**: Zone não registra, position errada, ou minactiveplayers  
+**Solução**:
+```lua
+-- ✅ Correto - Zone e coordenadas válidas
+local zone = Zone("drefia.arachir")
+zone:addArea(Position(32963, 32399, 12), Position(32965, 32401, 12))
+
+local raid = Raid("drefia.arachir", {
+    zone = zone,
+    minActivePlayers = 0,  -- Começa com 0 para teste
+    -- ... resto
+})
+
+-- ❌ Errado - Zone vazia
+local zone = Zone("drefia.arachir")
+-- Sem addArea = zone vazia!
+```
+
+### Problema: Spawns não aparecem quando esperado
+
+**Causa**: autoAdvance com delay errado  
+**Solução**:
+```lua
+-- ✅ Correto - Delays apropriados
+raid
+    :addBroadcast("Event!")
+    :autoAdvance("5s")      -- Avança após 5s
+    
+    :addSpawnMonsters({...})
+    :autoAdvance("2m")      -- Próximo wave em 2m
+
+-- ❌ Errado - Omitiu autoAdvance
+raid
+    :addSpawnMonsters({...})
+    -- Sem autoAdvance - não avança!
+    :addSpawnMonsters({...})
+```
+
+### Problema: Raid acontece com muita frequência
+
+**Causa**: minGapBetween está curto ou targetChancePerDay alta  
+**Solução**:
+```lua
+-- ✅ Controlar frequência
+minGapBetween = "24h",       -- Aumentar gap
+targetChancePerDay = 0.01,   -- Reduzir chance
+maxChancePerCheck = 0.5,     -- Reduzir máximo
+
+-- ❌ Comum
+minGapBetween = "1h",        -- Muito curto
+targetChancePerDay = 0.5,    -- Muito alto
+```
+
+### Problema: Posição específica não funciona
+
+**Causa**: Position errada ou fora da zone  
+**Solução**:
+```lua
+-- ✅ Correto - Position dentro da zone
+zone:addArea(Position(32963, 32399, 12), Position(32965, 32401, 12))
+
+-- Boss na zone
+:addSpawnMonsters({
+    { 
+        name = "Boss",
+        amount = 1,
+        position = Position(32964, 32400, 12)  -- Dentro da zone!
+    }
+})
+
+-- ❌ Errado - Position fora da zone
+position = Position(35000, 35000, 12)  -- Fora!
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Estrutura Padrão**:
+```lua
+-- 1. Zone
+local zone = Zone("area.name")
+zone:addArea(Position(x1,y1,z), Position(x2,y2,z))
+
+-- 2. Raid config
+local raid = Raid("area.name", {
+    zone = zone,
+    allowedDays = {...},
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+})
+
+-- 3. Spawns
+raid:addSpawnMonsters({...}):autoAdvance("delay")
+
+-- 4. Register
+raid:register()
+```
+
+**Tipos de Raid**:
+- Boss Único (1 monstro)
+- Boss Random (1 em positions aleatórias)
+- Wave-Based (múltiplas phases)
+- Invasão (multi-type sequences)
+
+**Configuração**:
+- `allowedDays`: Always all 7 days
+- `minActivePlayers`: 0-5 típico
+- `initialChance`: 0.01-0.05 (1-5%)
+- `maxChancePerCheck`: 0.5-0.9 (50-90%)
+- `minGapBetween`: "12h" a "36h"
+
+**Boas Práticas**:
+- ✅ Zone sempre definida
+- ✅ autoAdvance entre spawns
+- ✅ minActivePlayers apropriado
+- ✅ Broadcast para feedback
+- ✅ Register ao final
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_Raids.mdx](#) para análise de todos os 21 raids
+2. **Analise Scripts Existentes**: Examine os 21 raids fornecidos (padrões boss, wave eventos, long-running)
+3. **Crie Seu Primeiro Raid**: Comece com boss único (template mais simples, 2×2 zone)
+4. **Expanda Padrões**: 
+   - Adicione waves progressivas (use for loops)
+   - Implemente broadcasts multi-fase
+   - Configure minigap e chance aproriados
+5. **Tuning Avançado**: 
+   - Ajuste `initialChance` e `maxChancePerCheck`
+   - Configure `allowedDays` para restringir dias
+   - Use `maxChecksPerDay` para throttle
+   - Implemente `minGapBetween` para prevenir spam
+
+---
+
+<Aside>
+**Versão:** 2.0 (Expandido)  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Raids Documentados:** 21 (eram 5)  
+**Categorias**: 
+- Boss Raids Únicos (14)
+- Boss + Waves (2)
+- Wave Progressivos (3)
+- Wave Longos (2)
+- Invasões (1)
+
+**Zonas Cobertas**: 14+ (Drefia, Thais, Edron, Farmine, Tiquanda, Nargor, Fury Gates, Svargrond, Roshamuul, Venore, Ankrahmun, Darashia, Folda, e mais)
+
+**Duração**: 0s (bosses) a 21 horas (invasões longíssimas)
+
+Para dúvidas, consulte o arquivo de catálogo ou analise padrões similares em todos os 21 raids.
+</Aside>

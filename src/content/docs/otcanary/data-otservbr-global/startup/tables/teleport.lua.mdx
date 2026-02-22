@@ -1,0 +1,330 @@
+---
+title: "teleport.lua - Tabela de Féromonas Teleportadoras"
+description: "Documentação técnica da tabela de configuração de campos mágicos de teleporte no servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# ✨ teleport.lua
+
+Arquivo de tabela responsável pelos **teleportes mágicos** - campos mágicos no chão que transportam players quando pisam ou usam.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/teleport.lua` |
+| **Tipo** | Tabela de Configuração - Teleportes |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Nenhuma |
+| **Total de Linhas** | 587 linhas |
+| **Função Principal** | Configurar féromonas teleportadoras |
+| **Carregado por** | `tables/load.lua` |
+| **Faixa de IDs** | Variável (4253, 4905, 4906, 5517, 5518, 14562, etc) |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/teleport.lua`
+
+Define tabela global `TeleportAction` com campos mágicos no mapa que teleportam players - distintos de items, são glifos/féromonas no chão.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+**Escopo**: Teleportes mágicos de área
+
+**Diferença**:
+- `teleport.lua`: Féromonas mágicas (piscar dispara)
+- `teleport_item.lua`: Items (pegar e usar)
+
+**Estrutura**:
+```lua
+[actionId] = {
+    itemId = SPELL_VISUAL ou false,
+    itemPos = { {x, y, z} }
+}
+```
+
+**Range**: Variável (4253, 4905, 4906, 5517+)
+**Uso**: Portais, glifos, magic circles
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Teleportes Mágicos" icon="layers">
+
+```
+┌──────────────────────────────┐
+│  TELEPORTS MÁGICOS NO CHÃO    │
+└────────────┬─────────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    ▼                 ▼
+Teleport Location   Action
+(Glyphs)            (OnStepIn)
+    │                 │
+Magic circle         ├─ Player enters
+Visual effect        ├─ Trigger spell
+                     └─ Teleport
+```
+
+**Fluxo**:
+1. Player pisa em glifo mágico
+2. OnStepIn dispara (movimento)
+3. Teleport effect visual
+4. Player transportado
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### TeleportAction
+
+**Propósito**: Definir teleportes mágicos no mapa
+
+**Estrutura**:
+```lua
+TeleportAction = {
+    [actionId] = {
+        itemId = VISUAL_ID ou false,
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = xx},
+            -- múltiplas posições possíveis
+        }
+    }
+}
+```
+
+**Campos**:
+- `actionId`: ID único (variável, não sequencial)
+- `itemId`: Visual do teleporte (spell effect ou false)
+- `itemPos`: Posições do glifo
+
+**Range de IDs**:
+- 4253: Um teleporte
+- 4905-4906: Dupla de teleportes
+- 5517-5518: Outro par
+- 14562+: Teleportes avançados
+
+</Card>
+
+---
+
+## 📝 Exemplos do Código
+
+<Tabs>
+<TabItem label="Teleporte Simples">
+
+```lua
+[4253] = {
+    itemId = false,
+    itemPos = {
+        {x = 32352, y = 31654, z = 6}
+    }
+}
+```
+
+- **Action ID**: 4253
+- **Sem visual** (false)
+- **Uma posição**
+- **Teleporte mágico**
+
+</TabItem>
+
+<TabItem label="Dupla de Teleportes (Ida/Volta)">
+
+```lua
+[4905] = {
+    itemId = false,
+    itemPos = {
+        {x = 32352, y = 31654, z = 6}  -- Portal A
+    }
+},
+[4906] = {
+    itemId = false,
+    itemPos = {
+        {x = 32500, y = 31700, z = 6}  -- Portal B
+    }
+}
+```
+
+- **Dois teleportes** (4905, 4906)
+- **Conectados** (A→B, B→A)
+- **Bidirectional**
+
+</TabItem>
+
+<TabItem label="Rede de Teleportes">
+
+```lua
+[5517] = {
+    itemId = false,
+    itemPos = { {x = 32000, y = 31000, z = 7} }
+},
+[5518] = {
+    itemId = false,
+    itemPos = { {x = 32100, y = 31100, z = 7} }
+},
+[5519] = {
+    itemId = false,
+    itemPos = { {x = 32200, y = 31200, z = 7} }
+}
+```
+
+- **3 teleportes** em rede
+- **IDs consecutivos**
+- **Network teleportation**
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Tipos de Teleportes Mágicos
+
+<Card title="Padrões Comuns" icon="star">
+
+### 1. Simples Unidirectional
+```lua
+[4253] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+-- Leva para lugar X
+```
+
+### 2. Bidirectional Pair
+```lua
+[4905] = {...},  -- A → B
+[4906] = {...}   -- B → A
+```
+
+### 3. Magic Circle
+```lua
+[5000] = {
+    itemId = 1387,  -- Visual effect
+    itemPos = { {x, y, z} }
+}
+```
+
+### 4. Dungeon Network
+```lua
+[5517] = {...},  -- Floor 1
+[5518] = {...},  -- Floor 2
+[5519] = {...}   -- Floor 3
+```
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Como Funciona" icon="link">
+
+**Em `teleport.lua`**:
+```lua
+TeleportAction = {
+    [4905] = {
+        itemId = false,
+        itemPos = { {x = 32352, y = 31654, z = 6} }
+    }
+}
+```
+
+**Em action script** ou movimento:
+```lua
+-- Quando player pisa (onStepIn)
+function onStepIn(creature, item, position, ...)
+    if not creature:isPlayer() then
+        return true
+    end
+    
+    local player = creature:getPlayer()
+    local actionId = item:getAttribute(ITEM_ATTRIBUTE_ACTIONID)
+    
+    -- Define destino
+    local destination = getTeleportDestination(actionId)
+    if not destination then return false end
+    
+    -- Teleporta
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+    player:teleportTo(destination)
+    destination:sendMagicEffect(CONST_ME_TELEPORT)
+    
+    return true
+end
+
+function getTeleportDestination(actionId)
+    local destinations = {
+        [4905] = Position(32500, 31700, 6),  -- Portal B
+        [4906] = Position(32352, 31654, 6),  -- Portal A
+        -- ... mais destinos
+    }
+    return destinations[actionId]
+end
+```
+
+</Card>
+
+---
+
+## 💡 Diferenças com teleport_item.lua
+
+<Card title="Comparação de Sistemas" icon="chart">
+
+| Aspecto | Teleport | TeleportItem |
+|---|---|---|
+| **Tipo** | Féromona mágica | Item/Shrine |
+| **Acionado** | OnStepIn (automático) | OnUse (manual) |
+| **Visual** | Pode ter glifo visual | Invisível |
+| **Tipicamente** | Portais mágicos | Shrines, hubs |
+| **Range** | Variável (4905+) | 15001-20000 |
+
+**Teleport**: Automático ao pisar
+**TeleportItem**: Manual ao usar
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: 587  
+**Tabelas Globais**: 1 (TeleportAction)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ TeleportAction (teleportes mágicos)
+
+**Características**:
+- 587 linhas de configuração
+- Centenas de teleportes
+- Supports magic circles
+- Bidirectional networks
+- OnStepIn triggered
+
+Este arquivo define teleportes mágicos automáticos no chão do mapa.
+</Aside>

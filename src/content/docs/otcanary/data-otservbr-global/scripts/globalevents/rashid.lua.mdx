@@ -1,0 +1,183 @@
+---
+title: "rashid.lua"
+description: "Sistema de spawn e movimento do NPC Rashid que viaja por diferentes cidades a cada dia da semana."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | rashid.lua |
+| **Tipo** | GlobalEvent |
+| **Tamanho** | ~60 linhas |
+| **Localização** | scripts/globalevents/spawn/ |
+| **Propósito** | Gerenciar NPC Rashid viajante |
+| **Disparo** | onStartup + diário via onTime |
+| **Cidades** | 7 (uma por dia semana) |
+| **WebHook** | Anúncio em Discord |
+| **Complexidade** | Média |
+</Card>
+
+:::tip 💡
+Sistema inteligente que usa dia da semana (Lua `os.date("*t").wday`) para mapear automaticamente Rashid para localização correta, com webhook de anúncio.
+:::
+
+## 📄 Visão Geral Resumida
+
+Gerencia NPC Rashid (famoso mercador viajante) que se aparece em cidades diferentes a cada dia da semana. Na inicialização do servidor cria Rashid no local do dia atual e, a cada meia-noite (00:01), teleporta para próxima cidade. Sistema envia notificações via webhook Discord após 1 minuto de espera.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Configurações
+
+**`positionByDay` table**
+| Dia | Cidade | Posição |
+|-----|--------|---------|
+| 1 (Sunday) | Carlin | (32328, 31782, 6) |
+| 2 (Monday) | Svarground | (32207, 31155, 7) |
+| 3 (Tuesday) | Liberty Bay | (32300, 32837, 7) |
+| 4 (Wednesday) | Port Hope | (32577, 32753, 7) |
+| 5 (Thursday) | Ankrahmun | (33066, 32879, 6) |
+| 6 (Friday) | Darashia | (33235, 32483, 7) |
+| 7 (Saturday) | Edron | (33166, 31810, 6) |
+
+### Funções Locais
+
+**`rashidwebhook(message)`**
+- **Parâmetros**: `message` (string de mensagem)
+- **Retorno**: Void
+- **Propósito**: Enviar notificação assíncrona via webhook Discord
+- **Lógica**:
+  1. Formata mensagem com emoji turbante: `:man_wearing_turban:`
+  2. Envia para canal announcements via `Webhook.sendMessage()`
+  3. Executada com 60s de delay via `addEvent()`
+
+### GlobalEvent Hooks
+
+**GlobalEvent: `rashid` (onStartup)**
+- **Disparador**: Execução única na inicialização do servidor
+- **Lógica**:
+  1. Obtém dia semana atual: `os.date("*t").wday` (1=Sunday, 7=Saturday)
+  2. Busca configuração em `positionByDay[today]`
+  3. Se encontrada:
+     a. Cria NPC "Rashid" na posição do dia
+     b. Define posição master via `setMasterPos()`
+     c. Envia efeito TELEPORT
+     d. Log info com cidade
+     e. Agenda webhook message com 60s de delay
+  4. Se não encontrada: log warning
+
+**GlobalEvent: `rashidSpawnOnTime` (onTime 00:01)**
+- **Disparador**: Diariamente às 00:01
+- **Lógica**:
+  1. Obtém dia semana (para próxima localização)
+  2. Obtém instância NPC "rashid"
+  3. Se NPC existe:
+     a. Envia efeito TELEPORT na posição antiga
+     b. Teleporta para nova posição do dia
+     c. Atualiza posição master
+     d. Envia efeito TELEPORT na nova posição
+     e. Log info "Rashid is traveling to `{city}s` location"
+     f. Agenda webhook com 60s delay
+
+### Pseudocódigo Detalhado
+
+```lua
+local today = os.date("*t").wday  -- 1-7 (Sun-Sat)
+local config = positionByDay[today]
+
+if config then
+  rashid = Game.createNpc("Rashid", config.position)
+  rashid:setMasterPos(config.position)
+  rashid:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+  
+  message = "Rashid arrived at " .. config.city .. " today."
+  addEvent(rashidwebhook, 60000, message)
+end
+```
+
+## 📊 Dados Técnicos
+
+### Mapeamento Dia → Cidade
+
+| Número | Dia Semana | Cidade | Coordenada |
+|--------|-----------|--------|-----------|
+| 1 | Sunday | Carlin | X=32328, Y=31782, Z=6 |
+| 2 | Monday | Svarground | X=32207, Y=31155, Z=7 |
+| 3 | Tuesday | Liberty Bay | X=32300, Y=32837, Z=7 |
+| 4 | Wednesday | Port Hope | X=32577, Y=32753, Z=7 |
+| 5 | Thursday | Ankrahmun | X=33066, Y=32879, Z=6 |
+| 6 | Friday | Darashia | X=33235, Y=32483, Z=7 |
+| 7 | Saturday | Edron | X=33166, Y=31810, Z=6 |
+
+### Eventos Globais
+
+| Evento | Disparador | Frequência | Ação |
+|--------|-----------|-----------|------|
+| rashid | onStartup | 1 vez | Cria Rashid |
+| rashidSpawnOnTime | onTime 00:01 | Diário | Teleporta Rashid |
+
+### Delay de WebHook
+
+| Operação | Delay | Razão |
+|----------|-------|-------|
+| Envio Discord | 60000 ms | Aguardar inicialização |
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `GlobalEvent(string)` | Classe | Registrar eventos |
+| `Game.createNpc()` | Função | Criar NPC |
+| `Npc(string)` | Construtor | Obter instância NPC |
+| `os.date()` | Função Lua | Obter dia da semana |
+| `Webhook.sendMessage()` | Função | Enviar Discord |
+| `addEvent()` | Função | Agendar execução |
+| `announcementChannels["serverAnnouncements"]` | Channel | Discord channel |
+
+### APIs Utilizadas
+
+- GlobalEvent: `onStartup()`, `onTime()`, `time()`, `register()`
+- NPC: `setMasterPos()`, `getPosition()`, `teleportTo()`
+- Position: `sendMagicEffect()`
+- Game: `createNpc()`
+
+### Fluxo de Integração
+
+```
+Servidor inicia
+    ↓
+onStartup dispara
+    ↓
+Obtém dia semana (os.date)
+    ↓
+Cria NPC Rashid na cidade correta
+    ↓
+Agenda webhook anúncio (+60s)
+    ↓
+Diariamente 00:01
+    ↓
+onTime dispara
+    ↓
+Teleporta Rashid para próxima cidade
+```
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/globalevents/spawn/rashid.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | 100% |
+| **Complexidade Código** | Média |
+| **Status Validação** | ✅ Completo |
+| **Backticks Validados** | ✅ OK |

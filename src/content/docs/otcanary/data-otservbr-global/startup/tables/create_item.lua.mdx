@@ -1,0 +1,295 @@
+---
+title: "create_item.lua - Tabela de Items Criados"
+description: "Documentação técnica da tabela de items que são criados automaticamente no mapa durante a inicialização do servidor"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 📍 create_item.lua
+
+Arquivo de tabela responsável por definir **items que são criados automaticamente no mapa durante o startup** do servidor, sem necessidade de adicionar manualmente ao XML do mapa.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/create_item.lua` |
+| **Tipo** | Tabela de Configuração - Items |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Nenhuma (dados estáticos) |
+| **Total de Linhas** | ~15 linhas |
+| **Função Principal** | Criar items no mapa automaticamente |
+| **Carregado por** | `tables/load.lua` |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/create_item.lua`
+
+Define tabela global `CreateItemOnMap` com items que devem ser criados em múltiplas localidades durante o startup.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+Tabela que define **items a serem criados automaticamente**:
+
+**Propósito**:
+- Evitar editar XML do mapa
+- Criar items dinamicamente via Lua
+- Útil para items reutilizáveis em múltiplos locais
+
+**Estrutura**:
+```lua
+[itemId] = {
+    itemPos = {
+        {x = xxxxx, y = xxxxx, z = x},
+        {x = xxxxx, y = xxxxx, z = x},
+        -- mais posições
+    }
+}
+```
+
+**Exemplo**: Criar 6 picaretas em locais diferentes para The Explorer Society quest.
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura" icon="layers">
+
+```
+┌─────────────────────────────────┐
+│ CreateItemOnMap (Configuração)  │
+└─────────────────┬───────────────┘
+                  │
+        ┌─────────┴──────────┐
+        │                    │
+        ▼                    ▼
+    Startup              Durante Game
+    │                        │
+    ├─ For each itemId      ├─ Items aparecem
+    ├─ For each posição     ├─ No lugar certo
+    ├─ Create item          └─ Prontos para usar
+    └─ Logger
+
+
+Diferença de ChestAction:
+- ChestAction = action IDs em items
+- CreateItemOnMap = criar items simples
+```
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### CreateItemOnMap
+
+**Propósito**: Definir items a criar automaticamente
+
+**Estrutura**:
+```lua
+CreateItemOnMap = {
+    [itemId] = {
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = x},
+            {x = xxxxx, y = xxxxx, z = x},
+            -- múltiplas posições
+        }
+    }
+}
+```
+
+**Campos**:
+- `itemId`: ID do item a criar
+- `itemPos`: Array de posições `{x, y, z}`
+
+**Características**:
+- Cria **um único item** em cada posição
+- Sem action/unique ID (item simples)
+- Sem verificação de duplicatas (sempre cria)
+- Sem container (items no chão)
+
+</Card>
+
+---
+
+## 📝 Exemplos do Código
+
+<Tabs>
+<TabItem label="Items Múltiplas Posições">
+
+```lua
+-- The Explorer Society - dwarven pickaxe in 6 locals
+[4845] = {
+    itemPos = {
+        {x = 32506, y = 31964, z = 12},
+        {x = 32427, y = 31900, z = 12},
+        {x = 32520, y = 31929, z = 10},
+        {x = 32503, y = 31922, z = 12},
+        {x = 32447, y = 31973, z = 11},
+        {x = 32425, y = 31948, z = 12}
+    }
+}
+```
+
+- **Item ID**: 4845 (Dwarven Pickaxe)
+- **6 posições** diferentes
+- **Purpose**: Quest need access pickaxes em vários locais
+
+</TabItem>
+
+<TabItem label="Item Posição Única">
+
+```lua
+[11402] = {
+    itemPos = { {x = 33239, y = 31224, z = 10} }
+}
+```
+
+- **Item ID**: 11402
+- **1 posição** única
+- **Simple item** sem quest requirement
+
+</TabItem>
+
+<TabItem label="Padrão de Adição">
+
+```lua
+-- Novo item a adicionar
+[ITEM_ID] = {
+    itemPos = {
+        {x = 32100, y = 32100, z = 7},
+        {x = 32200, y = 32200, z = 8}
+    }
+}
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Padrões de Uso
+
+<Card title="Boas Práticas" icon="star">
+
+### Ao Adicionar Novo Item
+
+1. **Conhecer o item**:
+   - Item ID deve existir
+   - Deve ser um item válido
+
+2. **Determinar posições**:
+   - Validar coordenadas X, Y, Z
+   - Verificar que tile existe no mapa
+   - Não usar PZ (Protected Zones)
+
+3. **Documentar**:
+   - Adicionar comentário com quest/purpose
+   - Linkar script relevante
+
+4. **Testar**:
+   - Startup completa sem erro
+   - Item aparece na posição certa
+   - Pode ser usado/pego por player
+
+### Evitar
+
+- ❌ Item IDs inválidos
+- ❌ Posições fora do mapa
+- ❌ Duplicar posições (mesmo item 2x)
+- ❌ Items em PZ
+
+</Card>
+
+---
+
+## 🎛️ Integração com Funções
+
+<Card title="Como os Scripts Usam" icon="link">
+
+**Em `functions.lua`**:
+```lua
+function CreateMapItem(tablename)
+    for index, value in pairs(tablename) do
+        for i = 1, #value.itemPos do
+            local tile = Tile(value.itemPos[i])
+            if tile then
+                if tile:getItemCountById(index) == 0 then
+                    Game.createItem(index, 1, value.itemPos[i])
+                end
+            end
+        end
+    end
+    logger.debug("Created all items in the map")
+end
+```
+
+**Lógica**:
+1. Para cada itemId
+2. Para cada posição
+3. Verifica se item já existe (evita duplas)
+4. Se não existe, cria
+
+**Chamada no startup**:
+```lua
+CreateMapItem(CreateItemOnMap)
+```
+
+</Card>
+
+---
+
+## ⚠️ Diferenças Importantes
+
+<Card title="CreateItemOnMap vs ChestAction" icon="alert">
+
+| Aspecto | CreateItemOnMap | ChestAction |
+|---------|---|---|
+| **Propósito** | Items simples | Items com action/reward |
+| **Complexidade** | Mínima | Alta |
+| **Tem Action ID** | Não | Sim |
+| **Tem Reward** | Não | Sim |
+| **Tem Storage** | Não | Sim |
+| **Duplicado Se Existe** | Não (skip) | Sim (overwrite) |
+| **Uso** | Items básicos | Chests, baús |
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: ~15  
+**Tabelas Globais**: 1 (CreateItemOnMap)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ CreateItemOnMap
+
+**Propósito**:
+- Criar items simples no mapa automaticamente
+- Sem action/unique IDs
+- Sem rewards ou lógica complexa
+
+Use este arquivo para items que devem existir no mapa de forma simples.
+</Aside>

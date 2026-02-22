@@ -1,0 +1,1044 @@
+---
+title: Arquitetura - Source Code (C++)
+description: Documentação técnica da arquitetura e estrutura do código-fonte C++ do servidor Canary
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🏗️ Arquitetura - Source Code (C++)
+
+Guia completo sobre a arquitetura e estrutura técnica do código-fonte **C++** do servidor OTServ Canary. Entenda como o servidor é organizado, quais são os módulos principais e como interagem entre si.
+
+---
+
+## 🎯 Sobre o Código-Fonte
+
+<Card title="O que é?" icon="information">
+A pasta `src/` contém todo o **código-fonte C++** que compila para o executável do servidor Canary. É estruturada em **módulos temáticos** que juntos formam um servidor MMORPG completo:
+
+- **Gerenciamento de Contas** (Account System)
+- **Criaturas** (Players, Monsters, NPCs - a "vida" do mundo)
+- **Sistema de Jogo** (Combate, movimento, efeitos)
+- **Banco de Dados** (Persistência de dados)
+- **Rede/Socket** (Comunicação com clientes)
+- **Sistema de Itens** (Equipamentos, consumíveis)
+- **Mapa** (Carregamento e gerenciamento do mundo)
+- **Scripts Lua** (Programação do lado do servidor)
+
+O código C++ forma o **núcleo performático** do servidor, enquanto scripts Lua permitem customização sem recompile.
+</Card>
+
+<Card title="Tecnologia Stack" icon="wrench">
+- **Linguagem**: C++ (C++17/20 moderno)
+- **Build System**: CMake
+- **Compilador**: Microsoft Visual C++ (Windows) / GCC (Linux)
+- **Banco de Dados**: MySQL/MariaDB via biblioteca nativa
+- **Scripts**: Lua 5.4 integrado
+- **Networking**: Socket.IO / Asio (async networking)
+- **Serialização**: Protocol Buffers (protobuf)
+- **Criptografia**: RSA (RSA.cpp), Argon2 (Argon.cpp)
+</Card>
+
+<Card title="Estrutura de Pastas Raiz" icon="list">
+```
+src/
+├── [Arquivos Raiz - Entry Points]
+│   ├── main.cpp              (Função main - inicia servidor)
+│   ├── canary_server.cpp     (Classe principal do servidor)
+│   ├── canary_server.hpp
+│   └── core.hpp              (Definições globais)
+│
+├── account/                  (Autenticação e contas)
+├── config/                   (Configurações do servidor)
+├── creatures/                (Players, Monsters, NPCs)
+├── database/                 (Camada de banco de dados)
+├── enums/                    (Tipos enumerados)
+├── game/                     (Lógica central do jogo)
+├── io/                       (Entrada/saída de arquivos)
+├── items/                    (Sistema de itens)
+├── kv/                       (Key-Value storage)
+├── lib/                      (Bibliotecas e utilitários)
+├── lua/                      (Integração com Lua)
+├── map/                      (Carregamento de mapa)
+├── protobuf/                 (Definições de serialização)
+├── security/                 (Criptografia e segurança)
+├── server/                   (Networking e protocolo)
+└── utils/                    (Utilitários gerais)
+```
+
+**Total de Módulos**: 16 principais + subdiretórios especializados
+
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Visão Geral da Arquitetura](#visão-geral)
+2. [Fluxo de Inicialização](#fluxo-de-inicialização)
+3. [Módulos Principais](#módulos-principais)
+4. [Padrões de Comunicação](#padrões-de-comunicação)
+5. [Stack de Criaturas](#stack-de-criaturas)
+6. [Sistema de Jogo](#sistema-de-jogo)
+7. [Persistência de Dados](#persistência-de-dados)
+8. [Integração Lua](#integração-lua)
+9. [Segurança](#segurança)
+10. [Como Estender](#como-estender)
+
+---
+
+## 🔍 Visão Geral da Arquitetura
+
+<Card title="Arquitetura em Camadas" icon="layers">
+
+O servidor é estruturado em **camadas hierárquicas**:
+
+```
+┌─────────────────────────────────────────────────────┐
+│ NETWORK LAYER          (server/ - Sockets/Protocol) │
+├─────────────────────────────────────────────────────┤
+│ GAME LOGIC LAYER       (game/ - Regras e Mecânicas) │
+├─────────────────────────────────────────────────────┤
+│ ENTITY LAYER           (creatures/, items/ - Dados) │
+├─────────────────────────────────────────────────────┤
+│ PERSISTENCE LAYER      (database/, io/ - Storage)   │
+├─────────────────────────────────────────────────────┤
+│ UTILITY LAYER          (utils/, lib/ - Helpers)     │
+├─────────────────────────────────────────────────────┤
+│ SCRIPT LAYER           (lua/ - Programação Custom)  │
+└─────────────────────────────────────────────────────┘
+```
+
+### Fluxo de Dados Típico
+
+```
+Cliente (Player)
+    ↓
+Network Socket (server/)
+    ↓
+Game Logic (game/)
+    ↓
+Entity Processing (creatures/, items/)
+    ↓
+Database (database/)
+    ↓
+Persistence (io/)
+    ↓
+Back to Client
+```
+
+### Camadas Especializadas
+
+```
+1. ENTRY POINT
+   └── main.cpp → canary_server.cpp
+   
+2. NETWORK HANDLING
+   └── server/ (network, protocol parsing)
+   
+3. ACCOUNT & AUTH
+   └── account/ + security/
+   
+4. CREATURES & ENTITIES
+   └── creatures/ (players, monsters, npcs)
+   
+5. GAME MECHANICS
+   └── game/ (combate, movimento, scheduling)
+   
+6. STORAGE & PERSISTENCE
+   ├── database/ (queries)
+   ├── io/ (serialização)
+   └── kv/ (estado transiente)
+   
+7. SCRIPTING
+   └── lua/ (callbacks, custom logic)
+```
+
+</Card>
+
+---
+
+## 🚀 Fluxo de Inicialização
+
+<Card title="Sequência de Boot do Servidor" icon="zap">
+
+### Fase 1: Startup
+
+```
+main.cpp
+  ├── 1. Parse command-line arguments
+  ├── 2. Load configuration (config/)
+  ├── 3. Configure logging (lib/logging/)
+  └── 4. Create Game instance
+         └── game.cpp::Game::Game()
+```
+
+### Fase 2: Inicialização
+
+```
+canary_server.cpp
+  ├── 1. Initialize database connection (database/)
+  ├── 2. Load map from file (map/)
+  ├── 3. Load items definitions (items/)
+  ├── 4. Load creatures (monsters, npcs from data/)
+  ├── 5. Setup account system (account/)
+  ├── 6. Load Lua scripts (lua/)
+  ├── 7. Initialize server socket (server/network/)
+  └── 8. Start accepting connections
+```
+
+### Fase 3: Runtime Loop
+
+```
+Event Loop (asio/socket handling)
+  ├── 1. Accept new connection → Create Player instance
+  ├── 2. Receive packet from client
+  ├── 3. Parse packet (server/protocol)
+  ├── 4. Execute game logic (game/)
+  ├── 5. Update creatures (creatures/)
+  ├── 6. Execute Lua callbacks (lua/)
+  ├── 7. Persist changes (database/)
+  └── 8. Send response to client
+```
+
+### Fase 4: Shutdown
+
+```
+Server Shutdown (graceful)
+  ├── 1. Stop accepting new connections
+  ├── 2. Close all player connections
+  ├── 3. Save player data (database/)
+  ├── 4. Save map state (io/iomapserialize)
+  ├── 5. Close database connections
+  └── 6. Cleanup resources
+```
+
+</Card>
+
+---
+
+## 🧩 Módulos Principais
+
+<Tabs>
+<TabItem label="Account">
+
+### account/ - Autenticação e Contas
+
+**Responsabilidade**: Gerenciar contas de usuários, autenticação, dados de account.
+
+**Arquivos principais:**
+- `account.cpp/hpp` - Classe Account (dados de conta)
+- `account_repository.cpp/hpp` - Interface de repositório de contas
+- `account_repository_db.cpp/hpp` - Implementação via banco de dados
+
+**Fluxo:**
+```
+Login Request
+  ↓
+account/account_repository::getAccount()
+  ↓
+Database Query (SELECT account WHERE name=?)
+  ↓
+Validate Password (Argon2)
+  ↓
+Return Account object ou null
+```
+
+**Tipos de Dados:**
+- Account ID
+- Username/Password (hash)
+- Email
+- Coins (Premium)
+- Creation date
+- Last login
+- Account status/flags
+
+</TabItem>
+
+<TabItem label="Creatures">
+
+### creatures/ - Entidades Vivas
+
+**Responsabilidade**: Definir Player, Monster, NPC - qualquer criatura no mundo.
+
+**Estrutura:**
+```
+creatures/
+├── creature.cpp/hpp        (Base para tudo vivo)
+├── creatures_definitions.hpp
+├── players/
+│   ├── player.cpp/hpp      (Player específico)
+│   ├── vocations/          (Classes - Knight, Mage, etc)
+│   └── ...
+├── monsters/               (Monstos - IAs, skills)
+├── npcs/                   (NPCs - vendors, quest givers)
+└── appearances/            (Visual - outfit, blessings)
+```
+
+**Classe Base: Creature**
+```cpp
+class Creature {
+    uint32_t id;
+    std::string name;
+    Position position;
+    int health, maxHealth;
+    int mana, maxMana;
+    virtual void onThink() = 0;  // Thinking loop
+    virtual void onDeath() = 0;  // Death handler
+};
+```
+
+**Specializations:**
+- **Player** (creature/players/player.hpp)
+  - Storage (persistent data)
+  - Spells/Magic
+  - Vocation/Level
+  - Inventory
+  
+- **Monster** (creature/monsters/)
+  - Combat AI
+  - Loot table
+  - Behavior tree
+  - Spells
+  
+- **NPC** (creature/npcs/)
+  - Shop inventory
+  - Script callbacks
+  - Trade logic
+
+</TabItem>
+
+<TabItem label="Game">
+
+### game/ - Sistema de Jogo
+
+**Responsabilidade**: Lógica central do jogo (combate, movimento, scheduling).
+
+**Estrutura:**
+```
+game/
+├── game.cpp/hpp            (Singleton - Game instance)
+├── game_definitions.hpp
+├── functions/              (Funções expostas para Lua)
+├── combat/                 (Sistema de combate)
+├── movement/               (Movimento, pathfinding)
+├── scheduling/             (Eventos agendados)
+├── zones/                  (Zonas de PvP, regras)
+└── modal_window/           (UI windows para clientes)
+```
+
+**Centro de Tudo: Game Class**
+```cpp
+class Game {
+    // Gerenciam tudo
+    Creatures creatures;      // Players, Monsters
+    Items items;              // Objetos no mundo
+    Map map;                  // OTBM parsed
+    
+    void think();             // Main loop
+    void addCreature();       // Spawn logic
+    void removeCreature();    // Despawn logic
+};
+```
+
+**Subsistemas:**
+
+1. **Combat** (combat/)
+   - Damage calculation
+   - Hit/Miss logic
+   - Conditions (poison, paralyze, etc)
+   - Equipment modifiers
+
+2. **Movement** (movement/)
+   - Pathfinding
+   - Collision detection
+   - Tile blocking rules
+   - Creature blocking
+
+3. **Scheduling** (scheduling/)
+   - Event queue
+   - Delayed callbacks
+   - Periodic thinkers
+   - Timer management
+
+</TabItem>
+
+<TabItem label="Database">
+
+### database/ - Persistência
+
+**Responsabilidade**: Conexão com MySQL/MariaDB, execução de queries.
+
+**Arquivos:**
+- `database.cpp/hpp` - Conexão e pool
+- `databasemanager.cpp/hpp` - Gerenciador singleton
+- `databasetasks.cpp/hpp` - Async task queue
+
+**Padrão:**
+```cpp
+// Async database query (non-blocking)
+DatabaseManager::getInstance()
+    .addTask(std::make_unique<QueryTask>(
+        "SELECT player_name WHERE id = ?",
+        [callback](DBResults* res) {
+            // Resultado quando pronto
+        }
+    ));
+```
+
+**Tables principais:**
+- `accounts` - Contas de usuários
+- `players` - Dados de personagens
+- `player_storages` - Storage values
+- `guilds` - Dados de guild
+- `houses` - Propriedades
+- `market` - Ofertas de trade
+
+</TabItem>
+
+<TabItem label="IO">
+
+### io/ - Entrada/Saída
+
+**Responsabilidade**: Carregar/salvar arquivos (mapa, persistência, bestiary).
+
+**Arquivos:**
+- `iomap.cpp/hpp` - Carrega OTBM (mapa)
+- `iomapserialize.cpp/hpp` - Serializa estado do mapa
+- `iologindata.cpp/hpp` - Login data (player.otbm)
+- `iomarket.cpp/hpp` - Market offers
+- `iobestiary.cpp/hpp` - Bestiary info
+- `io_bosstiary.cpp/hpp` - Boss info
+
+**Padrão de Carregamento:**
+```cpp
+IOMap::getInstance().loadMap("world/world.otbm");
+// Parse OTBM binary format
+// Populate tiles with objects
+// Setup spawns
+```
+
+</TabItem>
+
+<TabItem label="Items">
+
+### items/ - Sistema de Itens
+
+**Responsabilidade**: Definir e gerenciar itens no jogo.
+
+**Estrutura:**
+```
+items/
+├── item.cpp/hpp           (Classe Item)
+├── items.cpp/hpp          (Catálogo de tipos)
+├── items_definitions.hpp
+├── containers/            (Backpacks, depots)
+├── weapons/               (Armas - damage, skills)
+├── decay/                 (Degradação de itens)
+└── tile.cpp/hpp           (Tiles - lugar no mundo)
+```
+
+**Hierarquia:**
+```
+Thing (base)
+  ├── Creature
+  └── Item
+      ├── Container (special)
+      ├── Weapon
+      ├── Armor
+      └── Generic Item
+```
+
+**Attributes:**
+```cpp
+class Item : public Thing {
+    uint16_t id;           // Type ID
+    uint8_t count;         // Stackable count
+    uint32_t owner_id;     // Owner (player)
+    std::map<ItemAttribute_t, ...> attributes;
+};
+```
+
+</TabItem>
+
+<TabItem label="Map">
+
+### map/ - Carregamento de Mapa
+
+**Responsabilidade**: Gerenciar o mapa (tiles, coordenadas, pathfinding).
+
+**Arquivos:**
+- `map.cpp/hpp` - Classe Map (dados de tiles)
+- `mapcache.cpp/hpp` - Cache otimizado
+- `tile.cpp/hpp` - Classe Tile (local no mundo)
+- `house/` - Gerenciamento de casas
+- `spectators.cpp/hpp` - AOI (Area of Interest)
+
+**Estrutura:**
+```cpp
+class Map {
+    // Layout 2D de tiles (32k x 32k)
+    Tile* tiles[MAP_WIDTH][MAP_HEIGHT][MAP_HEIGHT_Z];
+    
+    Tile* getTile(const Position& pos);
+    std::vector<Tile*> getAroundPosition(Position center, int radius);
+};
+
+class Tile {
+    // Uma casa (32x32 bits)
+    std::vector<Thing*> things;  // Creatures + Items
+    uint32_t flags;              // Walkable, PvP, etc
+};
+```
+
+**AOI (Area of Interest):**
+```
+Spectators = Jogadores ao redor que veem a ação
+Quando Player se move:
+  ├── Calcula novo AOI
+  ├── Notifica novos jogadores na área
+  ├── Remove antigos jogadores
+  └── Envia packet de mudança
+```
+
+</TabItem>
+
+<TabItem label="Lua">
+
+### lua/ - Integração de Scripts
+
+**Responsabilidade**: Executar scripts Lua para customização.
+
+**Estrutura:**
+```
+lua/
+├── Global Lua state
+├── Callbacks (creaturescripts, events, spells)
+├── Functions (expostas ao Lua como "methods")
+├── Modules (sistemas customizáveis)
+└── Scripts manager
+```
+
+**Padrão:**
+```cpp
+// Callback event
+g_scripts.event("onCreatureSpawn")(creature);
+
+// Function exposed to Lua
+lua_register(luaState, "game.createMonster", 
+    [](lua_State* L) {
+        // C++ implementation
+        // Called from Lua via: game.createMonster(...)
+    }
+);
+```
+
+**Exemplos de Callbacks:**
+- `onSpawnMonster` - Monstro aparece
+- `onPlayerLogin` - Player faz login
+- `onCreatureDeath` - Criatura morre
+- `onCastSpell` - Feitiço é lançado
+- `onUseItem` - Item é usado
+
+</TabItem>
+
+<TabItem label="Server">
+
+### server/ - Networking
+
+**Responsabilidade**: Comunicação com clientes (sockets, protocolo).
+
+**Arquivos:**
+- `server.cpp/hpp` - Server socket principal
+- `network/` - Networking stack
+- `signals.cpp/hpp` - Signal handling (CTRL+C)
+
+**Protocolo:**
+```
+Cliente ↔ Socket ↔ Packet Parser ↔ Game Logic
+         XOR encryption   Versão protocol
+```
+
+**Tipos de Packet:**
+- **Login packets** - Autenticação
+- **Action packets** - Movimento, ataque
+- **Chat packets** - Mensagens
+- **Trade packets** - Comércio
+
+</TabItem>
+
+<TabItem label="Security">
+
+### security/ - Criptografia
+
+**Responsabilidade**: Criptografia de senhas, comunicação segura.
+
+**Arquivos:**
+- `argon.cpp/hpp` - Hash de senha (Argon2)
+- `rsa.cpp/hpp` - Criptografia assimétrica
+
+**Uso:**
+```cpp
+// Hash de senha no register
+std::string hashed = Argon::hash(rawPassword);
+account.password = hashed;
+
+// Verificação no login
+bool valid = Argon::verify(hashed, inputPassword);
+```
+
+</TabItem>
+
+<TabItem label="Config">
+
+### config/ - Configurações
+
+**Responsabilidade**: Carregar e gerenciar configurações do servidor.
+
+**Arquivos:**
+- `configmanager.cpp/hpp` - Manager singleton
+- `config_enums.hpp` - Enum de configurações
+
+**Dados:**
+```cpp
+// Singleton access
+uint32_t expRate = ConfigManager::getInstance()
+    .getNumber(CONFIG_KEY_EXP_RATE);
+
+bool pvpEnabled = ConfigManager::getInstance()
+    .getBoolean(CONFIG_KEY_ALLOW_PVP);
+```
+
+**Fonte:** `config.lua.dist` (data/)
+
+</TabItem>
+
+<TabItem label="KV Storage">
+
+### kv/ - Key-Value Storage
+
+**Responsabilidade**: Storage transiente de estado (não-persistente).
+
+**Arquivos:**
+- `kv.cpp/hpp` - Interface KV
+- `kv_sql.cpp/hpp` - Backend MySQL
+- `value_wrapper.cpp/hpp` - Tipos genéricos
+
+**Uso:**
+```cpp
+// Set value
+kv.set("key", value);
+
+// Get value
+auto val = kv.get("key");
+
+// SQL-backed para persistência
+KV_SQL::getInstance().set("player_123_gold", "5000");
+```
+
+</TabItem>
+
+<TabItem label="Utils & Lib">
+
+### utils/ & lib/ - Utilitários
+
+**Responsabilidade**: Builders, helpers, estruturas de dados eficientes.
+
+**utils/ contents:**
+- `tools.cpp/hpp` - String tools, math
+- `hash.hpp` - Hash functions
+- `arraylist.hpp` - Array customizado
+- `vectorset.hpp` - Set eficiente
+- `object_pool.hpp` - Reuse de objetos
+- `lockfree.hpp` - Estruturas thread-safe
+
+**lib/ hierarchy:**
+- `di/` - Dependency Injection
+- `logging/` - Sistema de logs
+- `messaging/` - Message queues
+- `metrics/` - Performance metrics
+- `thread/` - Thread management
+
+</TabItem>
+</Tabs>
+
+---
+
+## 📡 Padrões de Comunicação
+
+<Card title="Como Módulos Interagem" icon="network">
+
+### Padrão 1: Request-Response
+
+```cpp
+// Game lógica pede dados ao banco
+DatabaseManager::getInstance().queryPlayers(
+    [callback](const std::vector<Player>& results) {
+        // Callback quando dados chegam
+        for (const auto& player : results) {
+            game->addCreature(player);
+        }
+    }
+);
+```
+
+### Padrão 2: Event Broadcasting
+
+```cpp
+// Player morre, todos ao redor sabem
+creature->onDeath();
+  └── game->broadcastToSpectators(creature->getPosition(), 
+      SpectatorsEvent::CREATURE_DIED);
+```
+
+### Padrão 3: Callback Lua
+
+```cpp
+// C++ usa Lua para lógica customizável
+g_scripts.event("onCreatureSpawn")(creature);
+// Se script existir, executa
+// Se não existir, comportamento padrão
+```
+
+### Padrão 4: Singleton Access
+
+```cpp
+// Acesso global a serviços críticos
+Game::getInstance().addCreature(newPlayer);
+DatabaseManager::getInstance().query(...);
+ConfigManager::getInstance().getNumber(...);
+```
+
+</Card>
+
+---
+
+## 🧬 Stack de Criaturas
+
+<Card title="Como Criaturas Funcionam" icon="dna">
+
+### Inicialização
+
+```
+Monster spawna no mapa
+  ↓
+Game::createCreature(monsterId)
+  ↓
+MonsterType::loadMonster()
+  ↓
+Load from database:
+  ├── Stats (HP, skills)
+  ├── Attacks/Spells
+  ├── Loot table
+  └── Behavior
+  ↓
+Create instance: monster = new Monster(type)
+  ↓
+Adicionar ao mapa e ao Game
+```
+
+### Thinking Loop (Principal)
+
+```cpp
+// Executado periodicamente (50ms típico)
+creature->onThink() {
+    ├── if (isDead) return;
+    ├── updateSpeed();
+    ├── updateWithDistanceEffects();
+    ├── checkCombatReset();
+    ├── if (canAct) {
+    │   ├── Player: Process input from client
+    │   ├── Monster: Execute AI
+    │   │   ├── Chase target
+    │   │   ├── Cast spell
+    │   │   ├── Heal self
+    │   │   └── Update direction
+    │   └── NPC: Wait for interaction
+    ├── updateAbsorb();
+    └── update(diff); // Timer management
+}
+```
+
+### Combate
+
+```
+Player attacks Creature
+  ↓
+Game::createPlayerAttack()
+  ↓
+CalculateDamage():
+  ├── Base damage (weapon)
+  ├── Skills modifier
+  ├── Resistances
+  ├── Distance/Accuracy
+  └── Rng/Miss chance
+  ↓
+creature->receiveDamage(damage)
+  ↓
+Apply condition if any (poison, paralyze)
+  ↓
+If health <= 0:
+  ├── creature->onDeath()
+  ├── Broadcast to spectators
+  ├── Drop loot
+  └── Remove from map
+```
+
+</Card>
+
+---
+
+## ⚙️ Sistema de Jogo
+
+<Card title="Mecânicas Principais" icon="cogs">
+
+### Combat System
+
+```cpp
+struct Damage {
+    int32_t primary;        // Dano principal
+    CombatType_t type;      // Fogo, gelo, físico, etc
+    int32_t secondary;      // Dano secundário
+    DamageEffect_t effect;  // Efeito visual
+};
+
+creature->receiveDamage(const Damage&, attacker);
+```
+
+**Tipos de Dano:**
+- Physical (armas)
+- Magic (feitiços)
+- Fire/Ice/Energy (elementais)
+- Death (curses)
+- Holy/Dark (especiais)
+
+### Movement System
+
+```cpp
+// Player quer se mover
+player->moveCreature(direction);
+  ├── Validar direção
+  ├── Calcular novo tile
+  ├── Checar walkable
+  ├── Checar blocking creatures
+  ├── Atualizar posição
+  └── Broadcast movimento para spectators
+```
+
+### Scheduling System
+
+```cpp
+// Agendar callback para depois
+game->addEvent(
+    [creature]() { creature->heal(100); },  // O que fazer
+    5000  // Em 5 segundos
+);
+```
+
+**Usualmente para:**
+- Delays entre ações
+- Healing over time
+- Spell cooldowns
+- Regeneração periódica
+
+</Card>
+
+---
+
+## 💾 Persistência de Dados
+
+<Card title="Como Dados São Salvos" icon="database">
+
+### On-Demand Saving
+
+```
+Player faz ação significativa:
+  ├── Kill monster
+  ├── Trade item
+  ├── Gain experience
+  └── Trigger save
+      ↓
+      DatabaseManager.addTask(
+          INSERT into player_stats ...
+      )
+```
+
+### Periodic Saving
+
+```
+Servidor tem timer (30s típico):
+  ├── Iterar todos players
+  └── player->onSave()
+      ├── Save inventory state
+      ├── Save storage values
+      ├── Save quest progress
+      └── DATABASE INSERT
+```
+
+### Map Serialization
+
+```
+Server shutdown gracefully:
+  ├── Close player connections
+  ├── IOMapSerialize::saveMap()
+  └── Salvar estado de cada tile
+      ├── Items em tiles
+      ├── Houses
+      └── Temporal changes
+```
+
+</Card>
+
+---
+
+## 🔧 Como Estender
+
+<Card title="Guia de Desenvolvimento" icon="wrench">
+
+### Adicionar Nova Creature
+
+```cpp
+// 1. Criar classe (creatures/custom/)
+class CustomMonster : public Monster {
+    virtual void onThink() override;
+    virtual void onDeath() override;
+};
+
+// 2. Registrar no game
+Game::getInstance().registerMonsterType("custom_monster", 
+    std::make_unique<CustomMonster>());
+
+// 3. Usar via Lua
+onCreatureSpawn(creature) {
+    if creature:getName() == "custom_monster" then
+        creature:say("I am custom!")
+    end
+}
+```
+
+### Adicionar Nova Spell
+
+```cpp
+// 1. Criar em game/combate/
+struct NewSpell {
+    std::string name;
+    int manaCost;
+    int cooldown;
+    
+    bool castSpell(Creature* caster) {
+        // Implementar lógica
+        return true;
+    }
+};
+
+// 2. Registrar
+Game::getInstance().registerSpell("new_spell", newSpell);
+
+// 3. Executar via Lua ou Command
+```
+
+### Adicionar Nova Mecânica
+
+```cpp
+// 1. Criar classe em game/extensions/
+class CustomMechanic {
+    void update(uint32_t diffTime);
+};
+
+// 2. Integrar com Game::think()
+// 3. Testar com scripts
+
+// Exemplo: Sistema de conquistas
+class AchievementSystem {
+    void onKillMonster(Player*, Monster*);
+    void onLevelUp(Player*, int newLevel);
+};
+```
+
+### Expor Função para Lua
+
+```cpp
+lua_register(luaState, "myFunction", [](lua_State* L) {
+    // Get arguments from Lua stack
+    int arg1 = lua_tointeger(L, 1);
+    std::string arg2 = lua_tostring(L, 2);
+    
+    // Do C++ work
+    auto result = doSomething(arg1, arg2);
+    
+    // Push result to Lua
+    lua_pushinteger(L, result);
+    return 1;  // 1 return value
+});
+```
+
+</Card>
+
+---
+
+## 📊 Estatísticas do Código
+
+<Aside type="tip">
+
+### Estrutura Geral
+
+| Módulo | Responsabilidade | Casos de Uso |
+|--------|-----------------|---|
+| **account/** | Autenticação | Login, password validate |
+| **config/** | Configurações | Rate modifiers, features |
+| **creatures/** | Entidades vivas | Players, Monsters, NPCs |
+| **database/** | Persistência | Queries async |
+| **enums/** | Tipos | Flag definitions |
+| **game/** | Lógica central | Combat, movement, events |
+| **io/** | Arquivo I/O | Map loading, serialization |
+| **items/** | System de itens | Equips, consumables |
+| **kv/** | State transiente | Temporary values |
+| **lib/** | Utilities | DI, logging, math |
+| **lua/** | Scripting | Callbacks, custom logic |
+| **map/** | Carregamento | Tiles, spectators, AOI |
+| **protobuf/** | Serialização | Network packets |
+| **security/** | Criptografia | Passwords, RSA |
+| **server/** | Networking | Socket I/O, protocol |
+| **utils/** | Helpers | Collections, tools |
+
+### Fluxo de Dados
+
+```
+Network Input → Server → Game Logic → Creatures/Items → Output → Persistence
+   (server/)     (game/)      (game/)   (creatures/)    (server/)  (database/)
+```
+
+### Padrões Principais
+
+- **Singleton**: Game, DatabaseManager, ConfigManager
+- **Observer**: Event system, callbacks Lua
+- **Factory**: Creature/Item creation
+- **RAII**: Resource management (connection pools)
+- **Async**: Database tasks, scheduling
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Src.mdx](#)
+2. **Analise Estrutura**: Leia `src/CMakeLists.txt` para build
+3. **Compile Localmente**: `cmake build && cmake --build build`
+4. **Debug Existing**: Use debugger para entender fluxo
+5. **Implemente Feature**: Siga padrões estabelecidos
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Linguagem:** C++17/20  
+**Total de Módulos:** 16 principais + especializations  
+**Build System:** CMake  
+**Banco de Dados:** MySQL/MariaDB  
+**Scripting:** Lua 5.4
+
+Documentação mantém-se em sincronia com estrutura do código. Para entender patterns específicos, estude implementações de módulos similares.
+</Aside>

@@ -1,0 +1,377 @@
+---
+title: "load.lua - Carregador de Tabelas"
+description: "Documentação técnica do arquivo que orquestra o carregamento de todas as tabelas de startup do servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 📄 load.lua (Tabelas)
+
+Arquivo carregador principal responsável por orquestrar o carregamento de todas as 15+ tabelas de configuração do servidor. Localizado em `startup/tables/`, este arquivo é o entry point para o subsistema de tabelas.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/load.lua` |
+| **Tipo** | Arquivo Loader de Tabelas |
+| **Escopo** | Startup (carregado por `startup.lua`) |
+| **Dependências** | 15+ arquivos de tabela |
+| **Linhas de Código** | ~16 linhas (15 dofile calls) |
+| **Função Principal** | Orquestrar carregamento de tabelas |
+| **Carregado por** | `startup.lua` (primeira etapa) |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/load.lua`
+
+Este é o **sub-loader** de tabelas. É chamado **PRIMEIRO** pelo `startup.lua` antes do loader de funções, garantindo que todas as tabelas estejam prontas para uso.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+Arquivo simples mas crítico que **ordena e carrega 15+ arquivos de tabelas**:
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/tables/chest.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/corpse.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/create_item.lua")
+-- ... e mais 12 arquivos
+```
+
+**Responsabilidade**:
+- Carregar tabelas **em ordem específica**
+- Garantir disponibilidade para funções
+- Manter organização central
+
+**Timing**:
+- Carregado PRIMEIRO (tabelas antes de funções)
+- Executa rapidamente
+- Bloqueia startup até completar
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Carregamento
+
+<Card title="Ordem Hierárquica de Carregamento" icon="layers">
+
+```
+┌──────────────────────────────────────────────────┐
+│         STARTUP MAIN (startup.lua)               │
+└────────────┬─────────────────────────────────────┘
+             │
+             ├─ Line 1: dofile(...tables/load.lua)
+             │          ↓
+             │  ┌────────────────────────────────┐
+             │  │  tables/load.lua (ESTE ARQUIVO)│
+             │  │  ┌──────────────────────────────┤
+             │  │  │ 1. chest.lua                │
+             │  │  │ 2. corpse.lua               │
+             │  │  │ 3. create_item.lua          │
+             │  │  │ 4. door_key.lua             │
+             │  │  │ 5. door_level.lua           │
+             │  │  │ 6. door_quest.lua           │
+             │  │  │ 7. item.lua                 │
+             │  │  │ 8. item_daily_reward.lua    │
+             │  │  │ 9. item_unmovable.lua       │
+             │  │  │ 10. lever.lua               │
+             │  │  │ 11. teleport.lua            │
+             │  │  │ 12. teleport_item.lua       │
+             │  │  │ 13. tile.lua                │
+             │  │  │ 14. tile_pick.lua           │
+             │  │  │ 15. writeable.lua           │
+             │  │  │ 16. storage_keys_update.lua │
+             │  │  └──────────────────────────────┤
+             │  └────────────────────────────────┘
+             │
+             ├─ Line 2: dofile(...others/load.lua)
+             │
+             └─ Rest of startup
+```
+
+**Fluxo Temporal**:
+1. Sistema booteia
+2. APIs internas carregadas
+3. `startup.lua` executado
+4. **Este arquivo (`tables/load.lua`)** executado
+5. Todas 15+ tabelas carregadas **globalmente**
+6. **ENTÃO** `others/load.lua` carregado
+7. Resto do startup continua
+
+</Card>
+
+---
+
+## 📝 Conteúdo Completo
+
+<Card title="Código Integral" icon="code">
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/tables/chest.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/corpse.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/create_item.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/door_key.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/door_level.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/door_quest.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/item.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/item_daily_reward.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/item_unmovable.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/lever.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/teleport.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/teleport_item.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/tile.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/tile_pick.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/writeable.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/storage_keys_update.lua")
+```
+
+**Total**: 16 arquivos de tabela carregados em ordem específica.
+
+</Card>
+
+---
+
+## 📊 Tabelas Carregadas
+
+<Card title="Mapa de Carregamento" icon="map">
+
+| Ordem | Arquivo | Tabelas Resultantes | Propósito |
+|-------|---------|---|---|
+| **1** | chest.lua | ChestAction, ChestUnique | Baús do servidor |
+| **2** | corpse.lua | CorpseAction, CorpseUnique | Corpses especiais |
+| **3** | create_item.lua | CreateItemOnMap | Items criados no startup |
+| **4** | door_key.lua | KeyDoorAction | Portas de chave |
+| **5** | door_level.lua | LevelDoorAction | Portas de level |
+| **6** | door_quest.lua | QuestDoorAction | Portas de quest |
+| **7** | item.lua | ItemAction | Items genéricos |
+| **8** | item_daily_reward.lua | DailyRewardAction | Rewards diários |
+| **9** | item_unmovable.lua | ItemUnmovableAction | Items imóveis |
+| **10** | lever.lua | LeverAction | Alavancas |
+| **11** | teleport.lua | TeleportAction | Magic forcefields |
+| **12** | teleport_item.lua | TeleportItemAction | Items teleporte |
+| **13** | tile.lua | TileAction | Pisos customizados |
+| **14** | tile_pick.lua | TilePickAction | Pisos pickáveis |
+| **15** | writeable.lua | BookDocumentTable | Books/Documents |
+| **16** | storage_keys_update.lua | QuestKeysUpdate | Migrations de storage |
+
+</Card>
+
+---
+
+## 🔍 Análise de Ordem
+
+<Card title="Por que esta ordem?" icon="magnifying-glass">
+
+### Ordem Crítica para Dependências
+
+```
+1. Chest → Base item system
+2. Corpse → Corpse specifics  
+3. CreateItem → Basic creation
+4-6. Doors → Door system variants
+7. Item → Main items
+8-9. Item variants → Specialized items
+10. Lever → Interaction system
+11-12. Teleport → Movement system
+13-14. Tile → Ground system
+15. Writeable → Content system
+16. Storage Keys → Migration system (deve ser ÚLTIMO)
+```
+
+### Storage Keys Update - Deve Ser Último
+
+**Importante**: `storage_keys_update.lua` usa funções que **dependem de outras tabelas estarem carregadas**. Deve ser **SEMPRE o último**.
+
+```lua
+-- ❌ ERRADO
+dofile(...storage_keys_update.lua)  -- Arquivo não existe ainda!
+dofile(...chest.lua)
+
+-- ✅ CORRETO
+dofile(...chest.lua)
+-- ... outros arquivos ...
+dofile(...storage_keys_update.lua)  -- Último!
+```
+
+### Lógica Geral
+
+1. **Items base** (1-9): Definem estruturas
+2. **Systems** (10-15): Definem comportamentos especiais
+3. **Migrations** (16): Processa dados históricos
+
+</Card>
+
+---
+
+## ⚠️ Considerações Críticas
+
+<Card title="Notas Importantes" icon="alert">
+
+### Ordem DEVE Ser Mantida
+
+- ✅ Ordem atual é **testada e funciona**
+- ❌ **NÃO** reordene sem testar
+- ❌ **NÃO** remova linhas sem motivo
+
+### Se Adicionar Novo Arquivo
+
+```lua
+-- Novo arquivo de tabela inventado
+-- data-otservbr-global/startup/tables/my_new_table.lua
+
+-- Adicionar ANTES de storage_keys_update
+-- Adicionar DEPOIS de relevantes dependencies
+dofile(DATA_DIRECTORY .. "/startup/tables/my_new_table.lua")
+```
+
+### Verificar Arquivo Antes de Adicionar
+
+```lua
+-- ✅ Arquivo existe?
+-- ✅ Definealguma tabela global?
+-- ✅ Tem dependências de outras?
+-- ✅ Testado?
+```
+
+### Sem Tratamento de Erro
+
+```lua
+-- Este arquivo NÃO usa try/catch
+-- Se erro em qualquer dofile:
+-- - Startup falha completamente
+-- - Nenhuma recuperação automática
+```
+
+</Card>
+
+---
+
+## 🔗 Relações Completas
+
+<Card title="Mapa de Dependências" icon="link">
+
+### Este Arquivo Depende De
+
+```
+load.lua (ESTE ARQUIVO)
+  └─ DATA_DIRECTORY (constante global)
+  └─ 16 arquivos de tabela
+      ├─ chest.lua
+      ├─ corpse.lua
+      ├─ create_item.lua
+      ├─ door_key.lua
+      ├─ door_level.lua
+      ├─ door_quest.lua
+      ├─ item.lua
+      ├─ item_daily_reward.lua
+      ├─ item_unmovable.lua
+      ├─ lever.lua
+      ├─ teleport.lua
+      ├─ teleport_item.lua
+      ├─ tile.lua
+      ├─ tile_pick.lua
+      ├─ writeable.lua
+      └─ storage_keys_update.lua
+```
+
+### Quem Depende Deste Arquivo
+
+```
+load.lua (ESTE ARQUIVO)
+  └─ é carregado por ──> startup.lua
+       └─ torna disponível ──> todas 16 tabelas globalmente
+            └─ usadas por ──> functions.lua (próximo step)
+```
+
+### Ordem de Execução Completa
+
+```
+startup.lua
+  ├─ dofile(...tables/load.lua)  ← ESTE ARQUIVO
+  │   └─ Carrega 16 tabelas
+  ├─ dofile(...others/load.lua)
+  │   └─ Carrega funções que USAM tabelas
+  └─ Resto do startup
+```
+
+</Card>
+
+---
+
+## 🎓 Extensibilidade
+
+<Card title="Como Expandir" icon="plus">
+
+### Adicionar Nova Tabela
+
+**1. Criar arquivo**:
+```lua
+-- data-otservbr-global/startup/tables/my_table.lua
+
+MyNewTable = {
+    [1] = {
+        -- dados
+    }
+}
+```
+
+**2. Adicionar ao load.lua** (ANTES de storage_keys_update.lua):
+```lua
+dofile(DATA_DIRECTORY .. "/startup/tables/my_table.lua")
+```
+
+**3. Testar startup**:
+```
+lua startup.lua
+```
+
+### Remover Tabela
+
+1. Verificar se é usado em scripts
+2. Remover linha do load.lua
+3. Testar startup
+
+### Reordenar (COM CUIDADO)
+
+Apenas se absolutamente necessário:
+1. Verificar dependências
+2. **MANTER storage_keys_update.lua por último**
+3. Testar completamente
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo Loader de Tabelas  
+**Total de Linhas**: ~16  
+**Tabelas Carregadas**: 16  
+**Status**: ✅ Completo
+
+**Função**:
+- ✅ Orquestrar carregamento de 16 tabelas
+- ✅ Manter ordem específica e crítica
+- ✅ Garantir disponibilidade global
+
+**Tabelas Carregadas**:
+- ChestAction, ChestUnique, CorpseAction, ...
+- (Veja tabela acima para lista completa)
+
+Este é o **sub-loader de tabelas** - executa PRIMEIRO no startup, antes de funções.
+</Aside>

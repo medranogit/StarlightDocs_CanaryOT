@@ -1,0 +1,803 @@
+---
+title: Arquitetura - Lib
+description: Documentação técnica da arquitetura e estrutura dos scripts de Lib do servidor Canary
+sidebar:
+  order: 1
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🏗️ Arquitetura - Lib
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts de **Lib (Bibliotecas)** do servidor OTServ Canary. Entenda como as funções compartilhadas são implementadas e como utilizá-las em seus scripts.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/lib/` contém todos os scripts **Lua** que funcionam como **bibliotecas compartilhadas** e **funções utilitárias** reutilizáveis em todo o servidor. Esses scripts não são carregados diretamente como eventos, mas sim importados e utilizados por outros scripts (actions, movements, spells, quests, etc) para minimizar duplicação de código e padronizar funcionalidades comuns.
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Reutilizar funções comuns**: Centralizar lógicas que múltiplos scripts precisam
+- **Registrar eventos em massa**: Automatizar o registro de actions, items, etc
+- **Funções de utilidade**: Helpers para cálculos, verificações, conversões
+- **Padrões de gameplay**: Sistemas que vários features compartilham
+- **Reduzir duplicação**: Um arquivo com função ao invés de 50 cópias
+- **Manutenção simplificada**: Atualizar uma função afeta todos os scripts que a usam
+- **Organização**: Separar código de configuração, helpers e lógica principal
+</Card>
+
+<Card title="Estrutura da Pasta" icon="list">
+A pasta `scripts/lib/` contém scripts utilitários sem organização de subpastas:
+
+- `monster_functions.lua` - Funções compartilhadas para monstros (habilidades, comportamentos)
+- `register_actions.lua` - Sistema de registro automatizado de action IDs
+- Outros arquivos conforme necessário
+
+**Característica**: Arquivos são **importados** em outros scripts via `require()`, não registrados como eventos diretos.
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Sistema de Importação](#sistema-de-importação)
+3. [Padrões de Funções](#padrões-de-funções)
+4. [Monster Functions](#monster-functions)
+5. [Register Actions](#register-actions)
+6. [Criando uma Nova Lib](#criando-uma-nova-lib)
+7. [Exemplos Práticos](#exemplos-práticos)
+8. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="Organização de Diretórios" icon="document">
+
+```
+data-otservbr-global/scripts/lib/
+├── monster_functions.lua          -- Funções para monstros
+├── register_actions.lua           -- Registro automatizado de actions
+├── [outras libs conforme necessário]
+│
+└── Catalogo_Scripts_Lib.mdx       (documentação - lista)
+└── Arquitetura_Scripts_Lib.mdx    (este arquivo - como funciona)
+```
+
+**Nomenclatura de Arquivos:**
+- Padrão: `{tipo}_functions.lua` ou `{tipo}_helpers.lua` ou `register_{tipo}.lua`
+- Exemplo: `monster_functions.lua`, `register_actions.lua`, `item_helpers.lua`
+
+**Total de Scripts:** 2+ arquivos de lib  
+**Tipo**: Bibliotecas compartilhadas (não eventos diretos)
+
+</Card>
+
+---
+
+## 🔌 Sistema de Importação
+
+<Card title="Como Importar e Usar Libs" icon="link">
+
+### Importar uma Lib
+
+```lua
+-- No seu script, no início:
+local monsterFunctions = require("lib.monster_functions")
+local registerActions = require("lib.register_actions")
+```
+
+### Acessar Funções
+
+```lua
+-- Chamar função da lib
+monsterFunctions.someFunction(arg1, arg2)
+
+-- Ou se a lib retornar um objeto
+registerActions.register(actionId, function)
+```
+
+### Estrutura Padrão de uma Lib
+
+```lua
+-- lib/my_functions.lua
+
+-- Tabela para armazenar as funções exportadas
+local MyLib = {}
+
+-- Função 1
+function MyLib.functionName(param1, param2)
+    -- Implementação
+    return result
+end
+
+-- Função 2
+function MyLib.anotherFunction(value)
+    -- Implementação
+    return value * 2
+end
+
+-- Exportar as funções
+return MyLib
+```
+
+### Usando em Outro Script
+
+```lua
+-- Em um action, movement, ou outro script:
+local myLib = require("lib.my_functions")
+
+local result = myLib.functionName("value1", "value2")
+print(myLib.anotherFunction(42))
+```
+
+</Card>
+
+---
+
+## 📐 Padrões de Funções
+
+<Card title="Estruturas Comuns de Lib" icon="layers">
+
+### Padrão 1: Lib de Funções Utilitárias Simples
+
+```lua
+-- lib/math_helpers.lua
+
+local MathHelpers = {}
+
+function MathHelpers.clamp(value, min, max)
+    if value < min then return min end
+    if value > max then return max end
+    return value
+end
+
+function MathHelpers.lerp(a, b, t)
+    return a + (b - a) * t
+end
+
+function MathHelpers.distance(x1, y1, x2, y2)
+    local dx = x2 - x1
+    local dy = y2 - y1
+    return math.sqrt(dx*dx + dy*dy)
+end
+
+return MathHelpers
+```
+
+### Padrão 2: Lib com Cache/Estado
+
+```lua
+-- lib/player_cache.lua
+
+local PlayerCache = {}
+local cache = {}
+
+function PlayerCache.set(playerId, key, value)
+    if not cache[playerId] then
+        cache[playerId] = {}
+    end
+    cache[playerId][key] = value
+end
+
+function PlayerCache.get(playerId, key)
+    if not cache[playerId] then
+        return nil
+    end
+    return cache[playerId][key]
+end
+
+function PlayerCache.clear(playerId)
+    cache[playerId] = nil
+end
+
+return PlayerCache
+```
+
+### Padrão 3: Lib com Configuração
+
+```lua
+-- lib/boss_config.lua
+
+local BossConfig = {
+    bosses = {
+        ["Dragon Lord"] = {
+            level = 250,
+            health = 5000,
+            mana = 2000,
+            spells = {"fireball", "paralyze", "summon"},
+        },
+        ["Orshabaal"] = {
+            level = 300,
+            health = 8000,
+            mana = 3000,
+            spells = {"deathstrike", "curse", "drain"},
+        },
+    }
+}
+
+function BossConfig.get(bossName)
+    return BossConfig.bosses[bossName]
+end
+
+function BossConfig.exists(bossName)
+    return BossConfig.bosses[bossName] ~= nil
+end
+
+return BossConfig
+```
+
+### Padrão 4: Lib com Automatização
+
+```lua
+-- lib/register_items.lua
+
+local RegisterItems = {}
+
+function RegisterItems.registerBatch(items)
+    for _, itemConfig in ipairs(items) do
+        local action = Action()
+        action:aid(itemConfig.aid)
+        
+        function action.onUse(player, item, fromPosition, itemEx, toPosition)
+            return itemConfig.handler(player, item, fromPosition, itemEx, toPosition)
+        end
+        
+        action:register()
+    end
+end
+
+return RegisterItems
+```
+
+</Card>
+
+---
+
+## 🧟 Monster Functions
+
+<Card title="Lib de Funções para Monstros" icon="dragon">
+
+### Sobre Monster Functions
+
+A lib `monster_functions.lua` contém **funções compartilhadas e utilitárias para scripts de monstros** no servidor. Inclui funções para:
+- Habilidades comuns
+- Comportamentos padronizados
+- Cálculos de dano/efeito
+- Verificações de condições
+
+### Estrutura Típica
+
+```lua
+-- lib/monster_functions.lua
+
+local MonsterFunctions = {}
+
+-- Função 1: Calcular dano
+function MonsterFunctions.calculateDamage(creature, target, baseLevel)
+    local level = creature:getLevel()
+    local damage = baseLevel + (level / 10)
+    return math.floor(damage)
+end
+
+-- Função 2: Verificar se alvo é válido
+function MonsterFunctions.isValidTarget(creature, target)
+    if not target:isPlayer() then
+        return false
+    end
+    
+    local distance = creature:getPosition():getDistance(target:getPosition())
+    return distance <= 10
+end
+
+-- Função 3: Aplicar efeito visual
+function MonsterFunctions.applyEffect(position, effectType)
+    position:sendMagicEffect(effectType)
+end
+
+-- Função 4: Condicionar Paralyze
+function MonsterFunctions.paralyzeTarget(creature, target, duration)
+    local condition = Condition(CONDITION_PARALYZE)
+    condition:setParameter(CONDITION_PARAM_TICKS, duration)
+    condition:setFormula(-0.5, 0, -0.7, 0)
+    target:addCondition(condition)
+end
+
+return MonsterFunctions
+```
+
+### Usando em Scripts de Monstros
+
+```lua
+-- Em um monster spell script:
+local monsterFunctions = require("lib.monster_functions")
+
+local combat = Combat()
+combat:setParameter(COMBAT_PHYSICALDAMAGE, -50, -100)
+
+function onCastSpell(creature, var)
+    local target = creature:getTarget()
+    
+    if monsterFunctions.isValidTarget(creature, target) then
+        monsterFunctions.applyEffect(target:getPosition(), CONST_ME_EXPLOSIONAREA)
+        monsterFunctions.paralyzeTarget(creature, target, 5000)
+        return combat:execute(creature, var)
+    end
+    
+    return false
+end
+```
+
+</Card>
+
+---
+
+## 📝 Register Actions
+
+<Card title="Lib de Registro Automatizado" icon="clipboard">
+
+### Sobre Register Actions
+
+A lib `register_actions.lua` fornece **sistema de registro automatizado** para ações, permitindo:
+- Registrar múltiplas actions em legível forma
+- Centralizar IDs de itemss/actions
+- Evitar duplicação de código de registro
+
+### Estrutura Típica
+
+```lua
+-- lib/register_actions.lua
+
+local RegisterActions = {}
+
+-- Armazenar as ações para registrar
+local actions = {}
+
+function RegisterActions.add(config)
+    table.insert(actions, config)
+end
+
+function RegisterActions.addBatch(actionList)
+    for _, action in ipairs(actionList) do
+        RegisterActions.add(action)
+    end
+end
+
+function RegisterActions.registerAll()
+    for _, config in ipairs(actions) do
+        local action = Action()
+        
+        -- Configurar identificador
+        if config.aid then
+            action:aid(config.aid)
+        elseif config.uid then
+            action:uid(config.uid)
+        elseif config.itemid then
+            action:itemid(config.itemid)
+        end
+        
+        -- Configurar metadados
+        if config.allowFarUse then
+            action:allowFarUse(config.allowFarUse)
+        end
+        
+        if config.blockWalls then
+            action:blockWalls(config.blockWalls)
+        end
+        
+        -- Implementar função
+        action.onUse = config.handler or function(player, item, fromPosition, target, toPosition)
+            return true
+        end
+        
+        action:register()
+    end
+end
+
+return RegisterActions
+```
+
+### Usando em Scripts
+
+```lua
+-- Em um arquivo de configuração:
+local registerActions = require("lib.register_actions")
+
+registerActions.addBatch({
+    {
+        aid = 5001,
+        allowFarUse = true,
+        handler = function(player, item, fromPosition, target, toPosition)
+            player:addExperience(1000)
+            return true
+        end
+    },
+    {
+        aid = 5002,
+        handler = function(player, item, fromPosition, target, toPosition)
+            player:say("Você usou um item!")
+            item:remove()
+            return true
+        end
+    },
+})
+
+registerActions.registerAll()
+```
+
+</Card>
+
+---
+
+## 🛠️ Criando uma Nova Lib
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Criar o Arquivo
+
+```bash
+# Arquivo: lib/{nome}_functions.lua ou lib/register_{tipo}.lua
+# Exemplo: lib/custom_functions.lua ou lib/register_quests.lua
+```
+
+### Passo 2: Criar Tabela de Exportação
+
+```lua
+-- lib/custom_functions.lua
+
+local CustomLib = {}
+
+-- Aqui irão as funções
+```
+
+### Passo 3: Adicionar Funções
+
+```lua
+function CustomLib.myFunction(param)
+    -- Implementação
+    return param * 2
+end
+
+function CustomLib.anotherFunction(a, b)
+    -- Implementação
+    return a + b
+end
+```
+
+### Passo 4: Exportar
+
+```lua
+return CustomLib
+```
+
+### Passo 5: Usar em Outro Script
+
+```lua
+-- Em qualquer script:
+local customLib = require("lib.custom_functions")
+
+local result1 = customLib.myFunction(21)  -- 42
+local result2 = customLib.anotherFunction(10, 32)  -- 42
+```
+
+### Arquivo Completo Exemplo
+
+```lua
+-- lib/damage_calculator.lua
+
+local DamageCalculator = {}
+
+function DamageCalculator.calculatePhysicalDamage(attacker, defender, baseDamage)
+    local attackerLevel = attacker:getLevel()
+    local defenderDefense = defender:getTotalDefense()
+    
+    local damage = baseDamage + (attackerLevel / 10) - (defenderDefense / 20)
+    return math.max(1, math.floor(damage))  -- Mínimo 1 de dano
+end
+
+function DamageCalculator.calculateMagicDamage(magicLevel, baseDamage)
+    return baseDamage + (magicLevel / 5)
+end
+
+function DamageCalculator.isCritical(chancePercent)
+    return math.random(100) <= chancePercent
+end
+
+function DamageCalculator.applyReduction(damage, reductionPercent)
+    return damage * (1 - reductionPercent / 100)
+end
+
+return DamageCalculator
+```
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Math Helper">
+
+**Lib Simples: Funções Matemáticas**
+
+```lua
+-- lib/math_utils.lua
+
+local MathUtils = {}
+
+function MathUtils.clamp(value, min, max)
+    return math.min(math.max(value, min), max)
+end
+
+function MathUtils.lerp(a, b, t)
+    return a + (b - a) * t
+end
+
+function MathUtils.distance(x1, y1, x2, y2)
+    local dx = x2 - x1
+    local dy = y2 - y1
+    return math.sqrt(dx*dx + dy*dy)
+end
+
+function MathUtils.randomRange(min, max)
+    return math.random(min, max)
+end
+
+return MathUtils
+```
+
+**Usando:**
+```lua
+local math = require("lib.math_utils")
+
+print(math.clamp(150, 0, 100))  -- 100
+print(math.lerp(0, 10, 0.5))    -- 5
+```
+
+</TabItem>
+
+<TabItem label="Monster Functions">
+
+**Lib para Monstros**
+
+```lua
+-- lib/monster_functions.lua
+
+local MonsterFunctions = {}
+
+function MonsterFunctions.calculateDamage(level, magicLevel)
+    return -(level + magicLevel) / 2
+end
+
+function MonsterFunctions.canSeeTarget(creature, target)
+    return creature:getPosition():getDistance(target:getPosition()) <= 20
+end
+
+function MonsterFunctions.applyCondition(target, type, duration)
+    local condition = Condition(type)
+    condition:setParameter(CONDITION_PARAM_TICKS, duration)
+    target:addCondition(condition)
+end
+
+return MonsterFunctions
+```
+
+</TabItem>
+
+<TabItem label="Register System">
+
+**Lib de Registro Automatizado**
+
+```lua
+-- lib/register_actions.lua
+
+local RegisterActions = {}
+local actionQueue = {}
+
+function RegisterActions.queue(config)
+    table.insert(actionQueue, config)
+end
+
+function RegisterActions.processQueue()
+    for _, config in ipairs(actionQueue) do
+        local action = Action()
+        action:aid(config.aid)
+        action.onUse = config.handler
+        action:register()
+    end
+    actionQueue = {}
+end
+
+return RegisterActions
+```
+
+</TabItem>
+
+<TabItem label="Configuration">
+
+**Lib com Dados de Configuração**
+
+```lua
+-- lib/boss_data.lua
+
+local BossData = {
+    bosses = {
+        ["dragon_lord"] = {
+            level = 250,
+            health = 5000,
+            rewards = {exp = 100000, items = {2195}},
+        },
+        ["orshabaal"] = {
+            level = 300,
+            health = 8000,
+            rewards = {exp = 150000, items = {2195, 2160}},
+        }
+    }
+}
+
+function BossData.getBoss(name)
+    return BossData.bosses[name]
+end
+
+return BossData
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: "module not found" ao usar require
+
+**Causa:** Caminho incorreto na importação  
+**Solução:**
+```lua
+-- ❌ Errado
+local myLib = require("monster_functions")
+
+-- ✅ Correto
+local myLib = require("lib.monster_functions")
+```
+
+### Problema: Função não existe na lib
+
+**Causa:** Função não foi adicionada à tabela de exportação  
+**Solução:**
+```lua
+-- ❌ Errado - função não retornada
+local MyLib = {}
+function myFunction() end
+return MyLib
+
+-- ✅ Correto
+local MyLib = {}
+function MyLib.myFunction() end
+return MyLib
+```
+
+### Problema: Mudanças em lib não refletem em scripts
+
+**Causa:** Scripts carregam lib uma vez ao iniciar  
+**Solução:** Reiniciar o servidor para recarregar libs
+
+### Problema: Conflito de nomes em libs
+
+**Causa:** Múltiplas libs com nomes de função iguais  
+**Solução:** Usar nomes descritivos e prefixos
+```lua
+-- Lib 1
+local MathLib = {}
+function MathLib.add(a, b) return a + b end
+
+-- Lib 2
+local StringLib = {}
+function StringLib.concat(a, b) return a .. b end
+
+-- Usar com prefixo
+local math = require("lib.math_lib")
+local str = require("lib.string_lib")
+```
+
+### Problema: Lib retorna nil
+
+**Causa:** Não há `return` no final do arquivo  
+**Solução:**
+```lua
+-- ❌ Errado
+local MyLib = {}
+function MyLib.func() end
+-- Falta return!
+
+-- ✅ Correto
+local MyLib = {}
+function MyLib.func() end
+return MyLib
+```
+
+### Problema: Performance lenta com muitas libs
+
+**Causa:** Importar muitas libs no mesmo script  
+**Solução:** Importar apenas as necessárias e usar lazy loading
+```lua
+-- ✅ Bom
+local monsterFunctions = require("lib.monster_functions")
+
+-- ✅ Melhor - lazy loading
+local function getMonsterFunctions()
+    if not _monsterFunctions then
+        _monsterFunctions = require("lib.monster_functions")
+    end
+    return _monsterFunctions
+end
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Estrutura Básica de Lib:**
+```lua
+local MyLib = {}
+
+function MyLib.functionName(param)
+    return result
+end
+
+return MyLib
+```
+
+**Como Importar:**
+```lua
+local myLib = require("lib.my_lib")
+myLib.functionName(value)
+```
+
+**Padrões Comuns:**
+- Funções utilitárias: `math_utils.lua`, `string_helpers.lua`
+- Sistemas de registro: `register_actions.lua`, `register_items.lua`
+- Dados de configuração: `boss_data.lua`, `item_config.lua`
+- Funções de domínio: `monster_functions.lua`, `player_helpers.lua`
+
+**Boas Práticas:**
+- Always return the table at end
+- Use descriptive function names
+- Document complex functions
+- Keep libs focused on single responsibility
+- Avoid circular dependencies
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_Lib.mdx](#)
+2. **Analise Libs Existentes**: Examine `monster_functions.lua` e `register_actions.lua`
+3. **Crie uma Lib Simples**: Comece com utilitários básicos
+4. **Integre em Scripts**: Use libs em seus actions, movements, etc
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Libs Documentadas:** 2+  
+
+Para dúvidas ou sugestões, consulte a documentação oficial ou o arquivo de catálogo.
+</Aside>

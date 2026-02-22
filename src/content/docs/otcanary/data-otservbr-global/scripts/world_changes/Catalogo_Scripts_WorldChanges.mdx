@@ -1,0 +1,705 @@
+---
+title: Catálogo de Scripts - World Changes
+description: Documentação técnica completa de todos os scripts World Changes do servidor Canary
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+# 🌍 Catálogo de Scripts - World Changes
+
+Documentação técnica completa de todos os world changes do servidor, incluindo map randomization, time-based NPCs, chance-based spawning e transformations.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/world_changes/` contém scripts **Lua** que implementam **mudanças dinâmicas no mundo**. Cada script define como o mundo muda automaticamente - carregando mapas diferentes, spawning/despawning NPCs em períodos específicos, transformando objetos visualmente, etc. World Changes ocorrem durante startup do servidor e períodicamente, afetando toda a comunidade.
+</Card>
+
+<Card title="Como Usar o Catálogo" icon="star">
+Este catálogo lista **todos os 6 world change scripts** com:
+- **Arquivo**: Nome exato do arquivo Lua
+- **Tipo**: Map Randomization, Time-Based, Chance-Based, etc
+- **Funcionamento**: Como executa (startup, period change, etc)
+- **Configuração**: Chances, locações, períodos
+- **Impacto**: O que muda no mundo
+- **Storage**: Valores globais utilizados
+- **Teleports**: Items de teleporte associados
+
+Use **Ctrl+F** para buscar por world change.
+</Card>
+
+---
+
+## 📊 Índice de Scripts
+
+<Card title="Estatísticas Gerais" icon="star">
+- **Total de World Changes**: 6
+- **Data de Atualização**: February 22, 2026
+- **Status**: Todos documentados
+- **Cobertura**: Map Randomization (2), Time-Based (2), Chance-Based (1), Object Transform (1)
+- **Localizações**: 10+ zonas afetadas
+- **Execução**: Startup + Period Change
+</Card>
+
+<Card title="Localização" icon="document">
+  **Caminho Original**: `data-otservbr-global\scripts\world_changes`
+  
+  **Arquivos**:
+  - `fury_gates.lua` - Map randomization
+  - `grimvale_respawn_event.lua` - Time-based monsters
+  - `nightmare_isles.lua` - Map randomization
+  - `oriental_trader.lua` - Chance-based NPC
+  - `spawns_npc_by_time.lua` - Time-based NPCs
+  - `their_masters_voice.lua` - Object transformation
+  
+  **Total de Arquivos Ativos**: 6
+</Card>
+
+---
+
+## 📋 Sumário Rápido
+
+| # | Script | Tipo | Execução | Storage | Locações | Status |
+|---|--------|------|----------|---------|----------|--------|
+| 1 | fury_gates | Map Random | Startup | FuryGates | 10 cidades | ✅ |
+| 2 | grimvale_respawn_event | Time-Based (Date) | Startup | Grimvale | 1 zona | ✅ |
+| 3 | nightmare_isles | Map Random | Startup | NightmareIsle | 3 locais | ✅ |
+| 4 | oriental_trader | Chance (33%) | Startup | Yasir | 3 cidades | ✅ |
+| 5 | spawns_npc_by_time | Time-Based (Day/Night) | Period Change | NpcByTime | 2 NPCs | ✅ |
+| 6 | their_masters_voice | Object Transform | Startup | - | 1 zona | ✅ |
+
+---
+
+## 🔥 Script 1: Fury Gates
+
+### **fury_gates.lua**
+
+**Tipo**: Map Randomization + Teleports  
+**Execução**: Startup (uma vez ao iniciar server)  
+**Armazena**: GlobalStorage.FuryGates (qual gate está ativo)
+
+### Funcionalidade
+
+Carrega aleatoriamente um **Fury Gate** em uma de **10 cidades** diferentes. Cada cidade tem um mapa pré-construído com a dungeon de Fury Gates. Players premium e promoted (level 60+) podem entrar.
+
+### Cidades Suportadas
+
+```
+1. Ab'dendriel  - Exit: (32680, 31720, 7)
+2. Ankrahmun    - Exit: (33269, 32841, 7)
+3. Carlin       - Exit: (32263, 31848, 7)
+4. Darashia     - Exit: (33304, 32371, 7)
+5. Edron        - Exit: (33221, 31923, 7)
+6. Kazordoon    - Exit: (32575, 31981, 7)
+7. Liberty Bay  - Exit: (32348, 32693, 7)
+8. Port Hope    - Exit: (32530, 32712, 7)
+9. Thais        - Exit: (32265, 32164, 7)
+10. Venore      - Exit: (32834, 32082, 7)
+```
+
+**Probabilidade**: 100% (sempre spawna em uma das 10)
+
+### Implementação
+
+```lua
+local gateId = math.random(1, 10)  -- Escolhe 1-10
+local selectedGate = gates[gateId]
+Game.loadMap(DATA_DIRECTORY .. "/world/world_changes/fury_gates/" .. selectedGate.mapName .. ".otbm")
+Game.setStorageValue(GlobalStorage.FuryGates, gateId)
+```
+
+### Teleport Setup
+
+**Action ID 9710**: Entrada (teleporta para dentro)
+- Requisito: Premium + Promoted + Level 60+
+- Destino: Position(33290, 31786, 13) - Dentro da dungeon
+- Falha: Teleporta de volta e envia mensagem
+
+**Action ID 9715**: Saída (teleporta para fora)
+- Requisito: Nenhum
+- Destino: Posição de saída da cidade (armazenada em Storage)
+
+### Webhook
+
+Envia notificação no Discord após 1 minuto (60s):
+```
+:fire: Fury Gate will be active in {CITY} today
+```
+
+### Impacto
+
+- Todas as cidades têm acesso a Fury Gate (em uma aleatória)
+- Mapa é carregado UMA VEZ ao startup
+- Teleports dependem do Storage para saber qual gate está ativo
+- Premium-only content (requisito de entrada)
+
+---
+
+## 📅 Script 2: Grimvale Respawn Event
+
+### **grimvale_respawn_event.lua**
+
+**Tipo**: Time-Based (Date-specific) Monster Spawning  
+**Execução**: Startup (verifica data do servidor)  
+**Armazena**: Nenhum (lógica é stateless)
+
+### Funcionalidade
+
+Spawna monstros aleatórios na **zona de Grimvale** baseado na **data do mês**. No dia 13 (específico), spawna **Wereboars + Werebadgers** (mais fortes). Outros dias spawnam **Bandits + Badgers + Butterflies** (mais fracos).
+
+### Zona Spawn
+
+```
+Area: Position(33330, 31670, 7) → Position(33350, 31690, 7)
+Size: 20×20 tiles
+Z-level: 7 (surface)
+```
+
+### Monstros por Período
+
+**Dia 13 (Especial)**:
+```
+- Wereboar (30% spawn chance)
+- Werebadger (30% spawn chance)
+```
+
+**Outros Dias (Normal)**:
+```
+- Bandit (padrão)
+- Badger (padrão)
+- Blue Butterfly (fácil)
+- Yellow Butterfly (fácil)
+```
+
+### Spawn Chance
+
+- 1.7% por tile dentro da zona (983/1000 chance de não spawnar por tile)
+- Itera área 20×20 = 400 tiles
+- Resultado: ~7 monstros spawneados por startup
+
+### Lógica de Seleção
+
+```lua
+-- Verifica data atual do servidor
+if spawnDay == tonumber(os.date("%d")) then
+    -- Dia 13: Monstros fortes
+    monstersToSpawn = { "wereboar", "werebadger" }
+else
+    -- Outros dias: Monstros normais
+    monstersToSpawn = { "bandit", "badger", "blue butterfly", "yellow butterfly" }
+end
+```
+
+### Impacto
+
+- Grimvale tem conteúdo variável
+- Dia 13 do mês é mais desafiador (monster scaling)
+- Respawn ocorre apenas no startup
+
+---
+
+## 🌙 Script 3: Nightmare Isles
+
+### **nightmare_isles.lua**
+
+**Tipo**: Map Randomization + Teleports  
+**Execução**: Startup (uma vez ao iniciar)  
+**Armazena**: `GlobalStorage.WorldBoard.NightmareIsle.{Location}`
+
+### Funcionalidade
+
+Carrega aleatoriamente um **Nightmare Island** em uma de **3 locações** diferentes ao redor de Darashia/Ankrahmun. Cada locação tem um mapa pré-construído. Players exploram a dungeon e usam teleports internos para navegar.
+
+### Locações Suportadas
+
+```
+1. North of Ankrahmun - ankrahmun-north
+   Exit: Position(33255, 32678, 7)
+
+2. North of Darashia - darashia-north
+   Exit: Position(33215, 32273, 7)
+
+3. West of Darashia - darashia-west
+   Exit: Position(33032, 32400, 7)
+```
+
+**Probabilidade**: 1/3 (33% cada)
+
+### Implementação
+
+```lua
+-- Reset todos os storages
+for _, config in ipairs(nightmareIsleConfig) do
+    Game.setStorageValue(config.storage, -1)
+end
+
+-- Escolher random
+local randomMap = nightmareIsleConfig[math.random(#nightmareIsleConfig)]
+Game.loadMap(DATA_DIRECTORY .. "/world/world_changes/nightmare_isle/" .. randomMap.mapName .. ".otbm")
+Game.setStorageValue(randomMap.storage, 1)
+```
+
+### Teleport Setup
+
+**Entrada (UID 64001-64003)**: Teleporta para dentro
+- Destino: Position(33497, 32616, 8) - Entrada da dungeon
+- 3 UIDs diferentes = múltiplas entradas
+
+**Saída (UID 35020)**: Teleporta para fora
+- Destino: Depende de qual map está ativo (via Storage)
+- Verifica `Game.getStorageValue(config.storage)` para cada locação
+
+**Escadas Internas (AID 64103-64128)**: 16 teleports internos
+- Cada AID tem destino pré-definido
+- Usados para navegação dentro da dungeon
+
+### Webhook
+
+Notificação no Discord após 1 minuto:
+```
+:thought_balloon: Nightmare Isle will be active `` `{LOCATION}` `` today
+```
+
+### Impacto
+
+- Nightmare Isle spawna em uma de 3 locações
+- Teleports adaptam destino baseado em qual mapa ativo
+- 16 teleports internos para exploração
+
+---
+
+## 🧞 Script 4: Oriental Trader
+
+### **oriental_trader.lua**
+
+**Tipo**: Chance-Based NPC Spawning  
+**Execução**: Startup (roll 33% chance)  
+**Armazena**: GlobalStorage.Yasir (1 = spawned, -1 = not spawned)
+
+### Funcionalidade
+
+Com **33% de chance**, spawna um **NPC trader chamado Yasir** em uma de **3 cidades** aleatoriamente. Se spawnar, carrega um mapa especial daquela cidade. Se não spawnar (67% chance), nenhuma mudança ocorre.
+
+### Cidades Suportadas
+
+```
+1. Ankrahmun
+   Yasir Position: (33102, 32884, 6)
+   Remove Items: 5 items removidos antes de spawn
+   Map: ankrahmun.otbm
+
+2. Carlin
+   Yasir Position: (32400, 31815, 6)
+   Map: carlin.otbm
+
+3. Liberty Bay
+   Yasir Position: (32314, 32895, 6)
+   Map: libertybay.otbm
+```
+
+**Probabilidade**: 33% (spawnChance = 33)
+
+### Item Cleanup (Ankrahmun Only)
+
+Antes de spawnar Yasir, remove items específicos:
+```
+Position(33096, 32882, 6) - Item 4977
+Position(33096, 32883, 6) - Item 4977 + 4920
+Position(33096, 32884, 6) - Item 4920
+Position(33096, 32885, 6) - Item 4920
+```
+
+### Implementação
+
+```lua
+if config.enableSpawn and math.random(100) <= 33 then
+    local randTown = config.towns[math.random(#config.towns)]
+    
+    -- Cleanup items
+    for _, itemData in ipairs(randTown.removeItems or {}) do
+        local tile = Tile(itemData.position)
+        if tile then
+            local item = tile:getItemById(itemData.itemId)
+            if item then item:remove() end
+        end
+    end
+    
+    -- Load map
+    Game.loadMap(DATA_DIRECTORY .. "/world/world_changes/oriental_trader/" .. mapName .. ".otbm")
+    
+    -- Spawn after delay
+    addEvent(spawnYasir, 60000, randTown.yasirPosition)
+    Game.setStorageValue(GlobalStorage.Yasir, 1)
+else
+    Game.setStorageValue(GlobalStorage.Yasir, -1)
+end
+```
+
+### NPC Details
+
+- **Name**: Yasir
+- **Master Position**: Armazenada para respawn
+- **Spawn Delay**: 60 segundos após startup
+- **Função**: NPC trader com catálogo fixo
+
+### Webhook
+
+Se spawnar:
+```
+:man_wearing_turban_tone4: [World Change] Yasir has arrived in {CITY} today!
+```
+
+Se não spawnar:
+```
+:man_wearing_turban_tone4: Yasir: not spawned today
+```
+
+### Impacto
+
+- 33% de chance de Yasir spawnar
+- Se spawnar: Uma de 3 cidades é afetada
+- Map é carregado apenas se spawn bem-sucedido
+- Storage indica resultado para outras scripts
+
+---
+
+## 🌅 Script 5: Spawns NPC by Time
+
+### **spawns_npc_by_time.lua**
+
+**Tipo**: Time-Based NPC Spawning (Day/Night Toggle)  
+**Execução**: Startup + Period Change (ao mudar dia/noite)  
+**Armazena**: activeNpcRefs (rastreia IDs de NPCs ativos)
+
+### Funcionalidade
+
+Spawna/despawna NPCs automaticamente baseado em **período do dia (Day/Night)**. Alguns NPCs existem apenas à noite, outros apenas no dia. Usa events globais para sincronizar com ciclo dia/noite do servidor (4h UTC transition).
+
+### NPCs Configurados
+
+```lua
+1. Ghostly Wolf
+   Spawnar: SUNSET (Noite)
+   Despawnar: SUNRISE (Dia)
+   Position: (33332, 32052, 7)
+
+2. Talila
+   Spawnar: SUNSET (Noite)
+   Despawnar: SUNRISE (Dia)
+   Position: (33504, 32222, 7)
+
+3. Valindara
+   Spawnar: SUNRISE (Dia)
+   Despawnar: SUNSET (Noite)
+   Position: (33504, 32222, 7)
+```
+
+### Períodos
+
+```
+LIGHT_STATE_SUNRISE  = Dia (4:00 UTC - 16:00 UTC)
+LIGHT_STATE_SUNSET   = Noite (16:00 UTC - 4:00 UTC)
+```
+
+**Mudança**: A cada 12 horas
+
+### Lógica de Spawn/Despawn
+
+```lua
+-- onPeriodChange: triggered quando muda sunrise/sunset
+function onPeriodChange(period)
+    -- Despawnar NPCs cuja despawnPeriod == period
+    -- Spawnar NPCs cuja spawnPeriod == period
+end
+
+-- onStartup: sincronizar ao boot
+function onStartup()
+    -- Detectar período atual
+    -- Spawnar apenas NPCs que devem estar ativos agora
+end
+```
+
+### Magic Effects
+
+- Teleport effect ao despawnar: `CONST_ME_TELEPORT`
+- Teleport effect ao spawnar: `CONST_ME_TELEPORT`
+- Delay 5s entre despawn e spawn (prevents conflitos)
+
+### NPC References
+
+```lua
+activeNpcRefs = {}  -- Rastreia IDs de NPCs ativos
+
+-- Ao spawnar
+local npc = Game.createNpc(name, position)
+if npc then
+    activeNpcRefs[index] = npc:getId()
+end
+
+-- Ao despawnar
+local npc = Creature(activeNpcRefs[index])
+if npc then
+    npc:remove()
+end
+activeNpcRefs[index] = nil
+```
+
+### Impacto
+
+- Ghostly Wolf + Talila existem apenas à noite
+- Valindara existe apenas durante o dia
+- Ambos em mesma posição (33504, 32222, 7) - swap automático
+- Magic effects ao transição
+
+### Logs
+
+```
+INFO: NpcByTime: {NAME} spawned successfully.
+ERROR: NpcByTime: Failed to spawn: {NAME}
+INFO: NpcByTime: No NPCs to spawn in the current period.
+```
+
+---
+
+## ✨ Script 6: Their Masters Voice
+
+### **their_masters_voice.lua**
+
+**Tipo**: Object Transformation (Visual Effects)  
+**Execução**: Startup (20% chance check)  
+**Armazena**: Nenhum (effect é visual apenas)
+
+### Funcionalidade
+
+Com **20% de chance**, transforma visualmente **fungos específicos** em diferentes variantes. O mapa tem fungos normais (item 12065) que se transformam aleatoriamente em 5 cores diferentes com efeitos visuais amarelos.
+
+### Zona Afetada
+
+```
+Area: X (33306-33369) × Y (31847-31919)
+Z-level: 9
+Size: 64×72 tiles (4,608 tiles totais)
+Fungo Original: Item ID 12065
+```
+
+### Transformação
+
+**20% chance ao startup** de iniciar transformações:
+```
+Se chance passou:
+    Itera todos 4,608 tiles
+    Para cada tile:
+        Se tem fungo (item 12065)
+        E 30% de chance
+            Transforma para: random(12059-12063) = 5 cores diferentes
+            Envia efeito: CONST_ME_YELLOW_RINGS
+```
+
+### Item IDs
+
+```
+12065 = Fungo normal (original)
+12059 = Fungo transformado cor 1
+12060 = Fungo transformado cor 2
+12061 = Fungo transformado cor 3
+12062 = Fungo transformado cor 4
+12063 = Fungo transformado cor 5
+```
+
+### Probabilidades
+
+- **20%**: Chance de iniciar transformação ao todo
+- **30% por fungus**: Se passou 20%, cada fungus tem 30% de virar colorido
+
+**Resultado esperado**: ~0.2 × 0.3 × 4608 = ~276 fungos transformados em média
+
+### Efeito Visual
+
+```lua
+fungus:transform(newItemId)
+fungus:getPosition():sendMagicEffect(CONST_ME_YELLOW_RINGS)
+```
+
+- Esfera amarela ao redor do item
+- Efeito visível para todos os players
+
+### Lógica
+
+```lua
+if math.random(100) <= 20 then
+    for x = 33306, 33369 do
+        for y = 31847, 31919 do
+            local tile = Tile(Position(x, y, 9))
+            if tile then
+                local fungus = tile:getItemById(12065)
+                if fungus and math.random(100) <= 30 then
+                    fungus:transform(math.random(12059, 12063))
+                    fungus:getPosition():sendMagicEffect(CONST_ME_YELLOW_RINGS)
+                end
+            end
+        end
+    end
+end
+```
+
+### Impacto
+
+- Puramente visual (nenhum impacto mecânico)
+- Ocorre apenas no startup
+- Reset toda vez que server reinicia
+- Cria atmosphere/immersion
+
+---
+
+## 📊 Comparação de Todos os 6 Scripts
+
+### Por Tipo
+
+| Tipo | Quantidade | Scripts |
+|------|-----------|---------|
+| Map Randomization | 2 | Fury Gates, Nightmare Isles |
+| Time-Based Monster | 1 | Grimvale Respawn |
+| Time-Based NPC | 1 | Spawns NPC by Time |
+| Chance-Based | 1 | Oriental Trader |
+| Object Transform | 1 | Their Masters Voice |
+
+### Por Execução
+
+| Quando | Scripts |
+|--------|---------|
+| Startup | Fury Gates, Grimvale, Nightmare Isles, Oriental Trader, Their Masters Voice |
+| Period Change | Spawns NPC by Time |
+| Ambos | Spawns NPC by Time |
+
+### Por Storage Utilizado
+
+| Storage | Script | Valor |
+|---------|--------|-------|
+| GlobalStorage.FuryGates | Fury Gates | 1-10 (qual gate) |
+| GlobalStorage.NightmareIsle.* | Nightmare Isles | -1 ou 1 |
+| GlobalStorage.Yasir | Oriental Trader | 1 ou -1 |
+| activeNpcRefs[] | Spawns NPC by Time | NPC IDs |
+
+### Por Probabilidade
+
+| Script | Chance |
+|--------|--------|
+| Fury Gates | 100% (sempre spawna) |
+| Grimvale | Date-based (13º dia diferente) |
+| Nightmare Isles | 100% (sempre spawna) |
+| Oriental Trader | 33% |
+| Spawns NPC by Time | 100% (sempre spawna) |
+| Their Masters Voice | 20% |
+
+### Por Impacto
+
+| Script | Impacto | Permanente |
+|--------|---------|-----------|
+| Fury Gates | 10 cidades afetadas | Até próximo restart |
+| Grimvale | 1 zona afetada | Até próximo restart |
+| Nightmare Isles | 3 locações (1 ativa) | Até próximo restart |
+| Oriental Trader | 1 cidade afetada | Até próximo restart |
+| Spawns NPC by Time | 2 NPCs toggle | Contínuo (12h cycles) |
+| Their Masters Voice | ~280 fungos visuais | Até próximo restart |
+
+---
+
+## 🎓 Padrões Observados
+
+```
+Arquitetura de World Changes (6 total):
+
+1. Map Randomization (2):
+   - Escolhe 1 de N opções
+   - Carrega .otbm file
+   - Armazena escolha em Storage
+   - Teleports usam Storage para coordenar destinos
+   - Executa uma vez ao startup
+
+2. Time-Based Spawning (2):
+   - Uma observa DATE (dia do mês)
+   - Uma observa PERIOD (sunrise/sunset)
+   - Spawna/despawna NPCs
+   - Rastreia IDs de criaturas
+   - Magic effects na transição
+
+3. Chance-Based (1):
+   - Roll 33% chance ao startup
+   - Se passar: limpa items, carrega map, spawna NPC
+   - Se falhar: nenhuma mudança
+   - Armazena resultado em Storage
+
+4. Visual/Effects (1):
+   - Itera área de tiles
+   - Encontra items específicos
+   - Transforma com chance
+   - Envia magic effects
+   - Nenhum impacto mecânico
+
+Técnicas Observadas:
+✅ Game.loadMap - Carregar mapas
+✅ GlobalEvent handlers - onStartup, onPeriodChange
+✅ Game.setStorageValue - Persistir estado
+✅ Game.createNpc/createMonster - Spawn dinâmico
+✅ MoveEvent with teleports - Coordenar com Storage
+✅ Tile iteration - Transformar areas
+✅ Magic effects - Feedback visual
+✅ addEvent - Operações async com delay
+✅ Creature tracking - IDs de NPCs ativos
+✅ Webhook notifications - Discord integration
+```
+
+---
+
+<Aside type="note">
+**Padrões em 6 World Changes**:
+
+1. 5/6 executam no startup (1/6 é contínuo com period change)
+2. 4/6 modificam mapas ou criaturas (1/6 é visual)
+3. 4/6 usam Storage para persistir estado
+4. 2/6 carregam .otbm files
+5. 2/6 spawnam NPCs
+6. 1/6 tem percentage-based trigger (33%)
+7. 1/6 tem date-based trigger (13º dia)
+8. 1/6 tem period-based trigger (day/night)
+9. Teleports são coordenados via Storage
+10. Magic effects dão feedback aos players
+
+**Escalabilidade**:
+
+- Map Random: Adicionar mais opções ao table
+- Time-Based: Adicionar mais NPCs ao array
+- Chance-Based: Ajustar spawnChance percentage
+- Object Transform: Expandir área ou item IDs
+
+**Performance**:
+
+- Startup scripts: Executam 1x (rápido)
+- Period scripts: Rápido (5K ms delay built-in)
+- Tile iteration: ~4K tiles (Their Masters Voice) é aceitável
+- No overhead contínuo
+
+</Aside>
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de World Changes Documentados:** 6  
+**Tipos**: Map Randomization (2), Time-Based (2), Chance-Based (1), Object Transform (1)  
+**Zonas Afetadas**: 10+ (Fury Gates), 3+ (Nightmare Isles), 3 (Yasir), 2 (NPC Time), 1 (Grimvale), 1 (Fungus)
+
+**Estatísticas**:
+- Scripts com 100% spawn chance: 3
+- Scripts with Storage: 4
+- Scripts with teleports: 2
+- Scripts with NPCs: 3
+- Scripts with maps: 3
+- Scripts with Discord: 2
+
+Para dúvidas, consulte a arquitetura ou analise padrões similares.
+</Aside>

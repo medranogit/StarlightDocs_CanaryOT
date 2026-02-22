@@ -1,0 +1,701 @@
+---
+title: Catálogo de Scripts - Custom
+description: Documentação técnica completa de todos os scripts Custom do servidor Canary
+sidebar:
+    order: 2
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+# 🎨 Catálogo de Scripts - Custom
+
+Documentação técnica completa de todos os scripts customizados do servidor, incluindo sistema de áudio, controles administrativos e salas de treinamento.
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/custom/` contém scripts **Lua** que implementam **features customizadas e especializadas** do servidor. Cada custom script adiciona funcionalidades únicas que não se encaixam em categorias padrão - sistemas de áudio, salas de treinamento, controles administrativos, etc.
+</Card>
+
+<Card title="Como Usar o Catálogo" icon="star">
+Este catálogo lista **todos os scripts custom** com:
+- **Arquivo**: Nome exato do arquivo Lua
+- **Caminho**: Localização completa na pasta de scripts
+- **Tipo**: Classificação (ZoneEvent, GlobalEvent, TalkAction, MoveEvent)
+- **Função**: O que faz
+- **Configuração**: Parâmetros e dados
+- **Integração**: Outros sistemas que depende
+- **Efeitos**: Resultado visível ao player
+
+Use **Ctrl+F** para buscar por funcionalidade.
+</Card>
+
+---
+
+## 📊 Índice de Scripts
+
+<Card title="Estatísticas Gerais" icon="star">
+- **Total de Scripts**: 4
+- **Data de Atualização**: February 22, 2026
+- **Status**: Todos os custom scripts documentados
+- **Cobertura**: Audio Sistema, Admin Controls, Training Rooms
+- **Tipos de Evento**: ZoneEvent (2), TalkAction (1), MoveEvent (2)
+- **Integrações**: ambient_sounds + force_period (sincronizados)
+- **Players Afetados**: Todos (audio), Admins (commands), Trainers (movimento)
+</Card>
+
+<Card title="Localização" icon="document">
+  **Caminho Original**: `data-otservbr-global\scripts\custom`
+  
+  **Arquivos Ativos** (4):
+  - `ambient_sounds.lua` - Sistema de áudio ambiente
+  - `force_period.lua` - Controle de período (dia/noite)
+  - `movement_trainer_entrance.lua` - Entrada da sala de treinamento
+  - `movement_trainer_exit.lua` - Saída da sala de treinamento
+</Card>
+
+---
+
+## 📋 Sumário Rápido
+
+| # | Script | Tipo | Sistema | Status |
+|---|--------|------|---------|--------|
+| 1 | ambient_sounds | ZoneEvent | Audio | ✅ Completo |
+| 2 | force_period | TalkAction | Admin | ✅ Completo |
+| 3 | movement_trainer_entrance | MoveEvent | Training | ✅ Completo |
+| 4 | movement_trainer_exit | MoveEvent | Training | ✅ Completo |
+
+---
+
+## 🔊 Script 1: Ambient Sounds
+
+### **ambient_sounds.lua**
+
+**Tipo**: ZoneEvent + GlobalEvent  
+**Sistema**: Audio Ambiente  
+**Função**: Toca sons diferentes em cada zona baseado em período (dia/noite)
+
+### Zonas Configuradas (6 total)
+
+```
+1. venore-city
+2. thais-city
+3. carlin-city
+4. edron-city
+5. kazordoon-city
+6. port-hope-city
+```
+
+### Sons por Zona e Período
+
+#### **Venore City**
+- **Day**: CONST_ME_AMBIENT_SWAMP_INSECTS_BIRDS_NOISES
+- **Night**: CONST_ME_AMBIENT_WIND_NOISES_CREATURES_INSECTS_NIGHT
+- **Leave**: CONST_ME_AMBIENT_SILENCE
+
+#### **Thais City**
+- **Day**: CONST_ME_AMBIENT_SWAMP_INSECTS_BIRDS_NOISES_CITY
+- **Night**: CONST_ME_AMBIENT_WIND_NOISES_CREATURES_INSECTS_NIGHT
+- **Leave**: CONST_ME_AMBIENT_SILENCE
+
+#### **Carlin City**
+- **Day**: CONST_ME_AMBIENT_SWAMP_INSECTS_BIRDS_NOISES_CITY
+- **Night**: CONST_ME_AMBIENT_WIND_NOISES_CREATURES_INSECTS_NIGHT
+- **Leave**: CONST_ME_AMBIENT_SILENCE
+
+#### **Edron City**
+- **Day**: CONST_ME_AMBIENT_INSECTS_CREATURES
+- **Night**: CONST_ME_AMBIENT_INSECTS_CREATURES_NIGHT
+- **Leave**: CONST_ME_AMBIENT_SILENCE
+
+#### **Kazordoon City**
+- **Day**: CONST_ME_AMBIENT_CAVE_WIND_NOISES
+- **Night**: CONST_ME_AMBIENT_CAVE_HAMMERING_NOISES_HAMMERING
+- **Leave**: CONST_ME_AMBIENT_SILENCE
+
+#### **Port Hope City**
+- **Day**: CONST_ME_AMBIENT_CITY_NATURE_HUMANS
+- **Night**: CONST_ME_AMBIENT_NATURE_NIGHT
+- **Leave**: CONST_ME_AMBIENT_SILENCE
+
+### Algoritmo de Execução
+
+```
+Player entra em zona:
+  ↓
+  Determina período atual (respeita forcePeriod)
+  ↓
+  Busca som para período
+  ↓
+  Envia som via player:sendAmbientSoundEffect()
+
+Player sai de zona:
+  ↓
+  Envia som de silêncio (SILENCE)
+```
+
+### Função getPeriod
+
+```lua
+-- Respeita força manual de período do admin
+function getEffectivePeriod()
+    if forcePeriod then
+        -- Admin forçou dia/noite
+        return forcePeriod == "night" and LIGHT_STATE_SUNSET or LIGHT_STATE_SUNRISE
+    end
+    -- Usa período natural do servidor
+    return getTibiaTimerDayOrNight() == "night" and LIGHT_STATE_SUNSET or LIGHT_STATE_SUNRISE
+end
+```
+
+### Global Event Adicional
+
+- **Nome**: AmbientSoundPeriodChange
+- **Função**: Reage a mudanças de período (dia → noite)
+- **Ação**: Atualiza som de todos os players em zonas ambientes
+
+### Integração com force_period.lua
+
+```
+force_period.lua muda _G.forcePeriod
+  ↓
+ambient_sounds.lua lê _G.forcePeriod em getEffectivePeriod()
+  ↓
+Som muda mesmo se período natural é dia
+```
+
+### Event Registration
+
+```lua
+-- ZoneEvent para cada zona
+for _, zoneData in ipairs(ambientZones) do
+    local zone = Zone(zoneData.zone)
+    local zoneEvent = ZoneEvent(zone)
+    
+    zoneEvent:afterEnter(...)   -- Ao entrar
+    zoneEvent:afterLeave(...)   -- Ao sair
+    
+    zoneEvent:register()
+end
+
+-- GlobalEvent para mudanças de período
+local ambientSoundPeriodChange = GlobalEvent("AmbientSoundPeriodChange")
+ambientSoundPeriodChange.onPeriodChange(period)
+ambientSoundPeriodChange:register()
+```
+
+### Players Afetados
+
+**Todos** - Sistema global de áudio, toca para todo player que entra em zona ambient.
+
+### Dados de Configuração
+
+```lua
+local ambientZones = {
+    {
+        zone = "nome-zona",
+        soundEnterDay = SOUND_ID_DIA,
+        soundEnterNight = SOUND_ID_NOITE,
+        soundLeave = 0,  -- Silêncio
+    },
+    -- ... 6 zonas total
+}
+```
+
+### Extensibilidade
+
+Adicionar nova zona é simples:
+```lua
+table.insert(ambientZones, {
+    zone = "nova-zona",
+    soundEnterDay = SOUND_ID,
+    soundEnterNight = SOUND_ID,
+    soundLeave = 0,
+})
+```
+
+---
+
+## 🎮 Script 2: Force Period
+
+### **force_period.lua**
+
+**Tipo**: TalkAction (Comando)  
+**Sistema**: Admin Control  
+**Função**: Permite admins forçar período do dia/noite para testes
+
+### Comando
+
+```
+/forceperiod <day|night|auto>
+```
+
+### Parâmetros
+
+| Parâmetro | Efeito | Descrição |
+|-----------|--------|-----------|
+| `day` | Força dia | Ignora período natural, sempre dia |
+| `night` | Força noite | Ignora período natural, sempre noite |
+| `auto` | Auto/Normal | Volta a período natural automático |
+
+### Implementação
+
+```lua
+local cmd = TalkAction("/forceperiod")
+
+function cmd.onSay(player, words, param)
+    logCommand(player, words, param)
+    param = param:lower():trimSpace()
+
+    if param == "day" or param == "night" then
+        _G.forcePeriod = param  -- Armazena em variável global
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Forcing period: " .. param)
+    elseif param == "auto" then
+        _G.forcePeriod = false  -- Reseta para automático
+        player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Automatic period restored.")
+    else
+        player:sendCancelMessage("Usage: /forceperiod day|night|auto")
+        return true
+    end
+
+    return true
+end
+```
+
+### Configuração
+
+```lua
+cmd:separator(" ")           -- Separa comando e parâmetro por espaço
+cmd:groupType("god")         -- Apenas GMs/Admins (god group)
+cmd:register()               -- Registra o comando
+```
+
+### Que Afeta
+
+- **Ambient Sounds** - Lê _G.forcePeriod para determinar som
+- **Qualquer outro sistema** que verifique período manual
+
+### Variável Global
+
+```lua
+_G.forcePeriod
+  = false  → Período automático (natural)
+  = "day"  → Força dia permanentemente
+  = "night" → Força noite permanentemente
+```
+
+### Mensagens
+
+- **Sucesso**: "Forcing period: `` `{day/night}` ``" ou "Automatic period restored."
+- **Erro**: "Usage: /forceperiod day|night|auto"
+
+### Log
+
+```
+Comando executado via logCommand()
+Registra na auditoria de GMs
+```
+
+### Restrições
+
+- ✅ Apenas grupo "god" pode usar (admins)
+- ✅ Requer sintaxe correta (day/night/auto)
+- ✅ Respeita separador de espaços
+
+---
+
+## 🏋️ Script 3: Movement Trainer Entrance
+
+### **movement_trainer_entrance.lua**
+
+**Tipo**: MoveEvent (Movement - StepIn)  
+**Sistema**: Training Room  
+**Função**: Entrada para sala de treinamento de movimentos (dança, saltos, etc)
+
+### Posição de Entrada
+
+```
+Posição: (1116, 1092, 7)
+```
+
+### Configuração da Sala de Treinamento
+
+```lua
+local config = {
+    firstRoomPosition = { x = 1018, y = 1112, z = 7 },  -- Primeira sala
+    distancePositionX = 12,  -- Distância entre colunas
+    distancePositionY = 12,  -- Distância entre linhas
+    columns = 7,             -- 7 salas lado a lado
+    lines = 54,              -- 54 linhas de salas
+}
+```
+
+### Algebra da Grade
+
+```
+Total de salas = 7 colunas × 54 linhas = 378 SALAS
+
+Layout:
+┌─────────────────────────────┐
+│ R1  R2  R3  R4  R5  R6  R7 │ ← linha 1 (7 items)
+│ R8  R9  ...                │ ← linha 2 (7 items)
+│ ...                        │
+│ ...                        │ ← linha 54 (7 items)
+└─────────────────────────────┘
+```
+
+### Espaçamento
+
+```
+Distância X = 12 (entre salas na mesma linha)
+Distância Y = 12 (entre salas em linhas diferentes)
+
+Exemplo posições:
+- Coluna 0, Linha 0: (1018, 1112, 7)
+- Coluna 1, Linha 0: (1030, 1112, 7)  ← 1018 + 12
+- Coluna 0, Linha 1: (1018, 1124, 7)  ← 1112 + 12
+```
+
+### Validação de Sala
+
+```lua
+function isBusyable(position)
+    -- 1. Verifica se tem criatura (player ou summoned)
+    if creature exists then
+        return false  -- Sala ocupada
+    end
+    
+    -- 2. Verifica se tem ground sólido
+    if ground blocked or not exists then
+        return false  -- Não pode estar
+    end
+    
+    -- 3. Verifica items pela sala
+    for each item in tile do
+        if não é magiField AND
+           não é movable AND
+           é sólido then
+            return false  -- Bloqueado
+        end
+    end
+    
+    return true  -- Sala disponível!
+end
+```
+
+### Algoritmo de Alocação
+
+```lua
+function calculatingRoom(uid, position, column, line)
+    if column >= config.columns then
+        column = 0
+        line = line < (config.lines - 1) and line + 1 or false
+    end
+
+    if line then
+        -- Calcula posição da sala
+        local room_pos = {
+            x = position.x + (column * distanceX),
+            y = position.y + (line * distanceY),
+            z = position.z
+        }
+        
+        if isBusyable(room_pos) then
+            -- Encontrou sala vaga! Teleporta aqui
+            player:teleportTo(room_pos)
+            return true
+        else
+            -- Sala ocupada, tenta próxima
+            calculatingRoom(uid, position, column + 1, line)
+        end
+    else
+        -- Sem mais linhas disponíveis
+        player:sendCancelMessage("Couldn't find any position for you right now.")
+    end
+end
+```
+
+### Execução ao Entrar
+
+```
+Player pisa em (1116, 1092, 7):
+  ↓
+1. Teleporta para primeira sala disponível (procura de cima a baixo)
+2. Envia efeito de teleporte (CONST_ME_TELEPORT)
+3. Spawna 2 × Training Machine (monstro de treino)
+4. Player começa treinamento
+```
+
+### Summons Criados
+
+```lua
+Game.createMonster("Training Machine", creature:getPosition(), true, false)
+Game.createMonster("Training Machine", creature:getPosition(), true, false)
+```
+
+- **Tipo**: Training Machine (monstro específico)
+- **Quantidade**: 2 unidades
+- **Posição**: Mesma do player após teleporte
+- **Push**: true (empurra itens)
+- **Force**: false (não força spawn)
+
+### Players Afetados
+
+Qualquer player que pise em (1116, 1092, 7).
+
+### Feedback
+
+- ✅ Teleporte automático para sala vaga
+- ✅ 2 Training Machines aparecem
+- ❌ Se cheio: "Couldn't find any position for you right now."
+
+### Integrações
+
+Relacionado com **movement_trainer_exit.lua** (saída):
+- Entrada distribui players em grid
+- Saída teleporta de volta ao temple
+
+---
+
+## 🚪 Script 4: Movement Trainer Exit
+
+### **movement_trainer_exit.lua**
+
+**Tipo**: MoveEvent (Movement - StepIn)  
+**Sistema**: Training Room  
+**Função**: Saída da sala de treinamento, teleporta de volta ao temple
+
+### Posições de Saída (2 total)
+
+```
+Posição 1: (991, 1031, 7)
+Posição 2: (1057, 1023, 7)
+```
+
+### Configuração
+
+```lua
+local positions = {
+    { x = 991, y = 1031, z = 7 },
+    { x = 1057, y = 1023, z = 7 },
+}
+```
+
+### Action IDs
+
+```
+AID 1: 40015
+AID 2: 4255
+```
+
+### Implementação
+
+```lua
+function teleportToTemple(creature)
+    if not creature:isPlayer() then
+        return true
+    end
+
+    -- Teleporta para temple da town do player
+    creature:teleportTo(creature:getTown():getTemplePosition())
+    
+    -- Efeito visual
+    creature:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+end
+
+local trainerExit = MoveEvent()
+
+function trainerExit.onStepIn(creature, item, position, fromPosition)
+    teleportToTemple(creature)
+    return true
+end
+```
+
+### Registro
+
+```lua
+-- Registra em 2 posições
+for index, position in pairs(positions) do
+    trainerExit:position(position)
+end
+
+-- Registra com 2 AIDs
+trainerExit:aid(40015)
+trainerExit:aid(4255)
+
+trainerExit:register()
+```
+
+### Fluxo Completo
+
+```
+Player treina em sala (1018+, 1112+, 7)
+  ↓
+Player pisa em saída (991, 1031, 7) ou (1057, 1023, 7)
+  ↓
+teleportToTemple(player) é chamado
+  ↓
+creature:getTown():getTemplePosition() localiza temple
+  ↓
+creature:teleportTo(templePos) move player
+  ↓
+Efeito CONST_ME_TELEPORT é enviado
+  ↓
+Player está no temple, treinamento completo!
+```
+
+### Players Afetados
+
+Qualquer player que pise em uma das 2 posições de saída.
+
+### Feedback
+
+- ✅ Teleporte automático ao temple
+- ✅ Efeito visual
+- ✅ Baseado na town do player (cada um va para seu temple)
+
+### Integrações com Entrada
+
+```
+movement_trainer_entrance.lua → Distribui players em grid de salas
+movement_trainer_exit.lua → Saídas distribuídas para deixar rooms
+```
+
+---
+
+## 📊 Comparação de Custom Scripts
+
+### Por Tipo de Evento
+
+| Script | Tipo | Quando Dispara |
+|--------|------|---|
+| ambient_sounds | ZoneEvent | Enter/Leave zona |
+| force_period | TalkAction | Admin fala comando |
+| trainer_entrance | MoveEvent | Pisa no tile |
+| trainer_exit | MoveEvent | Pisa no tile |
+
+### Por Sistema Afetado
+
+| Script | Sistema | Escopo |
+|--------|---------|--------|
+| ambient_sounds | Audio | Global (6 zonas) |
+| force_period | Admin | Global (todo servidor) |
+| trainer_entrance | Training |  Grid 7×54 (378 salas) |
+| trainer_exit | Training | 2 saídas |
+
+### Por Integração
+
+| Script 1 | Script 2 | Integração |
+|----------|----------|---|
+| ambient_sounds | force_period | Ambos compartilham `_G.forcePeriod` |
+| trainer_entrance | trainer_exit | Formam um sistema completo (in→out) |
+
+### Por Complexidade
+
+| Script | ⭐ Complexidade | Razão |
+|--------|----------|---|
+| force_period | ⭐ Simples | 1 comando, alterando 1 variável |
+| trainer_exit | ⭐ Simples | 1 teleporte, 2 posições |
+| ambient_sounds | ⭐⭐ Média | 6 zonas, 2 eventos, período |
+| trainer_entrance | ⭐⭐⭐ Complexa | Grid 7×54, validação, recursão |
+
+---
+
+## 🔗 Integrações Entre Scripts
+
+### Sistema 1: Audio + Control
+
+```
+force_period.lua
+    ↓ (muda)
+    _G.forcePeriod = "day" | "night" | false
+    ↓ (lê)
+ambient_sounds.lua
+    ↓
+Ajusta som conforme período (natural ou forçado)
+```
+
+### Sistema 2: Training
+
+```
+movement_trainer_entrance.lua
+    ↓ (entrada)
+Calcula sala no grid (7×54)
+    ↓
+Teleporta + spawna Training Machines
+    ↓
+Player treina
+    ↓
+    movement_trainer_exit.lua (saída)
+    ↓
+Teleporta de volta ao temple
+```
+
+---
+
+## 🔍 Detalhes Técnicos
+
+### Sons por Zone e Period
+
+**Exemplo: Venore City**
+```
+LIGHT_STATE_DAY:
+  → SOUND_EFFECT_TYPE_AMBIENT_SWAMP_INSECTS_BIRDS_NOISES
+  
+LIGHT_STATE_NIGHT:
+  → SOUND_EFFECT_TYPE_AMBIENT_WIND_NOISES_CREATURES_INSECTS_NIGHT
+  
+LIGHT_STATE_SUNRISE/SUNSET:
+  → SOUND_EFFECT_TYPE_AMBIENT_WIND_NOISES_CREATURES_INSECTS_NIGHT
+```
+
+### Grid Calculation Math
+
+```
+Posição da Sala[col, linha]:
+  X = firstPos.x + (col × distanceX)
+  Y = firstPos.y + (linha × distanceY)
+  Z = firstPos.z
+
+Exemplo:
+  firstPos = (1018, 1112, 7)
+  col=3, line=2, distX=12, distY=12
+  
+  x = 1018 + (3 × 12) = 1018 + 36 = 1054
+  y = 1112 + (2 × 12) = 1112 + 24 = 1136
+  z = 7
+  
+  Resultado: (1054, 1136, 7)
+```
+
+### Recursion Flow (Trainer Entrance)
+
+```
+calculatingRoom(uid, (1018,1112,7), 0, 0)
+  Col=0, Line=0, Pos=(1018,1112,7)
+    isBusyable? SIM → Teleporta e retorna
+    
+calculatingRoom(uid, (1018,1112,7), 0, 0)
+  Col=0, Line=0, Pos=(1018,1112,7)
+    isBusyable? NÃO → Chama recursão
+      → calculatingRoom(uid, ..., 1, 0)
+        Col=1, Line=0, Pos=(1030,1112,7)
+          isBusyable? SIM → Teleporta e retorna
+```
+
+---
+
+<Aside type="note">
+**Padrões Observados**:
+
+1. Scripts custom são especializados em 1-2 funções
+2. Integração via variáveis globais (_G)
+3. Validações como funções helper
+4. Configurações em tabelas separadas
+
+**Extensibilidade**:
+
+- Adicionar zona audio: append `ambientZones`
+- Adicionar posição saída: append `positions`
+- Mudar tamanho grid: editar `config`
+</Aside>

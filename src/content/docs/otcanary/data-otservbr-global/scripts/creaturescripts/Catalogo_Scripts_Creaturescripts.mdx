@@ -1,0 +1,1419 @@
+---
+title: Catálogo de Scripts - Creature Scripts
+description: Documentação técnica completa de todos os scripts Creature do servidor Canary
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+# 🧟 Catálogo de Scripts - Creature Scripts
+
+Documentação técnica completa de todos os scripts de criatura do servidor, incluindo habilidades de boss, recompensas de login e sistemas de auto-completação de quests.
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/creaturescripts/` contém scripts **Lua** que implementam **comportamentos e eventos específicos de criaturas**. Cada creature script adiciona funcionalidades únicas - habilidades especiais de bosses, recompensas ao login, auto-completação de quests, immunidades, etc. Afetam tanto players quanto monsters.
+</Card>
+
+<Card title="Como Usar o Catálogo" icon="star">
+Este catálogo lista **todos os scripts creature** com:
+- **Arquivo**: Nome exato do arquivo Lua
+- **Caminho**: Localização completa
+- **Tipo**: Classificação (onThink, onLogin, onHealthChange, etc)
+- **Função**: O que faz
+- **Configuração**: Parâmetros e dados
+- **Efeitos**: Resultado visível ao jogador
+- **Integração**: Outros sistemas que depende
+
+Use **Ctrl+F** para buscar por funcionalidade.
+</Card>
+
+---
+
+## 📊 Índice de Scripts
+
+<Card title="Estatísticas Gerais" icon="star">
+- **Total de Scripts**: 25
+- **Data de Atualização**: February 22, 2026
+- **Status**: Todos os scripts documentados
+- **Cobertura**: Boss Abilities, Minion Transformations, Login/Progression, Loot Management
+- **Tipos de Evento**: onThink (12), onLogin (5), onHealthChange (3), onDeath (3), onPrepareDeath (2)
+- **Sistemas Afetados**: Monster Behaviors (16), Player Events (5), Others (4)
+- **Duração**: 6-413 linhas (média 50 linhas)
+</Card>
+
+<Card title="Localização" icon="document">
+  **Caminho Original**: `data-otservbr-global\scripts\creaturescripts`
+  
+  **Subpastas**:
+  - `monster/` - Comportamentos de bosses/monsters (18 scripts)
+  - `customs/` - Features customizadas do servidor (2 scripts)
+  - `others/` - Eventos e sistemas gerais (5 scripts)
+  
+  **Total de Arquivos Ativos**: 25
+</Card>
+
+---
+
+## 📋 Sumário Rápido
+
+| # | Script | Tipo | Sistema | Linhas | Status |
+|---|--------|------ (Primeiros 10)
+
+| # | Script | Tipo | Sistema | Linhas | Status |
+|---|--------|------|---------|--------|--------|
+| 1 | gaz_haragoth_heal | onThink | Boss Ability | 30 | ✅ |
+| 2 | grand_master_oberon_immunity | onHealthChange | Boss Immunity | 14 | ✅ |
+| 3 | reward_exercise | onLogin | Player Reward | 12 | ✅ |
+| 4 | freequests | onLogin | Auto-Quests | 413 | ✅ |
+| 5 | greater_minion | onThink | Minion Transform | 25 | ✅ |
+| 6 | hirintror_heal | onPrepareDeath | Boss Heal | 19 | ✅ |
+| 7 | invulnerable | onHealthChange | Helper | 16 | ✅ |
+| 8 | minion_gaz_haragoth_vortex | onDeath | Death Spawn | 20 | ✅ |
+| 9 | mirror_image_transform | onHealthChange | Transform | 18 | ✅ |
+| 10 | necromantic_minion | onThink | Minion Transform | 18 | ✅ |
+
+**Próximos 15 Scripts**: northern_pike, omrafir_explode, shared_life, shargon_growth_check, shlorg_teleport, superior_minion, the_pale_count_kill, the_welter_egg, white_pale_heal, zavarash_hide, dawnport, droploot, login_events, login, rookgaard_advance
+## 💪 Script 1: Gaz'haragoth Heal
+
+### **gaz_haragoth_heal.lua**
+
+**Tipo**: CreatureEvent - onThink  
+**Sistema**: Boss Ability  
+**Função**: Gaz'haragoth cura 300k HP automaticamente quando atinge HP crítico
+
+### Boss: Gaz'haragoth
+
+```
+Nome: Gaz'haragoth (Boss nomeado)
+Tipo: Monstro
+Habilidade: Cura automática no HP crítico
+Trigger: HP < 12.5%
+```
+
+### Mecânica de Cura
+
+#### Trigger (Condição de Ativação)
+
+```lua
+local hp = (creature:getHealth() / creature:getMaxHealth()) * 100
+if hp < 12.5 and not creature:getCondition(...) then
+    -- Ativa cura
+end
+```
+
+- **HP Crítico**: < 12.5% (25% / 2)
+- **Cooldown**: Usa condition com ID 88888 (não pode executar enquanto ativa)
+
+#### Fase 1: Preparação (Imediato)
+
+```
+1. Adiciona CONDITION_REGENERATION ao boss
+2. Boss grita: "Gaz'haragoth begins to draw on the nightmares to HEAL himself!"
+3. Condição dura 7000ms (7 segundos)
+4. Regeneração configurada para:
+   - HEALTHGAIN: 0.01 (1% de HP a cada tick)
+   - HEALTHTICKS: 7000ms
+```
+
+#### Fase 2: Cura Grande (Após 7 segundos)
+
+```
+1. AddEvent disparado após 7000ms
+2. Valida se boss ainda existe (Creature(cid))
+3. Cura 300.000 HP direto
+4. Envia efeito CONST_ME_MAGIC_BLUE (efeito de magia)
+5. Boss grita: "Gaz'haragoth HEALS himself!"
+```
+
+### Implementação Técnica
+
+```lua
+local condition = Condition(CONDITION_REGENERATION, CONDITIONID_DEFAULT)
+condition:setParameter(CONDITION_PARAM_SUBID, 88888)          -- ID único
+condition:setParameter(CONDITION_PARAM_TICKS, 7 * 1000)       -- 7 segundos
+condition:setParameter(CONDITION_PARAM_HEALTHGAIN, 0.01)      -- 1% HP/tick
+condition:setParameter(CONDITION_PARAM_HEALTHTICKS, 7 * 1000) -- 7 segundos
+
+local gazHaragothHeal = CreatureEvent("GazHaragothHeal")
+
+function gazHaragothHeal.onThink(creature)
+    local hp = (creature:getHealth() / creature:getMaxHealth()) * 100
+    
+    -- Verificar HP e condição anterior
+    if hp < 12.5 and not creature:getCondition(CONDITION_REGENERATION, CONDITIONID_DEFAULT, 88888) then
+        -- Adiciona regeneração
+        creature:addCondition(condition)
+        creature:say("Gaz'haragoth begins to draw on the nightmares to HEAL himself!", TALKTYPE_MONSTER_YELL)
+        
+        -- Agendaa cura grande
+        addEvent(function(cid)
+            local creature = Creature(cid)
+            if not creature then return end
+            
+            creature:addHealth(300000)
+            creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+            creature:say("Gaz'haragoth HEALS himself!", TALKTYPE_MONSTER_YELL)
+            return true
+        end, 7000, creature:getId())
+    end
+end
+
+gazHaragothHeal:register()
+```
+
+### Efeitos Visuais
+
+```
+Efeito Visual: CONST_ME_MAGIC_BLUE
+Descrição: Explosão azul mágica
+Timing: Ao completar cura (7 seg depois)
+Posição: Onde boss está
+```
+
+### Audio/Mensagens
+
+```
+Antes: "Gaz'haragoth begins to draw on the nightmares to HEAL himself!"
+       (TALKTYPE_MONSTER_YELL - grito de monstro)
+
+Depois: "Gaz'haragoth HEALS himself!"
+        (TALKTYPE_MONSTER_YELL - grito de monstro)
+```
+
+### Cooldown e Reusabilidade
+
+```
+Condição ID: 88888 (único para este ability)
+Duration: 7 segundos
+Efeito: Enquanto condição está ativa, não pode executar novamente
+Result: Mínimo 7 segundos entre curas
+```
+
+### Players Afetados
+
+Boss **Gaz'haragoth** apenas - aplicado durante combate com players.
+
+### Cálculo de HP
+
+```
+HP Total: creature:getMaxHealth()
+HP Atual: creature:getHealth()
+HP%: (Atual / Total) * 100
+
+Exemplo:
+- Max HP: 2.000.000
+- Atual: 200.000
+- HP%: (200000 / 2000000) * 100 = 10% < 12.5% → Dispara cura
+```
+
+### Timeline Completo
+
+```
+t=0s:      Boss atinge < 12.5% HP
+           onThink(boss) é chamado
+
+t=0.1s:    Cria condition de regeneração (7s)
+           Mostra mensagem "begins to draw..."
+           Agenda event para t=7s
+
+t=0-7s:    Boss regenera continuamente durante 7 segundos
+
+t=7s:      addEvent(function...) dispara
+           Cura 300k HP
+           Mostra efeito MAGIC_BLUE
+           Mostra mensagem "HEALS himself!"
+           
+t=7s+:     Cooldown termina (condition expira)
+           Pode executar novamente se HP < 12.5%
+```
+
+### Variações Possíveis
+
+```lua
+-- Mais frequente
+if hp < 30 then  -- Em vez de < 12.5
+
+-- Menos regeneração
+condition:setParameter(CONDITION_PARAM_HEALTHGAIN, 0.005)
+
+-- Mais cura
+creature:addHealth(500000)  -- Em vez de 300000
+
+-- Sem delay
+-- Remove addEvent, cura imediatamente
+
+-- Múltiplos boss
+for name in ipairs(BOSS_NAMES) do
+    if creature:getName() == name then
+        -- Execute
+    end
+end
+```
+
+---
+
+## 🛡️ Script 2: Grand Master Oberon Immunity
+
+### **grand_master_oberon_immunity.lua**
+
+**Tipo**: CreatureEvent - onHealthChange  
+**Sistema**: Boss Immunity  
+**Função**: Envia efeito especial (HOLYAREA) toda vez que Grand Master Oberon recebe dano
+
+### Boss: Grand Master Oberon
+
+```
+Nome: Grand Master Oberon (Boss nomeado)
+Tipo: Monstro
+Habilidade: Resposta visual ao receber dano
+Trigger: Qualquer dano (physical/magic/elemental)
+```
+
+### Mecânica de Resposta
+
+#### Trigger
+
+```lua
+function onHealthChange(creature, attacker, primaryDamage, primaryType, 
+                        secondaryDamage, secondaryType, origin)
+    if creature and creature:isMonster() then
+        -- Dispara a QUALQUER dano
+    end
+end
+```
+
+- **Acionador**: Qualquer tipo de dano (sem filtro)
+- **Validação**: Apenas se é monstro
+
+#### Ação
+
+```lua
+creature:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+return true  -- Aceita dano normalmente
+```
+
+**Efeito**: HOLYAREA (Área sagrada/divina)
+
+### Implementação Técnica
+
+```lua
+local grandMasterOberonImmunity = CreatureEvent("OberonImmunity")
+
+function grandMasterOberonImmunity.onHealthChange(creature, attacker, primaryDamage, primaryType, 
+                                                   secondaryDamage, secondaryType, origin)
+    if creature and creature:isMonster() then
+        creature:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+    end
+    return true  -- Dano completo aceito
+end
+
+grandMasterOberonImmunity:register()
+```
+
+### Efeitos Visuais
+
+```
+Efeito: CONST_ME_HOLYAREA
+Nome: Holy Area / Divina Area
+Descrição: Aura sagrada/divina
+Timing: TODA VEZ que recebe dano
+Frequência: Cada hit causa um efeito
+Posição: Onde boss está
+```
+
+### Comportamento
+
+```
+Player ataca Oberon com 500 dano
+  ↓
+onHealthChange dispara
+  ↓
+Efeito HOLYAREA enviado
+  ↓
+Oberon recebe 500 dano (completo)
+  ↓
+HP -= 500
+```
+
+### Players Afetados
+
+Boss **Grand Master Oberon** apenas - aplicado durante qualquer combate.
+
+### Diferença com Verdadeira Immunity
+
+```lua
+-- Este script:
+-- NÃO bloqueia dano (return true)
+-- Só mostra efeito visual
+-- Dano é aceito completamente
+
+-- Se quisesse immunity real:
+return false  -- Bloquearia dano
+-- ou
+return true com dano = 0  -- Reduziria para 0
+
+-- Atual: Efeito visual cosmético + dano normal
+```
+
+### Variações Possíveis
+
+```lua
+-- Apenas dano específico (fogo)
+if primaryType == COMBAT_FIREDAMAGE then
+    creature:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+end
+
+-- Immunity verdadeira
+if primaryType == COMBAT_HOLYDOMAGE then
+    return false  -- Cancela dano sagrado
+end
+
+-- Dano reduzido
+if primaryType == COMBAT_PHYSICALDAMAGE then
+    -- primaryDamage = primaryDamage / 2  -- Metade do dano
+    return true
+end
+
+-- Efeitos diferentes por tipo
+if primaryType == COMBAT_FIREDAMAGE then
+    creature:getPosition():sendMagicEffect(CONST_ME_FIREAREA)
+elseif primaryType == COMBAT_ICEDAMAGE then
+    creature:getPosition():sendMagicEffect(CONST_ME_ICEAREA)
+else
+    creature:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+end
+```
+
+### Padrão de Proteção
+
+```
+Tipo 1: Immunity (bloqueia dano - return false)
+Tipo 2: Redução (dimininui dano - modifica primaryDamage)
+Tipo 3: Cosmético (mostra efeito apenas - return true, sem modificação)
+
+Este script é: TIPO 3 (Cosmético)
+```
+
+---
+
+## 🎁 Script 3: Reward Exercise
+
+### **reward_exercise.lua**
+
+**Tipo**: CreatureEvent - onLogin  
+**Sistema**: Player Reward  
+**Função**: Notifica player ao login se pode receber arma de exercício
+
+### Trigger
+
+```
+Evento: Player faz login (onLogin)
+Condição 1: Config TOGGLE_RECEIVE_REWARD ativa
+Condição 2: Town do player >= AB_DENDRIEL (cidades avançadas)
+Condição 3: Player NÃO recebeu reward ainda
+```
+
+### Implementação Técnica
+
+```lua
+local winReward = CreatureEvent("WinReward")
+
+function winReward.onLogin(player)
+    -- Verificar se config permite
+    if configManager.getBoolean(configKeys.TOGGLE_RECEIVE_REWARD) then
+        -- Verificar se town é avançada
+        if player:getTown():getId() >= TOWNS_LIST.AB_DENDRIEL then
+            -- Verificar se já recebeu
+            if player:getStorageValue(tonumber(Storage.PlayerWeaponReward)) ~= 1 then
+                -- NOTIFICAR
+                player:sendTextMessage(MESSAGE_LOGIN, 
+                    "You can receive an exercise weapon using command !reward")
+            end
+        end
+    end
+    return true
+end
+
+if configManager.getBoolean(configKeys.TOGGLE_RECEIVE_REWARD) then
+    winReward:register()  -- Só registra se config ativa
+end
+```
+
+### Configuração
+
+```lua
+-- Registração Condicional
+if configManager.getBoolean(configKeys.TOGGLE_RECEIVE_REWARD) then
+    winReward:register()
+else
+    -- System desativado - script não funciona
+end
+```
+
+### Storage Usado
+
+```lua
+Storage.PlayerWeaponReward
+    = 0: Não recebeu reward
+    = 1: Já recebeu reward (não mostra mensagem novamente)
+```
+
+### Towns Permitidos
+
+```
+TOWNS_LIST.AB_DENDRIEL (e superiores)
+
+Tibia Towns por progressão:
+1. Rookgaard (iniciante)
+2. Thais
+3. Venore
+4. Carlin
+5. Edron
+6. Kazordoon
+7. AB_DENDRIEL ← Aqui em diante pode receber
+8. Yalahar
+9. Farmine
+10. Oramond
+```
+
+### Mensagem Exibida
+
+```
+Tipo: MESSAGE_LOGIN (mensagem de login)
+Texto: "You can receive an exercise weapon using command !reward"
+
+Significado: Player pode usar comando !reward no servidor
+              para reclamar uma arma de exercício grátis
+```
+
+### Fluxo Completo
+
+```
+1. Player faz login
+   ↓
+2. onLogin(player) é chamado
+   ↓
+3. Verifica TOGGLE_RECEIVE_REWARD (config)
+   ↓ SIM
+4. Verifica Town >= AB_DENDRIEL
+   ↓ SIM
+5. Verifica Storage.PlayerWeaponReward
+   ↓ == 0 (não recebeu)
+6. Envia mensagem: "You can receive an exercise weapon..."
+   ↓
+7. Player vê mensagem no chat
+   ↓
+8. Player usa comando !reward
+   ↓
+9. Recebe arma
+   ↓
+10. Storage atualizado para = 1
+    (próximo login não mostra mensagem)
+```
+
+### Players Afetados
+
+**Todos os players** que fazem login, mas filtra por:
+- Config estar ativa
+- Town >= AB_DENDRIEL
+- Ainda não ter recebido reward
+
+### Exercício Weapon
+
+```
+Weapon de exercício: Arma gratuita
+Propósito: Iniciantes treinar skills
+Stats: Baixos (balanced para training)
+Comando: !reward (comando específico para reclamar)
+```
+
+### Storage Pattern
+
+```lua
+-- Verificação binária
+if player:getStorageValue(Storage.PlayerWeaponReward) ~= 1 then
+    -- Não recebeu (== 0 ou nil)
+    -- Mostrar mensagem
+else
+    -- Já recebeu (== 1)
+    -- Não mostrar
+end
+
+-- Usuário recebe
+player:setStorageValue(Storage.PlayerWeaponReward, 1)
+```
+
+### Configuração Necessária
+
+```
+Config: configKeys.TOGGLE_RECEIVE_REWARD
+Status: true/false (feature ligada/desligada)
+
+Se false: CreatureEvent não é registrado
+         Script não funciona
+         
+Se true: CreatureEvent é registrado
+        Script funciona normalmente
+```
+
+---
+
+## 📚 Script 4: Free Quests
+
+### **freequests.lua**
+
+**Tipo**: CreatureEvent - onLogin  
+**Sistema**: Auto-Complete Quests  
+**Função**: Marca automaticamente múltiplas quests como completas ao login
+
+### Conceito
+
+```
+Free Quests = Quests automáticas
+Trigger: Player login
+Ação: Auto-marca selecionadas quests como completas
+Propósito: Novo player começa com quests básicas concluídas
+```
+
+### Configuração Geral
+
+```lua
+local stage = configManager.getNumber(configKeys.FREE_QUEST_STAGE)
+```
+
+**FREE_QUEST_STAGE**: Define qual stage de free quests usar
+- stage 0: Nenhuma quest auto-completa
+- stage 1: Quests básicas apenas
+- stage 2: Quests intermediárias
+- etc.
+
+### Estrutura da Data
+
+```lua
+local questTable = {
+    {
+        storageName = "BigfootsBurden.QuestLine",
+        storage = Storage.Quest.U9_60.BigfootsBurden.QuestLine,
+        storageValue = 2
+    },
+    {
+        storageName = "BigfootsBurden.QuestLine",
+        storage = Storage.Quest.U9_60.BigfootsBurden.QuestLine,
+        storageValue = 4
+    },
+    -- ... 100+ quests
+}
+```
+
+**Campos**:
+- `storageName`: Identificador/nome da quest
+- `storage`: Chave de armazenamento do servidor
+- `storageValue`: Valor que quest deve ter
+
+### Quests Inclusos (100+)
+
+#### **Bigfoot's Burden** (U9.60)
+```
+- BigfootsBurden.QuestLine: valores 2, 4, 7, 9, 12, 16, 20, 23
+- BigfootsBurden.Shooting: valor 5
+- BigfootsBurden.QuestLineComplete: valor 2
+- BigfootsBurden.Rank: valor 1440
+- BigfootsBurden.Warzone1Access: valor 2
+- BigfootsBurden.Warzone2Access: valor 2
+- BigfootsBurden.Warzone3Access: valor 2
+
+Total: 12 marcos
+```
+
+#### **Dangerous Depths** (U11.50)
+```
+- DangerousDepths.Questline: valor 10
+- DangerousDepths.Access.LavaPumpWarzoneVI: valor 10
+- DangerousDepths.Access.LavaPumpWarzoneV: valor 10
+- DangerousDepths.Access.LavaPumpWarzoneIV: valor 30
+- DangerousDepths.Dwarves.Points: valor 10
+- DangerousDepths.Scouts.Points: valor 10
+- DangerousDepths.Gnomes.Points: valor 10
+
+Total: 7 marcos
+```
+
+#### **In Service of Yalahar** (U8.4)
+```
+- InServiceOfYalahar.Questline: valor 51
+- InServiceOfYalahar.Mission01-10: valores 6,8,6,6,8,5,5,4,2,1
+- InServiceOfYalahar.SewerPipe01-04: valor 1 (cada)
+- InServiceOfYalahar.DiseasedDan/Bill/Fred: valor 1 (cada)
+- InServiceOfYalahar.AlchemistFormula: valor 1
+- InServiceOfYalahar.BadSide/GoodSide: valor 1 (cada)
+- InServiceOfYalahar.MrWestDoor/Status: valor 1 (cada)
+- InServiceOfYalahar.TamerinStatus: valor 1
+- InServiceOfYalahar.MorikSummon: valor 1
+- InServiceOfYalahar.QuaraState/Splasher/Sharptooth/Inky: valor 1 (cada)
+- InServiceOfYalahar.MatrixState: valor 1
+- InServiceOfYalahar.NotesPalimuth/NotesAzerus: valor 1 (cada)
+- InServiceOfYalahar.DoorToAzerus/DoorToBog/DoorToLastFight/DoorToMatrix/DoorToQuara: valor 1 (cada)
+
+Total: 35+ marcos
+```
+
+#### **Cults of Tibia** (U11.40)
+```
+- CultsOfTibia.Questline: valor 7
+- CultsOfTibia.Minotaurs.JamesfrancisTask: valor 1
+- CultsOfTibia.Minotaurs.Mission: valor 1
+- CultsOfTibia.Minotaurs.BossTimer: valor 1
+- CultsOfTibia.MotA.Mission/Stone1/Stone2/Stone3/Answer/QuestionId: valor 1 (cada)
+- CultsOfTibia.Barkless.Mission: valor 1
+- CultsOfTibia.Barkless.Sulphur: valor 4
+- CultsOfTibia.Barkless.Tar: valor 3
+- CultsOfTibia.Barkless.Ice: valor 3
+- CultsOfTibia.Barkless.Objects: valor 1
+- CultsOfTibia.Barkless.Temp: valor 1
+- CultsOfTibia.Orcs.Mission/LookType/BossTimer: valor 1 (cada)
+- CultsOfTibia.Life.Mission: valor 7
+- CultsOfTibia.Life.BossTimer: valor 1
+- CultsOfTibia.Humans.Mission/Vaporized/Decaying/BossTimer: valor 1 (cada)
+- CultsOfTibia.Misguided.Mission/Monsters/Exorcisms/Time/BossTimer: valor 1 (cada)
+- CultsOfTibia.Minotaurs.BossAccessDoor: valor 1
+- CultsOfTibia.Minotaurs.AccessDoor: valor 1
+
+Total: 40+ marcos
+```
+
+#### **Explorer Society** (U7.6)
+```
+- ExplorerSociety.QuestLine: valores 1, 4, 7, 16, 26, 29, 32
+
+Total: 7 marcos
+```
+
+### Algoritmo de Execução
+
+```lua
+function winReward.onLogin(player)
+    if not player then return false end
+    
+    -- Itera todas as quests no table
+    for _, questData in ipairs(questTable) do
+        -- Obtém storage atual do player
+        local currentValue = player:getStorageValue(questData.storage)
+        
+        -- Verifica se valor é menor
+        if currentValue < questData.storageValue then
+            -- Atualiza para valor desejado
+            player:setStorageValue(questData.storage, questData.storageValue)
+        end
+    end
+    
+    return true
+end
+```
+
+**Lógica**:
+1. Para cada quest na tabela
+2. Lê valor atual do player em `storage`
+3. Se atual < desejado, atualiza para desejado
+4. Repete para todas as quests
+
+### Efeito Visual
+
+```
+Nenhum efeito visual direto
+Mas quests aparecem como "completas" se o player checar
+Storage é atualizado silenciosamente
+```
+
+### Players Afetados
+
+**Todos os players** ao fazer login (sem filtros)
+
+### Casos de Uso
+
+```
+Novo player:
+  1. Faz login
+  2. onLogin(player) auto-marca 100+ quests
+  3. Quests aparecem como "done" no journal
+  4. Pode focar em conteúdo avançado
+  
+Vantagem: Não fica preso em quests base
+Desvantagem: Perde rewards de quests
+```
+
+### Valores de Storage
+
+**Padrão**: Cada quest tem um storageValue final
+- storageValue = 1: Quest simples (completa/não)
+- storageValue = 2-50: Quests com múltiplos estágios
+- storageValue = 7: Número fixo para certos marcos
+
+### Exemplo de Fluxo
+
+```
+Quest: Bigfoot's Burden QuestLine
+  Setting: storage = Storage.Quest.U9_60.BigfootsBurden.QuestLine
+           storageValue = 2 (primeiro marco)
+
+Player login:
+  1. Obtém currentValue (ex: 0 ou null)
+  2. Verifica: 0 < 2? SIM
+  3. player:setStorageValue(storage, 2)
+  4. Primeira stage marcada como feita
+
+Next login:
+  1. Obtém currentValue (agora = 2)
+  2. Verifica: 2 < 2? NÃO
+  3. Não atualiza (já tem valor)
+  4. Progresso preservado
+```
+
+### Quest Progression
+
+Alguns quests têm múltiplas stages no mesmo storage:
+
+```
+BigfootsBurden.QuestLine:
+  stage 2: First point
+  stage 4: Second point
+  stage 7: Third point
+  stage 9: Fourth point
+  stage 12: Fifth point
+  stage 16: Sixth point
+  stage 20: Seventh point
+  stage 23: Final
+
+Auto-complete marca no stage 2 (primeiro)
+Player pode continuar até stage 23
+```
+
+### Storage Keys (Exemplos)
+
+```lua
+Storage.Quest.U9_60.BigfootsBurden.QuestLine → Storage key ID
+Storage.Quest.U11_50.DangerousDepths.Access.LavaPumpWarzoneVI → Storage key ID
+Storage.Quest.U8_4.InServiceOfYalahar.MorikSummon → Storage key ID
+Storage.Quest.U11_40.CultsOfTibia.Life.BossTimer → Storage key ID
+Storage.Quest.U7_6.ExplorerSociety.QuestLine → Storage key ID
+```
+
+Each maps to integer storage key in database.
+
+### Manutenção
+
+Para adicionar nova quest:
+
+```lua
+table.insert(questTable, {
+    storageName = "NovaQuest.QuestLine",
+    storage = Storage.Quest.UX_XX.NovaQuest.QuestLine,
+    storageValue = 1  -- ou 2, 5, 10, etc
+})
+```
+
+Para remover:
+
+```lua
+-- Encontre e delete a linha da tabela
+-- Ou comente
+-- { storageName = "...", ... }  -- Desativada
+```
+
+---
+
+---
+
+## 💪 Script 5: Greater Minion
+
+### **greater_minion.lua**
+
+**Tipo**: CreatureEvent - onThink  
+**Sistema**: Minion Transformation  
+**Função**: Transforma minion em "greater death minion" após 7 segundos
+
+**Transformação**:
+- Espera 7 segundos
+- Envia efeito MORTAREA (morte/dark)
+- Master grita: "The minion gains greater power!"
+- Remove minion original
+- Spawna "greater death minion" no lugar
+
+**Duração**: 7 segundos (delay antes de transformar)
+
+---
+
+## 💪 Script 6: Hirintror Heal
+
+### **hirintror_heal.lua**
+
+**Tipo**: CreatureEvent - onPrepareDeath  
+**Sistema**: Boss Auto-Heal  
+**Função**: Boss Hirintror cura 1000 HP ao atingir morte
+
+**Trigger**: onPrepareDeath (antes de morrer)  
+**Condição**: HP crítico (morte iminente)  
+**Ação**:
+- Adiciona CONDITION_REGENERATION (ID 88888)
+- Regeneração dura 15 minutos (900s)
+- Adiciona 1000 HP
+- Impede morte
+
+**Cooldown**: Condition ID 88888 (única por vida)
+
+---
+
+## 🛡️ Script 7: Invulnerable
+
+### **invulnerable.lua**
+
+**Tipo**: CreatureEvent - onHealthChange  
+**Sistema**: Invulnerability Helper  
+**Função**: Fornece funções helper para ativar/desativar invulnerabilidade em monstros
+
+**Método 1**: `Monster:setInvulnerable()`
+- Registra event "monster.invulnerable"
+- Bloqueia QUALQUER dano
+- return false em onHealthChange
+
+**Método 2**: `Monster:removeInvulnerable()`
+- Desregistra event
+- Monstro volta a receber dano
+
+**Uso**: Para bosses/mobs que precisam ser invuláveis temporariamente
+
+---
+
+## 📍 Script 8: Minion Gaz Haragoth Vortex
+
+### **minion_gaz_haragoth_vortex.lua**
+
+**Tipo**: CreatureEvent - onDeath  
+**Sistema**: Death Teleport Spawn  
+**Função**: Spawna teleporte ao morrer, desaparece após 1 minuto
+
+**Implementação**:
+- Ao morrer, cria item ID 20121 (teleporte)
+- Define ActionID 33542
+- Agenda remoção após 60 segundos
+- Uma únicausada por minion
+
+**Propósito**: Criar portais temporários ao derrotar minions
+
+---
+
+## 🪞 Script 9: Mirror Image Transform
+
+### **mirror_image_transform.lua**
+
+**Tipo**: CreatureEvent - onHealthChange  
+**Sistema**: Mirror Transformation  
+**Função**: Muda aparência de criatura para match do atacante (classe vocação)
+
+**Transformações** (baseado em attacker):
+- Sorcerer → "Sorcerer's Apparition"
+- Druid → "Druid's Apparition"
+- Paladin → "Paladin's Apparition"
+- Knight → "Knight's Apparition"
+
+**Trigger**: Quando atacante é player
+
+---
+
+## 💀 Script 10: Necromantic Minion
+
+### **necromantic_minion.lua**
+
+**Tipo**: CreatureEvent - onThink  
+**Sistema**: Minion Transformation  
+**Função**: Transforma minion em "necromantic energy" após 7 segundos
+
+**Transformação**:
+- Espera 7 segundos
+- Envia efeito MORTAREA (morte/dark)
+- Remove minion original
+- Spawna "necromantic energy" no lugar
+
+**Duração**: 7 segundos (mesmo que greater_minion)
+
+---
+
+## 🐟 Script 11: Northern Pike
+
+### **northern_pike.lua**
+
+**Tipo**: CreatureEvent - onDeath  
+**Sistema**: Death Spawn  
+**Função**: 50% chance de spawnar "slippery northern pike" ao morrer
+
+**Lógica**:
+```
+math.random(1, 100) < 50 → spawn
+```
+
+**Propósito**: Similar fish spawn com alta proc rate
+
+---
+
+## 💥 Script 12: Omrafir Explode
+
+### **omrafir_explode.lua**
+
+**Tipo**: CreatureEvent - onThink  
+**Sistema**: Boss Multi-Phase  
+**Função**: Boss Omrafir com múltiplas fases e explosões
+
+**Fase 1** (HP > 50%):
+- Normal, sem ação
+
+**Fase 2** (50% > HP > 3%):
+- Ativa se < 4 summons
+- Executa boom function
+- Spawna 9 Hellfire Fighters em posições aleatórias
+- Registra explosion counter (112416)
+- Respawna "Omrafir" após 26.7 segundos
+
+**Fase 3** (HP < 3%):
+- Ultimo boom
+- Respawna "Omrafir2" versão finale
+
+**Mensagem**: "OMRAFIR EXPLODES INTO FLAMES!"
+
+---
+
+## 🔗 Script 13: Shared Life
+
+### **shared_life.lua**
+
+**Tipo**: CreatureEvent - onHealthChange  
+**Sistema**: Shared Life Pool  
+**Função**: Distribui dano entre múltiplos monstros conectados (shared life)
+
+**Lógica**:
+- Verifica se creature está em shared life pool
+- Split damage entre todos
+- Healing também é shared (invertido)
+- Usa `creature:onReceivDamageSL()`
+
+**Propósito**: Monstros que compartilham pool de HP
+
+---
+
+## 🪤 Script 14: Shargon Growth Check
+
+### **shargon_growth_check.lua**
+
+**Tipo**: CreatureEvent - onThink  
+**Sistema**: Trap Detection  
+**Função**: Boss detecta traps e spawna death reapers em counter-attack
+
+**Detecção**:
+- Usa items ID 2129 ou 2130 (traps)
+- Procura em tile aleatória próxima (±1)
+
+**Ação ao detectar**:
+- Boss grita aviso em TALKTYPE_MONSTER_YELL
+- Spawna 20 "Death Reaper" em posições aleatórias
+- Boss é removido
+
+---
+
+## 🌀 Script 15: Shlorg Teleport
+
+### **shlorg_teleport.lua**
+
+**Tipo**: CreatureEvent - onThink  
+**Sistema**: Random Teleportation  
+**Função**: Boss teleporta aleatoriamente para 4 posições (7% chance)
+
+**Posições Pré-definidas**:
+```
+1. (33170, 31730, 9)
+2. (33175, 31736, 9)
+3. (33174, 31747, 9)
+4. (33164, 31744, 9)
+```
+
+**Prob**: 7% (math.random(1,100) < 7)  
+**Efeito**: CONST_ME_TELEPORT a cada salto
+
+---
+
+## 💪 Script 16: Superior Minion
+
+### **superior_minion.lua**
+
+**Tipo**: CreatureEvent - onThink  
+**Sistema**: Minion Transformation  
+**Função**: Transforma minion em "superior death minion" após 7 segundos
+
+**Transformação**:
+- Espera 7 segundos
+- Envia efeito MORTAREA
+- Remove minion original
+- Spawna "superior death minion"
+
+**Sequência de upgrades**: Minion → Greater Minion → Superior Minion
+
+---
+
+## 👑 Script 17: The Pale Count Kill
+
+### **the_pale_count_kill.lua**
+
+**Tipo**: CreatureEvent - onThink  
+**Sistema**: Boss Phase Transition  
+**Função**: Boss muda de fase e se teletransporta ao atingir 75% damage
+
+**Trigger**: HP < 75%  
+**Ação**:
+- Boss diz: "Dare to follow me to my Sanctuary below and you shall DIE!"
+- Remove instância atual
+- Spawna "the pale count2" em sanctuary subterranea (z=15)
+
+**Posição Temple**: (32972, 32419, 15)
+
+---
+
+## 🥚 Script 18: The Welter Egg
+
+### **the_welter_egg.lua**
+
+**Tipo**: CreatureEvent - onThink  
+**Sistema**: Death Transform  
+**Função**: Egg transforma em "spawn of the welter" após 10 segundos
+
+**Transformação**:
+- Espera 10 segundos (mais longo que minions)
+- Envia efeito POISONAREA (veneno/verde)
+- Remove egg original
+- Spawna "spawn of the welter"
+
+**Duração**: 10 segundos (vs 7 para minions)
+
+---
+
+## 🧛 Script 19: White Pale Heal
+
+### **white_pale_heal.lua**
+
+**Tipo**: CreatureEvent - onPrepareDeath  
+**Sistema**: Boss Auto-Heal  
+**Função**: Boss White Pale cura 400 HP ao atingir morte
+
+**Trigger**: onPrepareDeath (antes de morrer)  
+**Condição válida**: Nome = "white pale" (case-insensitive)  
+**Ação**:
+- Adiciona CONDITION_REGENERATION (ID 88888)
+- Regeneração dura 15 minutos
+- Adiciona 400 HP (menos que Hirintror)
+- Impede morte
+
+**Cooldown**: Condition ID 88888
+
+---
+
+## 👻 Script 20: Zavarash Hide
+
+### **zavarash_hide.lua**
+
+**Tipo**: CreatureEvent - onThink  
+**Sistema**: Invisibility Toggle  
+**Função**: Boss Zavarash fica invisível baseado em conditions
+
+**Invisibilidade Automática**:
+- Trigger: HP < 100% (qualquer damage)
+- Adiciona CONDITION_INVISIBLE (10s)
+- Adiciona outfit especial (ID 1548)
+- Esconde health bar
+
+**Visibilidade ao sofrer**:
+- Se tem poison/fire/energy/bleeding/dazzled combat
+- Remove invisibilidade
+- Volta ao outfit normal (12, 57, 15, 85)
+- Mostra health bar
+
+**Propósito**: Boss esquivador com toggles de invisibilidade
+
+---
+
+## 🏝️ Script 21: Dawnport (Others)
+
+### **dawnport.lua**
+
+**Tipo**: CreatureEvent - onAdvance  
+**Sistema**: Dawnport Progression  
+**Função**: Controla progression de players em Dawnport (tutorial area)
+
+**Nível 8**:
+- Mensagem: "You may now choose your vocation"
+- Player pode sair de Dawnport
+
+**Nível 20**:
+- Mensagem: "You have reached limit level"
+- Agenda teleportação para temple em 5 minutos
+- Força saída do tutorial
+
+**Skill Limits**:
+- Magic Level → Message: "Cannot train magic further"
+- Skills → Message: "Cannot train skill further"
+
+**Storage**: Usa Storage.Dawnport.DoorVocation para tracking
+
+---
+
+## 📦 Script 22: Drop Loot
+
+### **droploot.lua**
+
+**Tipo**: CreatureEvent - onDeath  
+**Sistema**: Loot Management  
+**Função**: Controla drop de loot de players mortos (integrado com blessing system)
+
+**Exclusões**:
+- Level < 8 + Town = Dawnport (sem loot)
+- Flag PlayerFlag_NotGenerateLoot (sem loot)
+
+**Acionador**: Chama `Blessings.PlayerDeath()`
+
+**Propósito**: Gerenciar loot drop com sistema de blessings
+
+---
+
+## 🎯 Script 23: Login Events
+
+### **login_events.lua**
+
+**Tipo**: CreatureEvent - onLogin  
+**Sistema**: Event Registration  
+**Função**: Registra outros eventos ao fazer login
+
+**Eventos Registrados**:
+1. RookgaardAdvance
+2. HealthPillar
+3. YalahariHealth
+
+**Padrão**: Registra múltiplos subordinados em um callback
+
+---
+
+## 👤 Script 24: Player Login
+
+### **login.lua**
+
+**Tipo**: CreatureEvent - onLogin  
+**Sistema**: Premium Management  
+**Função**: Valida premium status e configura channels
+
+**Premium Expiration**:
+- Se não premium + town em premium area
+- Teleporta para town gratuita (default: Thais)
+- Muda outfit (male/female citizen)
+- Perde casa se tinha
+- Mensagens ao player
+
+**Channels**:
+- Dawnport: World chat (3)
+- Outros: World (3), Advertising (5), Guild (se tem)
+
+**Propósito**: Sistema de account premium validation
+
+---
+
+## 🎓 Script 25: Rookgaard Advance
+
+### **rookgaard_advance.lua**
+
+**Tipo**: CreatureEvent - onAdvance  
+**Sistema**: Rookgaard Progression  
+**Função**: Notifica player ao atingir nível 8 em Rookgaard
+
+**Condições**:
+- skill == SKILL_LEVEL
+- newLevel == 8
+- vocation == 0 (sem vocação ainda)
+
+**Mensagem**:
+"Congratulations! You are ready to leave this island and choose a vocation now. Go see the Oracle over the academy in Rookgaard before you advance to level 10!"
+
+**Propósito**: Guiar novo player em early game
+
+---
+
+## 📊 Comparação de Creature Scripts
+
+### Por Tipo de Evento
+
+| Evento | Total | Scripts |
+|--------|-------|---------|
+| onThink | 12 | gaz_haragoth_heal, greater_minion, omrafir_explode, necromantic_minion, shargon_growth_check, shlorg_teleport, superior_minion, the_pale_count_kill, the_welter_egg, zavarash_hide, + 2 mais |
+| onLogin | 5 | reward_exercise, freequests, login_events, login, (dawnport registra) |
+| onHealthChange | 3 | grand_master_oberon_immunity, mirror_image_transform, invulnerable, shared_life (4) |
+| onDeath | 3 | minion_gaz_haragoth_vortex, northern_pike, droploot |
+| onPrepareDeath | 2 | hirintror_heal, white_pale_heal |
+| onAdvance | 2 | dawnport, rookgaard_advance |
+
+### Por Sistema Afetado
+
+| Sistema | Quantidade | Scripts |
+|---------|-----------|---------|
+| Boss Abilities | 6 | gaz_haragoth_heal, hirintror_heal, omrafir_explode, the_pale_count_kill, white_pale_heal, shlorg_teleport |
+| Minion Transformations | 3 | greater_minion, superior_minion, necromantic_minion |
+| Death Events | 3 | minion_gaz_haragoth_vortex, northern_pike, the_welter_egg |
+| Player Progression | 4 | reward_exercise, freequests, dawnport, rookgaard_advance |
+| Player Login | 3 | login_events, login, droploot |
+| Boss Mechanics | 4 | invulnerable, mirror_image_transform, shared_life, zavarash_hide |
+| Helpers | 2 | invulnerable (função helper), login_events (register helper) |
+
+### Por Complexidade
+
+| Nível | ⭐ | Quantidade | Exemplos |
+|-------|-------|-----------|----------|
+| Muito Simples | ⭐ | 8 | invulnerable, northern_pike, rookgaard_advance, mirror_image_transform, necromantic_minion, greater_minion, superior_minion, the_welter_egg |
+| Simples | ⭐⭐ | 8 | oberon_immunity, reward_exercise, hirintror_heal, white_pale_heal, minion_gaz_haragoth_vortex, shlorg_teleport, the_pale_count_kill, zavarash_hide |
+| Médio | ⭐⭐⭐ | 6 | gaz_haragoth_heal, login, dawnport, login_events, droploot, shared_life |
+| Complexo | ⭐⭐⭐⭐ | 3 | omrafir_explode, shargon_growth_check, freequests |
+
+### Por Performance
+
+| Impacto | Quantidade | Scripts |
+|---------|-----------|---------|
+| Muito Baixo | 10 | oberon_immunity, reward_exercise, login_events, rookgaard_advance, northern_pike, the_welter_egg, invulnerable, mirror_image_transform, necromantic_minion, greater_minion |
+| Baixo | 8 | hirintror_heal, white_pale_heal, minion_gaz_haragoth_vortex, shlorg_teleport, the_pale_count_kill, superior_minion, zavarash_hide, droploot |
+| Médio | 6 | gaz_haragoth_heal, login, dawnport, shared_life, freequests, login_events |
+| Alto | 1 | omrafir_explode (spawns 9 monsters) |
+
+### Interdependências
+
+| Script 1 | Script 2 | Relacionado? |
+|----------|----------|---|
+| gaz_haragoth_heal | oberon_immunity | NÃO - bosses diferentes |
+| reward_exercise | freequests | TALVEZ - mesmo login event |
+| gaz_haragoth_heal | reward_exercise | NÃO - targets different creatures |
+
+---
+
+## 🎓 Relatório Técnico
+
+### Padrões Observados
+
+```
+Tipos de Evento (6 mapeados):
+1. onThink: Boss mechanics periódicos (12 scripts)
+2. onLogin: Player systems ao conectar (5 scripts)
+3. onHealthChange: Reações a dano (4 scripts)
+4. onDeath: Ao morrer (3 scripts)
+5. onPrepareDeath: Antes de morrer (2 scripts)
+6. onAdvance: Ao ganhar level/skill (2 scripts)
+
+Principais Padrões:
+1. Boss Abilities (health-triggered) - 6 scripts
+2. Login Validations (config-gated) - 5 scripts
+3. Transformations (timed/triggered) - 3 scripts
+4. Death Spawns (probabilístico) - 3 scripts
+5. Progression Gates (level-check) - 4 scripts
+6. Helper Functions (método-based) - 2 scripts
+```
+
+### Storage Management
+
+```
+Métodos de Persistência:
+- Conditions: Para cooldowns e estados (IDs únicos: 88888)
+- Storage Values: Para tracking de progress
+- Item IDs: Para spawn/remove
+- Monster Methods: Para registration/unregistration
+
+Padrão Storage:
+Storage.Dawnport.DoorVocation (quest-like)
+Storage.PlayerWeaponReward (binary)
+Game.getStorageValue(112416) (global quest counter)
+```
+
+### Configuration & Registration
+
+```
+Patterns:
+1. Always Active: gaz_haragoth_heal, greater_minion, etc
+2. Config-Gated: reward_exercise, freequests, login
+3. Conditional: invulnerable (função helper)
+4. Multi-Event: login_events (registra outros)
+
+Conditional Registration:
+if configManager.getBoolean(configKeys.FEATURE) then
+    event:register()
+end
+```
+
+### Escalabilidade
+
+```
+Fácil adicionar:
+- Novos bosses: Cópia de script existente + novo nome
+- Novos eventos: Append à estrutura data table
+- Transformações: Adicionar novo tipo à lista
+
+Difícil modificar:
+- Omrafir_explode: Hardcoded positions
+- Shargon_growth_check: Item IDs fixos
+- Dawnport/Rookgaard: Tied to TOWNS_LIST constants
+```
+
+---
+
+<Aside type="note">
+**Padrões em 25 Scripts**:
+
+1. Boss scripts usam **onThink** para periodic check + HP thresholds
+2. Player scripts usam **onLogin** para one-time checks e validation
+3. Death events usam **onDeath** para spawns/loot/cleanup
+4. Progression usa **onAdvance** para level gates
+5. Pre-death healing usa **onPrepareDeath** para último HP save
+6. Todos validam creature/player existence antes de usar
+7. Storage + Condition IDs são principal método de persistência
+8. Conditions usam IDs únicos (88888 é padrão)
+9. Delayed events (addEvent) para timed transformations
+10. Magic effects para feedback visual (MORTAREA, TELEPORT, etc)
+
+**Técnicas Avançadas Observadas**:
+
+✅ onReceivDamageSL() - Shared life pool splitting  
+✅ creature:setType() - Runtime name changes  
+✅ creature:getMaster() - Summon tracking  
+✅ creature:inSharedLife() - Pool detection  
+✅ Game.createMonster() - Dynamic spawning  
+✅ addEvent() + Creature(cid) - Safe delayed execution  
+✅ Condition parameters - Cooldown management  
+✅ item:setActionId() - Item tagging  
+✅ player:getTown():getId() - Location-based logic  
+✅ creature:registerEvent/unregisterEvent - Dynamic registration  
+
+**Escalabilidade**:
+
+- Boss abilities: Trivial add (copy pattern)
+- Login systems: Simple append to events table
+- Transformations: Add new form to creature type list
+- Death events: Edit creature XML + script
+
+**Performance Considerations**:
+
+- onThink: Executado constantemente, manter leve
+- onHealthChange: Cada hit, avoid heavy computations
+- onLogin: Raro, pode fazer processing pesado
+- onDeath: Once per death, OK for bulk operations
+- addEvent delays: Não bloqueia thread principal
+
+</Aside>
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Creature Scripts Documentados:** 25  
+**Categorias**: Boss Abilities (6), Minion Systems (3), Death Events (3), Login/Progression (5), Player Systems (3), Boss Mechanics (4), Helpers (1)  
+**Tipos de Evento**: onThink (12), onLogin (5), onHealthChange (4), onDeath (3), onPrepareDeath (2), onAdvance (2)
+
+Para dúvidas, consulte a arquitetura ou analise scripts similares.
+</Aside>

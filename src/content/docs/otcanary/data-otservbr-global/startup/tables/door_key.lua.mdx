@@ -1,0 +1,343 @@
+---
+title: "door_key.lua - Tabela de Portas com Chave"
+description: "Documentação técnica da tabela de configuração de portas que requerem chaves específicas no servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🔐 door_key.lua
+
+Arquivo de tabela responsável pela configuração de **portas que requerem chaves específicas** - mecanismo de acesso controlado por items de chave únicas.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/door_key.lua` |
+| **Tipo** | Tabela de Configuração - Portas |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Storage.Quest.Key constants |
+| **Total de Linhas** | 202 linhas |
+| **Função Principal** | Configurar portas de chave no mapa |
+| **Carregado por** | `tables/load.lua` |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/door_key.lua`
+
+Define tabela global `KeyDoorAction` com posições de portas que requerem storage keys específicos para abrir.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+Configuração de **portas com sistema de chaves**:
+
+**Mecanismo**:
+- Player tem chave item específica
+- Tenta usar/pisar na porta
+- Script verifica storage key
+- Se possui chave, abre; senão, nega acesso
+
+**Estrutura**:
+```lua
+[storageKeyId] = {
+    itemId = false,
+    itemPos = { {x, y, z}, ... }
+}
+```
+
+**Exemplo**: Portas da Draconia quest com 8 chaves diferentes (3001-3008)
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Portas com Chave" icon="layers">
+
+```
+┌──────────────────────────────────┐
+│    SISTEMA DE PORTAS COM CHAVE   │
+└────────────────┬─────────────────┘
+                 │
+         ┌───────┴────────┐
+         │                │
+         ▼                ▼
+    KeyDoorAction     Player Storage
+    (Definições)      (Verificação)
+         │                │
+         ├─ storageKeyId  ├─ tem Storage.Quest.Key.ID3001?
+         ├─ itemId        ├─ player:getStorageValue(...)
+         ├─ itemPos       └─ Se sim → abre
+         └─ Script checa
+```
+
+**Fluxo**:
+1. Player pisa/usa porta
+2. Script lê Storage.Quest.Key.ID3001
+3. Se > 0 (player tem chave), porta abre
+4. Senão, nega acesso
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### KeyDoorAction
+
+**Propósito**: Definir portas com sistema de chave
+
+**Estrutura**:
+```lua
+KeyDoorAction = {
+    [storageKeyId] = {
+        itemId = false,  -- Sempre false para portas
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = xx},
+            -- múltiplas posições possíveis
+        }
+    }
+}
+```
+
+**Campos**:
+- `storageKeyId`: Storage key que controla acesso
+- `itemId`: Sempre `false` (porta sem item visible)
+- `itemPos`: Posições da porta no mapa
+
+**Padrão Storage Keys**:
+- `Storage.Quest.Key.ID3001` a `Storage.Quest.Key.ID3008`
+- Nomeados por quest (Draconia, etc)
+
+</Card>
+
+---
+
+## 📝 Exemplos do Código
+
+<Tabs>
+<TabItem label="Porta de Chave Simples">
+
+```lua
+-- Door of the key 4182 (draconia quest)
+[Storage.Quest.Key.ID3001] = {
+    itemId = false,
+    itemPos = { {x = 32814, y = 31597, z = 7} }
+}
+```
+
+- **Storage Key**: Storage.Quest.Key.ID3001
+- **Item**: Nenhum (false)
+- **Position**: Uma localização
+- **Quest**: Draconia (usa chave 4182)
+
+</TabItem>
+
+<TabItem label="Porta Múltiplas Posições">
+
+```lua
+[Storage.Quest.Key.ID3005] = {
+    itemId = false,
+    itemPos = {
+        {x = 32814, y = 31595, z = 6},
+        {x = 32796, y = 31595, z = 6}
+    }
+}
+```
+
+- **Mesma chave** abre ambas posições
+- **Duas portas** em diferentes Z-levels
+
+</TabItem>
+
+<TabItem label="Sequência de Portas">
+
+```lua
+-- Door 1
+[Storage.Quest.Key.ID3001] = {
+    itemId = false,
+    itemPos = { {x = 32814, y = 31597, z = 7} }
+},
+-- Door 2
+[Storage.Quest.Key.ID3002] = {
+    itemId = false,
+    itemPos = { {x = 32796, y = 31597, z = 7} }
+},
+-- Door 3
+[Storage.Quest.Key.ID3003] = {
+    itemId = false,
+    itemPos = { {x = 32811, y = 31597, z = 7} }
+}
+```
+
+- **8 portas diferentes** em linha
+- **Cada uma requer chave própria**
+- **Progressão de quest**
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Padrões de Uso
+
+<Card title="Boas Práticas" icon="star">
+
+### Sistema de Storage Keys
+
+```lua
+-- Storage Keys são definidos em constantes
+Storage.Quest.Key = {
+    ID3001 = numero_unico,
+    ID3002 = numero_unico,
+    -- ... até ID3012, ID3033, etc
+}
+
+-- Usados em portas
+[Storage.Quest.Key.ID3001] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+
+-- Verificados em scripts
+if player:getStorageValue(Storage.Quest.Key.ID3001) > 0 then
+    -- player tem chave, abre porta
+end
+```
+
+### Ao Adicionar Nova Porta de Chave
+
+1. **Criar storage key** em constants
+   - `Storage.Quest.Key.IDXXXX`
+
+2. **Adicionar entrada**:
+   ```lua
+   [Storage.Quest.Key.IDXXXX] = {
+       itemId = false,
+       itemPos = { {x, y, z} }
+   }
+   ```
+
+3. **Documentar quest**:
+   - Adicionar comentário
+   - Referenciar quest/key item
+
+4. **Testar**:
+   - Player pisa na porta
+   - Sem chave = blocked
+   - Com chave = open
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Como Funciona" icon="link">
+
+**Em `door_key.lua`**:
+```lua
+KeyDoorAction = {
+    [Storage.Quest.Key.ID3001] = {...}
+}
+```
+
+**Em `functions.lua` - load time**:
+```lua
+function loadLuaMapAction(tablename)
+    -- Registra action IDs no mapa
+    for index, value in pairs(tablename) do
+        -- index = Storage.Quest.Key.ID3001
+        -- value.itemPos = posições
+    end
+end
+```
+
+**Em movimento script** (`data/scripts/movements/...`):
+```lua
+function mvEvent.onStepIn(creature, item, position, ...)
+    local player = creature:getPlayer()
+    if not player then return true end
+    
+    -- Pega door action ID
+    local doorActionId = item:getAttribute(ITEM_ATTRIBUTE_ACTIONID)
+    
+    -- Verifica storage key
+    if player:getStorageValue(doorActionId) > 0 then
+        -- Abre porta
+        door:open(player)
+    else
+        -- Nega acesso
+        player:sendCancelMessage("You don't have the key!")
+    end
+end
+```
+
+</Card>
+
+---
+
+## 📚 Estrutura de Quests com Chaves
+
+<Card title="Exemplo: Draconia Quest" icon="book">
+
+**Draconia usa 8 portas com chaves diferentes**:
+
+```
+7 chaves (3001-3008) para abrir 8 portas
+│
+├─ Key 4182 → Door ID3001 → z=7
+├─ Key 4183 → Door ID3002 → z=7
+├─ Key 4184 → Door ID3003 → z=7
+├─ Key 4185 → Door ID3004 → z=6
+├─ Key 4186 → Door ID3005 → z=6
+├─ Key 4187 → Door ID3006 → z=6
+├─ Key 4188 → Door ID3007 → z=4
+└─ Key 4189 → Door ID3008 → z=1
+```
+
+**Progressão**:
+1. Player obtém chave após resolver puzzle
+2. Encontra porta correspondente
+3. Storage key traceia se destrancou
+4. Próxima chave desbloqueia próxima porta
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: 202  
+**Tabelas Globais**: 1 (KeyDoorAction)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ KeyDoorAction (portas com keys)
+
+**características**:
+- Storage-based access control
+- Multiple keys, multiple doors
+- Progression tracking
+- Quest integration
+
+Este arquivo define portas que abrem com chaves específicas, usado principalmente em quests.
+</Aside>

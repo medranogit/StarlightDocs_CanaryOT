@@ -1,0 +1,218 @@
+---
+title: monk_npcs_step_in.lua
+description: Documentação técnica do sistema de portão de monges com validação unidirecional de acesso
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+<Card title="🛠️ Informações do Arquivo" icon="tools">
+
+**Localização**: `data-otservbr-global/scripts/blue_valley/`
+
+**Nome**: `monk_npcs_step_in.lua`
+
+**Tipo**: MoveEvent
+
+**Tamanho do Arquivo**: 50 linhas
+
+**Complexidade**: Baixa
+
+</Card>
+
+<Aside title="💡 Tip">
+
+Sistema elegante de restrição de acesso baseado em vocação que teleporta não-monges e dispara mensagens de NPCs quando monges atravessam portões. Utiliza logic direcional para validar sentido de move e triggar narrativa apropriada.
+
+</Aside>
+
+## 📄 Visão Geral do Código Resumo Executivo
+
+O arquivo `monk_npcs_step_in.lua` implementa um sistema de proteção de portão para Blue Valley que restringe acesso ao local sagrado para monges. Registra MoveEvent em 10 posições de portão (2 linhas de 5 posições cada) que valida vocação ao entrar. Se o jogador não for monge (baseId ≠ VOCATION.BASE_ID.MONK), é teleportado imediatamente para uma posição segura de retorno. Se for monge, o script checa a direção do movimento (entrada de cima via linha Y=31458, ou entrada de baixo via linha Y=31459) e dispara mensagens de boas-vindas de NPCs registrados ("Saih The Guardian" or "Chesa The Guardian"). O sistema é elegante ao centralizar a lógica de restrição em um único MoveEvent multi-posição.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variáveis Globais
+
+#### Target de Retorno
+
+```lua
+local targetPosition = Position(33603, 31461, 6)
+```
+
+Posição para onde non-monges são teleportados ao tentar traversar.
+
+#### Posições de Portão
+
+```lua
+local gatePositions = {
+	Position(33602, 31458, 6),
+	Position(33603, 31458, 6),
+	Position(33604, 31458, 6),
+	Position(33605, 31458, 6),
+	Position(33606, 31458, 6),
+
+	Position(33601, 31459, 6),
+	Position(33602, 31459, 6),
+	Position(33603, 31459, 6),
+	Position(33604, 31459, 6),
+	Position(33605, 31459, 6),
+}
+```
+
+| Linha | Posições | Y | Propósito |
+|-------|----------|---|-----------|
+| 1 | 5 posições | 31458 | Entrada de cima |
+| 2 | 5 posições | 31459 | Entrada de baixo |
+
+#### Mensagens de NPC
+
+```lua
+local npcMessages = {
+	["Saih The Guardian"] = "Welcome",
+	["Chesa The Guardian"] = "Greetings",
+}
+```
+
+| NPC | Mensagem |
+|-----|----------|
+| Saih The Guardian | Welcome |
+| Chesa The Guardian | Greetings |
+
+### Funções Locais
+
+#### `shouldSayMessage(pos, fromPos)`
+
+```lua
+local function shouldSayMessage(pos, fromPos)
+	if pos.y == 31458 then
+		return fromPos.y < pos.y -- From above
+	elseif pos.y == 31459 then
+		return fromPos.y > pos.y -- From below
+	end
+	return false
+end
+```
+
+**Propósito**: Determinar se monge entrou pela primeira vez (direção correta).
+
+**Lógica**:
+- Se posição é 31458 (entrada de cima): retorna `true` se `fromPos.y < 31458`
+- Se posição é 31459 (entrada de baixo): retorna `true` se `fromPos.y > 31459`
+- Senão: retorna `false`
+
+**Efeito**: Garante que mensagens só trigguem em primeira entrada, não em saída passiva.
+
+### Funções Globais
+
+#### `monkGate.onStepIn()`
+
+```lua
+function monkGate.onStepIn(creature, item, position, fromPosition)
+```
+
+**Propósito**: Validar acesso de monges e bloquear não-monges.
+
+**Parâmetros**:
+- `creature` (Creature): Criatura entrando
+- `item` (Item): Item na posição (não utilizado)
+- `position` (Position): Posição do portão
+- `fromPosition` (Position): Posição anterior da criatura
+
+**Retorno**: `boolean` - `true` sempre
+
+**Lógica**:
+
+1. **Conversão para Player**:
+   - Converte creature para player
+   - Se not player: retorna `true` (permite passage)
+
+2. **Validação de Vocação**:
+   - Obtém baseId da vocação
+   - Compara com VOCATION.BASE_ID.MONK
+   - Se não for monge:
+     - Teleporta para `targetPosition`
+     - Usa forceMove = true
+
+3. **Se Monge + Entrada Válida**:
+   - Checa `shouldSayMessage(position, fromPosition)`
+   - Se true:
+     - Itera `npcMessages`
+     - Para cada NPC listado:
+       - Obtém NPC por name
+       - Se NPC existe: faz say da mensagem com TALKTYPE_MONSTER_SAY
+
+4. **Return**:
+   - Sempre retorna `true`
+
+### Registro do MoveEvent
+
+```lua
+for _, pos in ipairs(gatePositions) do
+	monkGate:position(pos)
+end
+monkGate:register()
+```
+
+| Propriedade | Valores |
+|-------------|---------|
+| `type` | "stepin" (implícito no onStepIn) |
+| `positions` | 10 posições distintas |
+
+## 📊 Dados Técnicos
+
+### Configurações de Portão
+
+| Linha | Y-Coord | Posições X | Entrada |
+|-------|---------|-----------|---------|
+| Superior | 31458 | 33602-33606 | Cima (Y < 31458) |
+| Inferior | 31459 | 33601-33605 | Baixo (Y > 31459) |
+
+### Validações
+
+| Validação | Tipo | Ação |
+|-----------|------|------|
+| Is Player | Type check | Teleport se não |
+| Base ID = MONK | Vocação | Teleport se ≠ |
+| Direction Match | Y-coord logic | Say message se ✓ |
+
+## 🔗 Relações e Dependências
+
+**Dependências Internas**:
+- Constante: VOCATION.BASE_ID.MONK
+- Posições: 10 específicas do mapa
+- NPCs: "Saih The Guardian", "Chesa The Guardian"
+- API: creature:getPlayer(), player:getVocation(), player:getVocation():getBaseId(), Npc(name), npc:say(), player:teleportTo()
+- Constante: TALKTYPE_MONSTER_SAY
+
+**Sistemas Relacionados**:
+- Sistema de vocação/class
+- Sistema de teleportação
+- Sistema de NPC dialogue
+- Blue Valley dungeon
+
+**Padrão de Design**:
+- Vocação-based access control
+- Directional message triggering
+- Multi-position MoveEvent registration
+- NPC-based narrative feedback
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/blue_valley/monk_npcs_step_in.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-------------|-------|
+| **Versão da Documentação** | 1.0 |
+| **Percentual de Completude** | 100% |
+| **Linhas de Código** | 50 |
+| **Funções Documentadas** | 2 (1 main + 1 local) |
+| **Variáveis Documentadas** | 3 (target + gates + messages) |
+| **Nível de Complexidade** | Baixo |
+| **Última Atualização** | 2026-02-21 |
+
+---
+

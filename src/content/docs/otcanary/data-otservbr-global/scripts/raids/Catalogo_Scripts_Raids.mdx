@@ -1,0 +1,1451 @@
+---
+title: Catálogo de Scripts - Raids
+description: Documentação técnica completa de todos os scripts Raids do servidor Canary
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+# 🏰 Catálogo de Scripts - Raids
+
+Documentação técnica completa de todos os raids do servidor, incluindo boss raids, invasões onduladas e eventos periódicos.
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/raids/` contém scripts **Lua** que implementam **eventos periódicos de invasão/spawning**. Cada raid script define uma zona, probabilidade de ocorrência, quantidade mínima de players, e sequência de spawns de monstros/bosses. Raids são eventos globais que afetam todo o servidor em horários aleatórios.
+</Card>
+
+<Card title="Como Usar o Catálogo" icon="star">
+Este catálogo lista **todos os scripts raid** com:
+- **Arquivo**: Nome exato do arquivo Lua
+- **Localização**: Zona do servidor onde ocorre
+- **Tipo**: Boss Único, Wave, Invasão, etc
+- **Spawns**: Monstros spawneados
+- **Configuração**: Chance, min players, gaps
+- **Duração**: Timing total do evento
+- **Probabilidade**: Frequência de ocorrência
+
+Use **Ctrl+F** para buscar por raid.
+</Card>
+
+---
+
+## 📊 Índice de Scripts
+
+<Card title="Estatísticas Gerais" icon="star">
+- **Total de Raids**: 21
+- **Data de Atualização**: February 22, 2026
+- **Status**: Todos os raids documentados
+- **Cobertura**: Boss Raids (14), Wave Events (4), Invasões/Multi-type (3)
+- **Zonas**: 14+ localizações diferentes
+- **Min Players Necessário**: 0-3
+- **Duração**: 0s a 60m+
+</Card>
+
+<Card title="Localização" icon="document">
+  **Caminho Original**: `data-otservbr-global\scripts\raids`
+  
+  **Subpastas**:
+  - `bosses/` - Boss encounters únicos (2 raids)
+  - `monsters/` - Monster/wave raids (2 raids)
+  - `thais/` - Raids em Thais (1 raid)
+  
+  **Total de Arquivos Ativos**: 5
+</Card>
+
+---
+
+## 📋 Sumário Rápido
+
+| # | Raid | Local | Tipo | Zone | Min Players | Duração | Status |
+|---|------|-------|------|------|------------|---------|--------|
+| 1 | arachir_the_ancient_one | Drefia | Boss | 2×2 | 3 | 0s | ✅ |
+| 2 | battlemaster_zunzu | Muggy Plains | Boss | 54×25 | 3 | 0s | ✅ |
+| 3 | draptor | Farmine | Waves | 91×87 | 2 | 4m+30s | ✅ |
+| 4 | midnight_panther | Tiquanda | Boss Random | 24×41 | 3 | 0s | ✅ |
+| 5 | rats | Thais | Invasão | 95×79 | 0 | 20m | ✅ |
+| 6 | diblis_the_fair | Nargor | Boss | 2×3 | 3 | 0s | ✅ |
+| 7 | furyosa | Fury Gates | Boss+Waves | 85×192 | 3 | 1m+ | ✅ |
+| 8 | hirintror | Svargrond | Boss | 2×2 | 3 | 0s | ✅ |
+| 9 | mawhawk | Roshamuul | Boss | 2×2 | 2 | 0s | ✅ |
+| 10 | sir_valorcrest | Edron | Boss | 2×2 | 3 | 0s | ✅ |
+| 11 | the_old_widow | Venore | Boss+Waves | 504×14 | 3 | 3m+ | ✅ |
+| 12 | the_pale_count | Drefia | Boss | 2×2 | 3 | 0s | ✅ |
+| 13 | the_welter | Ankrahmun | Boss | 2×2 | 3 | 0s | ✅ |
+| 14 | tyrn | Darashia | Boss | 2×2 | 2 | 0s | ✅ |
+| 15 | weakened_shlorg | Edron | Boss | 2×2 | 3 | 0s | ✅ |
+| 16 | white_pale | Edron | Boss | 2×2 | 3 | 0s | ✅ |
+| 17 | rats (monsters) | Farmine | Waves | 74×25 | 2 | 6m | ✅ |
+| 18 | undead_cavebear | Farmine | Waves | 74×25 | 2 | 6m | ✅ |
+| 19 | wild_horses (monsters) | Thais | Waves | 35×68 | 3 | 21h | ✅ |
+| 20 | yeti | Folda | Waves | 53×36 | 2 | 60m | ✅ |
+| 21 | wild_horses (thais) | Thais | Waves | 35×68 | 0 | 21h | ✅ |
+
+---
+
+## 👑 Raid 1: Arachir the Ancient One
+
+### **arachir_the_ancient_one.lua**
+
+**Localização**: Drefia  
+**Tipo**: Boss Único  
+**Zona Spawn**: Position(32963, 32399, 12) → Position(32965, 32401, 12)  
+**Tamanho Zone**: 2×2 tiles (muito pequena)
+
+### Boss
+
+```
+Nome: Arachir the Ancient One
+Quantidade: 1
+Posição: (32964, 32400, 12) - Centro da zone
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("drefia.arachir"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.02,        -- 2% inicial
+    targetChancePerDay = 0.02,   -- +2% por dia
+    maxChancePerCheck = 0.8,     -- Máximo 80%
+}
+```
+
+**Cálculo de Frequência**:
+- Dia 1: 2% chance
+- Dia 2: 4% chance
+- Dia 3: 6% chance
+- ...
+- Dia 40+: 80% máximo
+- **MinGap**: Sem limite configurado
+
+### Timeline
+
+```
+t=0s: Raid executa (se passou chance check)
+      Arachir spawn em (32964, 32400, 12)
+      Raid ativo por 24h automático
+      
+t=24h: Raid encerra, reset para próxima possibilidade
+```
+
+### Spawn Details
+
+```lua
+{
+    name = "Arachir the Ancient One",
+    amount = 1,
+    position = Position(32964, 32400, 12)
+}
+```
+
+### Players Afetados
+
+Qualquer player em Drefia quando raid ocorrer.
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss desafiador, exige 3+ players
+
+---
+
+## ⚔️ Raid 2: Battlemaster Zunzu
+
+### **battlemaster_zunzu.lua**
+
+**Localização**: Muggy Plains  
+**Tipo**: Boss Único  
+**Zona**: Position(33223, 31232, 7) → Position(33277, 31257, 7)  
+**Tamanho Zone**: 54×25 tiles (médio)
+
+### Boss
+
+```
+Nome: Battlemaster Zunzu
+Quantidade: 1
+Posição: Aleatória na zone (sem position fixa)
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("muggy_plains.battlemaster_zunzu"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.02,        -- 2% inicial
+    targetChancePerDay = 0.02,   -- +2% por dia
+    maxChancePerCheck = 0.8,     -- Máximo 80%
+}
+```
+
+**Cálculo de Frequência**:
+- Mesmo que Arachir (cresce até 80%)
+- **MinGap**: Sem limite
+
+### Diferença com Arachir
+
+| Aspecto | Arachir | Zunzu |
+|---------|---------|-------|
+| Position | Fixa (32964, 32400, 12) | Aleatória na zone |
+| Zone Size | 2×2 (tiny) | 54×25 (médio) |
+| Dificuldade | Alta | Alta |
+| Localização | Dungeon close | Open area |
+
+### Players Afetados
+
+Qualquer player em Muggy Plains.
+
+### Estratégia
+
+Sem posição fixa, players precisam explorar zone para achar boss.
+
+---
+
+## 🐉 Raid 3: Draptor
+
+### **draptor.lua**
+
+**Localização**: Farmine (Zao Dragons)  
+**Tipo**: Wave Event (Progressivo)  
+**Zona**: Position(33195, 31160, 7) → Position(33286, 31247, 7)  
+**Tamanho Zone**: 91×87 tiles (grande)
+
+### Broadcast
+
+```
+"The dragons of the Dragonblaze Mountains have descended 
+ to Zao to protect the lizardkin!"
+```
+
+### Waves
+
+#### Wave 1-3: Dragon Invasion (Delay: 2m entre)
+```
+Cada wave:
+- nome = "Dragon"
+- amount = 50
+- Total: 150 Dragons
+
+Timing:
+t=30s: Wave 1 (50 Dragons)
+t=2m30s: Wave 2 (50 Dragons)
+t=4m30s: Wave 3 (50 Dragons)
+```
+
+#### Wave 4-11: Draptor Progression (Delay: 10s entre)
+```
+Cada wave:
+- nome = "Draptor"
+- amount = 1
+- Total: 8 Dractors individual
+
+Timing:
+t=4m40s: Draptor 1
+t=4m50s: Draptor 2
+...
+t=5m20s: Draptor 8
+```
+
+#### Wave Final: Grand Boss (Delay: 10s)
+```
+- nome = "Grand Mother Foulscale"
+- amount = 1
+
+Timing:
+t=5m30s: Grand Mother Foulscale
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("farmine.draptor"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 2,           -- Apenas 2 necessários
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.6,        -- Máximo 60% (menor que bosses)
+    minGapBetween = "12h",          -- Mínimo 12h entre raids
+}
+```
+
+### Duração Total
+
+```
+Broadcast: 30s
+Wave 1-3 Dragons: 4m
+Wave 4-11 Daptors: 1m20s
+Wave Final: 10s
+———————————
+Total: ~5m30s
+```
+
+### Spawns Totais
+
+```
+Dragons: 150
+Draptor: 8
+Grand Mother Foulscale: 1
+———————
+Total: 159 creatures
+```
+
+### Players Afetados
+
+Qualquer player em Farmine.
+
+### Dificuldade
+
+⭐⭐⭐⭐ (4 stars) - 150 dragons + 8 draptions + boss final
+
+---
+
+## 🐆 Raid 4: Midnight Panther
+
+### **midnight_panther.lua**
+
+**Localização**: Tiquanda  
+**Tipo**: Boss com Random Position  
+**Zona**: Position(32847, 32697, 7) → Position(32871, 32738, 7)  
+**Tamanho Zone**: 24×41 tiles (médio)
+
+### Boss
+
+```
+Nome: Midnight Panther
+Quantidade: 1
+Posição: Uma de 3 possíveis
+```
+
+### Posições Aleatórias
+
+```lua
+possiblePositions = {
+    Position(32847, 32697, 7),  -- Canto NW
+    Position(32871, 32717, 7),  -- Canto E Centro
+    Position(32856, 32738, 7),  -- Canto S Centro
+}
+
+-- math.random(1, #possiblePositions) escolhe uma
+```
+
+### Distribuição de Posições
+
+```
+Zone bounds: (32847,32697,7) → (32871,32738,7)
+
+Pos 1: 32847, 32697, 7
+  └─ Canto noroeste (SW lower)
+
+Pos 2: 32871, 32717, 7
+  └─ Lado east, centro vertical
+
+Pos 3: 32856, 32738, 7
+  └─ Centro-sul
+
+Todos dentro da zone, bien distribuídas
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("tiquanda.midnight-panther"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.03,        -- 3% inicial (maior que outros bosses)
+    targetChancePerDay = 0.02,   -- +2% por dia
+    maxChancePerCheck = 0.9,     -- Máximo 90% (maior que Draptor)
+}
+```
+
+### Frequência vs Outros
+
+| Raid | Initial | Target | Max |
+|------|---------|--------|-----|
+| Arachir | 2% | 2% | 80% |
+| Zunzu | 2% | 2% | 80% |
+| Draptor | 2% | 2% | **60%** |
+| **Midnight** | **3%** | 2% | **90%** |
+| Rats | - | 30% | 50% |
+
+**Midnight Panther** é o mais comum!
+
+### Players Afetados
+
+Qualquer player em Tiquanda.
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss único, mas common spawn
+
+---
+
+## 🐭 Raid 5: Rats
+
+### **rats.lua**
+
+**Localização**: Thais  
+**Tipo**: Invasão Multi-Monster  
+**Zona**: Position(32331, 32182, 7) → Position(32426, 32261, 7)  
+**Tamanho Zone**: 95×79 tiles (grande)
+
+### Broadcast
+
+```
+"Rat Plague in Thais!"
+```
+
+### Waves
+
+#### Wave 1: Initial Infestation (Delay: 10m)
+```
+Rat: 10
+Cave Rat: 10
+———
+Total: 20 creatures
+```
+
+#### Wave 2: Escalation (Delay: 10m)
+```
+Rat: 20
+Cave Rat: 20
+———
+Total: 40 creatures
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("thais.rats"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 0,           -- ⚠️ Qualquer um pode trigger!
+    targetChancePerDay = 30,        -- 30% chance (muito alta!)
+    maxChancePerCheck = 50,         -- Máximo 50% (moderado)
+    minGapBetween = "36h",          -- Minigap LONGO (36h)
+}
+```
+
+### Frequência (Muito Diferente!)
+
+```
+Diferente de outros raids que usam initialChance:
+- Usa targetChancePerDay = 30 (30% base!)
+- maxChancePerCheck = 50 (50% máximo)
+- minGapBetween = 36h (força 36h de espera)
+
+Resultado: Comum (30-50%), mas rara garantida (36h mínimo)
+```
+
+### Duração Total
+
+```
+Broadcast: 5s
+Wave 1: 10m
+Wave 2: 10m
+———
+Total: 20m5s (evento longo!)
+```
+
+### Spawns Totais
+
+```
+Wave 1: 10 Rats + 10 Cave Rats = 20
+Wave 2: 20 Rats + 20 Cave Rats = 40
+————————————————————————————
+Total: 60 creatures
+```
+
+### Players Afetados
+
+**Qualquer player em Thais** - minActivePlayers = 0 significa sem requisito!
+
+### Dificuldade
+
+⭐⭐ (2 stars) - Muitos números, mas fracos
+
+### Diferenças Notáveis
+
+```
+Comparado com outros raids:
+
+| Aspecto | Rats | Bosses |
+|---------|------|--------|
+| Min Players | 0 | 2-3 |
+| Chance Base | 30% | 2-3% |
+| Gap Min | 36h | None |
+| Duration | 20m | 0s |
+| Total Spawns | 60 | 1 |
+| Difficulty | Fácil | Difícil |
+```
+
+**Rats** é o raid mais acessível e frequente!
+
+---
+
+## � Raid 6: Diblis the Fair
+
+### **diblis_the_fair.lua**
+
+**Localização**: Nargor  
+**Tipo**: Boss Único  
+**Zona**: Position(32008, 32794, 10) → Position(32010, 32797, 10)  
+**Tamanho Zone**: 2×3 tiles (muito pequena)
+
+### Boss
+
+```
+Nome: Diblis The Fair
+Quantidade: 1
+Posição: (32009, 32795, 10) - Centro da zone
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("nargor.diblis"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+}
+```
+
+**Frequência**: 2% → 80% (padrão)
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss desafiador
+
+---
+
+## 👹 Raid 7: Furyosa
+
+### **furyosa.lua**
+
+**Localização**: Fury Gates  
+**Tipo**: Boss com Wave Prévia  
+**Zona**: Position(33257, 32659, 14) → Position(33342, 31867, 15)  
+**Tamanho Zone**: 85×192 tiles (extra grande)
+
+### Broadcast
+
+Sem broadcast (começa direto)
+
+### Waves
+
+#### Wave 1: Demon Army (Delay: 1m)
+```
+- nome = "Demon"
+- amount = 80
+
+Timing:
+t=0s: 80 Demons
+t=1m: Final boss
+```
+
+#### Wave 2: Furyosa (Delay: 24h)
+```
+- nome = "Furyosa"
+- amount = 1
+- position = Position(33281, 31804, 15)
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("fury-gates.furiosa"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.01,        -- Mais rara
+    targetChancePerDay = 0.01,
+    maxChancePerCheck = 0.6,     -- Máximo 60%
+}
+```
+
+**Frequência**: 1% → 60% (mais rara que bosses normais)
+
+### Dificuldade
+
+⭐⭐⭐⭐ (4 stars) - 80 demons + boss final
+
+---
+
+## 🏔️ Raid 8: Hirintror
+
+### **hirintror.lua**
+
+**Localização**: Svargrond  
+**Tipo**: Boss Único  
+**Zona**: Position(32100, 31166, 9) → Position(32102, 31168, 9)  
+**Tamanho Zone**: 2×2 tiles (muito pequena)
+
+### Boss
+
+```
+Nome: Hirintror
+Quantidade: 1
+Posição: (32101, 31167, 9)
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("svargrond.hirintror"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+}
+```
+
+**Frequência**: 2% → 80% (padrão)
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss único
+
+---
+
+## 🦅 Raid 9: Mawhawk
+
+### **mawhawk.lua**
+
+**Localização**: Roshamuul  
+**Tipo**: Boss Único  
+**Zona**: Position(33702, 32460, 7) → Position(33704, 32462, 7)  
+**Tamanho Zone**: 2×2 tiles (muito pequena)
+
+### Boss
+
+```
+Nome: Mawhawk
+Quantidade: 1
+Posição: Aleatória na zone
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("roshamuul.mawhawk"),
+    allowedDays = { "Monday", "Tuesday", (SEM Wednesday), "Thursday", "Friday", "Saturday", "Sunday" },
+    minActivePlayers = 2,        -- Apenas 2 players
+    initialChance = 0.04,        -- 4% inicial (alta!)
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.4,     -- Máximo 40% (baixo)
+}
+```
+
+**Frequência**: 4% → 40% (frequente inicialmente, mas baixo máximo)
+
+**Peculiaridade**: NÃO spawna em Wednesday
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss único
+
+---
+
+## ⚜️ Raid 10: Sir Valorcrest
+
+### **sir_valorcrest.lua**
+
+**Localização**: Edron  
+**Tipo**: Boss Único  
+**Zona**: Position(33263, 31767, 10) → Position(33265, 31769, 10)  
+**Tamanho Zone**: 2×2 tiles (muito pequena)
+
+### Boss
+
+```
+Nome: Sir Valorcrest
+Quantidade: 1
+Posição: (33264, 31768, 10)
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("edron.valorcrest"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+}
+```
+
+**Frequência**: 2% → 80% (padrão)
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss único
+
+---
+
+## 🕷️ Raid 11: The Old Widow
+
+### **the_old_widow.lua**
+
+**Localização**: Venore (Venore Plains)  
+**Tipo**: Wave Event com Broadcast  
+**Zona**: Position(32292, 32292, 12) → Position(32796, 32306, 12)  
+**Tamanho Zone**: 504×14 tiles (ENORME, horizontalmente)
+
+### Broadcasts
+
+```
+"The mating season of the giant spiders is at hand. Leave the plains of havoc as fast as you can."
+[30s delay]
+
+"Giant spiders have gathered on the plains of havoc for their mating season. Beware!"
+[3m delay]
+```
+
+### Waves
+
+#### Waves 1-4: Giant Spiders (Delay: 10s entre)
+```
+Cada wave:
+- nome = "Giant Spider"
+- amount = 8
+
+Total: 32 Spider waves
+```
+
+#### Final: The Old Widow Boss (Delay: 24h)
+```
+- nome = "The Old Widow"
+- amount = 1
+- position = Position(32776, 32296, 7)
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("venore.the-old-widow"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+}
+```
+
+**Frequência**: 2% → 80% (padrão)
+
+### Duração
+
+```
+Broadcast 1: 30s
+Broadcast 2: 3m
+Wave 1-4 (10s entre): 0m40s
+Total aura: ~4m10s
+```
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - 32 spiders + boss final
+
+---
+
+## 🧛 Raid 12: The Pale Count
+
+### **the_pale_count.lua**
+
+**Localização**: Drefia  
+**Tipo**: Boss Único  
+**Zona**: Position(32968, 32419, 15) → Position(32970, 32421, 15)  
+**Tamanho Zone**: 2×2 tiles (muito pequena)
+
+### Boss
+
+```
+Nome: The Pale Count
+Quantidade: 1
+Posição: (32969, 32420, 15)
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("drefia.the-pale-count"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.01,        -- Raro
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.7,     -- Máximo 70%
+}
+```
+
+**Frequência**: 1% → 70% (começa raro)
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss único
+
+---
+
+## 🪦 Raid 13: The Welter
+
+### **the_welter.lua**
+
+**Localização**: Ankrahmun  
+**Tipo**: Boss Único  
+**Zona**: Position(33025, 32659, 5) → Position(33027, 32661, 5)  
+**Tamanho Zone**: 2×2 tiles (muito pequena)
+
+### Boss
+
+```
+Nome: The Welter
+Quantidade: 1
+Posição: Aleatória na zone
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("ankrahmun.the-welter"),
+    allowedDays = { (SEM Monday), "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" },
+    minActivePlayers = 3,
+    initialChance = 0.01,        -- Raro
+    targetChancePerDay = 0.01,
+    maxChancePerCheck = 0.6,     -- Máximo 60%
+}
+```
+
+**Frequência**: 1% → 60% (raro)
+
+**Peculiaridade**: NÃO spawna em Monday (6 dias apenas)
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss único
+
+---
+
+## 🗡️ Raid 14: Tyrn
+
+### **tyrn.lua**
+
+**Localização**: Darashia  
+**Tipo**: Boss Único  
+**Zona**: Position(33055, 32392, 14) → Position(33057, 32394, 14)  
+**Tamanho Zone**: 2×2 tiles (muito pequena)
+
+### Boss
+
+```
+Nome: Tyrn
+Quantidade: 1
+Posição: Aleatória na zone
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("darashia.tyrn"),
+    allowedDays = { (SEM Monday, Sunday), "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" },
+    minActivePlayers = 2,        -- Apenas 2 players
+    initialChance = 0.04,        -- 4% (alta!)
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.4,     -- Máximo 40% (baixo)
+}
+```
+
+**Frequência**: 4% → 40% (frequente mas limitado)
+
+**Peculiaridade**: NÃO spawna em Monday e Sunday (5 dias apenas)
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss único
+
+---
+
+## 👹 Raid 15: Weakened Shlorg
+
+### **weakened_shlorg.lua**
+
+**Localização**: Edron  
+**Tipo**: Boss Único  
+**Zona**: Position(33163, 31715, 9) → Position(33165, 31717, 9)  
+**Tamanho Zone**: 2×2 tiles (muito pequena)
+
+### Boss
+
+```
+Nome: Weakened Shlorg
+Quantidade: 1
+Posição: (33164, 31716, 9)
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("edron.weakened-shlorg"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+}
+```
+
+**Frequência**: 2% → 80% (padrão)
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss único weaker version
+
+---
+
+## 👻 Raid 16: White Pale
+
+### **white_pale.lua**
+
+**Localização**: Edron  
+**Tipo**: Boss Único  
+**Zona**: Position(33263, 31874, 11) → Position(33265, 31876, 11)  
+**Tamanho Zone**: 2×2 tiles (muito pequena)
+
+### Boss
+
+```
+Nome: White Pale
+Quantidade: 1
+Posição: (33264, 31875, 11)
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("edron.white-pale"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.8,
+}
+```
+
+**Frequência**: 2% → 80% (padrão)
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - Boss único
+
+---
+
+## 🐭 Raid 17: Rats (Monsters)
+
+### **rats.lua** (Monsters/Farmine)
+
+**Localização**: Farmine  
+**Tipo**: Wave Event  
+**Zona**: Position(31909, 32554, 7) → Position(31983, 32579, 7)  
+**Tamanho Zone**: 74×25 tiles (médio)
+
+### Waves
+
+#### Waves 1-3: Undead Cavebear (Delay: 2m entre)
+```
+Cada wave:
+- nome = "Undead Cavebear"
+- amount = 3
+
+Total: 9 creatures
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("farmine.draptor"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 2,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.6,
+    minGapBetween = "12h",
+}
+```
+
+**Frequência**: 2% → 60% (freqüência moderada)
+
+### Duração Total
+
+```
+Wave 1: 2m
+Wave 2: 2m
+Wave 3: 2m
+———
+Total: 6m
+```
+
+### Dificuldade
+
+⭐⭐ (2 stars) - 3 creatures por wave, fáceis
+
+---
+
+## 🐻 Raid 18: Undead Cavebear
+
+### **undead_cavebear.lua**
+
+**Localização**: Farmine  
+**Tipo**: Wave Event  
+**Zona**: Position(31909, 32554, 7) → Position(31983, 32579, 7)  
+**Tamanho Zone**: 74×25 tiles (médio)
+
+### Waves
+
+#### Waves 1-3: Undead Cavebear (Delay: 2m entre)
+```
+Cada wave:
+- nome = "Undead Cavebear"
+- amount = 3
+
+Total: 9 creatures
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("farmine.draptor"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 2,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.6,
+    minGapBetween = "12h",
+}
+```
+
+**Frequência**: 2% → 60% (freqüência moderada)
+
+### Duração Total
+
+```
+Wave 1: 2m
+Wave 2: 2m + 2m delay
+Wave 3: 2m + 2m delay
+———
+Total: 6m
+```
+
+### Dificuldade
+
+⭐⭐ (2 stars) - 3 undead bears por wave
+
+---
+
+## 🐴 Raid 19: Wild Horses (Monsters)
+
+### **wild_horses.lua** (Monsters/Thais)
+
+**Localização**: Thais  
+**Tipo**: Wave Event Longíssimo  
+**Zona**: 
+- Area 1: Position(32456, 32193, 7) → Position(32491, 32261, 7)
+- Area 2: Position(32431, 32240, 7) → Position(32464, 32280, 7)
+
+**Tamanho Zone**: 35×68 tiles (duplo, médio-grande)
+
+### Waves
+
+#### Waves 1-7: Wild Horse (Delay: 3h entre)
+```
+Cada wave:
+- nome = "Wild Horse"
+- amount = 3
+
+Total: 21 horses
+Spacing: 3h entre waves
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("thais.wild-horses"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 3,
+    initialChance = 30,          -- 30% (MUITO ALTO!)
+    targetChancePerDay = 50,     -- +50% por dia
+    maxChancePerCheck = 50,      -- Máximo 50%
+    maxChecksPerDay = 2,         -- Máximo 2 checks por dia
+    minGapBetween = "12h",
+}
+```
+
+**Frequência**: 30% → 50% (MUITO COMUM!)
+
+### Duração Total
+
+```
+Wave 1: 3h
+Wave 2: 3h + 3h
+Wave 3: 3h + 3h + 3h
+...
+Wave 7: 3h × 7 = 21h total
+———
+Total: 21h (evento MUITO longo)
+```
+
+### Dificuldade
+
+⭐ (1 star) - Apenas 3 horses, fracos
+
+### Peculiaridade
+
+**Evento Extremamente Longo**: 21 horas de duração total
+
+---
+
+## ❄️ Raid 20: Yeti
+
+### **yeti.lua**
+
+**Localização**: Folda  
+**Tipo**: Wave Event Massivo  
+**Zona**: Position(31991, 31580, 7) → Position(32044, 31616, 7)  
+**Tamanho Zone**: 53×36 tiles (grande)
+
+### Broadcasts
+
+```
+"Something is moving to the icy grounds of Folda."
+[30s delay]
+
+"Many Yetis are emerging from the icy mountains of Folda."
+[30s delay]
+
+"Numerous Yetis are dominating Folda, beware!"
+[60s delay]
+```
+
+### Waves
+
+#### Waves 1-20: Yeti (Delay: 3m entre)
+```
+Cada wave:
+- nome = "Yeti"
+- amount = 3
+
+Total: 60 yetis
+Spacing: 3m entre waves
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("folda.yeti"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 2,
+    initialChance = 0.02,
+    targetChancePerDay = 0.02,
+    maxChancePerCheck = 0.6,
+    minGapBetween = "48h",       -- 48h (2 DIAS!)
+}
+```
+
+**Frequência**: 2% → 60% (freqüência normal)
+
+### Duração Total
+
+```
+Broadcast 1: 30s
+Broadcast 2: 30s
+Broadcast 3: 60s
+Waves 1-20: 20 × 3m = 60m
+———
+Total: ~61m30s (evento MUITO longo)
+```
+
+### Dificuldade
+
+⭐⭐⭐ (3 stars) - 60 yetis total (3 por wave)
+
+### Peculiaridade
+
+**48h MinGap**: Minigap mais longo de todos (2 dias!)
+
+---
+
+## 🐴 Raid 21: Wild Horses (Thais)
+
+### **wild_horses.lua** (Thais/Offline)
+
+**Localização**: Thais  
+**Tipo**: Wave Event Longíssimo (Offline)  
+**Zona**: 
+- Area 1: Position(32456, 32193, 7) → Position(32491, 32261, 7)
+- Area 2: Position(32431, 32240, 7) → Position(32464, 32280, 7)
+
+**Tamanho Zone**: 35×68 tiles (duplo, médio-grande)
+
+### Waves
+
+#### Waves 1-7: Wild Horse (Delay: 3h entre)
+```
+Cada wave:
+- nome = "Wild Horse"
+- amount = 3
+
+Total: 21 horses
+Spacing: 3h entre waves
+```
+
+### Configuração
+
+```lua
+{
+    zone = Zone("thais.wild-horses"),
+    allowedDays = { 7 dias/semana },
+    minActivePlayers = 0,        -- ⚠️ QUALQUER UM (offline OK!)
+    initialChance = 30,          -- 30% (MUITO ALTO!)
+    targetChancePerDay = 50,     -- +50% por dia
+    maxChancePerCheck = 50,      -- Máximo 50%
+    maxChecksPerDay = 2,         -- Máximo 2 checks por dia
+    minGapBetween = "23h",       -- 23h (um pouco menos)
+}
+```
+
+**Frequência**: 30% → 50% (MUITO COMUM!)
+
+### Duração Total
+
+```
+Total: 21h (evento MUITO longo, como Raid 19)
+```
+
+### Dificuldade
+
+⭐ (1 star) - Apenas 3 horses, fracos
+
+### Diferenças com Raid 19
+
+| Aspecto | Monsters (19) | Thais (21) |
+|---------|---|---|
+| Min Players | 3 | 0 (offline!) |
+| Chance Initial | 30% | 30% |
+| MinGap | 12h | 23h |
+| Duration | 21h | 21h |
+| Localização | Dupla | Dupla |
+
+**Raid 21** é mais acessível (0 players)
+
+---
+
+## 📊 Comparação de Todos os 21 Raids
+
+### Por Tipo
+
+| Tipo | Quantidade | Raids |
+|------|-----------|-------|
+| Boss Único Simples | 14 | Arachir, Zunzu, Diblis, Hirintror, Mawhawk, Sir Valorcrest, The Pale Count, The Welter, Tyrn, Weakened Shlorg, White Pale, + 3 more |
+| Boss com Wave | 2 | Furyosa (80 demons), The Old Widow (32 spiders) |
+| Wave Event Progressivo | 3 | Draptor (Dragons+Draptor+Boss), Rats (Undead bears), Undead Cavebear |
+| Wave Event Longo | 3 | Wild Horses (21h), Wild Horses Thais (21h), Yeti (60m) |
+| Boss Random Position | 1 | Midnight Panther |
+| Invasão Multi-Creature | 1 | Rats (Thais, escalada) |
+
+### Por Localização
+
+| Local | Raids | Total |
+|-------|-------|-------|
+| Drefia | Arachir, The Pale Count | 2 |
+| Muggy Plains | Battlemaster Zunzu | 1 |
+| Farmine | Draptor, Rats (Undead bears), Undead Cavebear | 3 |
+| Tiquanda | Midnight Panther | 1 |
+| Thais | Rats (invasão + escalada), Wild Horses (2 versions) | 3 |
+| Nargor | Diblis The Fair | 1 |
+| Fury Gates | Furyosa | 1 |
+| Svargrond | Hirintror | 1 |
+| Roshamuul | Mawhawk | 1 |
+| Edron | Sir Valorcrest, Weakened Shlorg, White Pale | 3 |
+| Venore | The Old Widow | 1 |
+| Ankrahmun | The Welter | 1 |
+| Darashia | Tyrn | 1 |
+| Folda | Yeti | 1 |
+
+### Por Dificuldade
+
+| ⭐ | Raids | Razão |
+|---|------|-------|
+| ⭐ | Wild Horses (19, 21), Rats (undead) | Fracos, múltiplos |
+| ⭐⭐ | Midnight Panther, The Welter, Tyrn, Mawhawk | 1 boss, variável |
+| ⭐⭐⭐ | Arachir, Zunzu, Hirintror, Pale Count, Sir Valorcrest, White Pale, Weakened Shlorg, Diblis, The Old Widow, Yeti | 1 boss + waves |
+| ⭐⭐⭐⭐ | Draptor, Furyosa | 150+ creatures + bosses |
+
+### Por Frequência
+
+| Nível | Raids | Config |
+|-------|-------|--------|
+| Muito Comum | Wild Horses (19, 21), Rats (escalada) | 30% initial, 50% max, 0-3 min players |
+| Comum | Midnight Panther | 3% initial, 90% max |
+| Moderado | Draptor, Undead Cavebear, Rats (undead) | 2% initial, 60% max, 2-3 min |
+| Raro | Arachir, Zunzu, Diblis, Hirintror, Sir Valorcrest, White Pale, Weakened Shlorg | 2% initial, 80% max |
+| Muito Raro | Furyosa, The Pale Count, The Welter | 1% initial, 60-70% max |
+| Especial | Yeti | 2% initial, 60% max, 48h minigap (2 dias) |
+
+### Por Duração
+
+| Duração | Raids | Timeline |
+|---------|-------|----------|
+| 0s (Instantâneo) | Arachir, Zunzu, Diblis, Hirintror, Mawhawk, Sir Valorcrest, Pale Count, Welter, Tyrn, Weakened Shlorg, White Pale (11 boss raids) | Spawn único + 24h auto |
+| Curto (1-5m) | Draptor (5m30s), Rats Thais broadcast (20m+), Furyosa (1m+) | Waves progressivas |
+| Médio (5-30m) | The Old Widow (4m10s), Rats undead (~6m), Yeti (~61m) | Multi-wave |
+| Longo (1h+) | Wild Horses (21h duração total!) (2 versions), Yeti (61m) | Waves estendidas |
+
+### Por Zone Size
+
+| Tamanho | Raids | Exemplo |
+|---------|-------|---------|
+| Tiny (2-3 tiles) | Arachir, Diblis, Hirintror, Mawhawk, Sir Valorcrest, Pale Count, Welter, Tyrn, Weakened Shlorg, White Pale (10 boss únicos) | Exact positioning |
+| Pequeno-Médio (25-75 tiles) | Midnight Panther (24×41), Rats undead (74×25), Rats Thais (95×79??) | Movimento restrito |
+| Médio-Grande (80-200 tiles) | Zunzu (54×25), The Old Widow (504×14 massivo), Farmine raids (74×25) | Zones grandes |
+| Grande (200+ tiles) | Draptor (91×87), Yeti (53×36), Furyosa (85×192 extra-large), Wild Horses (35×68 dupla) | Open areas |
+
+---
+
+## 🎓 Padrões Observados
+
+```
+Arquitetura de Raids (21 total):
+
+1. Boss Único Simples (14):
+   - Position fixa OU aleatória na zone
+   - 1 spawn, duration auto 24h
+   - Min 2-3 players (algumas 2, algumas 3)
+   - Config chance baixa-moderada (1-4%)
+   - Tiny zones (2×2 típico)
+
+2. Boss com Wave (2):
+   - Broadcast inicial
+   - Waves preparatórios (spiders, demons)
+   - Final boss único
+   - Min 3 players
+   - Duration: 1m - 4m
+   - Chance rara (1%)
+
+3. Wave Event Progressivo (3):
+   - Múltiplas waves sequenciais
+   - Escalação de dificuldade
+   - Broadcast inicial
+   - Min 2-3 players
+   - Duration: 5-30m
+   - Minigap: 12h
+   - Chance: 2% initial, 60% max
+
+4. Wave Event Longo (3):
+   - 7-20 waves com delays longos (3h típico)
+   - Escalação lenta e progressiva
+   - Min 0-3 players (Wild Horses offline-friendly)
+   - Duration: 21h (!) a 61m
+   - Chance: 30% (muito alta!)
+   - Minigap: 12-23h
+
+5. Invasão Scale (1):
+   - Multi-creature types
+   - Escalação (10+10 → 20+20)
+   - Broadcast inicial
+   - Min 0 players (pode rodar offline!)
+   - Duration: 20m
+   - Minigap: 36h
+   - Chance: 30% (muito alta!)
+
+Técnicas Observadas (21 raids):
+✅ Zone.addArea - Define boundaries
+✅ Multiple addArea - Dual zones (Wild Horses)
+✅ Raid configuration - Probabilidade + restrict
+✅ addSpawnMonsters - Wave spawning
+✅ autoAdvance - Timing variável (5s a 3h)
+✅ addBroadcast - Multi-broadcast (Yeti, Old Widow)
+✅ Loop for - Múltiplas waves (1-20 loops)
+✅ math.random - Posição aleatória (limited)
+✅ maxChecksPerDay - Limita checks diários
+✅ register() - Ativa raid
+```
+
+---
+
+<Aside type="note">
+**Padrões em 21 Raids**:
+
+1. Todos usam **Zone** com addArea (alguns dual zones)
+2. Boss raids: Instantâneos (0 duração), 24h auto-advance
+3. Wave raids: Progressivos (5m - 61m)
+4. Long-running: Até 21 horas de duração!
+5. Minigap previne spam (12h - 48h)
+6. Broadcasts notificam players
+7. Configuração **allowedDays**: Maioria 7/7 (alguns 5-6 dias)
+8. Chance cresce diariamente até cap
+9. Min players variam (0-3):
+   - 0: Pode rodar offline (Wild Horses Thais, Rats escalada)
+   - 2: Mais acessível (Draptor, Mawhawk, Tyrn, Yeti)
+   - 3: Mais desafiador (Maioria dos bosses)
+10. Random positions raro (apenas Midnight Panther, Welter, Tyrn)
+11. maxChecksPerDay limita frequência (Wild Horses)
+12. Large zones (85×192 para Furyosa!) para zonas abertas
+
+**Scalability Pattern**:
+
+- Boss único: Copy template 2×2 zone
+- Boss + waves: Add for loop antes do boss
+- Long waves: Aumentar loops (7-20 iterations)
+- Invasão: Multiple creatures + escalação
+- Offline raids: minActivePlayers = 0
+
+**Performance Insights**:
+
+- Boss raids (11): Zero load (0 duration)
+- Short waves (3): ~5m load durante evento
+- Long waves (3): Intermitente durante 21h/61m
+- Minigap: Previne spam, mantém rareidade
+- maxChecksPerDay: Extra throttle (Wild Horses)
+
+</Aside>
+
+---
+
+<Aside>
+**Versão:** 2.0 (Expandido)  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Raids Documentados:** 21 (eram 5)  
+**Bosses Únicos**: 14  
+**Wave Events**: 7  
+**Localizações**: 14 zones diferentes  
+**Duração**: 0s (bosses) a 21 horas (Wild Horses)
+
+**Estatísticas**:
+- Raids com 0 min players: 1 (offline-friendly)
+- Raids com broadcast: 4+
+- Raids com loop waves: 5+
+- Raids com 48h+ minigap: 1 (Yeti)
+- Raids com chance 30%+: 2 (Wild Horses, Rats escalada)
+
+Para dúvidas, consulte a arquitetura ou analise padrões similares.
+</Aside>

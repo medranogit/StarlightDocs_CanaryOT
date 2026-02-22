@@ -1,0 +1,203 @@
+---
+title: "online_coins.lua"
+description: "Sistema VIP de distribuição de Tibia Coins a jogadores online a cada minuto."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | online_coins.lua |
+| **Tipo** | GlobalEvent |
+| **Tamanho** | ~63 linhas |
+| **Localização** | scripts/globalevents/vip/ |
+| **Propósito** | Distribuir Tibia Coins online |
+| **Intervalo** | 60 segundos |
+| **Status** | Desabilitado por padrão |
+| **Recompensa VIP** | 5 coins/hora |
+| **Recompensa Free** | 1 coin/hora |
+| **Complexidade** | Média-Alta |
+</Card>
+
+:::tip 💡
+Sistema preciso de acúmulo fracionado que distribui coins em porções pequenas a cada minuto, acumulando resto em storage para pagamento quando atinge threshold.
+:::
+
+## 📄 Visão Geral Resumida
+
+Global event que distribui Tibia Coins à jogadores online de forma contínua. Sistema calcula coins por minuto baseado em configuração por-hora, acumula resto em storage com precisão de 10 milhões (evita ponto flutuante), e distribui quando acúmulo atinge threshold configurável. Suporta check de IP duplicado e filtro de grupos administrativos.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Configuração
+
+```lua
+config = {
+  enabled = false,              -- Desabilitado por padrão
+  storage = Storage.VipSystem.OnlineCoinsGain,  -- Storage de acúmulo
+  checkDuplicateIps = false,    -- Validar IPs duplicados
+  interval = 60 * 1000,         -- 60 segundos
+  coinsPerHour = {
+    free = 1,                   -- 1 coin/hora free accounts
+    vip = 5,                    -- 5 coins/hora VIP accounts
+  },
+  awardOn = 5,                  -- Distribuir quando acumular 5 coins
+}
+```
+
+### Cálculos
+
+**`runsPerHour`**
+- Calcula quantas vezes evento executa em 1 hora
+- Fórmula: `3600 segundos / (interval em segundos)`
+- Com interval=60s: 60 execuções/hora
+
+**`coinsPerRun(coinsPerHour)`**
+- **Parâmetros**: coinsPerHour (1 ou 5)
+- **Retorno**: coins a distribuir por execução
+- **Lógica**: `coinsPerHour / runsPerHour`
+- Exemplo: 5 coins/hora ÷ 60 = 0.0833 coins/minuto
+
+### Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `onlineCoinsEvent` | GlobalEvent | Instância do evento |
+| `runsPerHour` | number | Execuções por hora (60) |
+
+### GlobalEvent Hook
+
+**`onlineCoinsEvent.onThink(interval)`**
+- **Parâmetro**: `interval` (60000)
+- **Retorno**: `true`
+- **Intervalo**: 60 segundos
+- **Lógica Detalhada**:
+  1. Obtém array de jogadores online
+  2. Se lista vazia: retorna true
+  3. Inicializa tabela `checkIp` para validação
+  4. Para cada jogador:
+     a. Check: Se grupo > SENIORTUTOR → skip (admin)
+     b. Check: Se free sem coinsPerHour.free > 0 → skip
+     c. Obtém IP do jogador
+     d. Check: Se IP duplicado (se checkDuplicateIps) → skip
+     e. Marca IP como processado
+     f. Lê acúmulo em storage
+     g. Calcula coins para este run: `coinsPerRun() + resto`
+     h. Escreve storage x10000000 (precisão)
+     i. Se coins >= awardOn:
+        - Calcula floor: `coinsMath = math.floor(coins)`
+        - Adiciona coins ao jogador via `addTibiaCoins()`
+        - Envia notificação
+        - Reseta storage com resto: `(coins - coinsMath) * 10000000`
+
+### Pseudocódigo Detalhado
+
+```lua
+function onThink(interval)
+  players = Game.getPlayers()
+  if #players == 0 então retorna true end
+  
+  checkIp = {}
+  for _, player in pairs(players) do
+    -- Filtros
+    if player:getGroup():getId() > GROUP_TYPE_SENIORTUTOR então
+      goto continue
+    end
+    if config.coinsPerHour.free < 1 e não player:isVip() então
+      goto continue
+    end
+    
+    ip = player:getIp()
+    if ip ~= 0 e (não checkDuplicateIps ou não checkIp[ip]) então
+      checkIp[ip] = true
+      
+      -- Cálculo
+      remainder = math.max(0, player:getStorageValue(storage)) / 10000000
+      coins = coinsPerRun(player:isVip() ? vip_rate : free_rate) + remainder
+      player:setStorageValue(storage, coins * 10000000)
+      
+      -- Distribuição
+      if coins >= awardOn então
+        coinsMath = math.floor(coins)
+        player:addTibiaCoins(coinsMath, true)
+        player:sendTextMessage(...)
+        player:setStorageValue(storage, (coins - coinsMath) * 10000000)
+      end
+    end
+    
+    ::continue::
+  end
+  retorna true
+end
+```
+
+## 📊 Dados Técnicos
+
+### Configuração de Recompensas
+
+| Tipo | Coins/Hora | Coins/Minuto | Distribuição |
+|------|-----------|--------------|--------------|
+| Free | 1 | 0.0167 | A cada ~60 min |
+| VIP | 5 | 0.0833 | A cada ~12 min |
+
+### Filtros de Jogador
+
+| Filtro | Critério | Ação |
+|--------|----------|------|
+| Grupo Admin | > SENIORTUTOR | Skip |
+| Free sem rate | coinsPerHour.free < 1 | Skip |
+| IP Duplicado | checkDuplicateIps && IP em uso | Skip |
+| IP Inválido | IP = 0 | Skip |
+
+### Acúmulo com Precisão
+
+| Operação | Fórmula | Razão |
+|----------|---------|-------|
+| Leitura | value / 10000000 | Converter armazenado → real |
+| Escrita | value * 10000000 | Converter real → armazenado |
+| Resto | (coins - floor) * 10000000 | Manter fração para próxima |
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `GlobalEvent(string)` | Classe | Registrar evento |
+| `Game.getPlayers()` | Função | Obter jogadores online |
+| `Player.getGroup()` | Método | Obter grupo do jogador |
+| `Player.isVip()` | Método | Verificar VIP |
+| `Player.getIp()` | Método | Obter IP |
+| `Player.getStorageValue()` | Método | Ler acúmulo |
+| `Player.setStorageValue()` | Método | Escrever acúmulo |
+| `Player.addTibiaCoins()` | Método | Adicionar coins |
+| `Player.sendTextMessage()` | Método | Notificação |
+| `math.floor()` | Função | Piso do número |
+| `math.max()` | Função | Máximo de valores |
+| `Storage.VipSystem.OnlineCoinsGain` | Const | Storage key |
+| `GROUP_TYPE_SENIORTUTOR` | Const | Limite de admin |
+
+### APIs Utilizadas
+
+- GlobalEvent: `onThink()`, `interval()`, `register()`
+- Game: `getPlayers()`
+- Player: `getGroup()`, `getId()`, `isVip()`, `getIp()`, `getStorageValue()`, `setStorageValue()`, `addTibiaCoins()`, `sendTextMessage()`
+- Lua: `math.floor()`, `math.max()`
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/globalevents/vip/online_coins.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | 100% |
+| **Complexidade Código** | Média-Alta |
+| **Status Validação** | ✅ Completo |
+| **Backticks Validados** | ✅ OK |

@@ -1,0 +1,544 @@
+---
+title: "startup.lua - Carregador Principal de Startup"
+description: "Documentação técnica do arquivo principal de inicialização que orquestra o carregamento de todas as funções e tabelas do servidor Canary"
+sidebar:
+  order: 1
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 📄 startup.lua
+
+Arquivo principal de inicialização do servidor responsável por orquestrar o carregamento de todos os módulos e funções de startup. Carrega dois sub-loaders que trazem tabelas e funções globais.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/startup.lua` |
+| **Tipo** | Arquivo Loader Principal |
+| **Escopo** | Startup do Servidor (primeiro arquivo carregado) |
+| **Dependências** | `tables/load.lua`, `others/load.lua` |
+| **Linhas de Código** | 2 linhas efetivas |
+| **Função Principal** | Orquestrar carregamento inicial do servidor |
+| **Chamado por** | Sistema de startup do Canary (entry point) |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/startup.lua`
+
+Este é o **arquivo raiz** de inicialização - o ponto de entrada para todos os carregamentos de startup. Todas as tabelas globais e funções necessárias são carregadas através deste arquivo.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+Arquivo extremamente simples mas crítico com responsabilidade clara:
+
+**Orquestar o carregamento de dois subsistemas essenciais**:
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/tables/load.lua")
+dofile(DATA_DIRECTORY .. "/startup/others/load.lua")
+```
+
+**Efeito Cascata**:
+1. Primeiro: Carrega **tabelas globais** (constantes, storage keys, etc)
+2. Segundo: Carrega **funções globais** (item creation, map loading, etc)
+3. Resultado: Servidor totalmente inicializado e pronto
+
+**Padrão**: Inicialização em duas etapas
+- **Etapa 1**: Tabelas (dados estáticos)
+- **Etapa 2**: Funções (lógica executável)
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Fluxo Hierárquico de Inicialização" icon="layers">
+
+```
+┌─────────────────────────────────────────────────┐
+│         SISTEMA CANARY BOOT SEQUENCE            │
+│    (Inicialização fundamental do servidor)      │
+└────────────────┬────────────────────────────────┘
+                 │
+                 ├─ Load internal APIs
+                 │  (Tile, Game, db, logger)
+                 │
+                 ├─ Load constants & storage keys
+                 │
+                 ▼
+    ┌────────────────────────────────────────────┐
+    │  startup.lua (ESTE ARQUIVO - ENTRY POINT)  │
+    │  ┌──────────────────────────────────────────┤
+    │  │ Line 1: dofile(..../tables/load.lua)    │
+    │  │ Line 2: dofile(..../others/load.lua)    │
+    │  └──────────────────────────────────────────┤
+    └────────┬─────────────────────────────────────┘
+             │
+    ┌────────┴──────────┐
+    │                   │
+    ▼                   ▼
+┌────────────────┐  ┌──────────────────┐
+│ tables/load.lua│  │ others/load.lua  │
+│ (Sub-loader 1) │  │ (Sub-loader 2)   │
+│ ┌──────────────┤  │ ┌────────────────┤
+│ │ Carrega:     │  │ │ Carrega:       │
+│ │ • const.lua  │  │ │ • functions.lua│
+│ │ • storage.lua│  │ │──────────────  │
+│ │ • keys.lua   │  │ │ Exporta:       │
+│ │...           │  │ │ CreateMapItem()│
+│ │──────────────┤  │ │ loadLuaMapAction()
+│ │ Exporta:     │  │ │ loadLuaMapUnique()
+│ │ CONST_*      │  │ │ loadLuaMapSign()
+│ │ STORAGE_*    │  │ │ loadLuaMapBookDoc()
+│ │ (Global)     │  │ │ updateKeysStorage()
+│ └──────────────┤  │ └────────────────┤
+└────────────────┘  └──────────────────┘
+     │                   │
+     └────────┬──────────┘
+              │
+              ▼
+    ┌──────────────────────────────┐
+    │ STARTUP COMPLETO & PRONTO    │
+    │ • Todas constantes loaded    │
+    │ • Todas funções disponíveis  │
+    │ • Server ready para iniciar  │
+    └──────────────────────────────┘
+```
+
+**Timeline de Execução**:
+1. Servidor boot inicia
+2. APIs internas inicializadas
+3. `startup.lua` é carregado
+4. **Linha 1**: `tables/load.lua` carregado
+   - Carrega todas as tabelas/constantes
+5. **Linha 2**: `others/load.lua` carregado
+   - Carrega todas as funções globais
+6. Retorno ao startup.lua (completo)
+7. Resto do servidor continua inicialização
+
+</Card>
+
+---
+
+## 📝 Conteúdo do Arquivo
+
+<Card title="Código Completo" icon="code">
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/tables/load.lua")
+dofile(DATA_DIRECTORY .. "/startup/others/load.lua")
+```
+
+**Total**: 2 linhas efetivas de código.
+
+</Card>
+
+---
+
+## 🔍 Análise Detalhada
+
+<Card title="Breakdown de Cada Linha" icon="magnifying-glass">
+
+### Linha 1: Carregamento de Tabelas
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/tables/load.lua")
+```
+
+**Propósito**: Carregar todas as tabelas, constantes e dados estáticos necessários.
+
+**Sequência**:
+1. `dofile()` executa `tables/load.lua`
+2. `tables/load.lua` carrega seus sub-arquivos:
+   - `const.lua` → Constantes do servidor
+   - `storage.lua` → Storage keys de players
+   - `keys.lua` → Chaves especiais
+   - Etc...
+3. Todas estas tornam-se **variáveis globais**
+4. Disponíveis para próxima etapa
+
+**Resultado**: Servidor com toda configuração estática pronta.
+
+---
+
+### Linha 2: Carregamento de Funções
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/others/load.lua")
+```
+
+**Propósito**: Carregar todas as funções executáveis e lógica.
+
+**Sequência**:
+1. `dofile()` executa `others/load.lua`
+2. `others/load.lua` carrega:
+   - `functions.lua` → 6 Funções de inicialização de mapa
+   - Pode carregar mais no futuro
+3. Todas as funções tornam-se **disponíveis globalmente**
+4. Podem ser chamadas por qualquer outro script
+
+**Resultado**: Servidor com todas as funções prontas para executar.
+
+---
+
+### Dependência de Ordem
+
+```
+Tabelas (Linha 1) ← DEVE SER PRIMEIRO
+    ↓
+Funções (Linha 2) ← USA tabelas da Linha 1
+```
+
+**Crítico**: Inverter a ordem causaria erro!
+
+```lua
+-- ❌ ERRADO (função precisa de tabelas)
+dofile(DATA_DIRECTORY .. "/startup/others/load.lua")
+dofile(DATA_DIRECTORY .. "/startup/tables/load.lua")
+
+-- ✅ CORRETO (tabelas primeiro)
+dofile(DATA_DIRECTORY .. "/startup/tables/load.lua")
+dofile(DATA_DIRECTORY .. "/startup/others/load.lua")
+```
+
+</Card>
+
+---
+
+## 🎯 Padrão de Orquestração
+
+<Card title="Arquitetura de Dois Loaders" icon="lightbulb">
+
+### Por que dois arquivos separados?
+
+| Aspecto | Tabelas | Funções |
+|---------|---------|---------|
+| **Mudança** | Raro | Frequente |
+| **Complexidade** | Baixa | Alta |
+| **Dependências** | Mínimas | Precisa de tabelas |
+| **Recarregamento** | Crítico evitar | Seguro recarregar |
+| **Ordem** | Rígida (PRIMEIRO) | Flexível |
+
+### Separação em Dois Estágios
+
+```
+┌─ ESTÁGIO 1: DADOS
+│  dofile(...tables/load.lua)
+│  ├─ Define constantes
+│  ├─ Define storage keys
+│  ├─ Sem lógica complexa
+│  └─ Rápido, seguro
+│
+└─ ESTÁGIO 2: LÓGICA
+   dofile(...others/load.lua)
+   ├─ Define funções
+   ├─ Usa dados do estágio 1
+   ├─ Pode ser complexo
+   └─ Pronto para executar
+```
+
+### Vantagens
+
+1. **Clareza**: Duas responsabilidades bem definidas
+2. **Manutenção**: Fácil adicionar tabelas ou funções
+3. **Performance**: Tabelas carregadas primeiro (mais rápido)
+4. **Segurança**: Ordem garantida
+5. **Escalabilidade**: Suporta crescimento
+
+</Card>
+
+---
+
+## 🔗 Dependências e Fluxo
+
+<Card title="Relações e Integração" icon="link">
+
+### Este Arquivo Depende De
+
+```
+startup.lua
+  └─ depende de ──> tables/load.lua
+  │                  └─ carrega const.lua, storage.lua, etc
+  │
+  └─ depende de ──> others/load.lua
+                     └─ carrega functions.lua
+```
+
+### Quem Depende Deste Arquivo
+
+```
+startup.lua (ESTE ARQUIVO)
+  └─ é o ENTRY POINT para ──> Startup system
+       │
+       └─ torna disponível:
+           ├─ Constantes globais (CONST_*, STORAGE_*)
+           ├─ Funções globais (CreateMapItem, loadLuaMapAction, etc)
+           └─ Pronto para resto do servidor
+```
+
+### Integração no Boot
+
+```
+1. Sistema internal do Canary boot
+2. APIs básicas carregadas
+3. ← STARTUP.LUA AQUI
+   ├─ Carrega tabelas (datatypes)
+   └─ Carrega funções (executables)
+4. World loading
+5. NPC/Monster loading
+6. Jogadores conectam
+```
+
+### Dependências de Ordem
+
+```
+CRITICO: Tabelas ANTES de Funções
+└─ Se invertido:
+   ├─ Funções tentem usar constantes
+   ├─ Constantes não existem
+   └─ ERRO = Servidor não inicia
+```
+
+</Card>
+
+---
+
+## ⚙️ Contexto de Execução
+
+<Card title="Ambiente e Timing" icon="settings">
+
+### Tempo de Execução
+
+- **Quando**: Primeiras operações do boot do servidor
+- **Timing**: Frações de segundo (muito rápido)
+- **Bloqueia**: Nada (é o primeiro)
+
+### Escopo Global
+
+Após execução:
+- **Tabelas**: Acessíveis via nome direto
+  ```lua
+  CONST_VALUE          -- ✅ Funciona
+  STORAGE_QUEST_KEY    -- ✅ Funciona
+  ```
+
+- **Funções**: Acessíveis globalmente
+  ```lua
+  CreateMapItem(...)        -- ✅ Funciona
+  loadLuaMapAction(...)     -- ✅ Funciona
+  ```
+
+### Requisitos Prévios
+
+Para este arquivo funcionar:
+- ✅ `DATA_DIRECTORY` constante definida
+- ✅ `dofile()` função disponível
+- ✅ Ambos os arquivos existem e sem erros
+
+### Sem Tratamento de Erro
+
+```lua
+-- Nota: Não usa:
+-- if dofile(...) then ... end
+-- pcall(dofile, ...)
+
+-- Implicação:
+-- Se um arquivo tiver erro, FALHA IMEDIATO
+-- (Vantagem: erros críticos não silenciados)
+```
+
+</Card>
+
+---
+
+## 📊 Casos de Uso
+
+<Card title="Cenários de Execução" icon="workflow">
+
+### Caso 1: Inicialização Normal
+
+```
+Comando: ./canary ou canary.exe
+  ├─ Sistema booteia
+  ├─ APIs internas carregam
+  ├─ startup.lua executado
+  │  ├─ tables/load.lua carregado
+  │  └─ others/load.lua carregado
+  ├─ Resto do startup continua
+  └─ Servidor pronto ✅
+```
+
+**Frequência**: Toda inicialização do servidor
+
+### Caso 2: Reload Scripts (Se Suportado)
+
+```
+Comando: /reload scripts
+  ├─ Verifica se reload é permitido
+  ├─ startup.lua pode ser recarregado
+  ├─ Tabelas re-inicializadas
+  └─ Funções atualizadas
+```
+
+**Risco**: Redefenir variáveis globais durante runtime
+
+### Caso 3: Shutdown Limpo
+
+```
+Comando: /shutdown
+  ├─ startup.lua não é recarregado
+  ├─ Objetos globais permanecem até shutdown
+  └─ Limpeza do SO
+```
+
+</Card>
+
+---
+
+## 🛡️ Considerações de Implementação
+
+<Card title="Notas Técnicas Importantes" icon="shield">
+
+### DATA_DIRECTORY Path
+
+- Crítico estar definido corretamente
+- Tipicamente: `/path/to/data/` ou `C:\\otserver\\data\\`
+- Concatenado com strings de path relativo
+
+### Sem Tratamento de Erro
+
+**Atual**:
+```lua
+dofile(...) -- Se erro, falha silenciosamente/trava
+```
+
+**Potencial Melhoria**:
+```lua
+if not dofile(...) then
+  error("Failed to load tables!")
+end
+```
+
+### Bloqueia Startup
+
+Neste arquivo, há **espera síncrona**:
+- Linha 1 executa completamente
+- Linha 2 só inicia após Linha 1 terminar
+- Nenhuma paralelização possível
+
+### Ordem Crítica
+
+**É literalmente a coisa mais importante**:
+
+```lua
+-- Trocar a ordem = CRASH no startup
+-- Qualquer erro = CRASH no startup
+-- Arquivo faltando = CRASH no startup
+```
+
+### Reutilização de Nomes
+
+Se `tables/load.lua` e `others/load.lua` definirem o mesmo nome:
+
+```lua
+-- ❌ Conflito
+dofile("tables.lua")   -- Define: MyFunction() = version1
+dofile("others.lua")   -- Define: MyFunction() = version2
+MyFunction()           -- Qual versão? (version2, último carregado)
+```
+
+**Solução**: Namespacing (encapsulamento em tabelas)
+
+</Card>
+
+---
+
+## 🎓 Extensibilidade Futura
+
+<Card title="Como Expandir Este Sistema" icon="plus">
+
+### Adicionar Terceiro Loader
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/tables/load.lua")
+dofile(DATA_DIRECTORY .. "/startup/others/load.lua")
+dofile(DATA_DIRECTORY .. "/startup/quests/load.lua")  -- Novo
+```
+
+**Pré-requisitos**:
+- Arquivo `quests/load.lua` deve existir
+- Não pode depender de dados do `others/load.lua` (ordem)
+
+### Adicionar Logging
+
+```lua
+logger.info("Starting server initialization...")
+
+dofile(DATA_DIRECTORY .. "/startup/tables/load.lua")
+logger.info("Tables loaded")
+
+dofile(DATA_DIRECTORY .. "/startup/others/load.lua")
+logger.info("Functions loaded")
+
+logger.info("Server initialization complete")
+```
+
+### Adicionar Validação
+
+```lua
+local tablesOK = dofile(DATA_DIRECTORY .. "/startup/tables/load.lua")
+if not tablesOK then
+  error("Failed to load startup tables")
+end
+
+local functionsOK = dofile(DATA_DIRECTORY .. "/startup/others/load.lua")
+if not functionsOK then
+  error("Failed to load startup functions")
+end
+```
+
+### Estado Atual
+
+Arquivo é mantido **SIMPLES** - apenas 2 linhas, sem extras. Isso é **propositado** para máxima legibilidade e performance.
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo Loader Principal  
+**Total de Linhas**: 2 (efetivas)  
+**Sub-loaders**: 2 (tables, others)  
+**Status**: ✅ Completo  
+
+**Responsabilidade**:
+- ✅ Carregar tabelas globais
+- ✅ Carregar funções globais
+- ✅ Orquestrar inicialização em duas etapas
+
+**Relacionado a**:
+- tables/load.lua (primeiro sub-loader)
+- others/load.lua (segundo sub-loader)
+- functions.lua (funções carregadas)
+- Startup system (chamador)
+
+Este é o **entry point** de toda a inicialização do servidor. Nada mais simples e ao mesmo tempo tão crítico.
+</Aside>

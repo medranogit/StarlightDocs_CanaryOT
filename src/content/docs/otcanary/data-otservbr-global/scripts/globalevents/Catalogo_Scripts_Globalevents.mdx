@@ -1,0 +1,712 @@
+---
+title: "Catálogo de Scripts - Global Events"
+description: "Referência de scripts de Global Events do servidor"
+sidebar:
+  order: 2
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+# 🌍 Catálogo de Scripts - Global Events
+
+Referência consolidada de scripts de eventos globais do servidor Canary. Cada script contém sistemas que executam automaticamente no servidor sem associação a players ou locations específicas.
+
+---
+
+## 📊 Índice de Scripts
+
+<Card title="Estatísticas Gerais" icon="star">
+- **Total de Scripts**: 8
+- **Data de Atualização**: February 22, 2026
+- **Status**: Em desenvolvimento
+- **Tipo**: Global Events (executam continuamente)
+</Card>
+
+<Card title="Localização" icon="document">
+  Caminho Original: `data-otservbr-global\scripts\globalevents\`
+</Card>
+
+---
+
+## 🔄 Update Event
+
+Sistema de reset de player positions ao fazer update do servidor.
+
+### **update.lua**
+- **Caminho**: `data-otservbr-global/scripts/globalevents/update.lua`
+- **Tipo**: GlobalEvent (onStartup)
+- **Gatilho**: Executa ao iniciar servidor
+- **Nome**: "Update"
+- **Tamanho**: ~30 linhas
+
+#### Funcionalidade Principal
+
+**Objetivo**: Reseta posições de todos os players ao teleportá-los ao temple após update do servidor
+
+#### Funcionamento
+
+```lua
+-- Lê arquivo de controle externo
+local fileToUpdate = CORE_DIRECTORY .. "/update.lua"
+dofile(fileToUpdate)
+
+-- Se updated = true no arquivo:
+-- 1. Executa UPDATE SQL resetando posições (x=0, y=0, z=0)
+-- 2. Lê o arquivo
+-- 3. Procura por "updated = true"
+-- 4. Se encontrado, muda para "updated = false"
+-- 5. Registra log de aviso
+```
+
+#### Estrutura
+
+| Campo | Valor |
+|-------|-------|
+| **Tipo de Evento** | onStartup() |
+| **Execução** | Uma vez ao iniciar servidor |
+| **Ação Principal** | Reset de posições dos players |
+| **Banco de Dados** | Usa db.query() para UPDATE |
+| **Arquivo** | Lê/escreve arquivo de controle |
+| **Log** | Exibe mensagem de aviso ao logger |
+
+#### Variáveis de Controle
+
+- `updated` - Flag lido do arquivo externo
+- `fileToUpdate` - Caminho do arquivo de controle no CORE_DIRECTORY
+- `afterUpdate` - String "updated = false" escrita de volta
+
+#### Fluxo de Execução
+
+```
+1. Server startup
+   ↓
+2. Check "updated" flag in file
+   ↓
+3. If true:
+   ├─ Run db.query() → UPDATE positions to 0,0,0
+   ├─ Read file
+   ├─ Find "updated = true"
+   ├─ Replace with "updated = false"
+   └─ Log warning message
+   ↓
+4. Return true
+```
+
+#### Exemplo de Uso
+
+Quando você faz alterações críticas no código do servidor e quer resetar todos os players:
+1. Defina `updated = true` no arquivo `/core/update.lua`
+2. Reinicie o servidor
+3. Este GlobalEvent detecta a flag e reseta as posições
+4. Atualiza flag para `updated = false` automaticamente
+
+---
+
+## ✨ Dawnport Magic Effect
+
+Sistema de efeito visual periódico em Dawnport.
+
+### **dawnport_magic_effect.lua**
+- **Caminho**: `data-otservbr-global/scripts/globalevents/dawnport_magic_effect.lua`
+- **Tipo**: GlobalEvent (onThink)
+- **Gatilho**: A cada 5 segundos
+- **Nome**: "DawnportMagicEffect"
+- **Tamanho**: ~20 linhas
+- **Intervalo**: 5000 ms (5 segundos)
+
+#### Funcionalidade Principal
+
+**Objetivo**: Enviar efeito visual de trovão em 8 posições específicas de Dawnport continuamente
+
+#### Posições Afetadas
+
+```lua
+local positions = {
+    { x = 32054, y = 31889, z = 5 },  -- Posição 1
+    { x = 32056, y = 31889, z = 5 },  -- Posição 2
+    { x = 32063, y = 31880, z = 5 },  -- Posição 3
+    { x = 32063, y = 31882, z = 5 },  -- Posição 4
+    { x = 32073, y = 31889, z = 5 },  -- Posição 5
+    { x = 32075, y = 31889, z = 5 },  -- Posição 6
+    { x = 32063, y = 31899, z = 5 },  -- Posição 7
+    { x = 32063, y = 31901, z = 5 },  -- Posição 8
+}
+```
+
+#### Estrutura
+
+| Campo | Valor |
+|-------|-------|
+| **Tipo de Evento** | onThink(interval) |
+| **Execução** | A cada 5 segundos |
+| **Quantidade de Posições** | 8 |
+| **Efeito Visual** | CONST_ME_THUNDER |
+| **Level Requerido** | Nenhum |
+| **Armazém** | Nenhum |
+
+#### Funcionamento
+
+```lua
+function dawnportMagicEffect.onThink(interval)
+    for i = 1, #positions do
+        Position(positions[i]):sendMagicEffect(CONST_ME_THUNDER)
+    end
+    return true
+end
+
+-- Configura intervalo de 5 segundos
+dawnportMagicEffect:interval(5000)
+```
+
+#### Efeito Visual
+
+- **Tipo**: CONST_ME_THUNDER (trovão)
+- **Frequência**: A cada 5 segundos
+- **Visibilidade**: Todos os players na área podem ver
+
+#### Caso de Uso
+
+Criar ambientação mágica/atmosférica em Dawnport com efeito visual de trovão em múltiplas posições simultaneamente.
+
+---
+
+## 💎 Online Tokens VIP
+
+Sistema de premiação de tokens por estar online.
+
+### **online_tokens.lua**
+- **Caminho**: `data-otservbr-global/scripts/globalevents/vip/online_tokens.lua`
+- **Tipo**: GlobalEvent (onThink)
+- **Gatilho**: A cada 60 segundos (configurável)
+- **Nome**: "GainTokenInterval"
+- **Tamanho**: ~70 linhas
+- **Status**: Desabilitado por padrão
+
+#### Configuração
+
+```lua
+local config = {
+    enabled = false,              -- Ativar/desativar sistema
+    storage = Storage.VipSystem.OnlineTokensGain,
+    checkDuplicateIps = false,    -- Evitar multi-accounting
+    tokenItemId = 14112,          -- Item ID do token (bar of gold)
+    interval = 60 * 1000,         -- Check a cada 60 segundos
+    tokensPerHour = {
+        free = 5,                 -- 5 tokens/hora para players normais
+        vip = 10,                 -- 10 tokens/hora para VIPs
+    },
+    awardOn = 5,                  -- Premia quando acumular 5+ tokens
+}
+```
+
+#### Funcionamento
+
+**Sistema de Acúmulo**:
+1. A cada intervalo, calcula tokens ganhos naquele período
+2. Armazena valor fracionário em storage (multiplicado por 10000000)
+3. Quando atinge `awardOn` (5+), converte para item e premia
+4. Reseta storage com valor restante
+
+**Cálculo**:
+```
+runsPerHour = 3600 / (interval / 1000)  -- Quantas checks por hora
+tokensPerRun = tokensPerHour / runsPerHour  -- Tokens por execução
+```
+
+#### Estrutura
+
+| Campo | Valor |
+|-------|-------|
+| **Tipo de Evento** | onThink(interval) |
+| **Execução** | A cada 60 segundos (padrão) |
+| **Verificação** | Player online + IP check |
+| **Item Recebido** | 14112 (Bar of Gold) |
+| **Storage Usado** | Storage.VipSystem.OnlineTokensGain |
+| **Exclusão** | Grupos > SENIORTUTOR (GMs) |
+| **Proteção** | Duplicate IP check (opcional) |
+
+#### Fluxo de Premiação
+
+```
+1. Check todos os players online
+2. Para cada player (exceto GMs):
+   ├─ Se duplicate IP check ativo: pula se IP já visto
+   ├─ Calcula tokens que ganha (free: 5/h ou vip: 10/h)
+   ├─ Acumula no storage
+   ├─ Se >= awardOn (5):
+   │  ├─ Converte para inteiro
+   │  ├─ Adiciona item ao player
+   │  ├─ Envia mensagem
+   │  └─ Reseta storage com resto
+   └─ Return true
+```
+
+#### Exemplo de Mensagem
+
+```
+"Congratulations [PlayerName]! You have received 5 tokens for being online."
+```
+
+---
+
+## 💰 Online Coins VIP
+
+Sistema de premiação de moedas Tibia por estar online.
+
+### **online_coins.lua**
+- **Caminho**: `data-otservbr-global/scripts/globalevents/vip/online_coins.lua`
+- **Tipo**: GlobalEvent (onThink)
+- **Gatilho**: A cada 60 segundos (configurável)
+- **Nome**: "GainCoinInterval"
+- **Tamanho**: ~70 linhas
+- **Status**: Desabilitado por padrão
+
+#### Configuração
+
+```lua
+local config = {
+    enabled = false,              -- Ativar/desativar sistema
+    storage = Storage.VipSystem.OnlineCoinsGain,
+    checkDuplicateIps = false,
+    interval = 60 * 1000,         -- Check a cada 60 segundos
+    coinsPerHour = {
+        free = 1,                 -- 1 moeda/hora para players normais
+        vip = 5,                  -- 5 moedas/hora para VIPs
+    },
+    awardOn = 5,                  -- Premia quando acumular 5+ moedas
+}
+```
+
+#### Funcionamento
+
+**Semelhante a Online Tokens**, mas:
+- Premia **Tibia Coins** (moeda premium do servidor)
+- Usa `player:addTibiaCoins()` em vez de `player:addItem()`
+- Taxas diferentes (1 e 5 coins/hora vs 5 e 10 tokens)
+
+#### Estrutura
+
+| Campo | Valor |
+|-------|-------|
+| **Tipo de Evento** | onThink(interval) |
+| **Execução** | A cada 60 segundos (padrão) |
+| **Recurso Premiado** | Tibia Coins (premium) |
+| **Storage Usado** | Storage.VipSystem.OnlineCoinsGain |
+| **Free Players** | 1 moeda/hora (desabilitável com coinsPerHour.free = 0) |
+| **VIP Players** | 5 moedas/hora |
+| **Exclusão** | Grupos > SENIORTUTOR (GMs) |
+
+#### Diferença com Tokens
+
+| Aspecto | Tokens | Coins |
+|--------|--------|-------|
+| **Item** | 14112 (Bar of Gold) | Tibia Coins (premium) |
+| **Taxa Free** | 5/hora | 1/hora |
+| **Taxa VIP** | 10/hora | 5/hora |
+| **Award On** | 5 | 5 |
+| **Método** | player:addItem() | player:addTibiaCoins() |
+
+---
+
+## 🧔 Rashid Spawn Event
+
+Sistema de spawning do NPC Rashid em cidades diferentes cada dia.
+
+### **rashid.lua**
+- **Caminho**: `data-otservbr-global/scripts/globalevents/spawn/rashid.lua`
+- **Tipo**: GlobalEvent (onStartup + onTime)
+- **Gatilho**: Ao iniciar + Todos os dias às 00:01
+- **Nomes**: "rashid" e "rashidSpawnOnTime"
+- **Tamanho**: ~60 linhas
+
+#### Posições por Dia da Semana
+
+```lua
+local positionByDay = {
+    [1] = { position = Position(32328, 31782, 6), city = "Carlin" },         -- Sunday
+    [2] = { position = Position(32207, 31155, 7), city = "Svarground" },     -- Monday
+    [3] = { position = Position(32300, 32837, 7), city = "Liberty Bay" },    -- Tuesday
+    [4] = { position = Position(32577, 32753, 7), city = "Port Hope" },      -- Wednesday
+    [5] = { position = Position(33066, 32879, 6), city = "Ankrahmun" },      -- Thursday
+    [6] = { position = Position(33235, 32483, 7), city = "Darashia" },       -- Friday
+    [7] = { position = Position(33166, 31810, 6), city = "Edron" },          -- Saturday
+}
+```
+
+#### Funcionamento Geral
+
+**2 GlobalEvents em 1 arquivo**:
+
+1. **"rashid"** (onStartup):
+   - Cria NPC Rashid na posição do dia atual
+   - Define master position
+   - Envia efeito CONST_ME_TELEPORT
+   - Loga informação e envia webhook
+
+2. **"rashidSpawnOnTime"** (onTime):
+   - Executa todos os dias às 00:01
+   - Teleporta Rashid para nova cidade
+   - Atualiza master position
+   - Envia efeito visual
+
+#### Estrutura
+
+| Campo | Valor |
+|-------|-------|
+| **Tipo de Evento** | onStartup + onTime |
+| **Execução onStartup** | Uma vez ao iniciar |
+| **Execução onTime** | 00:01 todos os dias |
+| **NPC** | "Rashid" (tem que existir no banco de dados) |
+| **Efeito Visual** | CONST_ME_TELEPORT (duplo) |
+| **Cidades** | 7 (uma para cada dia da semana) |
+| **Webhook** | Envia mensagem a announcementChannels |
+
+#### Fluxo de Execução (Startup)
+
+```
+1. Server startup
+   ↓
+2. os.date("*t").wday → get current day (1-7)
+   ↓
+3. positionByDay[today] → get config for day
+   ↓
+4. Game.createNpc("Rashid", position)
+   ↓
+5. rashid:setMasterPos(position)
+   ↓
+6. sendMagicEffect(CONST_ME_TELEPORT)
+   ↓
+7. Logger.info("Rashid arrived at `` `{city}` ``")
+   ↓
+8. addEvent(rashidwebhook, 60000) → send webhook after 1 min
+```
+
+#### Fluxo de Execução (00:01)
+
+```
+1. Daily at 00:01
+   ↓
+2. Get current day
+   ↓
+3. Find Npc("rashid")
+   ↓
+4. Teleport to new city position
+   ↓
+5. updateMasterPos
+   ↓
+6. Send CONST_ME_TELEPORT effect
+   ↓
+7. Send webhook message
+```
+
+#### Webhook Integration
+
+- **Channel**: announcementChannels["serverAnnouncements"]
+- **Format**: ":man_wearing_turban: Rashid arrived at `` `{city}` `` today."
+- **Delay**: 60000ms (1 minuto) após evento
+
+---
+
+## 🎭 Raids Schedule
+
+Sistema de execução de raids em horários agendados.
+
+### **raids_schedule.lua**
+- **Caminho**: `data-otservbr-global/scripts/globalevents/others/raids_schedule.lua`
+- **Tipo**: GlobalEvent (onThink)
+- **Gatilho**: A cada 60 segundos
+- **Nome**: "SpawnRaidsEvent"
+- **Tamanho**: ~50 linhas
+
+#### Agendamento de Raids
+
+```lua
+local raidSchedule = {
+    ["Tuesday"] = {
+        ["16:00"] = { raidName = "Midnight Panther" },
+    },
+    ["Wednesday"] = {
+        ["12:00"] = { raidName = "Draptor" },
+    },
+    ["Thursday"] = {
+        ["19:00"] = { raidName = "Undead Cavebear" },
+    },
+    ["Friday"] = {
+        ["06:00"] = { raidName = "Titanica" },
+    },
+    ["Saturday"] = {
+        ["20:00"] = { raidName = "Draptor" },
+    },
+    ["Sunday"] = {
+        ["15:00"] = { raidName = "Midnight Panther" },
+        ["13:00"] = { raidName = "Orc Backpack" },
+    },
+    ["31/10"] = {  -- Halloween
+        ["16:00"] = { raidName = "Halloween Hare" },
+    },
+}
+```
+
+#### Funcionamento
+
+**Sistema de Agendamento Duplo**:
+1. Verifica raid do dia da semana (Tuesday, Wednesday, etc)
+2. Verifica raid de data específica (DD/MM) - para eventos especiais
+3. Executa ambos os agendamentos se existirem
+
+**Proteção contra Execução Dupla**:
+- Flag `alreadyExecuted` previne que a mesma raid execute múltiplas vezes
+
+#### Estrutura
+
+| Campo | Valor |
+|-------|-------|
+| **Tipo de Evento** | onThink(interval) |
+| **Execução** | A cada 60 segundos |
+| **Tipos de Agendamento** | Day-of-week + Date-specific |
+| **Raids Agendadas** | 7+ raids em diferentes horários |
+| **Verificação de Horário** | getRealTime() contra agenda |
+| **Proteção Dupla** | Flag `alreadyExecuted` |
+
+#### Exemplo de Agendamento
+
+| Dia | Horário | Raid | Descrição |
+|-----|---------|------|-----------|
+| Tuesday | 16:00 | Midnight Panther | Boss raid |
+| Sunday | 13:00 | Orc Backpack | Loot raid |
+| Sunday | 15:00 | Midnight Panther | Boss raid |
+| 31/10 | 16:00 | Halloween Hare | Event especial |
+
+#### Fluxo de Checagem
+
+```
+1. Every 60 seconds:
+   ├─ Get current day of week
+   ├─ Get current date (DD/MM)
+   ├─ Check raidSchedule[day_of_week]
+   ├─ Check raidSchedule[date]
+   ├─ For each scheduled raid:
+   │  ├─ If time matches AND not executed:
+   │  │  ├─ Game.startRaid(raidName)
+   │  │  └─ Mark alreadyExecuted = true
+   │  └─ Return true
+```
+
+---
+
+## 🗺️ Map Attributes Loader
+
+Sistema de carregamento de atributos do mapa ao inicializar servidor.
+
+### **map_attributes_loader.lua**
+- **Caminho**: `data-otservbr-global/scripts/globalevents/others/map_attributes_loader.lua`
+- **Tipo**: GlobalEvent (onStartup)
+- **Gatilho**: Uma vez ao iniciar servidor
+- **Nome**: "Map Attributes Loader"
+- **Tamanho**: ~40 linhas
+
+#### Funcionalidade Principal
+
+**Objetivo**: Carregar todos os atributos do mapa (signs, books, actions, uniques, etc) ao inicializar
+
+#### O Que é Carregado
+
+```lua
+-- Ações de objetos do mapa
+loadLuaMapAction(ChestAction)       -- Baús
+loadLuaMapUnique(ChestUnique)
+loadLuaMapAction(CorpseAction)      -- Cadáveres
+loadLuaMapUnique(CorpseUnique)
+loadLuaMapAction(KeyDoorAction)     -- Portas com chave
+loadLuaMapAction(LevelDoorAction)   -- Portas com level
+loadLuaMapAction(QuestDoorAction)   -- Portas de quest
+loadLuaMapUnique(QuestDoorUnique)
+
+-- Itens gerais
+loadLuaMapAction(ItemAction)        -- Ações de items
+loadLuaMapUnique(ItemUnique)        -- Items únicos
+
+-- Objetos especiais
+loadLuaMapAction(ItemUnmovableAction)  -- Items imóveis
+loadLuaMapAction(LeverAction)          -- Alavancas
+loadLuaMapUnique(LeverUnique)
+loadLuaMapAction(TeleportAction)       -- Teleportes
+loadLuaMapUnique(TeleportUnique)
+loadLuaMapAction(TeleportItemAction)   -- Items teleporte
+loadLuaMapUnique(TeleportItemUnique)
+loadLuaMapAction(TileAction)           -- Ações de tiles
+loadLuaMapUnique(TileUnique)
+loadLuaMapAction(TilePickAction)       -- Tiles colheita
+
+-- Objetos decorativos
+loadLuaMapSign(SignTable)              -- Sinais/placas
+loadLuaMapBookDocument(BookDocumentTable) -- Livros
+
+-- Criação de itens
+CreateMapItem(CreateItemOnMap)         -- Criar items no mapa
+
+-- Quests
+updateKeysStorage(QuestKeysUpdate)     -- Atualizar armazenamento de chaves
+```
+
+#### Estrutura
+
+| Campo | Valor |
+|-------|-------|
+| **Tipo de Evento** | onStartup() |
+| **Execução** | Uma vez ao iniciar servidor |
+| **Ações Carregadas** | 17+ tipos diferentes |
+| **Banco de Dados** | Usa dados do mapa do servidor |
+| **Storages Reset** | Reseta todos os storages de startup |
+| **Habitats Ferumbras** | Reseta quests de Ferumbras Ascension |
+
+#### Funções Auxiliares
+
+```lua
+-- Reseta storages de startup
+function resetGlobalStorages()
+    for i = 1, #startupGlobalStorages do
+        Game.setStorageValue(startupGlobalStorages[i], 0)
+    end
+end
+
+-- Reseta habitats da quest de Ferumbras
+function resetFerumbrasAscendantQuestHabitats()
+    for i = 1, #Storage.Quest.U10_90.FerumbrasAscension.Habitats do
+        Game.setStorageValue(Storage.Quest.U10_90.FerumbrasAscension.Habitats[i], 0)
+    end
+end
+```
+
+#### Fluxo de Inicialização
+
+```
+1. Server startup
+   ↓
+2. mapAttributesLoader.onStartup()
+   ├─ Debug log: "Loading map attributes"
+   ├─ Load all map signs
+   ├─ Load all book documents
+   ├─ Load all actions and uniques
+   ├─ Create items on map
+   ├─ Update quest keys storage
+   ├─ Debug log: "Loaded all actions and uniques"
+   ├─ Reset global storages
+   └─ Reset Ferumbras habitats
+   ↓
+3. Server fully initialized
+```
+
+---
+
+## 🐴 Check Mount Event
+
+Sistema de verificação e remoção de cavalos alugados expirados.
+
+### **check_mount.lua**
+- **Caminho**: `data-otservbr-global/scripts/globalevents/others/check_mount.lua`
+- **Tipo**: GlobalEvent (onThink)
+- **Gatilho**: A cada 15 segundos
+- **Nome**: "rentedmounts"
+- **Tamanho**: ~35 linhas
+- **Intervalo**: 15000 ms (15 segundos)
+
+#### Montarias Verificadas
+
+```lua
+local mountIds = { 22, 25, 26 }  -- IDs de montarias alugáveis
+```
+
+#### Funcionamento
+
+**Sistema de Verificação de Aluguel**:
+1. A cada 15 segundos, verifica todos os players online
+2. Para cada player com montaria alugada:
+   - Verifica storage de tempo de aluguel (`Storage.Quest.U9_1.HorseStationWorldChange.Timer`)
+   - Se tempo expirou (`timer < os.time()`):
+     - Remove a montaria do outfit
+     - Remove todas as montarias por ID
+     - Reseta storage de timer
+     - Envia mensagem ao player
+
+#### Estrutura
+
+| Campo | Valor |
+|-------|-------|
+| **Tipo de Evento** | onThink(interval) |
+| **Execução** | A cada 15 segundos |
+| **Montarias** | 3 IDs (22, 25, 26) |
+| **Storage Usado** | Storage.Quest.U9_1.HorseStationWorldChange.Timer |
+| **Verificação** | Compara timer com os.time() |
+| **Remoção** | Remove outfit + removeMount() + storage reset |
+
+#### Fluxo de Verificação
+
+```
+1. Every 15 seconds:
+   └─ For each player:
+      ├─ Get Timer storage value
+      ├─ If Timer >= os.time() (tempo não expirou):
+      │  └─ Continue to next player
+      └─ If Timer < os.time() (expirou):
+         ├─ Get player outfit
+         ├─ Remove mount from outfit (if present)
+         ├─ setOutfit(updated_outfit)
+         ├─ For each mount ID:
+         │  └─ player:removeMount(mountId)
+         ├─ Set Timer storage = -1
+         └─ Send message: "Your horse contract expired..."
+```
+
+#### Mensagem ao Player
+
+```
+"Your contract with your horse expired and it returned back to the horse station."
+```
+
+#### Storage Details
+
+- **Path**: `Storage.Quest.U9_1.HorseStationWorldChange.Timer`
+- **Valor**: Unix timestamp (os.time())
+- **Quando Expirado**: storage value < os.time()
+- **Após Remoção**: storage = -1
+
+---
+
+## 📈 Comparação de GlobalEvents
+
+| Aspecto | Update | Dawnport | Online Tokens | Online Coins | Rashid | Raids | Map Loader | Check Mount |
+|--------|--------|----------|---------------|--------------|--------|-------|-----------|-------------|
+| **Tipo** | Startup | Think | Think | Think | Startup+Time | Think | Startup | Think |
+| **Intervalo** | - | 5s | 60s | 60s | - + daily | 60s | - | 15s |
+| **Função** | Reset posições | Efeito visual | Premia tokens | Premia coins | Spawn NPC | Raid schedule | Load mapa | Check mounts |
+| **Ativo padrão** | Sim | Sim | Não | Não | Sim | Sim | Sim | Sim |
+| **Tamanho** | ~30 | ~20 | ~70 | ~70 | ~60 | ~50 | ~40 | ~35 |
+
+---
+
+## 📝 Guia de Campos
+
+| Campo | Descrição |
+|-------|-----------|
+| **Caminho** | Localização do arquivo no repositório |
+| **Tipo** | Classificação (onStartup, onThink, onTime) |
+| **Gatilho** | Quando/com qual frequência executa |
+| **Intervalo** | Tempo em milissegundos (se onThink) |
+| **Função** | Descrição breve da funcionalidade |
+| **Storage** | Valores de armazenamento usados |
+| **Efeito** | Efeitos visuais (CONST_ME_*) aplicados |
+| **Configuração** | Parâmetros ajustáveis |
+
+---
+
+## 🔗 Documentação Relacionada
+
+- **Arquitetura GlobalEvents**: [Arquitetura_Scripts_Globalevents.mdx](#) - Como criar eventos globais
+- **Raids & Quests**: Para entender agendamentos de raids
+- **VIP System**: Para entender premiação de jogadores
+
+---
+
+**Última atualização**: February 22, 2026  
+**Próxima atualização**: Conforme novos scripts forem adicionados

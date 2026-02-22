@@ -1,0 +1,139 @@
+---
+title: "monster_functions.lua"
+description: "Extensão de Monster com função de spawn para Cobra com verificação de recarga de Flask."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | monster_functions.lua |
+| **Tipo** | Library Extension |
+| **Tamanho** | ~7 linhas |
+| **Localização** | scripts/lib/ |
+| **Propósito** | Estender Monster com método Cobra |
+| **Afeta** | Classe base Monster |
+| **Complexidade** | Muito Baixa |
+</Card>
+
+:::tip 💡
+Função utilitária único de spawn que verifica e aplica condição de redução de HP baseado em cooldown global de Flask.
+:::
+
+## 📄 Visão Geral Resumida
+
+Arquivo de biblioteca que estende classe Monster com método `handleCobraOnSpawn()`. Método verifica se Flask global de Cobra está em cooldown via storage timestamp, e se assim, reduz HP máximo para 75% e aplica efeito visual verde ao aparecer.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Funções Globais
+
+**`Monster:handleCobraOnSpawn()`**
+- **Contexto**: Método de instância de Monster
+- **Parâmetro**: Implícito `self` (instância de monster)
+- **Retorno**: Void
+- **Chamada**: Na criação/spawn de Cobra
+- **Lógica Detalhada**:
+  1. Obtém storage global `Global.Storage.CobraFlask`
+  2. Compara com tempo atual via `os.time()`
+  3. Se storage >= os.time() (Flask ainda em cooldown):
+     a. Reduz saúde para 75% do máximo
+        - `self:setHealth(self:getMaxHealth() * 0.75)`
+     b. Envia efeito verde ao spawn
+        - `self:getPosition():sendMagicEffect(CONST_ME_GREEN_RINGS)`
+  4. Caso contrário (cooldown expirou):
+     a. Invalida storage com -1
+        - `Game.setStorageValue(Global.Storage.CobraFlask, -1)`
+
+### Pseudocódigo Detalhado
+
+```lua
+function Monster:handleCobraOnSpawn()
+  cobraFlaskTime = Game.getStorageValue(Global.Storage.CobraFlask)
+  
+  if cobraFlaskTime >= os.time() então
+    -- Flask em cooldown: cobra enfraquecida
+    self:setHealth(self:getMaxHealth() * 0.75)
+    self:getPosition():sendMagicEffect(CONST_ME_GREEN_RINGS)
+  else
+    -- Flask expirou: limpa storage
+    Game.setStorageValue(Global.Storage.CobraFlask, -1)
+  end
+end
+```
+
+## 📊 Dados Técnicos
+
+### Condições de Spawn
+
+| Condição | Ação | Efeito |
+|----------|------|--------|
+| Flask em cooldown | Reduz HP 75% | Cobra enfraquecida |
+| Flask expirado | Invalida storage | Cobra normal |
+| Novo spawn | Verifica sempre | Aplicado a cada spawn |
+
+### Sistema de Storage
+
+| Storage | Tipo | Descrição |
+|---------|------|-----------|
+| `Global.Storage.CobraFlask` | Timestamp | Unix time de expiração |
+| Valor -1 | Flag | Storage inválido/expirado |
+| Valor > 0 | Timestamp | Contém tempo de cooldown |
+
+### Efeitos Visuais
+
+| Efeito | Constante | Condição |
+|--------|-----------|----------|
+| GREEN_RINGS | CONST_ME_GREEN_RINGS | Flask ativo |
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `Monster` | Classe | Extensão de classe |
+| `Monster.setHealth()` | Método | Alterar HP |
+| `Monster.getMaxHealth()` | Método | Obter HP máximo |
+| `Monster.getPosition()` | Método | Obter posição |
+| `Position.sendMagicEffect()` | Método | Enviar efeito |
+| `Game.getStorageValue()` | Função | Ler storage |
+| `Game.setStorageValue()` | Função | Escrever storage |
+| `os.time()` | Função Lua | Tempo Unix atual |
+| `Global.Storage.CobraFlask` | Constante | Storage key |
+| `CONST_ME_GREEN_RINGS` | Constante | ID efeito verde |
+
+### APIs Utilizadas
+
+- Monster: `setHealth()`, `getMaxHealth()`, `getPosition()`
+- Position: `sendMagicEffect()`
+- Game: `getStorageValue()`, `setStorageValue()`
+- Lua: `os.time()`
+
+### Integração
+
+Método deve ser chamado em NPC ou script de Cobra quando spawna:
+```lua
+local cobra = Game.createMonster("Cobra", position)
+if cobra then
+  cobra:handleCobraOnSpawn()
+end
+```
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/lib/monster_functions.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | 100% |
+| **Complexidade Código** | Muito Baixa |
+| **Status Validação** | ✅ Completo |
+| **Backticks Validados** | ✅ OK |

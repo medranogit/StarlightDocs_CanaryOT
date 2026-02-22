@@ -1,0 +1,230 @@
+---
+title: "register_actions.lua"
+description: "Biblioteca massiva de registro de ações genéricas para items, quests, destruíveis e transformações."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | register_actions.lua |
+| **Tipo** | Action Library |
+| **Tamanho** | ~1177 linhas |
+| **Localização** | scripts/lib/ |
+| **Propósito** | Registrar ações genéricas de items |
+| **Escopo** | Múltiplas quests e sistemas |
+| **Mapeamentos** | 50+ IDs e tabelas |
+| **Complexidade** | Muito Alta |
+</Card>
+
+:::tip 💡
+Arquivo consolidador que centraliza centenas de mapeamentos de items, quests e transformações em várias tabelas de lookup, evitando duplicação de lógica em scripts individuais.
+:::
+
+## 📄 Visão Geral Resumida
+
+Arquivo de biblioteca monolítico (1177 linhas) que registra ações genéricas aplicáveis a muitos items do servidor. Contém arrays de IDs de items destruíveis (43 tipos de buracos, 2 trituradores), configurações de quests específicas (8 cristais Secret Library, 80+ items cortáveis), funções locais para transformação/remoção de items, e implementação de evento `onDestroyItem` que processa cortes, queimadas, quests condicionales.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Configurações Principais (Arrays)
+
+**`holeId` (43 itens)**
+- IDs de buracos que podem ser preenchidos/interagidos
+- IDs: 294, 369, 370, 385, 394, 411... até 23364
+
+**`itemsGrinder` (2 itens)**
+- Mapa de items que podem ser triturados
+- Entrada: ID item → `{ item_id: resultado, effect: efeito }`
+- Itens: 675 (Sapphire dust), 16122 (Crystal dust)
+
+**`holes` (5 itens)**
+- IDs de buracos específicos: 593, 606, 608, 867, 21341
+
+**`jungleGrass` (3 itens)**
+- Ervas: 3696, 3702, 17153
+
+**`wildGrowth` (3 itens)**
+- Crescimento selvagem: 2130, 3635, 30224
+
+**`fruits` (16 itens)**
+- Frutas comestíveis: 3584-3596, 5096, 8011-8013
+
+**`lava` (48 posições)**
+- Array de posições específicas (32808-32814, 32333-32339, Z=11)
+- Zona de lava em Magma/Darama
+
+### Configurações Quest (Estruturadas)
+
+**`secret_library` table**
+- Quest U11_80: The Secret Library
+- Contém 8 cristais com storage keys e posições
+- Timer de esgotamento ("tsl_crystaltimer")
+- Items de recompensa (27867, 27868, 27869)
+
+**`oldTable` (4 posições)**
+- Posições antigas de respawn
+- Para migração de dados
+
+**`storage` (The Dream Courts Quest)**
+- Storage.Quest.U12_00.TheDreamCourts.TheSevenKeys.Lock
+
+### Funções Locais
+
+**`revertItem(position, itemId, transformId)`**
+- **Parâmetro**: posição, ID item original, ID transformação
+- **Ação**: Obtém item no tile e faz transformação
+- **Lógica**: Tile → getItemById → transform(new_id)
+
+**`removeRemains(toPosition)`**
+- **Parâmetro**: posição
+- **Ação**: Remove resíduos Item 3133
+- **Uso**: Limpeza pós-evento
+
+**`revertCask(position)`**
+- **Parâmetro**: posição
+- **Ação**: Transforma cask 3134 → 4848
+- **Efeito**: Envia CONST_ME_MAGIC_GREEN
+
+**`addFerumbrasAscendantReward(player, target, toPosition)`**
+- **Parâmetro**: jogador, item alvo, posição
+- **Ação**: Verifica se é recompensa Ferumbras (22172, AID 53803)
+- **Lógica**:
+  1. Valida item ID e action ID
+  2. Se jogador não tem recompensa (storage < 1)
+  3. Adiciona item 22170 ao jogador
+  4. Marca como recebido
+
+### Tabelas de Transformação
+
+**`cutItems` (80+ entradas)**
+- Mapa: Item_ID → Resultado_ID
+- Exemplos:
+  - 2291 → 3146 (árvore cortada)
+  - 2358 → 3138 (árvore cortada)
+  - 2524 → 3135 (árvore cortada)
+  - 25798 → 0 (removível)
+  - 25800 → 0 (removível)
+
+### Evento Principal
+
+**`onDestroyItem(player, item, fromPosition, target, toPosition, isHotkey)`**
+- **Parâmetro**: jogador, ferramenta, pos origem, item alvo, pos destino, hotkey flag
+- **Retorno**: boolean (processado sim/não)
+- **Validações**:
+  1. Target deve ser item
+  2. Target não pode ter UNIQUE_ID ou ACTION_ID
+  3. toPosition não pode ser CONTAINER_POSITION
+  4. Damage da ferramenta deve exceder limiar (10)
+  5. Chance roll baseada em ataque da ferramenta (1-80)
+- **Lógica Detalhada**:
+  1. Calcula destroy ID via `cutItems` ou ItemType
+  2. Se ID = 0 e não é removível (25798/25800): retorna false
+  3. Calcula watt da ferramenta
+  4. Roll de chance: `random <= watt`
+  5. Se sucesso:
+     - **Spider Cult**: Se egg 233 → incrementa storage e spawna Giant Spider
+     - **Container items**: Move items internos para posição final
+     - **Fluid**: Se tem fluid → cria vaso com fluid
+
+### Pseudocódigo Parcial
+
+```lua
+function onDestroyItem(player, item, fromPosition, target, toPosition, isHotkey)
+  -- Validações
+  if não target ou não target:isItem() então
+    retorna false
+  end
+  
+  if target:hasAttribute(UNIQUE_ID ou ACTION_ID) então
+    retorna false
+  end
+  
+  -- Calcula destroy ID
+  destroyId = cutItems[target.itemid] or ItemType(target.itemid):getDestroyId()
+  
+  -- Chance de sucesso
+  watt = ItemType(item.itemid):getAttack()
+  if math.random(1, 80) <= (watt ou 10) então
+    -- Aplica efeitos (Spider Cult, items container, fluids)
+  end
+  
+  retorna true
+end
+```
+
+## 📊 Dados Técnicos
+
+### Categorias de Items
+
+| Categoria | Quantidade | Exemplos |
+|-----------|-----------|----------|
+| Buracos | 43 | IDs 294-23364 |
+| Trituradores | 2 | 675, 16122 |
+| Cortáveis | 80+ | 2291, 2358, 2524, 6355 |
+| Frutas | 16 | 3584-3596, 5096, 8011-8013 |
+| Ervas | 6 | jungleGrass, wildGrowth |
+
+### Quests Afetadas
+
+| Quest | Nível | Tipo | Storage |
+|-------|-------|------|---------|
+| Secret Library | U11_80 | Cristais | 8 storages |
+| Dream Courts | U12_00 | Chaves | 1 storage |
+| Ferumbras Ascend. | U10_90 | Anel | 1 flag |
+| Spider Cult | U8_1 | Ovos | Stack counter |
+
+### Validações em onDestroyItem
+
+| Validação | Critério | Ação |
+|-----------|----------|------|
+| É Item | target:isItem() | Retorna false se não |
+| Sem UNIQUE_ID | hasAttribute() | Retorna false se tem |
+| Sem ACTION_ID | hasAttribute() | Retorna false se tem |
+| Não container | toPosition != container | Retorna false se é |
+| Dano suficiente | watt > 10 | Roll de chance |
+| Chance random | 1-80 | math.random() |
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `Player` | Classe | Referência jogador |
+| `Item` | Classe | Items alvo |
+| `Tile` | Classe | Localização items |
+| `ItemType` | Classe | Informações items |
+| `Position` | Classe | Coordenadas |
+| `math.random()` | Função | Roll de chance |
+| `Game.createMonster()` | Função | Spawn mobs |
+| `string.match()` | Função Lua | Regex matching |
+| `Storage.*` | Constantes | Chaves storage |
+| `Global.Storage.*` | Constantes | Storage globais |
+
+### APIs Utilizadas
+
+- Player: `addItem()`, `getStorageValue()`, `setStorageValue()`, `sendCancelMessage()`
+- Item: `isContainer()`, `getFluidType()`, `moveTo()`, `transform()`, `remove()`, `decay()`, `hasAttribute()`
+- Tile: `getItemById()`
+- ItemType: `getDestroyId()`, `getAttack()`
+- Game: `createItem()`, `createMonster()`
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/lib/register_actions.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | ~60% (arquivo massivo) |
+| **Linhas Totais** | 1177 |
+| **Complexidade Código** | Muito Alta |
+| **Status Validação** | ✅ Estrutura Completa |
+| **Backticks Validados** | ✅ OK |

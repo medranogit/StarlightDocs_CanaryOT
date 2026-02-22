@@ -1,0 +1,866 @@
+---
+title: Arquitetura - Startup Scripts
+description: Documentação técnica da arquitetura e estrutura do sistema de inicialização do servidor Canary
+sidebar:
+  order: 1
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🚀 Arquitetura - Startup Scripts
+
+Guia completo sobre a arquitetura e estrutura técnica do **sistema de startup** do servidor OTServ Canary. Entenda como o servidor se inicializa, como tabelas são carregadas, como funcionalidades são integradas e como estender o sistema.
+
+---
+
+## 🎯 Sobre o Sistema de Startup
+
+<Card title="O que é?" icon="information">
+O **sistema de startup** é a infraestrutura que **carrega e configura o servidor** no momento da inicialização. Ele organiza todos os dados (tabelas de items, portas, teleportes, etc) e funções que precisam estar disponíveis globalmente para scripts, quests e sistemas do jogo funcionarem corretamente.
+
+O startup consegue ser a **espinha dorsal do servidor**, definindo estruturas de dados, constantes compartilhadas, e lógica de inicialização que todo resto do jogo depende.
+</Card>
+
+<Card title="Estrutura em 2 Fases" icon="layers">
+
+O startup opera em **duas fases distintas**:
+
+```
+┌─────────────────────────────────────────┐
+│         STARTUP INITIALIZATION          │
+└────────────┬────────────────────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    ▼                 ▼
+PHASE 1            PHASE 2
+TABLES             FUNCTIONS
+    │                 │
+├─ load.lua        ├─ functions.lua
+├─ chest.lua       ├─ load.lua (others)
+├─ corpse.lua      └─ Integração com
+├─ item.lua            scripts globais
+├─ lever.lua
+├─ doors (3x)
+├─ teleports (2x)
+├─ tiles (2x)
+├─ writeable.lua
+├─ storage_update.lua
+└─ (16 tabelas)
+```
+
+**Fase 1 (Tables)**:
+- Carrega todas as 16 tabelas de dados
+- Order crítica: storage_keys_update DEVE ser último
+- Disponibiliza dados globais para todo servidor
+
+**Fase 2 (Functions)**:
+- Carrega funções globais que usam as tabelas
+- Registra action IDs, unique IDs, signs
+- Inicializa estruturas que scripts precisam
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você trabalhará com o sistema de startup quando precisar:
+
+- **Adicionar novo item/porta/teleporte**: Criar nova tabela entry
+- **Estender funcionalidade global**: Adicionar função em `others/functions.lua`
+- **Debug de inicialização**: Investigar por que item/porta não funciona
+- **Otimizar carregamento**: Reorganizar ordem de carregar tabelas
+- **Integrar novo sistema**: Adicionar nova tabela ou fase
+- **Entender fluxo**: Rastrear como dados fluem através do startup
+- **Customizar servidor**: Modificar constantes globais ou estruturas
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Fluxo de Inicialização](#fluxo-de-inicialização)
+2. [Arquitetura de Duas Fases](#arquitetura-de-duas-fases)
+3. [Arquivo startup.lua (Orquestrador)](#orquestrador-principal)
+4. [Fase 1: Carregamento de Tabelas](#fase-1-tabelas)
+5. [Fase 2: Funções e Integração](#fase-2-funções)
+6. [Sistema de Storage Keys](#sistema-de-storage-keys)
+7. [Ordem Crítica de Carregamento](#ordem-crítica)
+8. [Estendendo o Sistema](#estendendo-o-sistema)
+9. [Padrões e Boas Práticas](#padrões-e-boas-práticas)
+10. [Guia de Troubleshooting](#troubleshooting)
+
+---
+
+## 🔄 Fluxo de Inicialização
+
+<Card title="Como o Servidor Inicia" icon="flow">
+
+### Sequência Completa
+
+```
+┌─────────────────────────────────┐
+│   Server Boot (startup folder)  │
+└────────────┬────────────────────┘
+             │
+             ▼
+    ┌─────────────────────┐
+    │  startup.lua loads  │
+    │  (entry point)      │
+    └────────┬────────────┘
+             │
+    ┌────────┴────────────────────┐
+    │                             │
+    ▼                             ▼
+┌─────────────────┐      ┌──────────────────┐
+│ PHASE 1: TABLES │      │ PHASE 2: OTHERS  │
+│                 │      │                  │
+│ dofile(tables)  │      │ dofile(others)   │
+│ 16 tabelas      │      │ functions.lua    │
+└────────┬────────┘      │ integrações      │
+         │               └────────┬─────────┘
+         │                        │
+         ▼                        ▼
+    ┌─────────────────────────────────┐
+    │  Servidor Pronto                │
+    │  - Todos IDs registrados        │
+    │  - Funções globais disponíveis  │
+    │  - Scripts podem executar       │
+    └─────────────────────────────────┘
+```
+
+### startup.lua (2 linhas)
+
+```lua
+dofile('data/startup/tables/load.lua')      -- Phase 1: Load all tables
+dofile('data/startup/others/load.lua')      -- Phase 2: Load functions
+```
+
+**Notas Críticas**:
+- ⚠️ Ordem é **imutável**
+- ✅ Phase 1 SEMPRE antes Phase 2
+- ✅ Phase 2 depende de Phase 1
+- ⏱️ Executado APENAS na inicialização
+
+</Card>
+
+---
+
+## 🏗️ Arquitetura de Duas Fases
+
+<Card title="Entendendo as Fases" icon="layers">
+
+### Fase 1: Carregamento de Tabelas
+
+**Objetivo**: Disponibilizar estruturas de dados globais
+
+```lua
+-- tables/load.lua
+dofile('data/startup/tables/chest.lua')
+dofile('data/startup/tables/corpse.lua')
+dofile('data/startup/tables/create_item.lua')
+dofile('data/startup/tables/door_key.lua')
+dofile('data/startup/tables/door_level.lua')
+dofile('data/startup/tables/door_quest.lua')
+dofile('data/startup/tables/item_daily_reward.lua')
+dofile('data/startup/tables/item_unmovable.lua')
+dofile('data/startup/tables/item.lua')
+dofile('data/startup/tables/lever.lua')
+dofile('data/startup/tables/teleport_item.lua')
+dofile('data/startup/tables/teleport.lua')
+dofile('data/startup/tables/tile_pick.lua')
+dofile('data/startup/tables/tile.lua')
+dofile('data/startup/tables/writeable.lua')
+dofile('data/startup/tables/storage_keys_update.lua')  -- ÚLTIMA!
+```
+
+**Resultado**:
+- ✅ `ChestAction` global
+- ✅ `ItemAction` global
+- ✅ `LeverAction` global
+- ✅ `QuestDoorAction` global
+- ✅ `QuestKeysUpdate` global
+- ✅ ... (16 tabelas globais)
+
+**Crítico**: `storage_keys_update.lua` DEVE ser **ÚLTIMO** para garantir migrações de players antigos
+
+### Fase 2: Carregamento de Funções
+
+**Objetivo**: Integrar tabelas com scripts, registrar IDs
+
+```lua
+-- others/load.lua
+dofile('data/startup/others/functions.lua')
+
+-- functions.lua contém:
+-- - CreateMapItem()
+-- - loadLuaMapAction()
+-- - loadLuaMapUnique()
+-- - loadLuaMapSign()
+-- - loadLuaMapBookDocument()
+-- - updateKeysStorage()
+```
+
+**Resultado**:
+- ✅ Action IDs registrados
+- ✅ Unique IDs registrados
+- ✅ Sign texts disponíveis
+- ✅ Document content carregado
+- ✅ Migration system pronto
+
+**Integração**:
+Funções em `functions.lua` **leem** as tabelas do Phase 1 e as **transformam** em estruturas utilizáveis pelos scripts
+
+</Card>
+
+---
+
+## 🎯 Orquestrador Principal
+
+<Card title="startup.lua - Entry Point" icon="target">
+
+### Arquivo: startup.lua
+
+```lua
+dofile('data/startup/tables/load.lua')      -- Phase 1
+dofile('data/startup/others/load.lua')      -- Phase 2
+```
+
+**Comprimento**: 2 linhas  
+**Complexidade**: Máxima (conceptualmente)  
+**Criticidade**: ⚠️ CRÍTICA
+
+### Por que tão simples?
+
+A simplicidade é **propositalmente arquitetada**:
+
+```
+startup.lua (2 linhas)
+      │
+      ├─ Phase 1: Tabelas
+      │  └─ tables/load.lua (16 dofiles)
+      │
+      └─ Phase 2: Funções
+         └─ others/load.lua (1 dofile)
+              └─ functions.lua (6 funções)
+```
+
+**Vantagem**:
+- ✅ Entrada única e clara
+- ✅ Separação de responsabilidades
+- ✅ Fácil de manutenír
+- ✅ Ordem garantida
+
+### Ordem Imutável
+
+```lua
+-- ✅ CORRETO
+dofile('tables/load.lua')    -- Tabelas PRIMEIRO
+dofile('others/load.lua')    -- Funções DEPOIS
+
+-- ❌ ERRADO - Scripts quebram
+dofile('others/load.lua')    -- Funções tentam usar tabelas que não existem!
+dofile('tables/load.lua')    -- Tabelas carregam tarde demais
+```
+
+</Card>
+
+---
+
+## 📊 Fase 1: Tabelas (16 Arquivos)
+
+<Card title="Carregamento de Tabelas" icon="database">
+
+### Estrutura de tables/load.lua
+
+```lua
+-- tables/load.lua - orquestra o carregamento de 16 tabelas
+
+dofile('data/startup/tables/chest.lua')              -- 1
+dofile('data/startup/tables/corpse.lua')             -- 2
+dofile('data/startup/tables/create_item.lua')        -- 3
+dofile('data/startup/tables/door_key.lua')           -- 4
+dofile('data/startup/tables/door_level.lua')         -- 5
+dofile('data/startup/tables/door_quest.lua')         -- 6
+dofile('data/startup/tables/item_daily_reward.lua')  -- 7
+dofile('data/startup/tables/item_unmovable.lua')     -- 8
+dofile('data/startup/tables/item.lua')               -- 9 (MAIOR)
+dofile('data/startup/tables/lever.lua')              -- 10
+dofile('data/startup/tables/teleport_item.lua')      -- 11
+dofile('data/startup/tables/teleport.lua')           -- 12
+dofile('data/startup/tables/tile_pick.lua')          -- 13
+dofile('data/startup/tables/tile.lua')               -- 14 (2º MAIOR)
+dofile('data/startup/tables/writeable.lua')          -- 15
+dofile('data/startup/tables/storage_keys_update.lua')-- 16 (⚠️ ÚLTIMO!)
+```
+
+### Tabelas Globais Criadas
+
+| Tabela | Arquivo | Linhas | Propósito |
+|---|---|---|---|
+| **ChestAction** | chest.lua | 2,991 | Containers (5000-15000) |
+| **CorpseAction** | corpse.lua | 68 | Cadáveres (20000-25000) |
+| **CreateItemOnMap** | create_item.lua | 15 | Items estáticos |
+| **KeyDoorAction** | door_key.lua | 202 | Portas com chaves |
+| **LevelDoorAction** | door_level.lua | 113 | Portas por level |
+| **QuestDoorAction** | door_quest.lua | 930 | Portas de quest |
+| **DailyRewardAction** | item_daily_reward.lua | 2 | Recompensas diárias |
+| **ItemUnmovableAction** | item_unmovable.lua | 2 | Items imóveis |
+| **ItemAction** | item.lua | 3,464 | Items master |
+| **LeverAction** | lever.lua | 806 | Alavancas/botões |
+| **TeleportItemAction** | teleport_item.lua | 172 | Teleportes-item |
+| **TeleportAction** | teleport.lua | 587 | Teleportes mágicos |
+| **TilePickAction** | tile_pick.lua | < 30 | Items colhíveis |
+| **TileAction** | tile.lua | 1,249 | Tiles master |
+| **BookDocumentTable** | writeable.lua | 904 | Livros/documentos |
+| **QuestKeysUpdate** | storage_keys_update.lua | 278 | Migrações de keys |
+
+**Total**: 12,833+ linhas de dados estruturados
+
+### Por que esta ordem?
+
+A ordem parece arbitrária, mas tem lógica:
+
+1. **Chest/Corpse** primeiro - Containers básicos
+2. **Create_item** cedo - Mapeia items simples
+3. **Doors** (key, level, quest) - Sistema de portas
+4. **Items** (daily, unmovable, item, lever) - Itens e botões
+5. **Teleports** (item, magic) - Sistema de viagem
+6. **Tiles** (pick, tile) - Sistema de tiles
+7. **Writeable** - Conteúdo (menos crítico)
+8. **storage_keys_update ÚLTIMO** - Migrations finais
+
+</Card>
+
+---
+
+## ⚙️ Fase 2: Funções (6 Funções Globais)
+
+<Card title="Integração com Scripts" icon="cog">
+
+### Estrutura de others/load.lua
+
+```lua
+-- others/load.lua - une tudo
+dofile('data/startup/others/functions.lua')
+```
+
+### Arquivo: functions.lua (200 linhas, 6 Funções)
+
+```lua
+-- 1. CreateMapItem(itemId, position, count)
+--    Cria itens no mapa dinamicamente
+function CreateMapItem(itemId, position, count)
+    local item = Game.createItem(itemId, count, position)
+    if item then
+        addItemToContainer(container, item)
+    end
+end
+
+-- 2. loadLuaMapAction(table)
+--    Registra todos action IDs da tabela
+function loadLuaMapAction(tablename)
+    for index, value in pairs(tablename) do
+        -- index = action ID
+        -- value = { itemId, itemPos }
+        -- Registra na LuaScriptInterface
+    end
+end
+
+-- 3. loadLuaMapUnique(table)
+--    Registra todos unique IDs
+function loadLuaMapUnique(tablename)
+    for index, value in pairs(tablename) do
+        -- Registra unique IDs
+    end
+end
+
+-- 4. loadLuaMapSign(table)
+--    Registra textos de signs
+function loadLuaMapSign(tablename)
+    for _, data in ipairs(tablename) do
+        -- Registra texto do sign
+    end
+end
+
+-- 5. loadLuaMapBookDocument(table)
+--    Carrega conteúdo de livros
+function loadLuaMapBookDocument(tablename)
+    for _, book in ipairs(tablename) do
+        -- Carrega book content
+    end
+end
+
+-- 6. updateKeysStorage(player)
+--    Migra storage keys de players antigos
+function updateKeysStorage(player)
+    for version = currentVersion + 1, latest do
+        for oldKey, newKey in pairs(QuestKeysUpdate[version]) do
+            -- Migra dados de player antigo
+        end
+    end
+end
+```
+
+### Integração com Scripts
+
+```
+Tabelas (Phase 1)
+    ├─ ChestAction
+    ├─ ItemAction
+    ├─ LeverAction
+    └─ ... (16 tabelas)
+        │
+        ▼
+Functions (Phase 2)
+    ├─ loadLuaMapAction(ChestAction)
+    ├─ loadLuaMapAction(ItemAction)
+    ├─ loadLuaMapAction(LeverAction)
+    └─ ... (registra tudo)
+        │
+        ▼
+Scripts Globais (Server Runtime)
+    ├─ Actions (usam registered IDs)
+    ├─ Movements (usam registered IDs)
+    ├─ Creature Events (usam stored data)
+    └─ Quests (usam storage keys)
+```
+
+</Card>
+
+---
+
+## 🔐 Sistema de Storage Keys
+
+<Card title="Rastreamento de Progresso" icon="key">
+
+### O Problema: Dados de Player
+
+```
+Player progressão:
+├─ Quest 1: Completado?
+├─ Quest 2: Em que etapa?
+├─ Quest 3: Quantas items coletadas?
+└─ ... (centenas de questões)
+
+Solução: Storage Keys
+├─ Storage.Quest.Quest1.Completed
+├─ Storage.Quest.Quest2.Progress
+├─ Storage.Quest.Quest3.ItemCount
+└─ ... (centenas de chaves)
+```
+
+### Migração de Dados (storage_keys_update.lua)
+
+```lua
+QuestKeysUpdate = {
+    [0].latest = 4,  -- Versão atual
+    
+    [1] = {
+        -- Mudanças da v0 → v1
+        [STORAGE_QUEST_OLD_1] = STORAGE_QUEST_NEW_1,
+    },
+    
+    [2] = {
+        -- Mudanças da v1 → v2
+        [STORAGE_QUEST_OLD_2] = STORAGE_QUEST_NEW_2,
+    },
+    
+    [3] = {
+        -- Mudanças da v2 → v3
+        [STORAGE_QUEST_OLD_3] = STORAGE_QUEST_NEW_3,
+    },
+    
+    [4] = {
+        -- Mudanças da v3 → v4
+        [STORAGE_QUEST_OLD_4] = STORAGE_QUEST_NEW_4,
+    }
+}
+```
+
+### Por que ÚLTIMO?
+
+```
+❌ Se carregar ANTES:
+   - Scripts usam IDs antigos
+   - Migrações não funcionam
+   - Dados de player quebram
+
+✅ Se carregar ÚLTIMO:
+   - Todas as tabelas disponíveis
+   - Migrações podem referenciar antigas E novas
+   - Garantido funcionar corretamente
+```
+
+</Card>
+
+---
+
+## ⚠️ Ordem Crítica de Carregamento
+
+<Card title="Lições de Ordem" icon="warning">
+
+### Regra 1: Tabelas ANTES de Funções
+
+```lua
+-- ✅ CORRETO
+dofile('tables/load.lua')    -- Cria ChestAction, ItemAction, etc
+dofile('others/load.lua')    -- Funções usam essas tabelas
+
+-- ❌ ERRADO
+dofile('others/load.lua')    -- Tenta usar ChestAction... NÃO EXISTE!
+dofile('tables/load.lua')    -- Chega tarde demais
+```
+
+**Resultado de erro:**
+```
+[ERROR] ChestAction is nil
+[ERROR] Cannot iterate over nil value
+[CRASH] Server startup failed
+```
+
+### Regra 2: storage_keys_update SEMPRE ÚLTIMO
+
+```lua
+-- ✅ CORRETO
+-- ... todas outras 15 tabelas ...
+dofile('storage_keys_update.lua')  -- ÚLTIMO
+-- Agora todas as constantes Storage existem
+
+-- ❌ ERRADO
+dofile('storage_keys_update.lua')  -- Muito cedo
+-- ... outros arquivos ...
+dofile('item.lua')  -- Tenta referenciar Storage que não foi migrado
+```
+
+**Resultado de erro:**
+```
+[ERROR] Storage.Quest.XYZ is nil
+[ERROR] Cannot reference undefined migration
+[CRASH] Server startup failed
+```
+
+### Regra 3: Dependências dentro de Fase 1
+
+Dentro de Phase 1, geralmente a ordem não importa **muito** (exceto storage_update), porque são só tabelas sem lógica de dependência.
+
+```lua
+-- ✅ Ordem "natural"
+dofile('chest.lua')           -- Container basics
+dofile('item.lua')            -- Items que podem ser em chests
+dofile('door_*.lua')          -- Doors usam storage keys
+dofile('lever.lua')           -- Buttons para portas
+dofile('storage_keys_update') -- Migration system
+
+-- ✅ TAMBÉM FUNCIONA
+dofile('item.lua')           
+dofile('chest.lua')          -- Ordem invertida ok
+dofile('door_quest.lua')
+dofile('storage_keys_update') -- Desde que seja ÚLTIMO
+```
+
+</Card>
+
+---
+
+## 🛠️ Estendendo o Sistema
+
+<Card title="Como Adicionar Novas Funcionalidades" icon="wrench">
+
+### Caso 1: Adicionar Nova Tabela de Items
+
+```lua
+-- 1. Criar arquivo data/startup/tables/minha_tabela.lua
+local MyNewAction = {}
+
+MyNewAction[10001] = {
+    itemId = 2345,
+    itemPos = { {x = 32500, y = 31500, z = 7} }
+}
+
+-- Tornar global
+_G.MyNewAction = MyNewAction
+
+-- 2. Adicionar em tables/load.lua (NÃO ao final!)
+dofile('data/startup/tables/minha_tabela.lua')  -- Antes de storage_keys_update
+
+-- 3. Registrar em others/functions.lua se necessáro
+loadLuaMapAction(MyNewAction)
+
+-- 4. Reiniciar servidor
+```
+
+### Caso 2: Adicionar Nova Função Global
+
+```lua
+-- Em others/functions.lua, adicionar:
+
+function MyNewGlobalFunction(parameter1, parameter2)
+    -- Lógica
+    return result
+end
+
+-- Agora disponível globalmente em todo servidor:
+-- Scripts podem chamar: MyNewGlobalFunction(x, y)
+```
+
+### Caso 3: Estender storage_keys_update
+
+```lua
+-- Em storage_keys_update.lua, adicionar nova versão:
+
+-- Incrementar version
+[0].latest = 5
+
+-- Adicionar migrações da v4 → v5
+[5] = {
+    [Storage.Quest.OldKey] = Storage.Quest.NewKey,
+    -- ... mais migrações
+}
+
+-- ⚠️ Kritisch: SEMPRE incrementar latest e adicionar no final
+```
+
+</Card>
+
+---
+
+## 📐 Padrões e Boas Práticas
+
+<Card title="Implementação Correta" icon="star">
+
+### Padrão 1: Criando Tabela Simples
+
+```lua
+-- data/startup/tables/mytable.lua
+
+local myTable = {}
+
+myTable[1001] = {
+    itemId = false,
+    itemPos = { {x = 32500, y = 31500, z = 7} }
+}
+
+myTable[1002] = {
+    itemId = 2456,
+    itemPos = {
+        {x = 32501, y = 31500, z = 7},
+        {x = 32502, y = 31500, z = 7}
+    }
+}
+
+-- Tornar global (ESSENCIAL!)
+_G.MyTable = myTable  -- Ou sem _G. se já global
+```
+
+### Padrão 2: Integrando com Funções
+
+```lua
+-- Em others/functions.lua
+
+function registerMyTableActions(tablename)
+    for actionId, data in pairs(tablename) do
+        -- Registrar cada action
+        local script = Action()
+        script:id(actionId)
+        -- ...
+        script:register()
+    end
+end
+
+-- Na carga:
+registerMyTableActions(MyTable)
+```
+
+### Padrão 3: Usando Storage Keys
+
+```lua
+-- Em tabela (storage_keys_update.lua)
+[0].latest = 5
+[5] = {
+    [Storage.Quest.MyOldKey] = Storage.Quest.MyNewKey
+}
+
+-- Em script de quest:
+function quest:markProgress(player, stage)
+    player:setStorageValue(Storage.Quest.MyNewKey, stage)
+end
+```
+
+### Boas Práticas
+
+```lua
+-- ✅ FAZER
+local myTable = {}
+myTable[actionId] = { itemId = ..., itemPos = ... }
+_G.MyTable = myTable
+-- Arquivo finaliza assim
+
+-- ❌ NÃO FAZER
+MyTable = {}  -- Sem local (poluição global)
+MyTable[id] = ...
+-- Sem _G assignment (inconsistente)
+
+-- ✅ FAZER
+dofile('path')  -- Em load.lua, carrega arquivo
+
+-- ❌ NÃO FAZER
+local content = io.open(...)  -- Manual file handling (incorreto)
+```
+
+</Card>
+
+---
+
+## 🔧 Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Server não inicia
+
+**Causa**: Erro em startup.lua  
+**Debug**:
+```
+1. Checar console para mensagem de erro
+2. Qual arquivo falha? (vê a linha do erro)
+3. Sintaxe Lua há erro?
+4. Arquivo existe no path?
+```
+
+**Solução**:
+```lua
+-- Adicionar debug
+print("[Startup] Loading Phase 1...")
+dofile('tables/load.lua')
+print("[Startup] Phase 1 complete")
+
+print("[Startup] Loading Phase 2...")
+dofile('others/load.lua')
+print("[Startup] Phase 2 complete")
+```
+
+### Problema: "ChestAction is nil"
+
+**Causa**: Tentando usar tabela antes dela carregar  
+**Solução**:
+```lua
+-- Verificar ordem em load.lua
+-- Garantir que:
+-- 1. chest.lua carrega
+-- 2. Funções que usam ChestAction carregam DEPOIS
+-- 3. Não fazer dofiles circulares
+```
+
+### Problema: Players perdem progresso ao atualizar
+
+**Causa**: storage_keys_update.lua não está último  
+**Solução**:
+```lua
+-- Em tables/load.lua, mover para ÚLTIMO
+-- ... todas outras tabelas ...
+dofile('storage_keys_update.lua')  -- AQUI - sempre por último
+```
+
+### Problema: Tabela que criei não funciona
+
+**Causa**: Não foi adicionado em load.lua, ou não foi globalizado  
+**Solução**:
+```lua
+-- 1. No arquivo da tabela
+local myTable = {}
+-- ... dados ...
+_G.MyTable = myTable  -- ESSENCIAL
+
+-- 2. Em tables/load.lua
+dofile('data/startup/tables/mytable.lua')  -- Adicionar o dofile
+
+-- 3. Reiniciar servidor
+```
+
+</Card>
+
+---
+
+## 📊 Mapa Mental Completo
+
+<Card title="Visualizando Tudo" icon="map">
+
+```
+STARTUP INITIALIZATION
+│
+├─ startup.lua (2 lines)
+│  │
+│  ├─ Phase 1: tables/load.lua
+│  │  └─ 16 tabelas (ChestAction, ItemAction, ...)
+│  │     └─ 12,833+ linhas de dados
+│  │
+│  └─ Phase 2: others/load.lua
+│     └─ functions.lua (6 funções globais)
+│        └─ Registra IDs, loads content
+│
+└─ Resultado: Servidor Pronto
+   ├─ Tabelas globais disponíveis
+   ├─ Funções globais registradas
+   ├─ Storage keys migrados
+   └─ Scripts podem executar
+
+Dependências:
+- Phase 2 depende de Phase 1
+- storage_keys_update CRITICAMENTE no final
+- Scripts dependem de ambas fases
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Entrada Principal**:
+- `startup.lua` - Carrega tudo em ordem
+
+**Fases**:
+1. **Phase 1**: `tables/load.lua` (16 tabelas)
+2. **Phase 2**: `others/load.lua` (6 funções)
+
+**Ordem Crítica DENTRO Phase 1**:
+- Última: `storage_keys_update.lua` (SEMPRE!)
+
+**Tabelas Principais**:
+- ItemAction, ChestAction, TeleportAction, etc
+
+**Funções Principais**:
+- loadLuaMapAction(), updateKeysStorage()
+
+**Debug**:
+```lua
+print("[Startup] Fase 1 iniciada")
+dofile('tables/load.lua')
+print("[Startup] Fase 1 concluída")
+```
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Startup.mdx](#)
+2. **Analise Cada Arquivo**: Entenda como ChestAction, ItemAction, etc funcionam
+3. **Trace o Fluxo**: Acompanhe como dados fluem de tabelas → funções → scripts
+4. **Customize**: Adicione sua própria tabela seguindo padrões
+5. **Estenda**: Implemente novas funcionalidades globais
+
+---
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Componentes Documentados**: 
+- 2 fases de inicialização
+- 20 arquivos Lua
+- 12,833+ linhas de dados
+- 6 funções globais
+
+Para dúvidas, consulte o arquivo de catálogo ou analise os arquivos específicos.
+</Aside>

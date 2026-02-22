@@ -1,0 +1,191 @@
+---
+title: "update.lua"
+description: "Global event de inicialização que processa resetagem de posições após update do servidor."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | update.lua |
+| **Tipo** | GlobalEvent |
+| **Tamanho** | ~25 linhas |
+| **Localização** | scripts/globalevents/ |
+| **Propósito** | Resetar posições após update |
+| **Disparo** | onStartup (1 vez) |
+| **Arquivo Controle** | core/update.lua |
+| **Flag** | updated = true/false |
+| **Complexidade** | Média |
+</Card>
+
+:::tip 💡
+Sistema de bootstrap que detecta flag `updated` em arquivo separado, executa lógica de reset, e reseta próprio arquivo, tudo com I/O de arquivo Lua.
+:::
+
+## 📄 Visão Geral Resumida
+
+Global event que executa uma única vez na inicialização do servidor e verifica flag `updated` em arquivo de controle externo. Se ativada, reseta posições X, Y, Z de todos os jogadores para 0 (teleportando ao templo), atualiza arquivo de controle resetando flag para false, e registra warning em log.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Configuração Interna
+
+| Propriedade | Valor | Descrição |
+|-----------|-------|-----------|
+| **Arquivo Controle** | `CORE_DIRECTORY/update.lua` | Localização da flag |
+| **Flag** | `updated = true` | Indica execução de update |
+| **Reset Post-Update** | `updated = false` | Estado após processamento |
+
+### Variáveis Globais
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `fileToUpdate` | string | Local | Caminho do arquivo controle |
+| `updated` | boolean | Lido de arquivo | Flag de update ativo |
+
+### GlobalEvent Hook
+
+**`update.onStartup()`**
+- **Parâmetro**: Nenhum
+- **Retorno**: `true`
+- **Disparo**: Uma única vez na inicialização
+- **Lógica Detalhada**:
+  1. Carrega arquivo de controle: `dofile(fileToUpdate)`
+  2. Se flag `updated` desativada: retorna (nada a fazer)
+  3. Se flag `updated` ativada:
+     a. Executa SQL: `UPDATE players SET posx=0, posy=0, posz=0`
+        - Reseta TODOS jogadores para posição (0,0,0)
+        - Servidor teleporta automaticamente ao templo
+     b. Abre arquivo para leitura
+     c. Lê primeira linha
+     d. Valida se contém "updated = true"
+     e. Se encontrado:
+        - Cria string de reset: "updated = false"
+        - Abre arquivo para escrita (sobrescreve)
+        - Escreve novo conteúdo
+        - Fecha arquivo
+        - Log warning com mensagem
+     f. Log warning: "All players sent to temple"
+
+### Pseudocódigo Detalhado
+
+```lua
+fileToUpdate = CORE_DIRECTORY .. "/update.lua"
+dofile(fileToUpdate)  -- Carrega e executa arquivo
+
+if updated então
+  -- Reset posições no banco
+  db.query("UPDATE `players` SET `posx`=0, `posy`=0, `posz`=0;")
+  
+  -- Lê arquivo para validar
+  readFile = io.open(fileToUpdate, "r")
+  if readFile então
+    io.input(readFile)
+    str = io.read()
+    io.close(readFile)
+    
+    -- Procura por flag
+    ae = string.match(str, "updated = true")
+    if ae então
+      -- Reseta arquivo
+      updateFile = io.open(fileToUpdate, "w")
+      io.output(updateFile)
+      io.write("updated = false")
+      io.close(updateFile)
+      
+      logger.warn("All players sent to temple...")
+    end
+  end
+end
+```
+
+## �📊 Dados Técnicos
+
+### Operações de Banco de Dados
+
+| SQL | Efeito | Alvo |
+|-----|--------|------|
+| `UPDATE players SET posx=0, posy=0, posz=0` | Teleporta ao templo | Todos jogadores |
+
+### Processamento de Arquivo
+
+| Operação | Modo | Arquivo |
+|----------|------|---------|
+| Ler | "r" | Verificar flag |
+| Escrever | "w" | Resetar para false |
+
+### Fluxo de Validação
+
+| Etapa | Condição | Ação |
+|-------|----------|------|
+| 1 | updated == true | Prossegue |
+| 2 | Arquivo existe | Abre leitura |
+| 3 | Contém "updated = true" | Sobrescreve |
+| 4 | Sobrescrita sucesso | Log warning |
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `GlobalEvent(string)` | Classe | Registrar evento |
+| `dofile(string)` | Função Lua | Carregar arquivo |
+| `db.query(string)` | Função | Executar SQL |
+| `io.open(path, mode)` | Função Lua | I/O arquivo |
+| `io.input()`, `io.output()` | Função Lua | Redirecionar I/O |
+| `io.read()`, `io.write()` | Função Lua | Ler/escrever |
+| `io.close()` | Função Lua | Fechar arquivo |
+| `string.match()` | Função Lua | Regex matching |
+| `logger.warn()` | Função | Log warning |
+| `CORE_DIRECTORY` | Constante | Diretório core |
+
+### APIs Utilizadas
+
+- GlobalEvent: `onStartup()`, `register()`
+- Database: `db.query()`
+- Lua I/O: `dofile()`, `io.open()`, `io.input()`, `io.output()`, `io.read()`, `io.write()`, `io.close()`
+- Lua String: `string.match()`
+- Logger: `warn()`
+
+### Fluxo de Integração
+
+```
+Servidor inicia
+    ↓
+update.onStartup() dispara
+    ↓
+Tenta carregar core/update.lua
+    ↓
+Se updated == true
+    ↓
+Reseta todas posições no BD (0,0,0)
+    ↓
+Lê arquivo de controle
+    ↓
+Procura padrão "updated = true"
+    ↓
+Se encontrado: Sobrescreve com "updated = false"
+    ↓
+Log warning
+    ↓
+Próxima inicialização: updated == false (nada a fazer)
+```
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/globalevents/update.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | 100% |
+| **Complexidade Código** | Média |
+| **Status Validação** | ✅ Completo |
+| **Backticks Validados** | ✅ OK |

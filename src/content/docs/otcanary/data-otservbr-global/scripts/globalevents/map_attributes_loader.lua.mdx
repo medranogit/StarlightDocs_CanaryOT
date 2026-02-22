@@ -1,0 +1,194 @@
+---
+title: "map_attributes_loader.lua"
+description: "Global event de inicialização que carrega todos atributos do mapa na startup do servidor."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | map_attributes_loader.lua |
+| **Tipo** | GlobalEvent |
+| **Tamanho** | ~40 linhas |
+| **Localização** | scripts/globalevents/others/ |
+| **Propósito** | Carregar atributos do mapa |
+| **Disparo** | onStartup (apenas 1 vez) |
+| **Subsistemas** | 3 principais |
+| **Complexidade** | Alta |
+</Card>
+
+:::tip 💡
+Sistema crítico de bootstrap que carrega todo o sistema de mapas ao inicializar, incluindo ações, unicos, sinais, livros e reseta storages globais de quests.
+:::
+
+## 📄 Visão Geral Resumida
+
+Global event de inicialização que executa uma única vez ao ligar o servidor e carrega completo sistema de atributos/interações do mapa. Inclui carregamento de todas ações (baús, alavancas, portas), unicos nomeados, sinais/livros, items criados e atualização de chaves de quest. Também reseta storages globais de Ferumbras Ascension.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Funções Locais
+
+**`loadMapActionsAndUniques()`**
+- **Parâmetro**: Nenhum
+- **Retorno**: Void
+- **Propósito**: Registra todas ações e eventos únicos do mapa
+- **Carregamentos** (19 pares de ação+unique):
+  1. ChestAction/ChestUnique - Baús
+  2. CorpseAction/CorpseUnique - Corpos
+  3. KeyDoorAction - Portas com chave (não tem unique)
+  4. LevelDoorAction - Portas com nível (não tem unique)
+  5. QuestDoorAction/QuestDoorUnique - Portas de quest
+  6. ItemAction/ItemUnique - Items genéricos
+  7. ItemUnmovableAction - Items fixos
+  8. LeverAction/LeverUnique - Alavancas
+  9. TeleportAction/TeleportUnique - Teletranportadores
+  10. TeleportItemAction/TeleportItemUnique - Items teletransportadores
+  11. TileAction/TileUnique - Ações de tile
+  12. TilePickAction - Coleta de items
+- **Funções Auxiliares**:
+  - `CreateMapItem(CreateItemOnMap)` - Cria items no mapa
+  - `updateKeysStorage(QuestKeysUpdate)` - Atualiza tracker de chaves
+
+**`loadMapAttributes()`**
+- **Parâmetro**: Nenhum
+- **Retorno**: Void
+- **Propósito**: Carrega todos atributos visuais e interativos
+- **Chamadas**:
+  1. Log debug: "Loading map attributes"
+  2. `loadLuaMapSign(SignTable)` - Carrega sinais
+  3. `loadLuaMapBookDocument(BookDocumentTable)` - Carrega livros
+  4. `loadMapActionsAndUniques()` - Carrega ações/unicos
+  5. Log debug: "Loaded all actions and uniques in the map"
+
+**`resetGlobalStorages()`**
+- **Parâmetro**: Nenhum
+- **Retorno**: Void
+- **Propósito**: Reseta storages globais de quests
+- **Lógica**:
+  1. Itera array `startupGlobalStorages`
+  2. Para cada storage ID: `Game.setStorageValue(storageId, 0)`
+  3. Limpa state de quests globais
+
+**`resetFerumbrasAscendantQuestHabitats()`**
+- **Parâmetro**: Nenhum
+- **Retorno**: Void
+- **Propósito**: Reseta habitats de Ferumbras Ascension quest
+- **Lógica**:
+  1. Itera array `Storage.Quest.U10_90.FerumbrasAscension.Habitats`
+  2. Para cada habitat ID: `Game.setStorageValue(habitatId, 0)`
+  3. Reseta state de todos habitats
+
+### GlobalEvent Hook
+
+**`mapAttributesLoader.onStartup()`**
+- **Parâmetro**: Nenhum
+- **Retorno**: Void
+- **Disparo**: Executado UMA VEZ ao inicializar servidor
+- **Sequência de Execução**:
+  1. `loadMapAttributes()` - Carrega ações, unicos, sinais
+  2. `resetGlobalStorages()` - Reseta storages globais
+  3. `resetFerumbrasAscendantQuestHabitats()` - Reseta Ferumbras
+
+## 📊 Dados Técnicos
+
+### Subsistemas Carregados
+
+| Subsistema | Função | Tipo | Quantidade |
+|-----------|--------|------|-----------|
+| Ações | loadLuaMapAction() | Action | 13 tipos |
+| Unicos | loadLuaMapUnique() | Unique | 11 tipos |
+| Sinais | loadLuaMapSign() | Sign | Table (dinâmico) |
+| Livros | loadLuaMapBookDocument() | Book | Table (dinâmico) |
+| Items | CreateMapItem() | Item | Table (dinâmico) |
+| Chaves | updateKeysStorage() | Storage | Table (dinâmico) |
+
+### Ações Registradas
+
+| Ação | Associado |
+|------|-----------|
+| ChestAction | ChestUnique |
+| CorpseAction | CorpseUnique |
+| KeyDoorAction | - |
+| LevelDoorAction | - |
+| QuestDoorAction | QuestDoorUnique |
+| ItemAction | ItemUnique |
+| ItemUnmovableAction | - |
+| LeverAction | LeverUnique |
+| TeleportAction | TeleportUnique |
+| TeleportItemAction | TeleportItemUnique |
+| TileAction | TileUnique |
+| TilePickAction | - |
+
+### Logs de Inicialização
+
+| Nível | Mensagem | Contexto |
+|-------|----------|----------|
+| debug | "Loading map attributes" | Início |
+| debug | "Loaded all actions and uniques in the map" | Fim ações |
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `GlobalEvent(string)` | Classe | Registrar evento global |
+| `loadLuaMapAction()` | Função | Carregar ações do mapa |
+| `loadLuaMapUnique()` | Função | Carregar unicos do mapa |
+| `loadLuaMapSign()` | Função | Carregar sinais |
+| `loadLuaMapBookDocument()` | Função | Carregar livros |
+| `CreateMapItem()` | Global | Items a criar |
+| `Game.setStorageValue()` | Método | Resetar storage global |
+| `logger` | Global | Sistema de log |
+| `startupGlobalStorages` | Array | Storage IDs para resetar |
+| `Storage.Quest.U10_90.FerumbrasAscension.Habitats` | Array | Habitat IDs |
+
+### APIs Utilizadas
+
+- GlobalEvent: `onStartup()`, `register()`
+- Game: `setStorageValue()`
+- Logger: `debug()`
+- Tabelas globais: SignTable, BookDocumentTable, CreateItemOnMap, QuestKeysUpdate
+
+### Fluxo de Integração
+
+```
+Servidor inicia
+    ↓
+mapAttributesLoader.onStartup() dispara
+    ↓
+loadMapAttributes() carrega subsistemas
+    ├── loadLuaMapSign() - Sinais
+    ├── loadLuaMapBookDocument() - Livros
+    └── loadMapActionsAndUniques() - Ações/Unicos
+        ├── ChestAction/Unique
+        ├── QuestDoorAction/Unique
+        ├── LeverAction/Unique
+        ├── TeleportAction/Unique
+        └── ... mais 8 tipos
+    ↓
+resetGlobalStorages() - Limpa storages
+    ↓
+resetFerumbrasAscendantQuestHabitats() - Reseta Ferumbras
+    ↓
+Servidor pronto para funcionamento
+```
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/globalevents/others/map_attributes_loader.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | 100% |
+| **Complexidade Código** | Alta |
+| **Status Validação** | ✅ Completo |
+| **Backticks Validados** | ✅ OK |

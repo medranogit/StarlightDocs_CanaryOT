@@ -1,0 +1,1173 @@
+---
+title: Arquitetura - Creature Scripts
+description: Documentação técnica da arquitetura e estrutura dos scripts Creature do servidor Canary
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🧟 Arquitetura - Creature Scripts
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts **Creature** do servidor OTServ Canary. Entenda como implementar comportamentos personalizados para criaturas, habilidades especiais de bosses e mecânicas de recompensas.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/creaturescripts/` contém scripts **Lua** que implementam **comportamentos e eventos específicos de criaturas** - sejam players ou monsters. Cada creature script adiciona funcionalidades únicas como habilidades de boss, recompensas ao login, immunidades especiais, curações automáticas, etc. Creature scripts são perfeitos para customizar comportamentos de criaturas, desde monstros especiais até sistemas de recompensa para players.
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Boss Habilities**: Comportamentos especiais de chefes (curações, ataques, fases)
+- **Login Rewards**: Recompensas e notificações ao player fazer login
+- **Auto-Complete Systems**: Auto-marcar quests como completas para players
+- **Creature Immunities**: Proteções especiais contra certos tipos de dano
+- **Health Change Events**: Reações quando criatura recebe/cura dano
+- **Think Events**: Lógica periódica executada constantemente
+- **Death Events**: Comportamentos customizados ao morrer
+- **Target Events**: Reações quando se torna alvo de ataque
+- **Quest Markers**: Auto-marcar múltiplas quests para novo player
+- **Boss Phases**: Diferentes comportamentos baseado em HP
+</Card>
+
+<Card title="Estrutura da Pasta" icon="list">
+A pasta `scripts/creaturescripts/` é organizada por **tipo de creature/funcionalidade**:
+
+```
+creaturescripts/
+├── monster/
+│   ├── gaz_haragoth_heal.lua            (Boss heal ability)
+│   └── grand_master_oberon_immunity.lua (Boss immunity)
+└── customs/
+    ├── reward_exercise.lua  (Login reward notification)
+    └── freequests.lua       (Auto-complete quests)
+```
+
+**Padrão de Organização**: 
+- `monster/` - Comportamentos específicos de monsters/bosses
+- `customs/` - Features customizadas do servidor
+
+**Total**: 4 scripts documentados, cobrendo boss abilities, login rewards, e quest completion.
+
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Tipos de Creature Events](#tipos-de-creature-events)
+3. [Padrões de Implementação](#padrões-de-implementação)
+4. [Boss Mechanics](#boss-mechanics)
+5. [Player Login Events](#player-login-events)
+6. [Exemplos Práticos](#exemplos-práticos)
+7. [Criando um Creature Script](#criando-um-creature-script)
+8. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="Entendendo Creature Scripts" icon="document">
+
+Um **Creature Script** é um script que:
+- **Registra um evento de criatura** (onThink, onLogin, onHealthChange, etc)
+- **Executa logic customizado** quando evento dispara
+- **Baseado em CreatureEvent API** do servidor
+- **Pode afetar players ou monsters** dependendo do registro
+- **Tem acesso ao objeto creature** para modificar estado/comportamento
+
+### Ciclo de Vida Básico
+
+```lua
+-- 1. Criar CreatureEvent
+local myEvent = CreatureEvent("NomeUnico")
+
+-- 2. Definir callback
+function myEvent.callback(creature, ...)
+    -- creature é o objeto da criatura que dispara evento
+    return true  -- ou false para cancelar
+end
+
+-- 3. Registrar
+myEvent:register()
+```
+
+### Categorias de Creature Events
+
+```lua
+-- Tipo 1: Think Events (Periódico)
+local thinkEvent = CreatureEvent("MyThink")
+function thinkEvent.onThink(creature)
+    -- Executado periodicamente (padrão 1000ms)
+    -- Perfeito para: Regeneração, fase changes, hacks
+end
+
+-- Tipo 2: Login/Logout Events
+local loginEvent = CreatureEvent("MyLogin")
+function loginEvent.onLogin(player)
+    -- Executado quando player faz login
+    -- Perfeito para: Rewards, notificações, quest sync
+end
+
+-- Tipo 3: Health Change Events
+local damageEvent = CreatureEvent("MyDamage")
+function damageEvent.onHealthChange(creature, attacker, primaryDamage, primaryType, secondaryDamage, secondaryType, origin)
+    -- Executado quando recebe/cura dano
+    -- Perfeito para: Immunidades, counter-attacks, efeitos
+end
+
+-- Tipo 4: Death Events
+local deathEvent = CreatureEvent("MyDeath")
+function deathEvent.onDeath(creature, corpse, killer, mostDamageKiller, unjustified, mostDamageUnjustified)
+    -- Executado quando morre
+    -- Perfeito para: Spawns, loot customizado, mensagens
+end
+
+-- Tipo 5: Target Events
+local targetEvent = CreatureEvent("MyTarget")
+function targetEvent.onTargetCombat(creature, target)
+    -- Executado quando torna-se alvo
+    -- Perfeito para: Ataque especial, fuga, fase change
+end
+
+-- Tipo 6: Outfit/Mode Change
+local outfitEvent = CreatureEvent("MyOutfit")
+function outfitEvent.onChangeOutfit(creature, outfit)
+    -- Executado ao mudar aparência
+    -- Perfeito para: Transformações, efeitos visuais
+end
+```
+
+### Pattern Padrão
+
+```lua
+-- Padrão simples
+local myEvent = CreatureEvent("EventName")
+
+function myEvent.eventType(creature, additionalParams...)
+    -- Validação
+    if not creature then return false end
+    
+    -- Lógica principal
+    -- ...
+    
+    -- Feedback
+    return true  -- event suceeded, false = cancelado
+end
+
+myEvent:register()
+```
+
+### Registro Seletivo
+
+```lua
+-- Alguns eventos permitem registrar em criaturas específicas
+
+local thinkEvent = CreatureEvent("SpecificMonster")
+function thinkEvent.onThink(creature)
+    -- Executado só para uma criatura
+    return true
+end
+
+-- Registra só para um monster específico
+thinkEvent:register(creature)  -- Creature object
+
+-- Ou registra global (todos)
+thinkEvent:register()
+```
+
+</Card>
+
+---
+
+## 🎪 Tipos de Creature Events
+
+<Card title="Eventos Comuns e Casos de Uso" icon="layers">
+
+### Evento 1: onThink (Periódico)
+
+```lua
+-- Executado a cada intervalo (padrão 1000ms para mobs)
+
+local event = CreatureEvent("MonsterThink")
+
+function event.onThink(creature)
+    -- Checa alguma condição periodicamente
+    if creature:isMonster() then
+        local hp = (creature:getHealth() / creature:getMaxHealth()) * 100
+        
+        if hp < 25 then
+            creature:say("Almost dead!", TALKTYPE_MONSTER_YELL)
+            -- Executar phase 2
+        end
+    end
+    
+    return true
+end
+
+event:register()
+```
+
+**Use onThink para**:
+- Regeneração customizada
+- Fases de boss (baseado em HP)
+- Lógica periódica (a cada X segundos)
+- Curações automáticas
+- Comportamentos contínuos
+
+### Evento 2: onLogin (Ao fazer login)
+
+```lua
+-- Executado quando player faz login
+
+local event = CreatureEvent("PlayerLogin")
+
+function event.onLogin(player)
+    if not player then
+        return false
+    end
+    
+    -- Executar uma única vez ao login
+    player:sendTextMessage(MESSAGE_LOGIN, "Welcome back!")
+    
+    return true
+end
+
+event:register()
+```
+
+**Use onLogin para**:
+- Recompensas diárias
+- Notificações de rewards
+- Quest auto-sync
+- Status checks
+- Primeira vez setup
+
+### Evento 3: onHealthChange (Dano/Cura)
+
+```lua
+-- Executado ao receber ou causar dano
+
+local event = CreatureEvent("DamageReaction")
+
+function event.onHealthChange(creature, attacker, primaryDamage, primaryType, 
+                               secondaryDamage, secondaryType, origin)
+    if not creature:isMonster() then
+        return true
+    end
+    
+    -- Reage ao dano
+    if primaryType == COMBAT_PHYSICALDAMAGE then
+        creature:getPosition():sendMagicEffect(CONST_ME_EXPLOSIONSKULL)
+    end
+    
+    return true  -- Aceita dano completamente
+end
+
+event:register()
+```
+
+**Use onHealthChange para**:
+- Immunidades (modificar dano)
+- Counter-attacks (retaliar)
+- Efeitos visuais
+- Phase changes (baseado em dano)
+- Reflexão de dano
+
+### Evento 4: onDeath (Morte)
+
+```lua
+-- Executado quando criatura morre
+
+local event = CreatureEvent("DeathEvent")
+
+function event.onDeath(creature, corpse, killer, mostDamageKiller, 
+                       unjustified, mostDamageUnjustified)
+    if not creature:isMonster() then
+        return true
+    end
+    
+    -- Spawn summons
+    Game.createMonster("Minion", creature:getPosition(), true, false)
+    
+    -- Mensagem customizada
+    creature:getPosition():sendMagicEffect(CONST_ME_MAGIC_RED)
+    
+    return true
+end
+
+event:register()
+```
+
+**Use onDeath para**:
+- Spawns de summons
+- Loot customizado
+- Despawns automáticos
+- Efeitos finais
+- Achievements
+
+### Evento 5: onTargetCombat (Alvo)
+
+```lua
+-- Executado quando torna-se alvo de combate
+
+local event = CreatureEvent("TargetResponse")
+
+function event.onTargetCombat(creature, target)
+    if not creature ~ target then
+        return false
+    end
+    
+    -- Reage ao ser atacado
+    if creature:isMonster() then
+        creature:say("You dare attack me?!", TALKTYPE_MONSTER_YELL)
+    end
+    
+    return true
+end
+
+event:register()
+```
+
+**Use onTargetCombat para**:
+- Fuga automática
+- Chamada de reforços
+- Fase change
+- Ataque especializado
+
+### Evento 6: onChangeOutfit (Aparência)
+
+```lua
+-- Executado ao mudar aparência (forma, roupa, etc)
+
+local event = CreatureEvent("TransformEvent")
+
+function event.onChangeOutfit(creature, outfit)
+    if not creature:isPlayer() then
+        return false
+    end
+    
+    -- Bloqueia certos outfits
+    if outfit.lookTypeEx == RESTRICTED_OUTFIT then
+        return false  -- Cancela mudança
+    end
+    
+    return true  -- Permite mudança
+end
+
+event:register()
+```
+
+**Use onChangeOutfit para**:
+- Bloquear transformações
+- Triggerar efeitos
+- Validar outfits
+- Limitações customizadas
+
+</Card>
+
+---
+
+## 🏗️ Padrões de Implementação
+
+<Card title="Padrões Avançados para Creature Scripts" icon="wrench">
+
+### Padrão 1: Boss Ability (Health-Based Trigger)
+
+```lua
+-- Boss executa habilidade especial em certo HP%
+
+local bossAbility = CreatureEvent("BossAbility")
+
+function bossAbility.onThink(creature)
+    if not creature:isMonster() or creature:getName() ~= "Boss Name" then
+        return true
+    end
+    
+    local hp = (creature:getHealth() / creature:getMaxHealth()) * 100
+    
+    -- Phase 1: Normal
+    if hp > 50 then
+        return true
+    end
+    
+    -- Phase 2: Desperate (heal, special attack)
+    if hp > 25 and not creature:getCondition(CONDITION_REGENERATION, CONDITIONID_DEFAULT, 9999) then
+        local condition = Condition(CONDITION_REGENERATION, CONDITIONID_DEFAULT)
+        condition:setParameter(CONDITION_PARAM_SUBID, 9999)
+        condition:setParameter(CONDITION_PARAM_HEALTHGAIN, 500)
+        condition:setParameter(CONDITION_PARAM_HEALTHTICKS, 500)
+        creature:addCondition(condition)
+        creature:say("I won't lose!", TALKTYPE_MONSTER_YELL)
+    end
+    
+    return true
+end
+
+bossAbility:register()
+```
+
+### Padrão 2: Login Reward Notification
+
+```lua
+-- Notificar player ao login sobre rewards pendentes
+
+local rewardNotify = CreatureEvent("RewardNotify")
+
+function rewardNotify.onLogin(player)
+    if not player then
+        return false
+    end
+    
+    -- Verificar se elegível
+    if configManager.getBoolean(configKeys.TOGGLE_REWARD) then
+        local storageKey = Storage.RewardStatus
+        if player:getStorageValue(storageKey) == 1 then
+            player:sendTextMessage(MESSAGE_LOGIN, "You have a reward waiting!")
+        end
+    end
+    
+    return true
+end
+
+rewardNotify:register()
+```
+
+### Padrão 3: Auto-Complete Quests (Multiple)
+
+```lua
+-- Auto-marcar múltiplas quests como completas
+
+local autoQuests = CreatureEvent("AutoQuests")
+
+local questList = {
+    { storage = Storage.Quest.Quest1, value = 1 },
+    { storage = Storage.Quest.Quest2, value = 2 },
+    { storage = Storage.Quest.Quest3, value = 3 },
+}
+
+function autoQuests.onLogin(player)
+    if not player then
+        return false
+    end
+    
+    for _, quest in ipairs(questList) do
+        if player:getStorageValue(quest.storage) < quest.value then
+            player:setStorageValue(quest.storage, quest.value)
+        end
+    end
+    
+    return true
+end
+
+autoQuests:register()
+```
+
+### Padrão 4: Immunity (Selective Damage)
+
+```lua
+-- Imunizar contra certos tipos de dano
+
+local immunity = CreatureEvent("SelectiveImmunity")
+
+function immunity.onHealthChange(creature, attacker, primaryDamage, primaryType,
+                                  secondaryDamage, secondaryType, origin)
+    if not creature:isMonster() or creature:getName() ~= "ImmmuneMonster" then
+        return true
+    end
+    
+    -- Imune a fogo e gelo
+    if primaryType == COMBAT_FIREDAMAGE or primaryType == COMBAT_ICEDAMAGE then
+        return false  -- Cancela dano completamente
+    end
+    
+    -- Reduz physical damage
+    if primaryType == COMBAT_PHYSICALDAMAGE then
+        return true  -- Aceita dano normal
+    end
+    
+    return true
+end
+
+immunity:register()
+```
+
+### Padrão 5: Counter-Attack (Retaliation)
+
+```lua
+-- Retaliar com efeito ao receber dano
+
+local counterattack = CreatureEvent("Counterattack")
+
+function counterattack.onHealthChange(creature, attacker, primaryDamage, primaryType,
+                                       secondaryDamage, secondaryType, origin)
+    if not creature:isMonster() or not attacker then
+        return true
+    end
+    
+    -- Sempre que recebe dano
+    if primaryDamage > 0 then
+        -- Envia efeito visual
+        creature:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+        
+        -- Contra-ataque
+        if attacker:isPlayer() then
+            local damage = math.random(100, 200)
+            attacker:addHealth(-damage)
+        end
+    end
+    
+    return true
+end
+
+counterattack:register()
+```
+
+### Padrão 6: Conditional Registration
+
+```lua
+-- Registrar evento só se config permitir
+
+local conditionalEvent = CreatureEvent("ConditionalFeature")
+
+function conditionalEvent.onLogin(player)
+    -- Feature logic
+    player:sendTextMessage(MESSAGE_LOGIN, "Special feature active!")
+    return true
+end
+
+-- Registra SÓ se config estiver ligado
+if configManager.getBoolean(configKeys.FEATURE_ENABLED) then
+    conditionalEvent:register()
+end
+```
+
+</Card>
+
+---
+
+## 💪 Boss Mechanics
+
+<Card title="Implementando Comportamentos de Boss" icon="zap">
+
+### Mechanic 1: Automated Healing
+
+```lua
+-- Boss cura automaticamente em certo HP
+
+local healingBoss = CreatureEvent("HealingBoss")
+
+function healingBoss.onThink(creature)
+    if not creature:isMonster() or creature:getName() ~= "Healing Boss" then
+        return true
+    end
+    
+    local hp = (creature:getHealth() / creature:getMaxHealth()) * 100
+    local conditionId = 88888
+    
+    -- Cura automática quando HP < 20%
+    if hp < 20 and not creature:getCondition(CONDITION_REGENERATION, CONDITIONID_DEFAULT, conditionId) then
+        -- Cria condição de regeneração
+        local condition = Condition(CONDITION_REGENERATION, CONDITIONID_DEFAULT)
+        condition:setParameter(CONDITION_PARAM_SUBID, conditionId)
+        condition:setParameter(CONDITION_PARAM_TICKS, 7000)  -- 7 segundos
+        condition:setParameter(CONDITION_PARAM_HEALTHGAIN, 0.01)  -- % de HP por tick
+        condition:setParameter(CONDITION_PARAM_HEALTHTICKS, 7000)
+        
+        creature:addCondition(condition)
+        creature:say("I won't allow it!", TALKTYPE_MONSTER_YELL)
+        
+        -- Cura grande após delay
+        addEvent(function(cid)
+            local c = Creature(cid)
+            if c then
+                c:addHealth(100000)
+                c:getPosition():sendMagicEffect(CONST_ME_MAGIC_BLUE)
+                c:say("Feel my power!", TALKTYPE_MONSTER_YELL)
+            end
+        end, 7000, creature:getId())
+    end
+    
+    return true
+end
+
+healingBoss:register()
+```
+
+### Mechanic 2: Phase Changes
+
+```lua
+-- Boss muda comportamento por fase de HP
+
+local phaseBoss = CreatureEvent("PhaseBoss")
+
+function phaseBoss.onThink(creature)
+    if not creature:isMonster() then
+        return true
+    end
+    
+    local hp = (creature:getHealth() / creature:getMaxHealth()) * 100
+    local currentPhase = creature:getStorageValue(STORAGE_BOSS_PHASE) or 1
+    
+    -- Phase 1: HP > 75% (normal)
+    if hp > 75 then
+        if currentPhase ~= 1 then
+            creature:setStorageValue(STORAGE_BOSS_PHASE, 1)
+            creature:say("Phase 1!!", TALKTYPE_MONSTER_YELL)
+        end
+    end
+    
+    -- Phase 2: HP 75%-50% (angry)
+    elseif hp > 50 then
+        if currentPhase ~= 2 then
+            creature:setStorageValue(STORAGE_BOSS_PHASE, 2)
+            creature:say("PHASE 2!! PREPARE!!", TALKTYPE_MONSTER_YELL)
+            -- Summon adds
+            Game.createMonster("Minion", creature:getPosition())
+        end
+    end
+    
+    -- Phase 3: HP 50%-25%
+    elseif hp > 25 then
+        if currentPhase ~= 3 then
+            creature:setStorageValue(STORAGE_BOSS_PHASE, 3)
+            creature:say("ARRRGH!! FINAL FORM!!", TALKTYPE_MONSTER_YELL)
+            -- Remove immunity, gain speed
+            creature:removeCondition(CONDITION_DRUNKENNESS)
+        end
+    end
+    
+    -- Phase 4: HP < 25% (desperate)
+    else
+        if currentPhase ~= 4 then
+            creature:setStorageValue(STORAGE_BOSS_PHASE, 4)
+            creature:say("NOOOOOO!!", TALKTYPE_MONSTER_YELL)
+            -- Ultimate attack incoming
+        end
+    end
+    
+    return true
+end
+
+phaseBoss:register()
+```
+
+### Mechanic 3: Protective Shield
+
+```lua
+-- Boss gosta efeito especial ao receber dano
+
+local shieldBoss = CreatureEvent("ShieldBoss")
+
+function shieldBoss.onHealthChange(creature, attacker, primaryDamage, primaryType,
+                                    secondaryDamage, secondaryType, origin)
+    if not creature:isMonster() or creature:getName() ~= "Shield Boss" then
+        return true
+    end
+    
+    -- Envia efeito ao receber dano
+    if primaryDamage > 0 then
+        creature:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+        
+        -- Algumas vezes nega dano
+        if math.random(1, 100) <= 30 then  -- 30% chance
+            creature:say("Your attack failed!", TALKTYPE_MONSTER_YELL)
+            return false  -- Cancela dano
+        end
+    end
+    
+    return true
+end
+
+shieldBoss:register()
+```
+
+</Card>
+
+---
+
+## 👤 Player Login Events
+
+<Card title="Implementando Lógica de Login" icon="user">
+
+### Login Mechanic 1: Welcome Notification
+
+```lua
+-- Simples mensagem de boas-vindas
+
+local loginWelcome = CreatureEvent("LoginWelcome")
+
+function loginWelcome.onLogin(player)
+    if not player then
+        return false
+    end
+    
+    player:sendTextMessage(MESSAGE_LOGIN, "Welcome to " .. SERVER_NAME .. "!")
+    
+    return true
+end
+
+loginWelcome:register()
+```
+
+### Login Mechanic 2: Quest Completion Check
+
+```lua
+-- Verifica e completa quests automáticas
+
+local freeQuestsLogin = CreatureEvent("FreeQuestsLogin")
+
+local questsData = {
+    { storage = Storage.Quest.Quest1, required = 1 },
+    { storage = Storage.Quest.Quest2, required = 2 },
+    { storage = Storage.Quest.Quest3, required = 5 },
+}
+
+function freeQuestsLogin.onLogin(player)
+    if not player then
+        return false
+    end
+    
+    for _, questInfo in ipairs(questsData) do
+        if player:getStorageValue(questInfo.storage) < questInfo.required then
+            player:setStorageValue(questInfo.storage, questInfo.required)
+            player:sendTextMessage(MESSAGE_LOGIN, "Quest auto-completed!")
+        end
+    end
+    
+    return true
+end
+
+freeQuestsLogin:register()
+```
+
+### Login Mechanic 3: Reward Eligibility
+
+```lua
+-- Verifica se player elegível para reward
+
+local rewardEligibility = CreatureEvent("RewardEligibility")
+
+function rewardEligibility.onLogin(player)
+    if not player then
+        return false
+    end
+    
+    -- Apenas se config ativa
+    if not configManager.getBoolean(configKeys.TOGGLE_REWARD) then
+        return true
+    end
+    
+    -- Apenas se town >= AB_DENDRIEL
+    if player:getTown():getId() < TOWNS_LIST.AB_DENDRIEL then
+        return true
+    end
+    
+    -- Verificar se já recebeu
+    if player:getStorageValue(Storage.RewardReceived) ~= 1 then
+        player:sendTextMessage(MESSAGE_LOGIN, "Use !reward to claim your weapon!")
+    end
+    
+    return true
+end
+
+rewardEligibility:register()
+```
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Boss Heal">
+
+**Boss que cura quando HP baixo**
+
+```lua
+local bossHeal = CreatureEvent("BossHeal")
+
+function bossHeal.onThink(creature)
+    if not creature:isMonster() then
+        return true
+    end
+    
+    local hp = (creature:getHealth() / creature:getMaxHealth()) * 100
+    
+    -- Se < 15% HP
+    if hp < 15 and not creature:getCondition(CONDITION_REGENERATION, CONDITIONID_DEFAULT, 77777) then
+        local condition = Condition(CONDITION_REGENERATION, CONDITIONID_DEFAULT)
+        condition:setParameter(CONDITION_PARAM_SUBID, 77777)
+        condition:setParameter(CONDITION_PARAM_TICKS, 5000)
+        condition:setParameter(CONDITION_PARAM_HEALTHGAIN, 50000)
+        creature:addCondition(condition)
+        creature:say("HEAL YOURSELF!", TALKTYPE_MONSTER_YELL)
+    end
+    
+    return true
+end
+
+bossHeal:register()
+```
+
+</TabItem>
+
+<TabItem label="Login Message">
+
+**Mensagem ao fazer login**
+
+```lua
+local loginMsg = CreatureEvent("LoginMsg")
+
+function loginMsg.onLogin(player)
+    if not player then return false end
+    
+    local greeting = "Welcome " .. player:getName() .. "!"
+    player:sendTextMessage(MESSAGE_LOGIN, greeting)
+    
+    return true
+end
+
+loginMsg:register()
+```
+
+</TabItem>
+
+<TabItem label="Immunity">
+
+**Boss imune a certos danos**
+
+```lua
+local immunity = CreatureEvent("BossImmunity")
+
+function immunity.onHealthChange(creature, attacker, primaryDamage, primaryType,
+                                 secondaryDamage, secondaryType, origin)
+    if creature:getName() ~= "Immune Boss" then
+        return true
+    end
+    
+    -- Imune a fire/ice
+    if primaryType == COMBAT_FIREDAMAGE or 
+       primaryType == COMBAT_ICEDAMAGE then
+        creature:getPosition():sendMagicEffect(CONST_ME_HOLYAREA)
+        return false  -- Cancela dano
+    end
+    
+    return true
+end
+
+immunity:register()
+```
+
+</TabItem>
+
+<TabItem label="Auto Quests">
+
+**Auto-completar quests no login**
+
+```lua
+local autoQuests = CreatureEvent("AutoQuests")
+
+local questList = {
+    { storage = Storage.Quest.Q1, value = 1 },
+    { storage = Storage.Quest.Q2, value = 5 },
+    { storage = Storage.Quest.Q3, value = 10 },
+}
+
+function autoQuests.onLogin(player)
+    if not player then return false end
+    
+    for _, q in ipairs(questList) do
+        if player:getStorageValue(q.storage) < q.value then
+            player:setStorageValue(q.storage, q.value)
+        end
+    end
+    
+    return true
+end
+
+autoQuests:register()
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🛠️ Criando um Creature Script
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Determinar Tipo de Evento
+
+Escolha qual tipo melhor se encaixa:
+- **onThink**: Lógica periódica (bosses, regen)
+- **onLogin**: Ao fazer login (rewards, quests)
+- **onHealthChange**: Ao receber dano (immunidade, counter)
+- **onDeath**: Ao morrer (spawns, rewards)
+- **onTargetCombat**: Ao ser alvo (fuga, especial)
+- **onChangeOutfit**: Ao mudar aparência (restrictions)
+
+### Passo 2: Criar Arquivo
+
+```bash
+# Organiza por categoria
+creaturescripts/
+├── monster/my_boss.lua        # Comportamento de boss
+└── customs/my_feature.lua    # Feature customizada
+```
+
+### Passo 3: Implementar Básico
+
+```lua
+-- 1. Criar CreatureEvent com nome único
+local myEvent = CreatureEvent("UniqueName")
+
+-- 2. Definir callback
+function myEvent.eventType(creature, ...)
+    if not creature then return false end
+    
+    -- Lógica aqui
+    return true
+end
+
+-- 3. Registrar
+myEvent:register()
+```
+
+### Passo 4: Adicionar Lógica
+
+```lua
+function myEvent.onThink(creature)
+    -- Validar criatura
+    if not creature or not creature:isMonster() then
+        return true
+    end
+    
+    -- Lógica principal
+    local hp = (creature:getHealth() / creature:getMaxHealth()) * 100
+    
+    if hp < 50 then
+        creature:say("I'm hurt!")
+    end
+    
+    return true
+end
+```
+
+### Passo 5: Testar
+
+```bash
+# 1. Salve arquivo em creaturescripts/
+# 2. Reinicie servidor
+# 3. Teste funcionalidade (kill monster, login, etc)
+# 4. Verifique logs para erros
+# 5. Refine conforme necessário
+```
+
+### Exemplo Completo: Login Notification
+
+```lua
+-- scripts/creaturescripts/customs/login_notify.lua
+
+local loginNotify = CreatureEvent("LoginNotify")
+
+function loginNotify.onLogin(player)
+    if not player then
+        return false
+    end
+    
+    -- Enviarmensagem
+    local message = "Welcome back, " .. player:getName() .. "!"
+    player:sendTextMessage(MESSAGE_LOGIN, message)
+    
+    -- Log
+    logger.info("Player logged in: {}", player:getName())
+    
+    return true
+end
+
+loginNotify:register()
+```
+
+</Card>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Evento não dispara
+
+**Causa**: Evento não registrado ou nome único faltando  
+**Solução**:
+```lua
+-- ✅ Correto - Nome único e registrado
+local myEvent = CreatureEvent("UniqueEventName123")
+function myEvent.onThink(creature)
+    return true
+end
+myEvent:register()  -- ESSENCIAL!
+
+-- ❌ Errado - Sem register()
+local myEvent = CreatureEvent("MyEvent")
+function myEvent.onThink(creature)
+    return true
+end
+-- Sem :register() - NÃO FUNCIONA!
+```
+
+### Problema: onThink executa demais
+
+**Causa**: Intervalo padrão é rápido demais  
+**Solução**:
+```lua
+-- Adicione delay entre execuções
+local lastExecution = 0
+function myEvent.onThink(creature)
+    if os.time() - lastExecution < 5 then  -- 5 segundo delay
+        return true
+    end
+    lastExecution = os.time()
+    
+    -- Só executa a cada 5 segundos
+    return true
+end
+```
+
+### Problema: Criatura é nil
+
+**Causa**: Creature foi deletada ou despawned  
+**Solução**:
+```lua
+-- ✅ Sempre validar creature
+function myEvent.onThink(creature)
+    if not creature then
+        return false  -- Cancela se creature não existe
+    end
+    
+    return true
+end
+```
+
+### Problema: onLogin não funciona para players
+
+**Causa**: Registrou para monsters também, conflitando  
+**Solução**:
+```lua
+-- ✅ Validar tipo corretamente
+function myEvent.onLogin(player)
+    if not player or not player:isPlayer() then
+        return false
+    end
+    
+    -- Agora funciona só para players
+    return true
+end
+```
+
+### Problema: onHealthChange não cancela dano
+
+**Causa**: Return value incorreto ou creatura não é monster  
+**Solução**:
+```lua
+-- ✅ Correto - Return false para cancelar
+function myEvent.onHealthChange(creature, attacker, primaryDamage, primaryType, ...)
+    if primaryType == COMBAT_FIREDAMAGE then
+        return false  -- Cancela COMPLETAMENTE
+        -- ou true  -- Permite dano
+    end
+    return true
+end
+
+-- ❌ Errado
+function myEvent.onHealthChange(creature, attacker, primaryDamage, ...)
+    creature:addHealth(1000)  -- Não cancela, só adiciona HP
+    return true
+end
+```
+
+### Problema: Event dispara múltiplas vezes
+
+**Causa**: Registrou várias vezes (bug de recarga)  
+**Solução**:
+```lua
+-- Usar registro condicional
+if configManager.getBoolean(configKeys.FEATURE_ENABLED) then
+    myEvent:register()
+end
+
+-- Ou verificar se já registrado
+-- (Framework cuida disso automaticamente)
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Estrutura Padrão**:
+```lua
+-- Nome ÚNICO
+local myEvent = CreatureEvent("UniqueName")
+
+-- Callback específico
+function myEvent.eventType(creature, ...)
+    if not creature then return false end
+    -- Lógica
+    return true
+end
+
+myEvent:register()
+```
+
+**Eventos Mais Usados**:
+- `onThink(creature)` - Periódico
+- `onLogin(player)` - Login
+- `onHealthChange(creature, attacker, ...)` - Dano
+- `onDeath(creature, corpse, killer, ...)` - Morte
+- `onTargetCombat(creature, target)` - Alvo
+
+**Boas Práticas**:
+- ✅ Validar creature sempre
+- ✅ Usar nomes únicos
+- ✅ Registrar ANTES de usar
+- ✅ Return true/false apropriadamente
+- ✅ Logar progresso
+
+**Integration Pattern**:
+- Creature scripts **não precisam** de variáveis globais
+- Usam Storage para dados persistentes
+- Podem registrar callbacks de efeito
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_Creaturescripts.mdx](#)
+2. **Analise Scripts Existentes**: Examine os 4 scripts fornecidos
+3. **Crie Seu Primeiro**: Comece com simple login notification
+4. **Expanda Comportamentos**: Adicione boss mechanics
+5. **Integre com Outras**: Conecte com other scripts
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Creature Scripts Documentados:** 4  
+**Categorias**: Boss Abilities, Login Rewards, Quest Auto-Completion, Immunities
+
+Para dúvidas, consulte o arquivo de catálogo ou analise scripts similares.
+</Aside>

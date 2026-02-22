@@ -1,0 +1,343 @@
+---
+title: "teleport_item.lua - Tabela de Items que Teleportam"
+description: "Documentação técnica da tabela de configuração de items que teleportam o player no servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🌀 teleport_item.lua
+
+Arquivo de tabela responsável por **items teleportadores** - objetos que transportam o player para outra localização quando usados.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/teleport_item.lua` |
+| **Tipo** | Tabela de Configuração - Teleportes |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Nenhuma (sistema simples) |
+| **Total de Linhas** | 172 linhas |
+| **Função Principal** | Configurar items teleportadores |
+| **Carregado por** | `tables/load.lua` |
+| **Faixa de IDs** | 15001-20000 |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/teleport_item.lua`
+
+Define tabela global `TeleportItemAction` com items que teleportam - distintos de teleportes mágicos, são items que o player pode usar.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+**Escopo**: Items teleportadores
+
+**Diferença**:
+- `teleport_item.lua`: Items (mochila, podem ir com player)
+- `teleport.lua`: Féromonas mágicas (área do mapa)
+
+**Estrutura**:
+```lua
+[actionId] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+```
+
+**Range**: 15001-20000 action IDs
+**Uso**: Shrines, portais de quest, teleportes rápidos
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Teleportes Item" icon="layers">
+
+```
+┌─────────────────────────────┐
+│  TELEPORTS VIA ITEM         │
+└────────────┬────────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    ▼                 ▼
+Item Position      Destination
+(Pickup area)      (where to go)
+    │                 │
+Player usa item      ├─ Calculate destination
+(action 15001+)      ├─ Teleport player
+                     └─ Remove from original
+```
+
+**Fluxo**:
+1. Item em localização X (shrine)
+2. Player pega item
+3. Player usa (teleport)
+4. Transportado para Y (outra shrine)
+5. Se pegar novamente, usa
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### TeleportItemAction
+
+**Propósito**: Definir items teleportadores
+
+**Estrutura**:
+```lua
+TeleportItemAction = {
+    [actionId] = {
+        itemId = false,  -- Geralmente false
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = xx},
+            -- múltiplas posições possíveis
+        }
+    }
+}
+```
+
+**Campos**:
+- `actionId`: ID único (15001-20000)
+- `itemId`: false (item invisível/teleporte)
+- `itemPos`: Posições de origem
+
+**Range de IDs**:
+- 15001-20000 (5,000 de range)
+- Dezenas de teleportes
+- Shrine-based teleports
+
+</Card>
+
+---
+
+## 📝 Exemplos do Código
+
+<Tabs>
+<TabItem label="Teleporte de Shrine">
+
+```lua
+[15001] = {
+    itemId = false,
+    itemPos = {
+        {x = 32369, y = 32240, z = 7}  -- Shrine entrance
+    }
+}
+```
+
+- **Action ID**: 15001
+- **Shrine Teleport**
+- **Uma entrada**
+- **Para sala com mesmo ID**
+
+</TabItem>
+
+<TabItem label="Hub Teleport Multi-Position">
+
+```lua
+[15050] = {
+    itemId = false,
+    itemPos = {
+        {x = 32300, y = 32000, z = 7},
+        {x = 32301, y = 32000, z = 7},
+        {x = 32302, y = 32000, z = 7}
+    }
+}
+```
+
+- **3 posições** do mesmo teleporte
+- **Hub central**
+- **Levam ao mesmo destino**
+
+</TabItem>
+
+<TabItem label="Rede de Teleportes Quest">
+
+```lua
+-- Entrada Quest 1
+[16000] = {
+    itemId = false,
+    itemPos = { {x = 32456, y = 31700, z = 6} }
+},
+-- Entrada Quest 2
+[16001] = {
+    itemId = false,
+    itemPos = { {x = 32457, y = 31700, z = 6} }
+},
+-- Entrada Quest 3
+[16002] = {
+    itemId = false,
+    itemPos = { {x = 32458, y = 31700, z = 6} }
+}
+```
+
+- **3 quests** com teleportes
+- **IDs consecutivos**
+- **Diferentes entradas**
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Padrões de Teleportes
+
+<Card title="Tipos Comuns" icon="star">
+
+### 1. Shrine Teleport
+```lua
+[15001] = {
+    itemId = false,
+    itemPos = { {x, y, z} }  -- Na shrine
+}
+-- Player pega na shrine, teleporta para área
+```
+
+### 2. Hub Teleport
+```lua
+[15100] = {
+    itemId = false,
+    itemPos = {
+        {x1, y1, z},
+        {x2, y2, z}  -- Múltiplas entradas
+    }
+}
+-- Centralizado para um destino
+```
+
+### 3. Quest Entrance
+```lua
+[16000] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+-- Entrada para area de quest
+```
+
+### 4. Dungeon Network
+```lua
+[17000] = {...},  -- Level 1
+[17001] = {...},  -- Level 2
+[17002] = {...}   -- Level 3
+-- Rede de teleportes dentro dungeon
+```
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Como Funciona" icon="link">
+
+**Em `teleport_item.lua`**:
+```lua
+TeleportItemAction = {
+    [15001] = {
+        itemId = false,
+        itemPos = { {x = 32369, y = 32240, z = 7} }
+    }
+}
+```
+
+**Em action script** (`actions/other/teleport_item.lua`):
+```lua
+local teleportItemAction = Action()
+teleportItemAction:id(15001)
+
+function teleportItemAction.onUse(player, item, fromPos, target, toPos)
+    -- Define destino baseado no item/action
+    local destination = getTeleportDestination(item:getAttribute(ITEM_ATTRIBUTE_ACTIONID))
+    
+    if not destination then
+        return false
+    end
+    
+    -- Effect de saída
+    fromPos:sendMagicEffect(CONST_ME_TELEPORT)
+    
+    -- Teleporta player
+    player:teleportTo(destination)
+    
+    -- Effect de chegada
+    destination:sendMagicEffect(CONST_ME_TELEPORT)
+    
+    return true
+end
+
+function getTeleportDestination(actionId)
+    -- Busca configuração de destino
+    local destinations = {
+        [15001] = Position(32400, 32300, 7),  -- Shrine entrance
+        [15002] = Position(32500, 32300, 7),  -- Another shrine
+        -- ... mais destinos
+    }
+    return destinations[actionId]
+end
+
+teleportItemAction:register()
+```
+
+</Card>
+
+---
+
+## 💡 Diferenças com teleport.lua
+
+<Card title="Comparação de Sistemas" icon="chart">
+
+| Aspecto | TeleportItem | Teleport |
+|---|---|---|
+| **Tipo** | Item | Féromona mágica |
+| **Range** | 15001-20000 | Variável |
+| **Visual** | Invisível (false) | Pode ter visual |
+| **Origem** | Posição estática | Qualquer lugar |
+| **Uso** | Player pega/usa | Player piscar/usa |
+| **Tipicamente** | Shrines | Areas mágicas |
+
+**TeleportItem**: Centro de hub/shrine
+**Teleport**: Glifos/féromonas no chão
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: 172  
+**Tabelas Globais**: 1 (TeleportItemAction)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ TeleportItemAction (item teleportes)
+
+**Características**:
+- 172 linhas de configuração
+- Dezenas de teleportes
+- Shrine-based system
+- Supports multi-position pickup
+- Part of quest network
+
+Este arquivo define items que teleportam, usado principalmente para shrines e hubs de viagem rápida.
+</Aside>

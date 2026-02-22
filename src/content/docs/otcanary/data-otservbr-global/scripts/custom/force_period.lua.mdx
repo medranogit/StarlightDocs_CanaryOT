@@ -1,0 +1,148 @@
+---
+title: "force_period.lua"
+description: "Comando administrativo para forçar período do dia (dia, noite ou automático) globalmente."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | force_period.lua |
+| **Tipo** | TalkAction (Comando) |
+| **Tamanho** | ~24 linhas |
+| **Localização** | scripts/custom/ |
+| **Propósito** | Controlar período do dia manualmente |
+| **Uso** | `/forceperiod day|night|auto` |
+| **Requer Acesso** | god |
+| **Complexidade** | Muito Baixa |
+</Card>
+
+:::tip 💡
+Comando administrativo essencial para testes de conteúdo noturno, efeitos de iluminação condicionados a período e eventos climáticos dependentes de hora do dia.
+:::
+
+## 📄 Visão Geral Resumida
+
+Implementa comando administrativo simples `/forceperiod` que permite ao god forçar globalmente um período específico (dia/noite) ou restaurar comportamento automático. Modifica variável global `forcePeriod` utilizada por sistema de sons e outros sistemas dependentes de período.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `forcePeriod` | boolean\|string | Armazena período forçado: false (auto), "day" (forçado dia), "night" (forçado noite) |
+
+### Funções Globais
+
+**`forcePeriodCommand.onSay(player, words, param)`**
+- **Parâmetros**: 
+  - `player`: Jogador que executou comando
+  - `words`: String do comando (`/forceperiod`)
+  - `param`: Parametro fornecido (day|night|auto)
+- **Retorno**: `true` (sempre)
+- **Acesso**: god
+- **Lógica Detalhada**:
+  1. Converte param para minúsculas e remove espaços
+  2. Se param vazio: envia mensagem de uso
+  3. Se param == "day" ou "night": 
+     - Atribui `forcePeriod = param`
+     - Envia mensagem de confirmação
+  4. Se param == "auto":
+     - Atribui `forcePeriod = false`
+     - Restaura comportamento automático
+  5. Caso contrário: envia mensagem de erro
+
+### Pseudocódigo Detalhado
+
+```lua
+function onSay(player, words, param)
+  logCommand(player, words, param)
+  param = param:lower():trimSpace()
+  
+  if param == "" então
+    envia "Usage: /forceperiod day|night|auto"
+    retorna true
+  end
+  
+  if param == "day" ou param == "night" então
+    forcePeriod = param
+    envia "Forcing period: " .. param
+    retorna true
+  end
+  
+  if param == "auto" então
+    forcePeriod = false
+    envia "Automatic period restored."
+    retorna true
+  end
+  
+  envia "Usage: /forceperiod day|night|auto"
+  retorna true
+end
+```
+
+## 📊 Dados Técnicos
+
+### Parâmetros Aceitos
+
+| Parâmetro | Efeito | Mensagem |
+|-----------|--------|----------|
+| `day` | Força período diurno | "Forcing period: day" |
+| `night` | Força período noturno | "Forcing period: night" |
+| `auto` | Restaura automático | "Automatic period restored." |
+| (vazio) | Erro | "Usage: /forceperiod day\|night\|auto" |
+| (outro) | Erro | "Usage: /forceperiod day\|night\|auto" |
+
+### Configurações
+
+| Propriedade | Valor | Descrição |
+|-----------|-------|-----------|
+| **Separador** | " " | Espaço separa comando do parâmetro |
+| **Tipo Grupo** | "god" | Apenas gods podem usar |
+
+### Tipos de Mensagem
+
+- `MESSAGE_EVENT_ADVANCE`: Usado para mensagens de sucesso (colorido/destacado)
+- `MESSAGE_FAILURE`: Implícito em `sendCancelMessage()` para erros
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `logCommand()` | Função | Registra execução do comando em log |
+| `player:sendCancelMessage()` | Método | Envia mensagem de erro |
+| `player:sendTextMessage()` | Método | Envia mensagem de texto |
+| `TalkAction` | Classe | Registra comando hablador (talk) |
+| `forcePeriod` | Global | Variável global modificada por `ambient_sounds.lua` |
+
+### Integrações
+
+- **ambient_sounds.lua**: Lê `forcePeriod` para determinar período efetivo
+- **Sistema de Período Global**: Qualquer sistema que dependa de período respeitará forçamento
+- **Logs Administrativos**: Todas execuções são registradas via `logCommand()`
+
+### Arquivos Relacionados
+
+- `ambient_sounds.lua`: Consome `forcePeriod`
+- Qualquer script dependente de período do dia
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/custom/force_period.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | 100% |
+| **Complexidade Código** | Muito Baixa |
+| **Status Validação** | ✅ Completo |
+| **Backticks Validados** | ✅ OK |

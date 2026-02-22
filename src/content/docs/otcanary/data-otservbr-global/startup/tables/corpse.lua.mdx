@@ -1,0 +1,325 @@
+---
+title: "corpse.lua - Tabelas de Cadáveres"
+description: "Documentação técnica das tabelas de configuração de corpses (cadáveres) especiais do servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 💀 corpse.lua
+
+Arquivo de tabelas responsável pela configuração de **corpses especiais** no servidor - cadáveres de criaturas, monstros e NPCs que aparecem em locais específicos durante quests.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/corpse.lua` |
+| **Tipo** | Tabela de Configuração - Corpses |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Nenhuma (dados estáticos) |
+| **Total de Linhas** | 68 linhas |
+| **Função Principal** | Configurar cadáveres especiais do mapa |
+| **Carregado por** | `tables/load.lua` |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/corpse.lua`
+
+Define tabelas globais `CorpseAction` e `CorpseUnique` com posições e configurações de corpses especiais em todo o mapa.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+Arquivo de configuração para **corpses especiais** que aparecem em determinados locais:
+
+**Tipos de Corpses**:
+- Corpses de quests (Threatened Dreams, Cursed Crystal, etc)
+- Corpses de story/lore
+- Corpses que rastreiam progresso de quest
+- Corpses com items especiais
+
+**Estrutura Básica**:
+```lua
+[actionId] = {
+    itemId = CORPSE_ITEM_ID,
+    itemPos = { {x, y, z}, ... }
+}
+```
+
+**Faixa Reservada**: 20000-25000 (CorpseAction/CorpseUnique)
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Corpses" icon="layers">
+
+```
+┌────────────────────────────────┐
+│  SISTEMA DE CORPSES            │
+└────────┬────────────────────────┘
+         │
+   ┌─────┴─────┐
+   │           │
+   ▼           ▼
+CorpseAction CorpseUnique
+(Action IDs) (Unique IDs)
+   │           │
+   ├─ itemId   ├─ itemId
+   ├─ itemPos  └─ itemPos
+   │
+   └─ Usado por scripts de quest
+      para rastrear/verificar
+      morte de NPC/creature
+```
+
+**Exemplos de Uso**:
+- Corpse aparece como prova de quest completa
+- Corpse contém item/loot especial
+- Corpse marca localização de morte
+- Corpse para story narration
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabelas Principais" icon="database">
+
+### CorpseAction
+
+**Propósito**: Define corpses com action IDs
+
+**Estrutura**:
+```lua
+CorpseAction = {
+    [actionId] = {
+        itemId = CORPSE_ITEM_ID,
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = xx},
+            {x = xxxxx, y = xxxxx, z = xx}
+        }
+    }
+}
+```
+
+**Campos**:
+- `actionId`: ID único (faixa 20000-25000)
+- `itemId`: Item ID do corpse (ex: 4285)
+- `itemPos`: Array de posições `{x, y, z}`
+
+### CorpseUnique
+
+**Propósito**: Define corpses com unique IDs
+
+**Estrutura**: Idêntica a CorpseAction, porém com unique IDs em vez de action IDs.
+
+**Exemplo Retirado do Código**:
+```lua
+CorpseUnique = {
+    -- The Ice Island Quest - Skeleton
+    [3112] = {
+        itemId = 4024,
+        itemPos = { x = 32258, y = 31098, z = 10 }
+    },
+    -- Tinder Box Quest - Chyllfroest
+    [3263] = {
+        itemId = 4285,
+        itemPos = { x = 32085, y = 31025, z = 1 }
+    }
+}
+```
+
+</Card>
+
+---
+
+## 📝 Exemplos do Código
+
+<Tabs>
+<TabItem label="Corpse Action Simples">
+
+```lua
+-- Threatened dreams quest
+[20002] = {
+    itemId = 4285,
+    itemPos = { { x = 32949, y = 31810, z = 7 } }
+}
+```
+
+- **Corpse ID**: 20002
+- **Item Type**: 4285 (cadáver padrão)
+- **Posição**: Uma localização
+
+</TabItem>
+
+<TabItem label="Corpse Múltiplas Posições">
+
+```lua
+-- The cursed crystal skeletons
+[40001] = {
+    itemId = 4285,
+    itemPos = {
+        { x = 31974, y = 32907, z = 8 },
+        { x = 32031, y = 32914, z = 8 }
+    }
+}
+```
+
+- **Múltiplos esqueletos** mesma quest
+- **Duas posições** diferentes no mapa
+
+</TabItem>
+
+<TabItem label="Corpse Quest Específica">
+
+```lua
+-- The Great Dragon Hunt Quest
+[50806] = {
+    itemId = 21412,
+    itemPos = {
+        { x = 32991, y = 32642, z = 8 }
+    }
+}
+```
+
+- **Item especial** (21412)
+- **Uma localização** de morte importante
+
+</TabItem>
+
+<TabItem label="Corpse Unique">
+
+```lua
+CorpseUnique = {
+    -- Dark trails (Quandon corpse)
+    [20001] = {
+        itemId = 21123,
+        itemPos = { x = 33574, y = 31952, z = 6 }
+    }
+}
+```
+
+- **Unique ID 20001**
+- **Single Position** (sem array)
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Padrões de Uso
+
+<Card title="Boas Práticas" icon="star">
+
+### Ao Adicionar Novo Corpse
+
+1. **Identificar tipo**:
+   - Action corpse? → CorpseAction
+   - Unique corpse? → CorpseUnique
+
+2. **Escolher ID** dentro do range
+   - Action: 20000-25000
+   - Unique: 20000-22000
+
+3. **Determinar item**:
+   - Item ID do corpse (4285 padrão)
+   - Pode variar por tipo de criatura
+
+4. **Registrar posição(ões)**:
+   - Single: `{ x = ..., y = ..., z = ... }`
+   - Múltiplas: Array de posições
+
+5. **Documentar na quest**:
+   - Adicionar comentário mencionando quest
+   - Linkar script relevante
+
+### Convenções
+
+```lua
+-- ✅ BOM: Bem documentado
+-- The cursed crystal quest
+[40001] = {
+    itemId = 4285,
+    itemPos = { {x = 31974, y = 32907, z = 8} }
+    -- Corpse do líder dos esqueletos
+}
+
+-- ❌ RUIM: Sem documentação
+[40001] = {
+    itemId = 4285,
+    itemPos = { {x = 31974, y = 32907, z = 8} }
+}
+```
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Como os Scripts Usam" icon="link">
+
+**Em `functions.lua`**:
+```lua
+-- Função que carrega corpses
+function loadLuaMapUnique(tablename)
+    for index, value in pairs(tablename) do
+        local tile = Tile(value.itemPos)
+        if tile then
+            local item = tile:getItemById(value.itemId)
+            if item then
+                item:setAttribute(ITEM_ATTRIBUTE_UNIQUEID, index)
+            end
+        end
+    end
+end
+```
+
+**Chamada no startup**:
+```lua
+loadLuaMapUnique(CorpseUnique)
+```
+
+**Resultado**:
+- Corpse aparece no mapa
+- Tem unique ID registrado
+- Script pode referenciá-lo por ID
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: 68  
+**Tabelas Globais**: 2 (CorpseAction, CorpseUnique)  
+**Status**: ✅ Completo
+
+**Tabelas Documentadas**:
+- ✅ CorpseAction (action IDs)
+- ✅ CorpseUnique (unique IDs)
+
+**Faixa de IDs**:
+- Action: 20000-25000
+- Unique: 20000-22000
+
+Corpses são corpses especiais de quests, diferentes de corpses normais de combate.
+</Aside>

@@ -1,0 +1,434 @@
+---
+title: "writeable.lua - Tabela de Documentos e Livros"
+description: "Documentação técnica da tabela de configuração de livros, documentos e textos no servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 📖 writeable.lua
+
+Arquivo de tabela responsável pelos **documentos e livros** - conteúdo de texto longo armazenado em containers, baúes, e prateleiras do mundo.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/writeable.lua` |
+| **Tipo** | Tabela de Configuração - Content |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Nenhuma |
+| **Total de Linhas** | 904 linhas |
+| **Função Principal** | Armazenar conteúdo de livros |
+| **Carregado por** | `tables/load.lua` |
+| **Conteúdo** | 100+ livros com textos multi-linha |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/writeable.lua`
+
+Define tabela global `BookDocumentTable` com array de livros/documentos que players encontram no mundo, cada um com texto completo.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+**Escopo**: Conteúdo literário do mundo
+
+**Tipos de Documentos**:
+- Livros de lore (storytelling)
+- Registros de quests
+- Documentos de NPC
+- Textos de dungeon
+
+**Estrutura Array**:
+```lua
+BookDocumentTable = {
+    {
+        containerId = CONTAINER_ID,
+        itemId = ITEM_ID,
+        position = POS_INDEX,
+        text = "Conteúdo do livro..."
+    }
+}
+```
+
+**Quantidade**: 100+ livros com múltiplas linhas (para cada)
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Documentos" icon="layers">
+
+```
+┌──────────────────────────────┐
+│  SISTEMA DE LIVROS/DOCUMENTOS │
+└────────────┬─────────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    ▼                 ▼
+BookDocumentTable   Content Loading
+(Tabela array)      (quando necessário)
+    │                 │
+    ├─ containerId    ├─ Player abre livro
+    ├─ itemId         ├─ Sistema busca
+    ├─ position       ├─ Encontra em tabela
+    └─ text           └─ Exibe conteúdo
+
+
+Para cada livro:
+containerId = Container Item ID
+    ↓
+itemId = Qual item no container
+    ↓
+position = Qual posição naquele item
+    ↓
+text = Conteúdo completo do livro
+```
+
+**Fluxo**:
+1. Player abre container (ex: bookcase)
+2. Vê item "Red Tome"
+3. Sistema procura BookDocumentTable
+4. Encontra match (containerId+itemId+position)
+5. Exibe texto armazenado
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### BookDocumentTable
+
+**Propósito**: Armazenar conteúdo de documentos
+
+**Estrutura**:
+```lua
+BookDocumentTable = {
+    {
+        containerId = CONTAINER_ITEM_ID,
+        itemId = ITEM_ID_DO_LIVRO,
+        position = POSICAO_NO_CONTAINER,
+        text = "Conteúdo completo do livro\nCom múltiplas linhas\nE parágrafos..."
+    },
+    {
+        containerId = ...,
+        itemId = ...,
+        position = ...,
+        text = "..."
+    }
+    -- 100+ entradas
+}
+```
+
+**Campos**:
+- `containerId`: ID do container (baúe, estante, etc)
+- `itemId`: ID do item livro
+- `position`: Índice no container
+- `text`: Conteúdo completo (pode ter \n para quebras)
+
+</Card>
+
+---
+
+## 📝 Exemplos de Estrutura
+
+<Tabs>
+<TabItem label="Documento Simples">
+
+```lua
+{
+    containerId = 1234,
+    itemId = 2247,
+    position = 1,
+    text = "This is a book about monsters."
+}
+```
+
+- **Container**: ID 1234 (baúe/estante)
+- **Item**: 2247 (algum tipo de livro)
+- **Posição**: 1 (primeiro item)
+- **Texto**: Uma linha simples
+
+</TabItem>
+
+<TabItem label="Documento Multi-Linha">
+
+```lua
+{
+    containerId = 1234,
+    itemId = 3966,
+    position = 2,
+    text = "MONSTERS AND FOES OF DAWNPORT I\n" ..
+           "\n" ..
+           "In Dawnport, many dangerous creatures roam.\n" ..
+           "The Rotworms are particularly menacing.\n" ..
+           "Avoid them until you are well trained.\n" ..
+           "\n" ..
+           "---\n" ..
+           "Page 2 of 5"
+}
+```
+
+- **Quebras de linha**: \n
+- **Múltiplos parágrafos**
+- **Formatação preservada**
+- **String concatenação**: ".." para linhas longas
+
+</TabItem>
+
+<TabItem label="Documentos em Série">
+
+```lua
+-- MONSTERS AND FOES OF DAWNPORT I
+{ containerId = 1234, itemId = 3966, position = 2, text = "..." },
+
+-- MONSTERS AND FOES OF DAWNPORT II
+{ containerId = 1234, itemId = 3967, position = 3, text = "..." },
+
+-- MONSTERS AND FOES OF DAWNPORT III
+{ containerId = 1234, itemId = 3968, position = 4, text = "..." },
+
+-- MONSTERS AND FOES OF DAWNPORT IV
+{ containerId = 1234, itemId = 3969, position = 5, text = "..." },
+
+-- MONSTERS AND FOES OF DAWNPORT V
+{ containerId = 1234, itemId = 3970, position = 6, text = "..." }
+```
+
+- **5 livros em série** (I-V)
+- **Mesma estante**
+- **Diferentes item IDs**
+- **Different positions**
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Padrões de Uso
+
+<Card title="Boas Práticas" icon="star">
+
+### Ao Adicionar Novo Livro
+
+1. **Definir container**:
+   - Onde livro será encontrado
+   - Container ID do baúe/estante
+
+2. **Selecionar item**:
+   - Item ID do livro (tipo)
+   - Deve existir em items.xml
+
+3. **Posição no container**:
+   - Índice sequencial
+   - Ordem dentro do container
+
+4. **Escrever conteúdo**:
+   ```lua
+   text = "Título do Livro\n" ..
+          "\n" ..
+          "Parágrafo 1...\n" ..
+          "\n" ..
+          "Parágrafo 2...""
+   ```
+
+5. **Adicionar à tabela**:
+   ```lua
+   {
+       containerId = 1234,
+       itemId = 5678,
+       position = 7,
+       text = "..."
+   }
+   ```
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Como Funciona" icon="link">
+
+**Em `writeable.lua`**:
+```lua
+BookDocumentTable = {
+    {
+        containerId = 1234,
+        itemId = 3966,
+        position = 2,
+        text = "MONSTERS AND FOES OF DAWNPORT I\n..."
+    }
+}
+```
+
+**Em item script** (quando player abre livro):
+```lua
+function itemEvent.onUse(player, item, fromPos, target, toPos)
+    local itemId = item:getId()
+    local containerId = item:getParent():getId()
+    local position = item:getPosition()
+    
+    -- Busca em BookDocumentTable
+    for _, book in ipairs(BookDocumentTable) do
+        if book.itemId == itemId and 
+           book.containerId == containerId then
+            -- Encontrou! Exibe texto
+            player:showTextWindow(
+                item:getName(),
+                book.text
+            )
+            return true
+        end
+    end
+    
+    return false
+end
+```
+
+**Fluxo**:
+1. Player abre container
+2. Vê livro "Monsters and Foes"
+3. Player clica no livro
+4. OnUse executa
+5. Sistema busca em BookDocumentTable
+6. Encontra match
+7. Exibe janela com texto completo
+
+</Card>
+
+---
+
+## 📚 Categorias de Livros
+
+<Card title="Tipos de Conteúdo" icon="book">
+
+### 1. Livros de Lore
+```lua
+{
+    containerId = 1234,
+    itemId = 3966,
+    position = 2,
+    text = "MONSTERS AND FOES OF DAWNPORT...\n..."
+}
+```
+
+### 2. Guias de Quest
+```lua
+{
+    containerId = 1234,
+    itemId = 3967,
+    position = 3,
+    text = "QUEST GUIDE: The Explorer Society\n..."
+}
+```
+
+### 3. Registros NPC
+```lua
+{
+    containerId = 1234,
+    itemId = 3968,
+    position = 4,
+    text = "Captain Surus's Log\nDay 1: Army reinforced...\n..."
+}
+```
+
+### 4. Textos Temáticos
+```lua
+{
+    containerId = 1234,
+    itemId = 3969,
+    position = 5,
+    text = "The Book of Hours\nCaput I et Prima...\n..."
+}
+```
+
+</Card>
+
+---
+
+## 💡 Por Que Tabela Separada
+
+<Card title="Vantagens da Abordagem" icon="lightbulb">
+
+### Comparado a Hardcode em Scripts
+
+**Sem BookDocumentTable**:
+```lua
+-- No script - difícil de manter
+function onUse(player, item)
+    if item:getId() == 3966 then
+        player:showTextWindow("Monsters I", 
+            "MONSTERS AND FOES OF DAWNPORT I\n" ..
+            "Muito texto longo aqui..." ..
+            "Difícil de manter tudo em um script"
+        )
+    end
+end
+```
+
+**Com BookDocumentTable**:
+```lua
+-- Em tabela separada - organizado
+{
+    containerId = 1234,
+    itemId = 3966,
+    position = 2,
+    text = "MONSTERS AND FOES OF DAWNPORT I\n..."
+}
+
+-- Script genérico que funciona com todos
+function onUse(player, item)
+    -- Busca em BookDocumentTable
+    -- Funciona para qualquer livro
+end
+```
+
+**Vantagens**:
+- ✅ Tabela centralizada
+- ✅ Script genérico reutilizável
+- ✅ Fácil adicionar novos livros
+- ✅ Melhor organização
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: 904  
+**Tabelas Globais**: 1 (BookDocumentTable)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ BookDocumentTable (livros/documentos)
+
+**Características**:
+- 904 linhas de documentação
+- 100+ livros com texto
+- Multi-line content support
+- Organized by container
+- Scalable structure
+
+Este arquivo armazena todo o conteúdo literário encontrado no mundo (livros, documentos, textos) de forma centralizada e reutilizável.
+</Aside>

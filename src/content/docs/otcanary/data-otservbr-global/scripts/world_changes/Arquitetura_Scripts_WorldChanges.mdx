@@ -1,0 +1,1162 @@
+---
+title: Arquitetura - World Changes Scripts
+description: Documentação técnica da arquitetura e estrutura dos scripts de World Changes do servidor Canary
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🌍 Arquitetura - World Changes Scripts
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts **World Changes** do servidor OTServ Canary. Entenda como implementar mudanças dinâmicas no mundo que ocorrem automaticamente durante o startup ou em períodos específicos.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/world_changes/` contém scripts **Lua** que implementam **mudanças dinâmicas no mundo** que ocorrem automaticamente - carregamento de mapas diferentes, spawning de NPCs baseado em hora, transformação de objetos, etc. Cada script define como o mundo muda em tempo real, afetando a exploração dos players e criando variety durante diferentes períodos. World Changes são eventos globais que alteram permanentemente o estado do servidor até a próxima mudança.
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Map Randomization**: Carregar mapas diferentes aleatoriamente
+- **Location-Based Events**: Eventos que ocorrem em zonas específicas
+- **Time-Based Spawning**: Spawnar/despawnar NPCs em períodos específicos
+- **World State Management**: Gerenciar estado global da world
+- **Startup Events**: Eventos que ocorrem quando server inicia
+- **Visual Effects**: Transformação de objetos com efeitos visuais
+- **Conditional Spawning**: Spawnar NPCs baseado em chance/data
+- **Teleport Management**: Teleportes dinâmicos baseado em world state
+- **Item Manipulation**: Remover/adicionar items do mapa
+- **Webhook Notifications**: Avisar players sobre world changes
+</Card>
+
+<Card title="Estrutura da Pasta" icon="list">
+A pasta `scripts/world_changes/` é organizada por **tipo de mudança**:
+
+```
+world_changes/
+├── Arquitetura_Scripts_WorldChanges.mdx
+├── Catalogo_Scripts_WorldChanges.mdx
+├── fury_gates.lua              (Map randomization + Teleports)
+├── grimvale_respawn_event.lua  (Monster spawning by date)
+├── nightmare_isles.lua         (Map randomization + Teleports)
+├── oriental_trader.lua         (NPC spawning by chance)
+├── spawns_npc_by_time.lua      (NPC spawning by day/night)
+└── their_masters_voice.lua     (Object transformation)
+```
+
+**Padrão de Organização**: 6 scripts implementando diferentes tipos de world changes.
+- **Map Randomization**: 2 scripts (Fury Gates, Nightmare Isles)
+- **Time-Based Changes**: 2 scripts (Spawns NPC by Time, Grimvale Respawn)
+- **Chance-Based**: 1 script (Oriental Trader)
+- **Visual/Object**: 1 script (Their Masters Voice)
+
+**Cobertura**: Implementam mudanças em 10+ zonas diferentes no mapa
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Tipos de World Changes](#tipos-de-world-changes)
+3. [Componentes de World Changes](#componentes-de-world-changes)
+4. [Map Randomization](#map-randomization)
+5. [Time-Based Events](#time-based-events)
+6. [Padrões de Implementação](#padrões-de-implementação)
+7. [Exemplos Práticos](#exemplos-práticos)
+8. [Criando um World Change Script](#criando-um-world-change-script)
+9. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="Entendendo World Changes Scripts" icon="document">
+
+Um **World Changes Script** é um script que:
+- **Define uma mudança no mundo** que ocorre automaticamente
+- **Executa no startup ou em eventos periódicos** do servidor
+- **Modifica estado global** (através de Storage Values)
+- **Carrega/descarrega mapas** dinamicamente
+- **Spawna/despawna NPCs ou objetos** baseado em condições
+- **Afeta toda a comunidade** (mudanças globais)
+
+### Ciclo de Vida de um World Change
+
+```lua
+-- 1. GlobalEvent declaration
+local event = GlobalEvent("Event Name")
+
+-- 2. Handler function
+function event.onStartup()
+    -- ou event.onPeriodChange()
+    -- Executar lógica de world change
+    local randomOption = math.random(1, optionsCount)
+    Game.loadMap(mapPath)
+    Game.setStorageValue(GlobalStorage.Key, randomOption)
+    return true
+end
+
+-- 3. Register
+event:register()
+```
+
+### Padrão Básico
+
+```lua
+-- 1. Configuration table
+local config = {
+    mapPaths = {"path/to/map1", "path/to/map2"},
+    enableChange = true,
+    chance = 50,
+}
+
+-- 2. GlobalEvent
+local worldChange = GlobalEvent("World Change Name")
+
+-- 3. Handler
+function worldChange.onStartup()
+    if config.enableChange and math.random(100) <= config.chance then
+        local selectedMap = config.mapPaths[math.random(#config.mapPaths)]
+        Game.loadMap(selectedMap)
+        Game.setStorageValue(GlobalStorage.Key, 1)
+    end
+    return true
+end
+
+-- 4. Register
+worldChange:register()
+```
+
+### Componentes Principais
+
+```lua
+-- GlobalEvent registration
+local event = GlobalEvent("Event Name")
+
+-- Handler options
+function event.onStartup()          -- Executa ao server iniciar
+function event.onPeriodChange()     -- Executa ao mudar período (day/night)
+function event.onShutdown()         -- Executa ao server desligar
+function event.onForceItem()        -- Executa em item force
+
+-- Methods
+:register()                         -- Registra o evento
+:type("stepin")                     -- Para MoveEvents (teleports)
+:aid(actionId)                      -- Action IDs para items
+:uid(uniqueId)                      -- Unique IDs para items
+
+-- Storage manipulation
+Game.setStorageValue(key, value)    -- Define storage global
+Game.getStorageValue(key)           -- Lê storage global
+
+-- Map loading
+Game.loadMap(path)                  -- Carrega mapa .otbm
+
+-- NPC/Monster creation
+Game.createNpc(name, position)      -- Cria NPC
+Game.createMonster(name, position)  -- Cria monster
+
+-- Webhooks
+Webhook.sendMessage(msg, channel)   -- Envia mensagem a Discord
+```
+
+</Card>
+
+---
+
+## 🌐 Tipos de World Changes
+
+<Card title="Padrões e Classificações de World Changes" icon="zap">
+
+### Tipo 1: Map Randomization at Startup
+
+```lua
+-- Carrega um de múltiplos mapas aleatoriamente no startup
+local maps = {
+    { name = "Location 1", path = "data/world/..." },
+    { name = "Location 2", path = "data/world/..." },
+}
+
+local event = GlobalEvent("Random Map Event")
+
+function event.onStartup()
+    local selected = maps[math.random(#maps)]
+    Game.loadMap(selected.path)
+    Game.setStorageValue(GlobalStorage.Key, math.random(#maps))
+    logger.info("Map loaded: " .. selected.name)
+    return true
+end
+
+event:register()
+```
+
+**Características**:
+- Escolhe 1 mapa de N opções aleatoriamente
+- Executa apenas 1x no startup
+- Armazena escolha em Storage para reference
+- Afeta toda a comunidade (não é individual)
+
+### Tipo 2: Time-Based NPC Spawning
+
+```lua
+-- Spawna NPCs diferentes baseado em período (day/night)
+local npcSpawns = {
+    {
+        name = "Day NPC",
+        period = LIGHT_STATE_SUNRISE,
+        position = Position(x, y, z),
+    },
+    {
+        name = "Night NPC",
+        period = LIGHT_STATE_SUNSET,
+        position = Position(x, y, z),
+    },
+}
+
+local event = GlobalEvent("NPC by Time")
+
+function event.onPeriodChange(period)
+    for _, npc in ipairs(npcSpawns) do
+        if npc.period == period then
+            Game.createNpc(npc.name, npc.position)
+        end
+    end
+    return true
+end
+
+event:register()
+```
+
+**Características**:
+- Spawna/despawna NPCs quando period muda
+- Usa períodos LIGHT_STATE (SUNRISE/SUNSET)
+- Múltiplos NPCs podem spawnar/despawnar
+- Efeitos visuais ao spawn/despawn
+
+### Tipo 3: Chance-Based Conditional Spawning
+
+```lua
+-- Spawna NPC com chance durante startup
+local event = GlobalEvent("Trader Event")
+
+function event.onStartup()
+    if math.random(100) <= 33 then  -- 33% chance
+        local location = locations[math.random(#locations)]
+        Game.createNpc("npc_name", location.position)
+        Game.setStorageValue(GlobalStorage.Key, 1)
+    else
+        Game.setStorageValue(GlobalStorage.Key, -1)
+    end
+    return true
+end
+
+event:register()
+```
+
+**Características**:
+- Spawna baseado em chance probabilística
+- Armazena resultado em Storage (spawned = 1, not spawned = -1)
+- Pode remover items do mapa antes de spawnar
+- Suporta mapLoading adicional
+
+### Tipo 4: Object Transformation
+
+```lua
+-- Transforma objetos/items visualmente
+local event = GlobalEvent("Object Transform")
+
+function event.onStartup()
+    if math.random(100) <= chance then
+        for x = x1, x2 do
+            for y = y1, y2 do
+                local tile = Tile(Position(x, y, z))
+                if tile then
+                    local item = tile:getItemById(itemId)
+                    if item and math.random(100) <= transformChance then
+                        item:transform(newItemId)
+                        item:getPosition():sendMagicEffect(CONST_ME_YELLOW_RINGS)
+                    end
+                end
+            end
+        end
+    end
+end
+
+event:register()
+```
+
+**Características**:
+- Itera área de tiles
+- Encontra items específicos
+- Transforma para diferentes IDs
+- Envia efeitos visuais
+
+### Tipo 5: Teleport Management
+
+```lua
+-- Gerencia teleportes baseado em world state (via Storage)
+local teleportExit = MoveEvent()
+
+function teleportExit.onStepIn(creature, item, position, fromPosition)
+    local player = creature:getPlayer()
+    if not player then
+        return true
+    end
+
+    local state = Game.getStorageValue(GlobalStorage.Key)
+    if state == 1 then
+        player:teleportTo(Position(x, y, z))
+    else
+        player:teleportTo(fromPosition)
+    end
+    return true
+end
+
+teleportExit:type("stepin")
+teleportExit:uid(uniqueId)
+teleportExit:register()
+```
+
+**Características**:
+- Teleportes que dependem de Storage (world state)
+- Diferentes destinos baseado em qual map foi carregado
+- Magic effects ao teleportar
+- Validações (is player, requirements, etc)
+
+</Card>
+
+---
+
+## 🔧 Componentes de World Changes
+
+<Card title="Elementos que Compõem World Changes" icon="layers">
+
+### Componente 1: GlobalEvent Handler
+
+```lua
+-- Startup handler
+local event = GlobalEvent("Event Name")
+
+function event.onStartup()
+    -- Executado UMA VEZ quando server inicia
+    -- Perfeito para setup inicial, map loading, etc
+    return true
+end
+
+-- Period Change handler
+function event.onPeriodChange(period)
+    -- Executado quando muda de day para night ou vice-versa
+    -- period = LIGHT_STATE_SUNRISE ou LIGHT_STATE_SUNSET
+    if period == LIGHT_STATE_SUNRISE then
+        -- Dia agora
+    else
+        -- Noite agora
+    end
+    return true
+end
+```
+
+**Propósito**: Define quando e como a mudança ocorre
+
+### Componente 2: Storage Values
+
+```lua
+-- Armazenar resultado de world change
+Game.setStorageValue(GlobalStorage.FuryGates, gateId)  -- Qual gate está ativo?
+Game.setStorageValue(GlobalStorage.Yasir, 1)          -- Yasir spawned?
+
+-- Recuperar para usar em teleportes/outros scripts
+local activeGate = Game.getStorageValue(GlobalStorage.FuryGates)
+if activeGate == 1 then
+    -- Gate 1 está ativo
+end
+```
+
+**Propósito**: Persistir estado da world para scripts subsequentes
+
+### Componente 3: Map Loading
+
+```lua
+-- Carregar arquivo .otbm
+local mapPath = DATA_DIRECTORY .. "/world/world_changes/fury_gates/edron.otbm"
+Game.loadMap(mapPath)
+
+-- Arquivo deve ser existir em disco
+-- Padrão: data/world/world_changes/{feature_name}/{location_name}.otbm
+```
+
+**Propósito**: Aplicar mapas pré-construídos ao servidor
+
+### Componente 4: NPC/Monster Creation
+
+```lua
+-- Criar NPC
+local npc = Game.createNpc("npc_name", Position(x, y, z))
+if npc then
+    npc:setMasterPos(Position(x, y, z))  -- Master position for respawning
+end
+
+-- Criar Monster
+local monster = Game.createMonster("monster_name", Position(x, y, z))
+if monster then
+    monster:setSpawnPosition()
+end
+```
+
+**Propósito**: Dinamicamente adicionar criaturas ao mundo
+
+### Componente 5: Teleport Items
+
+```lua
+-- Move event para teleports
+local teleport = MoveEvent()
+
+function teleport.onStepIn(creature, item, position, fromPosition)
+    local player = creature:getPlayer()
+    if not player then
+        return true
+    end
+    
+    -- Validar
+    if not player:isPremium() then
+        player:say("Premium only", TALKTYPE_MONSTER_SAY)
+        return true
+    end
+    
+    -- Teleportar
+    player:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+    player:teleportTo(Position(x, y, z))
+    player:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+    return true
+end
+
+teleport:type("stepin")
+teleport:uid(uniqueId)
+teleport:register()
+```
+
+**Propósito**: Itens que teleportam players para locações da world change
+
+### Componente 6: Item Transformation
+
+```lua
+-- Encontrar e transformar item num tile
+local position = Position(x, y, z)
+local tile = Tile(position)
+if tile then
+    local item = tile:getItemById(itemId)
+    if item then
+        item:transform(newItemId)  -- Muda itemId
+        item:getPosition():sendMagicEffect(CONST_ME_YELLOW_RINGS)
+    end
+end
+```
+
+**Propósito**: Modificar items no mapa para efeitos visuais/lógicos
+
+### Componente 7: Webhook Notifications
+
+```lua
+-- Notificar Discord sobre mudança
+local function sendWebhook(message)
+    Webhook.sendMessage(":fire: " .. message, announcementChannels["serverAnnouncements"])
+end
+
+-- Chamar com delay para async
+addEvent(sendWebhook, 60000, "The world has changed!")
+```
+
+**Propósito**: Informar players no Discord sobre world changes
+
+</Card>
+
+---
+
+## 🗺️ Map Randomization
+
+<Card title="Implementando Map Randomization" icon="map">
+
+### Anatomy of Map Randomization
+
+```lua
+-- 1. Config with multiple options
+local locations = {
+    { name = "Drefia", path = "data/world/world_changes/..." },
+    { name = "Edron", path = "data/world/world_changes/..." },
+    { name = "Ankrahmun", path = "data/world/world_changes/..." },
+}
+
+-- 2. Select index during startup
+function event.onStartup()
+    local selectedIndex = math.random(1, #locations)
+    local selected = locations[selectedIndex]
+    
+    -- 3. Load map
+    Game.loadMap(selected.path)
+    
+    -- 4. Store for reference
+    Game.setStorageValue(GlobalStorage.Key, selectedIndex)
+    
+    -- 5. Notify
+    logger.info("[World Change] " .. selected.name .. " is active")
+    addEvent(sendWebhook, 60000, "World change in " .. selected.name)
+end
+```
+
+### Teleport Coordination
+
+```lua
+-- Teleports usam Storage para saber para onde ir
+for _, config in ipairs(teleportExits) do
+    if Game.getStorageValue(config.storage) == 1 then
+        player:teleportTo(config.exitPosition)
+        return true
+    end
+end
+```
+
+### Multiple Map Paths Structure
+
+```
+world/
+└── world_changes/
+    ├── fury_gates/
+    │   ├── thais.otbm
+    │   ├── edron.otbm
+    │   └── ...
+    └── nightmare_isle/
+        ├── ankrahmun_north.otbm
+        ├── darashia_north.otbm
+        └── darashia_west.otbm
+```
+
+</Card>
+
+---
+
+## 🌙 Time-Based Events
+
+<Card title="Implementando Time-Based NPC Spawning" icon="moon">
+
+### Anatomy of Time-Based Spawning
+
+```lua
+-- 1. Config with time periods
+local npcSpawns = {
+    {
+        name = "Night NPC",
+        spawnPeriod = LIGHT_STATE_SUNSET,      -- Quando spawnar
+        despawnPeriod = LIGHT_STATE_SUNRISE,   -- Quando despawnar
+        position = Position(x, y, z),
+    },
+}
+
+-- 2. Handle period changes
+function event.onPeriodChange(period)
+    -- Check cada NPC
+    for _, npcData in ipairs(npcSpawns) do
+        if npcData.despawnPeriod == period then
+            -- Remover NPC ativo
+        elseif npcData.spawnPeriod == period then
+            -- Spawnar novo NPC
+        end
+    end
+end
+
+-- 3. Handle startup
+function event.onStartup()
+    local currentPeriod = getTibiaTimerDayOrNight()
+    -- Spawnar NPCs que devem estar ativos
+end
+```
+
+### Period Detection
+
+```lua
+-- 2 períodos em Tibia
+LIGHT_STATE_SUNRISE  -- Dia (4:00 UTC - 16:00 UTC)
+LIGHT_STATE_SUNSET   -- Noite (16:00 UTC - 4:00 UTC)
+
+-- Detectar atual na startup
+local mode = getTibiaTimerDayOrNight()
+local period = (mode == "night") and LIGHT_STATE_SUNSET or LIGHT_STATE_SUNRISE
+```
+
+### NPC State Tracking
+
+```lua
+-- Rastrear NPCs ativos por índice
+local activeNpcRefs = {}
+
+-- Ao spawnar
+local npc = Game.createNpc(name, position)
+if npc then
+    activeNpcRefs[index] = npc:getId()
+end
+
+-- Ao despawnar
+local npc = Creature(activeNpcRefs[index])
+if npc then
+    npc:remove()
+end
+activeNpcRefs[index] = nil
+```
+
+</Card>
+
+---
+
+## 🏗️ Padrões de Implementação
+
+<Card title="Padrões Avançados para World Changes" icon="wrench">
+
+### Padrão 1: Random Location Map Loading
+
+```lua
+local config = {
+    locations = {
+        { displayName = "Location 1", mapName = "location_1", storage = GlobalStorage.Key.Location1 },
+        { displayName = "Location 2", mapName = "location_2", storage = GlobalStorage.Key.Location2 },
+    },
+}
+
+local event = GlobalEvent("Random Location")
+
+function event.onStartup()
+    -- Reset storage
+    for _, loc in ipairs(config.locations) do
+        Game.setStorageValue(loc.storage, -1)
+    end
+    
+    -- Pick random
+    local selected = config.locations[math.random(#config.locations)]
+    
+    -- Load map
+    Game.loadMap(DATA_DIRECTORY .. "/world/world_changes/location/" .. selected.mapName .. ".otbm")
+    Game.setStorageValue(selected.storage, 1)
+    
+    logger.info("[World Change] " .. selected.displayName .. " is active")
+    return true
+end
+
+event:register()
+```
+
+### Padrão 2: Time-Based NPC Toggle
+
+```lua
+local npcData = {
+    {
+        name = "Day NPC",
+        spawnPeriod = LIGHT_STATE_SUNRISE,
+        despawnPeriod = LIGHT_STATE_SUNSET,
+        position = Position(x, y, z),
+    },
+}
+
+local event = GlobalEvent("NPC Time Toggle")
+
+function event.onPeriodChange(period)
+    for i, npc in ipairs(npcData) do
+        if npc.despawnPeriod == period and activeRefs[i] then
+            local creature = Creature(activeRefs[i])
+            if creature then
+                creature:remove()
+                activeRefs[i] = nil
+            end
+        elseif npc.spawnPeriod == period and not activeRefs[i] then
+            local spawned = Game.createNpc(npc.name, npc.position)
+            if spawned then
+                spawned:setMasterPos(npc.position)
+                activeRefs[i] = spawned:getId()
+            end
+        end
+    end
+    return true
+end
+
+event:register()
+```
+
+### Padrão 3: Chance-Based NPC Spawn with Cleanup
+
+```lua
+local config = {
+    enableSpawn = true,
+    spawnChance = 33,
+    locations = {
+        { position = Position(x, y, z), removeItems = {...} },
+    },
+}
+
+local event = GlobalEvent("Chance Spawn")
+
+function event.onStartup()
+    if config.enableSpawn and math.random(100) <= config.spawnChance then
+        local location = config.locations[math.random(#config.locations)]
+        
+        -- Cleanup items
+        for _, itemData in ipairs(location.removeItems or {}) do
+            local tile = Tile(itemData.position)
+            if tile then
+                local item = tile:getItemById(itemData.itemId)
+                if item then
+                    item:remove()
+                end
+            end
+        end
+        
+        -- Spawn NPC
+        local npc = Game.createNpc("npc_name", location.position)
+        if npc then
+            npc:setMasterPos(location.position)
+        end
+        
+        Game.setStorageValue(GlobalStorage.Key, 1)
+    else
+        Game.setStorageValue(GlobalStorage.Key, -1)
+    end
+    return true
+end
+
+event:register()
+```
+
+### Padrão 4: Conditional Teleport Grid
+
+```lua
+local teleportPositions = {
+    [64001] = Position(x1, y1, z1),
+    [64002] = Position(x2, y2, z2),
+    [64003] = Position(x3, y3, z3),
+}
+
+local teleport = MoveEvent()
+
+function teleport.onStepIn(creature, item, position, fromPosition)
+    local player = creature:getPlayer()
+    if not player then
+        return true
+    end
+
+    local targetPos = teleportPositions[item.actionid]
+    if targetPos then
+        player:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+        player:teleportTo(targetPos)
+        player:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+    end
+    return true
+end
+
+teleport:type("stepin")
+for actionId, _ in pairs(teleportPositions) do
+    teleport:aid(actionId)
+end
+teleport:register()
+```
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Map Randomization">
+
+**Fury Gates (Multiple Cities)**
+
+```lua
+local gates = {
+    { city = "Thais", mapName = "thais", exitPosition = Position(32265, 32164, 7) },
+    { city = "Edron", mapName = "edron", exitPosition = Position(33221, 31923, 7) },
+    { city = "Ankrahmun", mapName = "ankrahmun", exitPosition = Position(33269, 32841, 7) },
+}
+
+local furyGates = GlobalEvent("Load Fury Gates")
+
+function furyGates.onStartup(interval)
+    local gateId = math.random(1, #gates)
+    local selectedGate = gates[gateId]
+    
+    Game.loadMap(DATA_DIRECTORY .. "/world/world_changes/fury_gates/" .. selectedGate.mapName .. ".otbm")
+    Game.setStorageValue(GlobalStorage.FuryGates, gateId)
+    
+    logger.info("[World Change] Fury Gate in " .. selectedGate.city)
+    addEvent(sendWebhook, 60000, "Fury Gate active in " .. selectedGate.city)
+    return true
+end
+
+furyGates:register()
+```
+
+</TabItem>
+
+<TabItem label="Time-Based NPC">
+
+**NPCs by Sunrise/Sunset**
+
+```lua
+local npcSpawns = {
+    {
+        name = "Ghostly Wolf",
+        spawnPeriod = LIGHT_STATE_SUNSET,
+        despawnPeriod = LIGHT_STATE_SUNRISE,
+        position = Position(33332, 32052, 7),
+    },
+}
+
+local spawnsNpcByTime = GlobalEvent("SpawnsNpcByTime")
+
+function spawnsNpcByTime.onPeriodChange(period)
+    for i, npcData in ipairs(npcSpawns) do
+        if npcData.despawnPeriod == period and activeNpcRefs[i] then
+            local npc = Creature(activeNpcRefs[i])
+            if npc then
+                npc:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+                npc:remove()
+            end
+            activeNpcRefs[i] = nil
+        elseif npcData.spawnPeriod == period and not activeNpcRefs[i] then
+            addEvent(function()
+                local npc = Game.createNpc(npcData.name, npcData.position)
+                if npc then
+                    npc:setMasterPos(npcData.position)
+                    npc:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+                    activeNpcRefs[i] = npc:getId()
+                end
+            end, 5000)
+        end
+    end
+    return true
+end
+
+spawnsNpcByTime:register()
+```
+
+</TabItem>
+
+<TabItem label="Chance-Based Spawn">
+
+**Oriental Trader (33% Chance)**
+
+```lua
+local config = {
+    enableSpawn = true,
+    spawnChance = 33,
+    towns = {
+        [1] = {
+            yasirPosition = Position(33102, 32884, 6),
+            mapName = "Ankrahmun",
+        },
+    },
+}
+
+local orientalTrader = GlobalEvent("Oriental Trader")
+
+function orientalTrader.onStartup()
+    if config.enableSpawn and math.random(100) <= config.spawnChance then
+        local randTown = config.towns[math.random(#config.towns)]
+        
+        Game.loadMap(DATA_DIRECTORY .. "/world/world_changes/oriental_trader/ankrahmun.otbm")
+        
+        addEvent(function()
+            local npc = Game.createNpc("yasir", randTown.yasirPosition)
+            if npc then
+                npc:setMasterPos(randTown.yasirPosition)
+            end
+        end, 60000)
+        
+        Game.setStorageValue(GlobalStorage.Yasir, 1)
+    else
+        Game.setStorageValue(GlobalStorage.Yasir, -1)
+    end
+    return true
+end
+
+orientalTrader:register()
+```
+
+</TabItem>
+
+<TabItem label="Object Transformation">
+
+**Fungus Transformation**
+
+```lua
+local event = GlobalEvent("TheirMastersVoice")
+
+function event.onStartup()
+    if math.random(100) <= 20 then
+        for x = 33306, 33369 do
+            for y = 31847, 31919 do
+                local position = Position(x, y, 9)
+                local tile = Tile(position)
+                if tile then
+                    local fungus = tile:getItemById(12065)
+                    if fungus and math.random(100) <= 30 then
+                        fungus:transform(math.random(12059, 12063))
+                        fungus:getPosition():sendMagicEffect(CONST_ME_YELLOW_RINGS)
+                    end
+                end
+            end
+        end
+    end
+end
+
+event:register()
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🛠️ Criando um World Change Script
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Determinar Tipo
+
+Escolha qual padrão melhor se encaixa:
+- **Map Randomization**: Carregar mapas diferentes
+- **Time-Based**: Spawnar/despawnar em períodos
+- **Chance-Based**: Spawnar condicionalmente
+- **Object Transform**: Modificar items visualmente
+
+### Passo 2: Definir Configuração
+
+```lua
+local config = {
+    -- Opções
+    locations = {...},
+    spawnChance = 50,
+    enableFeature = true,
+}
+```
+
+### Passo 3: Escolher Handler
+
+```lua
+local event = GlobalEvent("Event Name")
+
+-- Para startup:
+function event.onStartup()
+    -- Executar uma vez
+end
+
+-- Para períodos:
+function event.onPeriodChange(period)
+    -- Executar quando muda day/night
+end
+```
+
+### Passo 4: Implementar Lógica
+
+```lua
+function event.onStartup()
+    -- Selecionar opção
+    local selected = config.locations[math.random(#config.locations)]
+    
+    -- Carregar/modificar
+    Game.loadMap(selected.path)
+    
+    -- Armazenar estado
+    Game.setStorageValue(GlobalStorage.Key, selectedId)
+    
+    -- Notificar
+    logger.info("[World Change] " .. selected.name)
+    return true
+end
+```
+
+### Passo 5: Registrar
+
+```lua
+event:register()
+```
+
+### Exemplo Completo
+
+```lua
+-- scripts/world_changes/my_world_change.lua
+
+local config = {
+    enableChange = true,
+    locations = {
+        { name = "Location 1", mapName = "location_1" },
+        { name = "Location 2", mapName = "location_2" },
+    },
+}
+
+local myWorldChange = GlobalEvent("My World Change")
+
+function myWorldChange.onStartup()
+    if not config.enableChange then
+        return true
+    end
+    
+    local selected = config.locations[math.random(#config.locations)]
+    Game.loadMap(DATA_DIRECTORY .. "/world/world_changes/mychange/" .. selected.mapName .. ".otbm")
+    Game.setStorageValue(GlobalStorage.MyChange, math.random(#config.locations))
+    
+    logger.info("[World Change] " .. selected.name .. " is active")
+    return true
+end
+
+myWorldChange:register()
+```
+
+</Card>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Map não carrega
+
+**Causa**: Path incorreto ou arquivo não existe  
+**Solução**:
+```lua
+-- ✅ Correto - Usar DATA_DIRECTORY e caminho relativo
+Game.loadMap(DATA_DIRECTORY .. "/world/world_changes/fury_gates/edron.otbm")
+
+-- ❌ Errado - Path absoluto ou incompleto
+Game.loadMap("C:/path/to/map")
+Game.loadMap("edron.otbm")
+```
+
+### Problema: NPC não spawna
+
+**Causa**: NPC não existe na database ou position inválida  
+**Solução**:
+```lua
+-- ✅ Correto - Validar e setMasterPos
+local npc = Game.createNpc("npc_name", Position(x, y, z))
+if npc then
+    npc:setMasterPos(Position(x, y, z))
+else
+    logger.error("Failed to spawn NPC")
+end
+
+-- ❌ Errado - Não validar resultado
+Game.createNpc("invalid_npc", Position(x, y, z))
+```
+
+### Problema: Teleport não funciona
+
+**Causa**: Storage value errado ou item não registrado  
+**Solução**:
+```lua
+-- ✅ Correto - Registrar com UID/AID corretos
+teleport:type("stepin")
+teleport:uid(uniqueId)
+teleport:register()
+
+-- ✅ Verificar Storage antes de teleportar
+local state = Game.getStorageValue(GlobalStorage.Key)
+if state == 1 then
+    player:teleportTo(Position(x, y, z))
+end
+```
+
+### Problema: Period change não executa
+
+**Causa**: Handler não registrado ou período não muda  
+**Solução**:
+```lua
+-- ✅ Correto - Registrar GlobalEvent
+local event = GlobalEvent("Event Name")
+function event.onPeriodChange(period)
+    -- Lógica aqui
+end
+event:register()
+
+-- ✅ Verificar período corretamente
+if period == LIGHT_STATE_SUNRISE then
+    -- Dia agora
+elseif period == LIGHT_STATE_SUNSET then
+    -- Noite agora
+end
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Estrutura Padrão**:
+```lua
+-- 1. Config
+local config = { ... }
+
+-- 2. GlobalEvent
+local event = GlobalEvent("Event Name")
+
+-- 3. Handler
+function event.onStartup() ... end
+
+-- 4. Register
+event:register()
+```
+
+**Tipos de Handler**:
+- `onStartup()` - Uma vez ao iniciar
+- `onPeriodChange(period)` - Ao mudar day/night
+- `onShutdown()` - Ao desligar
+
+**Storage Keys**:
+```
+GlobalStorage.FuryGates
+GlobalStorage.Yasir
+GlobalStorage.NightmareIsle.Location
+```
+
+**Componentes**:
+- ✅ Map loading (Game.loadMap)
+- ✅ NPC/Monster creation (Game.createNpc)
+- ✅ Storage management (Game.setStorageValue)
+- ✅ Teleports (MoveEvent)
+- ✅ Item transform (item:transform)
+- ✅ Webhooks (Webhook.sendMessage)
+
+**Boas Práticas**:
+- ✅ Usar Storage para persistir state
+- ✅ Validar antes de spawnar
+- ✅ Enviar magic effects
+- ✅ Logar mudanças importantes
+- ✅ Usar addEvent para async operations
+- ✅ Registrar eventos corretamente
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_WorldChanges.mdx](#)
+2. **Analise Scripts Existentes**: Examine os 6 world changes
+3. **Teste Map Randomization**: Comece com map loading simples
+4. **Implemente Time-Based**: Adicione spawning por período
+5. **Crie Teleports**: Implemente teleporte dinâmico
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de World Changes Documentados:** 6  
+**Categorias**: Map Randomization (2), Time-Based (2), Chance-Based (1), Object Transform (1)
+
+Para dúvidas, consulte o arquivo de catálogo ou analise scripts similares.
+</Aside>

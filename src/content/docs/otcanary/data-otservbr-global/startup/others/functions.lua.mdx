@@ -1,0 +1,908 @@
+---
+title: "functions.lua - Funções de Inicialização de Mapa"
+description: "Documentação técnica das funções de carregamento de items, actions, uniques, signs e documents no mapa do servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 📄 functions.lua
+
+Conjunto de funções globais responsáveis pelo carregamento e inicialização de elementos do mapa durante o startup do servidor. Inclui items, actions, uniques, signs, documents e atualização de storage keys.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/others/functions.lua` |
+| **Tipo** | Funções Globais de Inicialização |
+| **Escopo** | Global |
+| **Dependências** | Tile, Game, logger, db |
+| **Chamado por** | `load.lua` (dofile) |
+| **Total de Funções** | 6 funções principais |
+| **Linhas de Código** | ~200 linhas |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/others/functions.lua`
+
+Este arquivo é carregado no startup através de `dofile()` diretamente no arquivo `load.lua`.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+Este arquivo contém **6 funções globais** essenciais para o carregamento inicial do mapa:
+
+1. **CreateMapItem()** - Cria items no mapa a partir de tabelas
+2. **loadLuaMapAction()** - Associa action IDs a items do mapa
+3. **loadLuaMapUnique()** - Associa unique IDs a items especiais
+4. **loadLuaMapSign()** - Carrega signs e seus textos
+5. **loadLuaMapBookDocument()** - Carrega books/documents em containers
+6. **updateKeysStorage()** - Atualiza storage keys antigos de quests
+
+**Objetivo Principal**: Evitar edição manual do mapa XML ao permitir definição de items/actions/uniques via Lua.
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura e Fluxo" icon="layers">
+
+```
+┌─────────────────────────────────────┐
+│        STARTUP DO SERVIDOR          │
+└────────────┬────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────┐
+│   load.lua (dofile functions.lua)   │
+└────────────┬────────────────────────┘
+             │
+    ┌────────┴────────┬─────────────────┬─────────────────┬───────────────┬──────────────────┐
+    │                 │                 │                 │               │                  │
+    ▼                 ▼                 ▼                 ▼               ▼                  ▼
+┌──────────────┐ ┌──────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────────┐
+│ CreateMapItem│ │loadAction│ │loadMapUnique │ │loadMapSign   │ │loadMapBookDoc│ │updateKeysStorage │
+│ (items table)│ │ (table)  │ │ (table)      │ │ (table)      │ │ (table)      │ │ (migrations)     │
+└──────────────┘ └──────────┘ └──────────────┘ └──────────────┘ └──────────────┘ └──────────────────┘
+     │                │              │                │                 │                   │
+     │                │              │                │                 │                   │
+     ├─> Itera loops  ├─> For pairs  ├─> For pairs   ├─> For pairs    ├─> For ipairs     ├─ Verifica version
+     ├─> Cria tiles   ├─> Get tile   ├─> Get tile    ├─> Get tile     ├─> Cria/localiza  ├─ Query DB
+     ├─> Game.create  ├─> Get item   ├─> Set uniqId  ├─> Set text     ├─> Item setAttr   ├─ Global storage
+     └─> Logger       ├─> Set action ├─> Logger      ├─> Logger       ├─> Log stats      └─ Logger
+                      └─ Logger      └─ Logger       └─ Logger        └─ Logger
+```
+
+**Padrão de Execução**:
+1. Itera tabela de entrada (pairs ou ipairs)
+2. Acessa posição das tiles
+3. Valida existência da tile
+4. Busca ou cria item
+5. Define atributo (actionId, uniqueId, text)
+6. Log de resultado
+
+</Card>
+
+---
+
+## 🔍 Funções Globais
+
+### 1️⃣ CreateMapItem()
+
+<Card title="Descrição" icon="shine">
+
+**Propósito**: Criar items no mapa sem necessidade de editar o XML do mapa manualmente.
+
+**Assinatura**:
+```lua
+function CreateMapItem(tablename)
+```
+
+**Parâmetro**:
+- `tablename` (table) - Tabela com estrutura:
+  ```lua
+  {
+    [itemId] = {
+      itemPos = { Position(...), Position(...), ... }
+    }
+  }
+  ```
+
+**Retorna**: `nil` (apenas logging)
+
+**Comportamento**:
+- Itera cada item ID da tabela
+- Para cada posição no array itemPos:
+  - Obtém Tile na posição
+  - Se tile válida E item não existe (getItemCountById == 0):
+    - Cria o item com `Game.createItem(itemId, 1, position)`
+  - Log debug ao final
+
+</Card>
+
+<Tabs>
+<TabItem label="Exemplo de Uso">
+
+```lua
+-- Definição de tabela de items
+local itemsToCreate = {
+  [3031] = {  -- Item ID 3031 (Light Wand)
+    itemPos = {
+      Position(32100, 32100, 7),
+      Position(32200, 32200, 7)
+    }
+  },
+  [3051] = {  -- Item ID 3051 (Wooden Door)
+    itemPos = {
+      Position(32150, 32100, 7),
+      Position(32300, 32200, 7)
+    }
+  }
+}
+
+-- Chamada
+CreateMapItem(itemsToCreate)
+-- Log: "Created all items in the map"
+```
+
+</TabItem>
+
+<TabItem label="Código Completo">
+
+```lua
+function CreateMapItem(tablename)
+	for index, value in pairs(tablename) do
+		for i = 1, #value.itemPos do
+			local tile = Tile(value.itemPos[i])
+			-- Checks if the position is valid
+			if tile then
+				if tile:getItemCountById(index) == 0 then
+					Game.createItem(index, 1, value.itemPos[i])
+				end
+			end
+		end
+	end
+	logger.debug("Created all items in the map")
+end
+```
+
+</TabItem>
+
+<TabItem label="Lógica">
+
+1. **Para cada itemId** na tabela
+2. **Para cada posição** no array itemPos
+3. **Obtém tile** naquela posição
+4. **Se tile é válida**:
+   - **Se item NÃO existe** (count == 0):
+     - Cria item
+5. **Log ao final**
+
+</TabItem>
+</Tabs>
+
+---
+
+### 2️⃣ loadLuaMapAction()
+
+<Card title="Descrição" icon="spin">
+
+**Propósito**: Carrega action IDs em items do mapa.
+
+**Assinatura**:
+```lua
+function loadLuaMapAction(tablename)
+```
+
+**Parâmetro**:
+- `tablename` (table) - Tabela com estrutura:
+  ```lua
+  {
+    [actionId] = {
+      itemId = ITEM_ID ou false,
+      itemPos = { Position(...), ... }
+    }
+  }
+  ```
+
+**Retorna**: `nil` (apenas side effects + logger)
+
+**Comportamento**:
+- Itera cada action ID da tabela
+- Para cada posição no array itemPos:
+  - Obtém Tile na posição
+  - **Se itemId não é false**:
+    - Busca item por ID
+    - Set action ID nele
+  - **Se itemId é false**:
+    - Tenta TopDownItem → TopTopItem → Ground
+    - Set action ID no primeiro encontrado
+  - Usa `goto continue` para skip em erros
+
+</Card>
+
+<Tabs>
+<TabItem label="Exemplo de Uso">
+
+```lua
+local actionsToLoad = {
+  [1001] = {  -- Action ID 1001
+    itemId = 3031,  -- Light Wand
+    itemPos = {
+      Position(32100, 32100, 7),
+      Position(32200, 32200, 7)
+    }
+  },
+  [2005] = {  -- Action ID 2005
+    itemId = false,  -- Qualquer item top
+    itemPos = {
+      Position(32150, 32100, 7)
+    }
+  }
+}
+
+loadLuaMapAction(actionsToLoad)
+```
+
+</TabItem>
+
+<TabItem label="Código Completo">
+
+```lua
+function loadLuaMapAction(tablename)
+	for index, value in pairs(tablename) do
+		for i = 1, #value.itemPos do
+			local tile = Tile(value.itemPos[i])
+			local item
+			if tile then
+				if not value.itemId == false and tile:getItemCountById(value.itemId) == 0 then
+					logger.error("[loadLuaMapAction] - Wrong item id {} found", value.itemId)
+					logger.warn("Action id: {}, position {}", index, tile:getPosition():toString())
+					goto continue
+				end
+
+				if value.itemId ~= false and tile:getItemCountById(value.itemId) > 0 then
+					item = tile:getItemById(value.itemId)
+				end
+
+				if item and value.itemId ~= false then
+					item:setAttribute(ITEM_ATTRIBUTE_ACTIONID, index)
+				end
+				if value.itemId == false and tile:getTopDownItem() then
+					tile:getTopDownItem():setAttribute(ITEM_ATTRIBUTE_ACTIONID, index)
+				end
+				if value.itemId == false and tile:getTopTopItem() then
+					tile:getTopTopItem():setAttribute(ITEM_ATTRIBUTE_ACTIONID, index)
+				end
+				if value.itemId == false and tile:getGround() then
+					tile:getGround():setAttribute(ITEM_ATTRIBUTE_ACTIONID, index)
+				end
+			end
+			::continue::
+		end
+	end
+end
+```
+
+</TabItem>
+
+<TabItem label="Lógica">
+
+1. **Para cada actionId** na tabela
+2. **Para cada posição** no array itemPos
+3. **Obtém tile** naquela posição
+4. **Se itemId não é false**:
+   - Busca item específico
+   - Set action ID
+5. **Else (itemId é false)**:
+   - Tenta TopDownItem
+   - Tenta TopTopItem
+   - Tenta Ground
+   - Set action ID no primeiro válido
+6. **Goto continue em caso de erro**
+
+</TabItem>
+</Tabs>
+
+---
+
+### 3️⃣ loadLuaMapUnique()
+
+<Card title="Descrição" icon="wand">
+
+**Propósito**: Carrega unique IDs em items especiais do mapa.
+
+**Assinatura**:
+```lua
+function loadLuaMapUnique(tablename)
+```
+
+**Parâmetro**:
+- `tablename` (table) - Tabela com estrutura:
+  ```lua
+  {
+    [uniqueId] = {
+      itemId = ITEM_ID,
+      itemPos = Position(...)
+    }
+  }
+  ```
+
+**Nota**: Diferente de Action, Unique usa `itemPos` como single Position, não array.
+
+**Retorna**: `nil` (apenas logging + side effects)
+
+**Comportamento**:
+- Itera cada unique ID da tabela
+- Obtém Tile na posição (single, não loop)
+- Valida se item existe na tile
+- Se válido, set unique ID no item
+- Log erros se item não encontrado
+
+</Card>
+
+<Tabs>
+<TabItem label="Exemplo de Uso">
+
+```lua
+local uniquesToLoad = {
+  [5001] = {  -- Unique ID 5001
+    itemId = 5234,  -- Artifact Sword
+    itemPos = Position(32100, 32100, 7)
+  },
+  [5002] = {  -- Unique ID 5002
+    itemId = 5235,  -- Ancient Amulet
+    itemPos = Position(32200, 32200, 7)
+  }
+}
+
+loadLuaMapUnique(uniquesToLoad)
+```
+
+</TabItem>
+
+<TabItem label="Código Completo">
+
+```lua
+function loadLuaMapUnique(tablename)
+	for index, value in pairs(tablename) do
+		local tile = Tile(value.itemPos)
+		local item
+		if tile then
+			if not value.itemId == false and tile:getItemCountById(value.itemId) == 0 then
+				logger.error("[loadLuaMapUnique] - Wrong item id {} found", value.itemId)
+				logger.warn("Unique id: {}, position {}", index, tile:getPosition():toString())
+				goto continue
+			end
+			if tile:getItemCountById(value.itemId) < 1 or value.itemId == false then
+				logger.warn("[loadLuaMapUnique] - Wrong item id {} found", value.itemId)
+				logger.warn("Unique id: {}, position {}, item id: wrong", index, tile:getPosition():toString())
+				goto continue
+			end
+			item = tile:getItemById(value.itemId)
+			if item then
+				item:setAttribute(ITEM_ATTRIBUTE_UNIQUEID, index)
+			end
+		end
+		::continue::
+	end
+end
+```
+
+</TabItem>
+
+<TabItem label="Lógica">
+
+1. **Para cada uniqueId** na tabela
+2. **Obtém tile** única posição
+3. **Valida** se tile e item existem
+4. **Se válido**:
+   - Busca item por ID
+   - Set unique ID
+5. **Log erros** se validações falham
+
+</TabItem>
+</Tabs>
+
+---
+
+### 4️⃣ loadLuaMapSign()
+
+<Card title="Descrição" icon="note">
+
+**Propósito**: Carrega signs no mapa com textos associados.
+
+**Assinatura**:
+```lua
+function loadLuaMapSign(tablename)
+```
+
+**Parâmetro**:
+- `tablename` (table) - Tabela com estrutura:
+  ```lua
+  {
+    [signIndex] = {
+      itemId = ITEM_ID,
+      itemPos = Position(...),
+      text = "Texto da Sign"
+    }
+  }
+  ```
+
+**Retorna**: `nil` (apenas logging)
+
+**Comportamento**:
+- Itera cada sign na tabela
+- Obtém Tile na posição
+- Busca item por ID
+- Se encontrado, set text no item via `ITEM_ATTRIBUTE_TEXT`
+- Log erros se item não existir
+
+</Card>
+
+<Tabs>
+<TabItem label="Exemplo de Uso">
+
+```lua
+local signsToLoad = {
+  [1] = {
+    itemId = 2841,  -- Sign item
+    itemPos = Position(32100, 32100, 7),
+    text = "Bem-vindo ao Castelo!"
+  },
+  [2] = {
+    itemId = 2841,
+    itemPos = Position(32200, 32200, 8),
+    text = "Perigo: Zona de Boss"
+  }
+}
+
+loadLuaMapSign(signsToLoad)
+```
+
+</TabItem>
+
+<TabItem label="Código Completo">
+
+```lua
+function loadLuaMapSign(tablename)
+	for index, value in pairs(tablename) do
+		local tile = Tile(value.itemPos)
+		local item
+		if tile then
+			if tile:getItemCountById(value.itemId) == 0 then
+				logger.error("[loadLuaMapSign] - Wrong item id {} found", value.itemId)
+				logger.warn("Sign id: {}, position {}, item id: wrong", index, tile:getPosition():toString())
+				goto continue
+			end
+			if tile:getItemCountById(value.itemId) == 1 then
+				item = tile:getItemById(value.itemId)
+			end
+			if item then
+				item:setAttribute(ITEM_ATTRIBUTE_TEXT, value.text)
+			end
+		end
+		::continue::
+	end
+end
+```
+
+</TabItem>
+
+<TabItem label="Lógica">
+
+1. **Para cada sign** na tabela
+2. **Obtém tile** na posição
+3. **Busca item** por ID
+4. **Se encontrado**:
+   - Set text via setAttribute
+5. **Log erros** se não encontrado
+
+</TabItem>
+</Tabs>
+
+---
+
+### 5️⃣ loadLuaMapBookDocument()
+
+<Card title="Descrição" icon="book">
+
+**Propósito**: Carrega books e documents no mapa, opcionalmente dentro de containers.
+
+**Assinatura**:
+```lua
+function loadLuaMapBookDocument(tablename)
+```
+
+**Parâmetro**:
+- `tablename` (table) - Array ipairs com estrutura:
+  ```lua
+  {
+    [1] = {
+      position = Position(...),
+      itemId = ITEM_ID,
+      containerId = CONTAINER_ID ou nil,
+      text = "Conteúdo do livro"
+    }
+  }
+  ```
+
+**Retorna**: `nil` (apenas logging com estatísticas)
+
+**Comportamento**:
+- Itera cada document usando `ipairs`
+- Rastreia contagem total vs carregados
+- Se containerId definido:
+  - Tenta localizar container na tile
+  - Se encontrado, adiciona item **dentro** dele
+  - Se não encontrado, skipa com warn
+- Se sem containerId:
+  - Tenta localizar item no mapa
+  - Se não existe, cria item
+- Se item existe, set text
+- Log final com estatísticas (loaded/total)
+
+</Card>
+
+<Tabs>
+<TabItem label="Exemplo de Uso">
+
+```lua
+local booksToLoad = {
+  {
+    position = Position(32100, 32100, 7),
+    itemId = 1960,  -- Book
+    containerId = nil,  -- Livre no mapa
+    text = "Uma história antiga..."
+  },
+  {
+    position = Position(32200, 32200, 7),
+    itemId = 1970,  -- Document
+    containerId = 1234,  -- Dentro de chest
+    text = "Mapa do tesouro"
+  }
+}
+
+loadLuaMapBookDocument(booksToLoad)
+-- Log: "Loaded 2 of 2 books and documents in the map"
+```
+
+</TabItem>
+
+<TabItem label="Código Completo">
+
+```lua
+function loadLuaMapBookDocument(tablename)
+	local totals = { 0, 0 }
+	for index, value in ipairs(tablename) do
+		local tile = Tile(value.position)
+		if value.position then
+			totals[1] = totals[1] + 1
+			if tile then
+				local container = (value.containerId and tile:getItemById(value.containerId) or nil)
+				if not value.containerId or value.containerId and container then
+					local item
+					if container then
+						item = container:addItem(value.itemId, 1, INDEX_WHEREEVER, FLAG_NOLIMIT)
+					else
+						item = tile:getItemById(value.itemId)
+						if not item then
+							item = Game.createItem(value.itemId, 1, value.position)
+						end
+					end
+					if item then
+						item:setAttribute(ITEM_ATTRIBUTE_TEXT, value.text)
+						totals[2] = totals[2] + 1
+					else
+						logger.warn("[loadLuaMapBookDocument] - Item not found! Index: {}, itemId: {}", index, value.itemId)
+						goto continue
+					end
+				else
+					logger.warn("[loadLuaMapBookDocument] - Container not found! Index: {}, containerId: {}", index, value.containerId)
+					goto continue
+				end
+			else
+				logger.warn("[loadLuaMapBookDocument] - Tile not found! Index: {}, position: x: {} y: {} z: {}", index, value.position.x, value.position.y, value.position.z)
+				goto continue
+			end
+		end
+		::continue::
+	end
+	if totals[1] == totals[2] then
+		logger.debug("Loaded {} books and documents in the map", totals[2])
+	else
+		logger.debug("Loaded {} of {} books and documents in the map", totals[2], totals[1])
+	end
+end
+```
+
+</TabItem>
+
+<TabItem label="Lógica">
+
+1. **Inicializa contadores** [total, loaded]
+2. **Para cada document** (ipairs)
+3. **Se position definida**:
+   - Incrementa total
+   - **Se containerId**:
+     - Busca container
+     - Se encontrado, adiciona item nele
+     - Se não, log warn + skip
+   - **Else**:
+     - Busca item no mapa
+     - Se não existe, cria
+   - **Se item válido**:
+     - Set text
+     - Incrementa loaded
+4. **Log final** com estatísticas
+
+</TabItem>
+</Tabs>
+
+---
+
+### 6️⃣ updateKeysStorage()
+
+<Card title="Descrição" icon="database">
+
+**Propósito**: Atualizar storage keys antigos em todas as contas de jogadores (para migrations de quests).
+
+**Assinatura**:
+```lua
+function updateKeysStorage(tablename)
+```
+
+**Parâmetro**:
+- `tablename` (table) - Tabela com estrutura:
+  ```lua
+  {
+    [0] = { latest = LATEST_VERSION },
+    [1] = {
+      { old = "old_key_1", new = "new_key_1" },
+      { old = "old_key_2", new = "new_key_2" }
+    },
+    [2] = {
+      { old = "old_key_3", new = "new_key_3" }
+    }
+  }
+  ```
+
+**Retorna**: `true` se atualização desnecessária ou completada
+
+**Comportamento**:
+- Obtém versão latest da tabela
+- Compara com global storage `GlobalStorage.KeysUpdate`
+- **Se já atualizado** (newUpdate &lt;= oldUpdate):
+  - Retorna `true` (skip)
+- **Else**:
+  - Loop cada versão entre old e new
+  - Para cada mapping old → new:
+    - **Executa SQL UPDATE** mudando key em `player_storage`
+  - Armazena novo versão em global storage
+  - Log info
+
+**Importante**: Executa querys SQL diretas! Máquina pesada.
+
+</Card>
+
+<Tabs>
+<TabItem label="Exemplo de Uso">
+
+```lua
+local keyMigrations = {
+  [0] = { latest = 2 },  -- Última versão é 2
+  
+  [1] = {  -- Alterações na versão 1
+    { old = "quest_necromancer", new = "quest_necromancer_v1" },
+    { old = "quest_dragon_lair", new = "quest_dragon_lair_v1" }
+  },
+  
+  [2] = {  -- Alterações na versão 2
+    { old = "quest_necromancer_v1", new = "quest_necromancer_final" }
+  }
+}
+
+updateKeysStorage(keyMigrations)
+-- Se global storage já = 2: retorna true
+-- Se global storage = 0: atualiza v1 e v2, log info
+```
+
+</TabItem>
+
+<TabItem label="Código Completo">
+
+```lua
+function updateKeysStorage(tablename)
+	local newUpdate = tablename[0].latest
+	local oldUpdate = getGlobalStorage(GlobalStorage.KeysUpdate)
+	if newUpdate <= oldUpdate then
+		return true
+	end
+
+	logger.info("Updating quest keys storages...")
+	if oldUpdate < 1 then
+		oldUpdate = 1
+	end
+	for u = oldUpdate, newUpdate do
+		for i = 1, #tablename[u] do
+			db.query("UPDATE `player_storage` SET `key` = '" .. tablename[u][i].new .. "' WHERE `key` = '" .. tablename[u][i].old .. "';")
+		end
+	end
+	setGlobalStorage(GlobalStorage.KeysUpdate, newUpdate)
+	logger.info("Storage Keys Updated")
+end
+```
+
+</TabItem>
+
+<TabItem label="Lógica">
+
+1. **Obtém latest version** da tabela
+2. **Obtém current version** de global storage
+3. **Se já atualizado**:
+   - Retorna true (skip)
+4. **Else**:
+   - Log inicio
+   - **Para cada versão** entre old e new:
+     - **Para cada mapping**:
+       - Executa SQL UPDATE
+   - Armazena nova version
+   - Log conclusão
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🎛️ Variáveis e Constantes
+
+<Card title="Constantes Utilizadas" icon="code">
+
+### Constantes ITEM_ATTRIBUTE
+
+```lua
+ITEM_ATTRIBUTE_ACTIONID   -- Attribute ID para action
+ITEM_ATTRIBUTE_UNIQUEID   -- Attribute ID para unique
+ITEM_ATTRIBUTE_TEXT       -- Attribute ID para texto (signs, books)
+```
+
+### Flags de Container
+
+```lua
+INDEX_WHEREEVER  -- Adiciona item em qualquer posição disponível
+FLAG_NOLIMIT     -- Sem limite de quantidade no container
+```
+
+### Global Storage Keys
+
+```lua
+GlobalStorage.KeysUpdate  -- Rastreia version de storage key updates
+```
+
+</Card>
+
+---
+
+## 📊 Padrões de Implementação
+
+<Tabs>
+<TabItem label="Guard Clauses">
+
+Todas as funções usam guard clauses:
+
+```lua
+if tile then
+  -- processo
+end
+
+if not value.itemId == false and count == 0 then
+  -- erro + logger + goto
+  goto continue
+end
+```
+
+</TabItem>
+
+<TabItem label="Logging">
+
+Sistema de logging em 3 níveis:
+
+```lua
+logger.debug("...")   -- Success, info
+logger.warn("...")    -- Validation issues
+logger.error("...")   -- Critical errors
+```
+
+</TabItem>
+
+<TabItem label="Goto Continue">
+
+Tratamento de erros com labels:
+
+```lua
+::continue::  -- Label
+goto continue -- Jump
+```
+
+</TabItem>
+
+<TabItem label="Contadores">
+
+Rastreamento de operações:
+
+```lua
+local totals = { 0, 0 }  -- [total, success]
+totals[1] = totals[1] + 1
+totals[2] = totals[2] + 1
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## ⚠️ Considerações Importantes
+
+<Card title="Notas de Implementação" icon="alert">
+
+### Performance
+- `loadLuaMapBookDocument()` é mais pesada (mais validações)
+- `updateKeysStorage()` executa SQL direto (potencialmente lenta com muitos players)
+
+### Segurança
+- `updateKeysStorage()` usa concatenação SQL (sem prepared statements)
+- Confiar que tabelas de input são válidas
+
+### Posições
+- Action e Unique usam estruturas diferentes:
+  - Action: `itemPos` = array de positions
+  - Unique: `itemPos` = single Position
+- BookDocument usa `position` simples
+
+### Cleanup
+- Nenhuma função deleta items/storage existentes
+- Apenas adiciona/atualiza atributos
+- Seguro executar múltiplas vezes
+
+### Retorno
+- `CreateMapItem()`: Sempre `nil` (side effect apenas)
+- `loadLuaMapAction/Unique/Sign()`: Sempre `nil`
+- `loadLuaMapBookDocument()`: Sempre `nil` (log com stats)
+- `updateKeysStorage()`: Retorna `true` se skip, senão `nil`
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Documentadas**: 6 Funções Globais  
+**Total de Linhas**: ~200  
+**Tipo**: Arquivo de Startup  
+**Status**: ✅ Completo  
+
+**Funções**:
+1. ✅ CreateMapItem
+2. ✅ loadLuaMapAction
+3. ✅ loadLuaMapUnique
+4. ✅ loadLuaMapSign
+5. ✅ loadLuaMapBookDocument
+6. ✅ updateKeysStorage
+
+Para dúvidas, consulte o arquivo `load.lua` que faz os chamados, ou analyse as tabelas de entrada esperadas.
+</Aside>

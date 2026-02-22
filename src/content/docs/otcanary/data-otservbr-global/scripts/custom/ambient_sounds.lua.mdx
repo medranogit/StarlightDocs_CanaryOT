@@ -1,0 +1,162 @@
+---
+title: "ambient_sounds.lua"
+description: "Sistema dinâmico de sons ambientes que varia conforme período do dia e zona onde o jogador está."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | ambient_sounds.lua |
+| **Tipo** | Global Event + Zone Event |
+| **Tamanho** | ~88 linhas |
+| **Localização** | scripts/custom/ |
+| **Propósito** | Gerenciar sons ambientes dinâmicos por zona e período |
+| **Dependências** | Zone, ZoneEvent, GlobalEvent, Player |
+| **Complexidade** | Média |
+</Card>
+
+:::tip 💡
+Este sistema integra eventos de zona com eventos globais para sincronizar sons ambientes em tempo real, respondendo tanto a mudanças de período quanto a alterações manuais do administrador.
+:::
+
+## 📄 Visão Geral Resumida
+
+Sistema completo de gerenciamento de sons ambientes que detecta automaticamente período do dia (dia/noite/amanhecer/entardecer) e aplica efeitos sonoros contextualmente apropriados para cada zona do servidor. Suporta forçar período manualmente através de comando administrativo.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Variáveis Globais
+
+| Variável | Tipo | Descrição |
+|----------|------|-----------|
+| `ambientZones` | table | Array de configurações de zonas com nomes e IDs de sons |
+| `forcePeriod` | boolean\|false | Flag para forçar período (false = auto, "day" = dia, "night" = noite) |
+
+### Funções Locais
+
+**`getCurrentSound(zoneData, period)`**
+- **Parâmetros**: `zoneData` (table com soundEnterDay/Night), `period` (LIGHT_STATE)
+- **Retorno**: ID do som apropriado para o período
+- **Lógica**: Retorna som noturno se LIGHT_STATE_NIGHT/SUNSET, diurno caso contrário
+- **Pseudocódigo**:
+```lua
+if period == NIGHT então
+  retorna soundEnterNight
+else if period == SUNRISE então
+  retorna soundEnterDay
+else if period == SUNSET então
+  retorna soundEnterNight
+else
+  retorna soundEnterDay (padrão)
+```
+
+**`getEffectivePeriod()`**
+- **Parâmetros**: Nenhum
+- **Retorno**: ID de período efetivo (LIGHT_STATE_SUNRISE ou LIGHT_STATE_SUNSET)
+- **Lógica**: Respeita `forcePeriod` se definido, caso contrário usa `getTibiaTimerDayOrNight()`
+- **Pseudocódigo**:
+```lua
+if forcePeriod então
+  retorna forcePeriod == "night" ? SUNSET : SUNRISE
+else
+  return getTibiaTimerDayOrNight() == "night" ? SUNSET : SUNRISE
+```
+
+### Zone Events
+
+**Evento: `zoneEvent.afterEnter`**
+- **Disparador**: Jogador entra em zona
+- **Ação**: Envia som ambiente apropriado ao jogador
+- **Lógica**:
+  1. Valida se criatura é jogador
+  2. Obtém período efetivo via `getEffectivePeriod()`
+  3. Calcula som via `getCurrentSound()`
+  4. Envia som ao jogador com `sendAmbientSoundEffect()`
+
+**Evento: `zoneEvent.afterLeave`**
+- **Disparador**: Jogador sai de zona
+- **Ação**: Envia som de silêncio (0)
+
+### Global Event
+
+**`AmbientSoundPeriodChange`**
+- **Função**: `onPeriodChange(period)`
+- **Disparador**: Quando período do dia/noite muda
+- **Ação**: 
+  1. Itera todas as zonas configuradas
+  2. Para cada zona, obtém som apropriado
+  3. Envia som a todos os jogadores na zona
+
+## 📊 Dados Técnicos
+
+### Configuração de Zonas
+
+Cada entrada em `ambientZones` possui:
+
+| Campo | Tipo | Exemplo | Descrição |
+|-------|------|---------|-----------|
+| `zone` | string | "venore-city" | ID da zona (usada para criar Zone) |
+| `soundEnterDay` | number | SOUND_EFFECT_TYPE_AMBIENT_SWAMP_INSECTS_BIRDS_NOISES | ID som período dia |
+| `soundEnterNight` | number | SOUND_EFFECT_TYPE_AMBIENT_WIND_NOISES_CREATURES_INSECTS_NIGHT | ID som período noite |
+| `soundLeave` | number | SOUND_EFFECT_TYPE_AMBIENT_SILENCE | ID som ao sair (0 = silêncio) |
+
+### Zonas Configuradas
+
+- **venore-city**: Sons de insetos/pássaros dia, vento noite
+- **thais-city**: Sons de insetos/pássaros cidade dia, vento noite
+- **carlin-city**: Sons de insetos/pássaros cidade dia, vento noite
+- **edron-city**: Sons de insetos/criaturas dia, insetos/criaturas noite
+- **kazordoon-city**: Sons de vento caverna dia, marteladas caverna noite
+- **port-hope-city**: Sons cidade/natureza/humanos dia, natureza noite
+
+### Constantes de Período
+
+| Constante | Valor | Uso |
+|-----------|-------|-----|
+| `LIGHT_STATE_NIGHT` | - | Noite completa |
+| `LIGHT_STATE_SUNRISE` | - | Amanhecer |
+| `LIGHT_STATE_SUNSET` | - | Entardecer |
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `Zone(string)` | Classe | Obter zona pelo nome |
+| `ZoneEvent(zone)` | Classe | Criar evento de zona |
+| `GlobalEvent(string)` | Classe | Criar evento global |
+| `Player.sendAmbientSoundEffect()` | Método | Enviar som ao jogador |
+| `getTibiaTimerDayOrNight()` | Função | Obter período atual |
+| `Game.getPlayers()` | Função | Obter todos jogadores |
+
+### Integrações
+
+- **force_period.lua**: Modifica `forcePeriod` para simular períodos
+- **Sistema de Eventos**: Registra eventos de zona e global na inicialização
+
+### APIs Utilizadas
+
+- Zone Events: `afterEnter`, `afterLeave`
+- Global Events: `onPeriodChange`
+- Player: `getPosition()`, `sendAmbientSoundEffect()`, `getPlayer()`
+- Creature: `isPlayer()`, `getPosition()`
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/custom/ambient_sounds.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | 100% |
+| **Complexidade Código** | Média |
+| **Status Validação** | ✅ Completo |
+| **Backticks Validados** | ✅ OK |

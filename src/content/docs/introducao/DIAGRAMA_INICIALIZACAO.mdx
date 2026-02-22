@@ -1,0 +1,854 @@
+---
+title: Diagrama de Inicialização e Dependências
+description: Visualização completa do fluxo de boot, carregamento de dados e dependências entre data/ e data-otservbr-global/
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🔄 Diagrama de Inicialização e Dependências
+
+Visualização completa de como o servidor Canary inicia, carrega de dados e gerencia dependências entre `data/` e `data-otservbr-global/`.
+
+---
+
+## 📊 Fluxo Geral de Boot (Macro)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ EXECUTÁVEL SERVIDOR (canary.exe / canary)                  │
+└────────────────────┬────────────────────────────────────────┘
+                     ↓
+        ┌────────────────────────┐
+        │ main.cpp               │
+        │ - Parse arguments      │
+        │ - Load config.lua      │
+        └────────────┬───────────┘
+                     ↓
+        ┌────────────────────────────────────┐
+        │ canary_server::initialize()        │
+        │ CanaryServer singleton created     │
+        └────────────┬───────────────────────┘
+                     ↓
+        ┌──────────────────────────────────────────┐
+        │ FASE 1: CORE INITIALIZATION              │
+        ├──────────────────────────────────────────┤
+        │ 1. Database connection pool             │
+        │ 2. Config Manager loaded                │
+        │ 3. Logger initialized                   │
+        └────────────┬─────────────────────────────┘
+                     ↓
+        ┌──────────────────────────────────────────┐
+        │ FASE 2: DATA LOADING                     │
+        ├──────────────────────────────────────────┤
+        │ 1. Items definitions (items.xml)        │
+        │ 2. Creatures (monsters.xml, npcs.xml)   │
+        │ 3. Houses (house.xml)                   │
+        │ 4. Spells/Abilities                     │
+        └────────────┬─────────────────────────────┘
+                     ↓
+        ┌──────────────────────────────────────────┐
+        │ FASE 3: MAP LOADING                      │
+        ├──────────────────────────────────────────┤
+        │ 1. Load OTBM files (world/world.otbm)   │
+        │ 2. Parse tiles, objects                 │
+        │ 3. Setup spawn points                   │
+        │ 4. Load houses, NPCs positions         │
+        └────────────┬─────────────────────────────┘
+                     ↓
+        ┌──────────────────────────────────────────┐
+        │ FASE 4: LUA SCRIPTING ENGINE             │
+        ├──────────────────────────────────────────┤
+        │ 1. Initialize Lua state                 │
+        │ 2. Load scripts/ (base + custom)        │
+        │ 3. Register callbacks                   │
+        │ 4. Register global functions            │
+        └────────────┬─────────────────────────────┘
+                     ↓
+        ┌──────────────────────────────────────────┐
+        │ FASE 5: PLAYER DATA                      │
+        ├──────────────────────────────────────────┤
+        │ 1. Load accounts from database          │
+        │ 2. Load player settings                 │
+        │ 3. Verify bank state                    │
+        └────────────┬─────────────────────────────┘
+                     ↓
+        ┌──────────────────────────────────────────┐
+        │ FASE 6: NETWORK STARTUP                  │
+        ├──────────────────────────────────────────┤
+        │ 1. Bind socket to port                  │
+        │ 2. Listen for connections               │
+        │ 3. Start event loop                     │
+        └────────────┬─────────────────────────────┘
+                     ↓
+        ┌──────────────────────────────────────────┐
+        │ ✅ SERVER RUNNING - READY FOR CLIENTS    │
+        └──────────────────────────────────────────┘
+```
+
+---
+
+## 🗂️ Hierarquia de Dependências: data/ vs data-otservbr-global/
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                     SERVIDOR CANARY                            │
+└────────────────────────┬───────────────────────────────────────┘
+                         │
+        ┌────────────────┴────────────────┐
+        ↓                                 ↓
+   ┌─────────┐                    ┌──────────────────┐
+   │  data/  │                    │ data-otservbr-   │
+   │ (BASE)  │                    │ global/ (CUSTOM) │
+   └────┬────┘                    └────────┬─────────┘
+        │                                  │
+        │ (Padrão do Tibia Server)        │ (Customizações OTServBR)
+        │                                  │
+        ├─ core.lua                       ├─ core.lua
+        ├─ global.lua                     ├─ global.lua
+        ├─ stages.lua ────────────────────┼─ stages.lua
+        │                                  │
+        ├─ scripts/                       ├─ scripts/ (OVERRIDE)
+        │  ├─ actions/                    │  ├─ actions/
+        │  ├─ creaturescripts/            │  ├─ creaturescripts/
+        │  ├─ spells/                     │  ├─ spells/
+        │  ├─ movements/                  │  ├─ movements/
+        │  └─ ...                         │  └─ ...
+        │                                  │
+        ├─ lib/                           ├─ lib/ (EXTEND)
+        │  ├─ core/ (base functions)      │  └─ (complementares)
+        │  ├─ debugging/                  │
+        │  └─ ...                         │
+        │                                  │
+        ├─ items/                         ├─ items/
+        │  └─ items.xml                   │  └─ items.xml (CUSTOM)
+        │                                  │
+        ├─ monster/                       ├─ monster/
+        │  └─ monsters.xml                │  └─ monsters.xml (CUSTOM)
+        │                                  │
+        ├─ npc/                           ├─ npc/
+        │  └─ npcs.xml                    │  └─ npcs.xml (CUSTOM)
+        │                                  │
+        └─ world/ (base maps)             └─ world/ (custom maps)
+```
+
+---
+
+## 🔐 Fase 1: Inicialização do Core
+
+```
+                    ┌──────────────────────────┐
+                    │ main.cpp                 │
+                    │ - argc/argv parser       │
+                    └───────────┬──────────────┘
+                                │
+                    ┌───────────▼──────────────┐
+                    │ config.lua.dist          │ ◄── data/
+                    │ - worldType              │
+                    │ - sqlType (mysql)        │
+                    │ - mysqlHost/User/Pass    │
+                    │ - rates (exp, loot)      │
+                    │ - serverName/Port        │
+                    └───────────┬──────────────┘
+                                │
+                    ┌───────────▼──────────────────────┐
+                    │ ConfigManager::initialize()      │
+                    │ - Load config.lua into Lua state │
+                    │ - Parse all settings             │
+                    └───────────┬──────────────────────┘
+                                │
+                    ┌───────────▼──────────────────────┐
+                    │ DatabaseManager::initialize()    │
+                    │ - Create connection pool         │
+                    │ - Test MySQL connection          │
+                    │ - Verify database schema         │
+                    └───────────┬──────────────────────┘
+                                │
+                    ┌───────────▼──────────────────────┐
+                    │ Logger::initialize()             │
+                    │ - Setup console output           │
+                    │ - Setup file logging             │
+                    │ - Set log level                  │
+                    └──────────────────────────────────┘
+```
+
+**Dependências Críticas:**
+- ✅ config.lua DEVE existir (cópia de config.lua.dist)
+- ✅ MySQL DEVE estar rodando
+- ✅ Banco de dados DEVE estar migrado (schema)
+
+---
+
+## 📦 Fase 2: Carregamento de Definições (Items, Creatures)
+
+```
+                    ┌──────────────────────────┐
+                    │ Items::initialize()      │
+                    │ - Load items.xml         │
+                    └───────────┬──────────────┘
+                                │
+        ┌───────────────────────┴───────────────────────┐
+        │                                               │
+        ↓ (PRIORITY: 1)                        ↓ (PRIORITY: 2)
+   ┌─────────────────────────┐           ┌─────────────────────────┐
+   │ data/items/items.xml    │           │ data-otservbr-global/   │
+   │ - Base item definitions │           │ items/items.xml         │
+   │ - Weapons, armor, etc   │           │ - Custom item overrides  │
+   │ (~2000 items)           │           │ - New custom items       │
+   └─────────────────────────┘           │ (~100-200 additions)    │
+                                         └─────────────────────────┘
+                                                    │
+                                                    ↓
+                    ┌──────────────────────────────────┐
+                    │ ✅ Item Catalog Complete         │
+                    │ base items + custom items        │
+                    │ Total: ~2100-2200 items          │
+                    └──────────────────────────────────┘
+                                   │
+                                   │
+                    ┌──────────────▼──────────────┐
+                    │ Monsters::initialize()       │
+                    │ - Load monsters.xml          │
+                    └───────────┬──────────────────┘
+                                │
+        ┌───────────────────────┴───────────────────────┐
+        │                                               │
+        ↓ (PRIORITY: 1)                        ↓ (PRIORITY: 2)
+   ┌─────────────────────────┐           ┌─────────────────────────┐
+   │ data/monster/           │           │ data-otservbr-global/   │
+   │ monsters.xml            │           │ monster/monsters.xml    │
+   │ - Base monster stats    │           │ - Custom monster tweaks  │
+   │ - Skills, abilities     │           │ - New custom monsters    │
+   │ - Loot tables           │           └─────────────────────────┘
+   └─────────────────────────┘                        │
+                                                      ↓
+                    ┌──────────────────────────────────┐
+                    │ ✅ Monster Catalog Complete      │
+                    │ Base monsters + customized       │
+                    └──────────────────────────────────┘
+                                   │
+                                   │
+                    ┌──────────────▼──────────────┐
+                    │ NPCs::initialize()           │
+                    │ - Load npc.xml               │
+                    └───────────┬──────────────────┘
+                                │
+        ┌───────────────────────┴───────────────────────┐
+        │                                               │
+        ↓ (PRIORITY: 1)                        ↓ (PRIORITY: 2)
+   ┌─────────────────────────┐           ┌─────────────────────────┐
+   │ data/npc/npc.xml        │           │ data-otservbr-global/   │
+   │ - Base NPC definitions  │           │ npc/npc.xml             │
+   │ - Positions, trades     │           │ - Custom NPC additions   │
+   └─────────────────────────┘           └─────────────────────────┘
+                                                    │
+                                                    ↓
+                    ┌──────────────────────────────────┐
+                    │ ✅ Creature Definitions Ready    │
+                    │ Items, Monsters, NPCs loaded     │
+                    └──────────────────────────────────┘
+```
+
+**Ordem Crítica de Carregamento:**
+1. Items PRIMEIRO (referencias por monsters/npcs)
+2. Monsters (usam items para loot)
+3. NPCs (podem vender items)
+
+**Se falhar:**
+- ❌ Item não carregado → Monster com loot inválido
+- ❌ Monster não carregado → Spawn inválido
+- ❌ NPC não carregado → Vendor não existe
+
+---
+
+## 🗺️ Fase 3: Carregamento do Mapa (OTBM + World)
+
+```
+                    ┌──────────────────────────┐
+                    │ Map::initialize()        │
+                    │ - IOMap::loadMap()       │
+                    └───────────┬──────────────┘
+                                │
+                    ┌───────────▼──────────────┐
+                    │ Load world/world.otbm    │ ◄── ÚNICO arquivo
+                    │ - Parse binary format    │
+                    │ - Load all tiles         │
+                    │ - Setup tile objects     │
+                    └───────────┬──────────────┘
+                                │
+        ┌───────────────────────┴───────────────────────┐
+        │                                               │
+        │      OTBM contém references a:                │
+        │      - Houses (house IDs)                     │
+        │      - Creatures (monster/npc IDs)            │
+        │      - Items (item IDs)                       │
+        │                                               │
+   ↓ Precisa já estar carregado (Fase 2)   ↓ Carrega agora
+   ✅ Items catalog                         ┌─────────────────────┐
+   ✅ Monsters catalog                      │ World Config Files: │
+   ✅ NPCs catalog                          ├─────────────────────┤
+                                            │ data-otservbr-      │
+                                            │ global/world/       │
+                                            │                     │
+                                            │ ├─ otservbr-house  │
+                                            │ │  -house.xml       │
+                                            │ ├─ otservbr-monster│
+                                            │ │  -monster.xml     │
+                                            │ ├─ otservbr-npc    │
+                                            │ │  -npc.xml         │
+                                            │ ├─ otservbr-zones  │
+                                            │ │  -zones.xml       │
+                                            │ ├─ custom/          │
+                                            │ │  └─ otservbr-    │
+                                            │ │     custom.otbm   │
+                                            │ │                   │
+                                            │ └─ annual_events/  │
+                                            │    quest/          │
+                                            │    world_changes/  │
+                                            │    (Carregam later)│
+                                            └─────────────────────┘
+                                                        │
+                    ┌───────────────────────────────────┴────────────────┐
+                    │                                                    │
+      ↓ (IMMEDIATE - for OTBM PARSING)       ↓ (ON-DEMAND - for events)
+   ┌─────────────────────────────────┐   ┌─────────────────────────────┐
+   │ Houses (house.xml)              │   │ Event Maps (annual events,  │
+   │ - IDs, owners, doors            │   │ quests, world_changes)      │
+   │ - Positions on OTBM             │   │ - Loaded when event starts  │
+   └─────────────────────────────────┘   │ - Swap OTBM sections        │
+                                         └─────────────────────────────┘
+                        │                                    │
+                        └────────────────┬───────────────────┘
+                                         ↓
+                    ┌──────────────────────────────────┐
+                    │ ✅ World Fully Loaded            │
+                    │ OTBM tiles + configurations      │
+                    │ - Houses positioned              │
+                    │ - Monsters ready to spawn        │
+                    │ - NPCs at correct positions      │
+                    │ - Items visible in world         │
+                    └──────────────────────────────────┘
+```
+
+**Crítico:**
+- 📍 OTBM é referência ÚNICA da geometria
+- 🏠 house.xml define apenas propriedades de casas
+- 🧟 monster.xml define stats, não posições
+- 🤖 npc.xml define IDs/tipos, não posições
+- Posições vêm do OTBM ou de scripts Lua
+
+---
+
+## 🐍 Fase 4: Lua Scripting Engine
+
+```
+                    ┌──────────────────────────┐
+                    │ Lua::initialize()        │
+                    │ - Create lua_State       │
+                    │ - Register C++ functions │
+                    └───────────┬──────────────┘
+                                │
+                    ┌───────────▼──────────────────┐
+                    │ Load Core Libraries          │
+                    │ (Lua internal functions)     │
+                    └───────────┬──────────────────┘
+                                │
+                    ┌───────────▼──────────────────────────────┐
+                    │ Load data/core.lua                       │
+                    │ - Define global tables (Storage, etc)    │
+                    │ - Setup globals                          │
+                    └───────────┬──────────────────────────────┘
+                                │
+                    ┌───────────▼──────────────────────────────┐
+                    │ Load data/global.lua                     │
+                    │ - Global functions accessible to all     │
+                    │ - Utility functions                      │
+                    └───────────┬──────────────────────────────┘
+                                │
+                    ┌───────────▼──────────────────────────────┐
+                    │ Load data/stages.lua                     │
+                    │ - Define startup phases                  │
+                    │ - Phase 1: Tables (startup/tables/)      │
+                    │ - Phase 2: Others (startup/others/)      │
+                    └───────────┬──────────────────────────────┘
+                                │
+        ┌───────────────────────┴───────────────────────┐
+        │                                               │
+        │   (Phase 1 & 2 carregam em SEQUENCE)         │
+        │                                               │
+        ↓                                               ↓
+   ┌─────────────────────┐                    ┌──────────────────────────┐
+   │ data/startup/       │ ←OVERRIDABLE←     │ data-otservbr-global/    │
+   │ ├─ tables/          │                    │ startup/ (if exists)     │
+   │ │  ├─ load.lua      │  [Orquistradora]  │                          │
+   │ │  ├─ chest.lua     │  [16 tables]      │ [Substitui originals]    │
+   │ │  ├─ item.lua      │  [~13k linhas]    │                          │
+   │ │  ├─ lever.lua     │                    │ - Global table overrides │
+   │ │  ├─ door*.lua     │                    │ - Action ID remaps       │
+   │ │  ├─ teleport*.lua │                   │ - Custom actions         │
+   │ │  ├─ tile*.lua     │                    │                          │
+   │ │  └─ ...           │                    │                          │
+   │ │                    │                    │                          │
+   │ └─ others/          │                    │                          │
+   │    ├─ load.lua      │  [Phase 2]        │                          │
+   │    ├─ functions.lua │  [6 globals]      │                          │
+   │    └─ ...           │  [~200 linhas]    │                          │
+   │                     │                    │                          │
+   └─────────────────────┘                    └──────────────────────────┘
+           │                                               │
+           └───────────────────┬───────────────────────────┘
+                               │
+                    ┌──────────▼──────────────┐
+                    │ Load Scripts/ (custom)  │
+                    └───────────┬──────────────┘
+                                │
+        ┌───────────────────────┴───────────────────────┐
+        │                                               │
+        │ SCRIPTS are loaded from:                      │
+        │ 1. data/scripts/ (base game scripts)          │
+        │ 2. data-otservbr-global/scripts/ (overrides) │
+        │                                               │
+        ↓                                               ↓
+   ┌─────────────────────┐                    ┌──────────────────────────┐
+   │ data/scripts/       │ ◄─ OVERRIDABLE ─► │ data-otservbr-global/    │
+   │ ├─ actions/         │  [Base scripts]    │ scripts/                 │
+   │ ├─ creaturescripts/ │  [Hundreds]        │ ├─ actions/              │
+   │ ├─ events/          │  [Mechanics]       │ ├─ creaturescripts/      │
+   │ ├─ movements/       │                    │ ├─ events/               │
+   │ ├─ spells/          │                    │ ├─ movements/            │
+   │ ├─ lib/             │  [Utilities]       │ ├─ spells/               │
+   │ ├─ raids/           │                    │ ├─ lib/                  │
+   │ ├─ quests/          │                    │ ├─ raids/                │
+   │ ├─ missions/        │                    │ ├─ quests/               │
+   │ ├─ custom/          │                    │ ├─ missions/             │
+   │ └─ ...              │                    │ ├─ custom/               │
+   │                     │                    │ │ └─ (NEW CONTENT)       │
+   │                     │                    │ └─ ...                   │
+   └─────────────────────┘                    └──────────────────────────┘
+           │                                               │
+           └───────────────────┬───────────────────────────┘
+                               │
+                    ┌──────────▼─────────────────────┐
+                    │ ✅ Lua State Complete          │
+                    │ - All globals registered       │
+                    │ - All callbacks defined        │
+                    │ - All functions available      │
+                    │ - Ready for game events        │
+                    └──────────────────────────────────┘
+```
+
+**Importante:**
+- 📋 Ordem: core.lua → global.lua → stages.lua → startup/ → scripts/
+- 🔄 Ciclo: Phase 1 (tabelas) ENTÃO Phase 2 (funções) - ORDEM CRÍTICA
+- ♻️ Scripts em data-otservbr-global/ **SUBSTITUEM** scripts em data/ com mesmo path
+- 🔧 Callbacks são registrados, executados quando evento disparar
+
+---
+
+## 👤 Fase 5: Carregamento de Dados de Jogadores
+
+```
+                    ┌──────────────────────────┐
+                    │ Account::initialize()    │
+                    │ - Query database         │
+                    └───────────┬──────────────┘
+                                │
+                    ┌───────────▼──────────────────┐
+                    │ SELECT * FROM accounts       │
+                    │ SELECT * FROM players        │
+                    │ SELECT * FROM player_storage │
+                    │ (Async queries)              │
+                    └───────────┬──────────────────┘
+                                │
+        ┌───────────────────────┴───────────────────────┐
+        │                                               │
+        ↓ (Em memória após carregamento)     ↓ (No banco sempre)
+   ┌─────────────────────────────┐    ┌─────────────────────────┐
+   │ Account Cache               │    │ Database (MySQL)        │
+   │ - Contas autenticadas       │    │ - Todas as contas       │
+   │ - Senhas (Argon2 hashed)    │    │ - Play data persistido  │
+   │ - Coins/premium             │    │ - Storage values        │
+   │ - Group/admin flags         │    │ - House ownership       │
+   │ (Only for logged-in players)│    │ - Guild membership      │
+   └─────────────────────────────┘    │ - Marriages             │
+                                       │ - Market listings       │
+                                       └─────────────────────────┘
+                                                    │
+                                                    │
+        ┌───────────────────────────────────────────┘
+        │
+   ↓ (When player logs in)
+   ┌─────────────────────────────────────────┐
+   │ Player Data Loading (IOLoginData)       │
+   │ - Load creature attributes              │
+   │ - Load inventory items                  │
+   │ - Load storage values                   │
+   │ - Load quests, imbuements, etc         │
+   │ - Load vocation, skills, spells        │
+   │ - Restore last position                │
+   └─────────────────────────────────────────┘
+```
+
+---
+
+## 🌐 Fase 6: Network Startup
+
+```
+                    ┌──────────────────────────┐
+                    │ Server::listen()         │
+                    │ - Bind socket            │
+                    │ - Get port from config   │
+                    │ - Start listening        │
+                    └───────────┬──────────────┘
+                                │
+                    ┌───────────▼──────────────────┐
+                    │ Port: 7171 (default)         │
+                    │ Listen for client TCP        │
+                    │ connections                  │
+                    └───────────┬──────────────────┘
+                                │
+                    ┌───────────▼──────────────────┐
+                    │ Main Event Loop Starts       │
+                    │ - Process network packets    │
+                    │ - Execute game think()      │
+                    │ - Handle async database ops │
+                    │ - Broadcast to spectators   │
+                    │ - Save periodic player data │
+                    └──────────────────────────────┘
+```
+
+---
+
+## 📊 Mapa Completo: Dependências Visuais
+
+```
+                            ┌──────────────────────────────┐
+                            │  SERVIDOR INICIA             │
+                            │  main() / canary_server      │
+                            └──────────────┬───────────────┘
+                                           │
+                ┌──────────────────────────┴──────────────────────────┐
+                │                                                     │
+                │       FASE 1: CORE INIT (Serial)                   │
+                ↓                                                     ↓
+        ┌───────────────┐                                   ┌─────────────────┐
+        │ config.lua    │                                   │ DatabaseManager │
+        │ (required)    │───────────────────────────────────│ (must succeed)  │
+        └───────────────┘                                   └─────────────────┘
+                │                                                     │
+                └──────────────────────────┬──────────────────────────┘
+                                           │
+                ┌──────────────────────────┴──────────────────────────┐
+                │                                                     │
+                │    FASE 2: DEFINITIONS (Serial, Items→Mobs→NPC)    │
+                ↓                                                     ↓
+        ┌───────────────────────────┐                   ┌────────────────────────┐
+        │ data/items/items.xml      │ ◄─ OVERRIDE ─► │ data-otservbr-global/  │
+        │ (Base items)              │                   │ items/items.xml        │
+        └───────────────────────────┘                   └────────────────────────┘
+                │                                                     │
+                └──────────────────────────┬──────────────────────────┘
+                                           │
+                            ┌──────────────▼──────────────┐
+                            │ Items Catalog Ready        │
+                            └──────────────┬──────────────┘
+                                           │
+        ┌──────────────────────────────────┼──────────────────────────────────┐
+        │                                  │                                  │
+   ┌────▼─────────────────────────┐   ┌───▼──────────────────────────┐   ┌───▼─────────────────────┐
+   │ data/monster/monsters.xml    │   │ data-otservbr-global/        │   │ data/npc/npc.xml      │
+   │ (Base monsters)              │   │ monster/monsters.xml         │   │ (Base NPCs)            │
+   │                              │   │ (Custom monsters)            │   │                        │
+   └────┬─────────────────────────┘   └───┬──────────────────────────┘   └───┬────────────────────┘
+        │                                  │                                  │
+        └──────────────────────────┬───────┴──────────────────────────────────┘
+                                   │
+                        ┌──────────▼───────────┐
+                        │ Monster+NPC Ready    │
+                        └──────────┬───────────┘
+                                   │
+          ┌────────────────────────┴────────────────────────┐
+          │                                                 │
+          │       FASE 3: MAP LOADING (Serial)              │
+          ↓                                                 ↓
+   ┌─────────────────────────┐               ┌──────────────────────────────┐
+   │ world/world.otbm        │ ◄─ CONFIG ─► │ data-otservbr-global/world/  │
+   │ (Mapa principal)        │               │ otservbr-house.xml           │
+   │                         │               │ otservbr-monster.xml         │
+   │ Precisa:                │               │ otservbr-npc.xml             │
+   │ - Items loaded ✓        │               │ otservbr-zones.xml           │
+   │ - Monsters loaded ✓     │               │ custom/otservbr-custom.otbm  │
+   │ - NPCs loaded ✓         │               └──────────────────────────────┘
+   └─────────────────────────┘                                │
+                   │                                          │
+                   └──────────────────┬───────────────────────┘
+                                      │
+                           ┌──────────▼──────────┐
+                           │ World Fully Loaded  │
+                           └──────────┬──────────┘
+                                      │
+             ┌────────────────────────┼────────────────────────┐
+             │                        │                        │
+    ┌────────▼─────────────────┐  ┌──▼─────────────┐   ┌──────▼──────────┐
+    │ data/startup/ (Phase 1+2)│  │ data/scripts/  │   │ OPTIONAL:       │
+    │ (Tables + Functions)     │  │ (Customizable) │   │ annual_events/ │
+    │                          │  │                │   │ world_changes/ │
+    │ Precisa tudo acima ✓     │  │ Precisa:       │   │ quests/        │
+    └────────┬─────────────────┘  │ - Tudo acima ✓│   │ (carregam     │
+             │                     │                │   │  on-demand)    │
+             │                     │                │   └────────────────┘
+             │  ◄─ LOADS AFTER  ► │  ◄─ OVERRIDE  ►│
+             │                     │                │
+             ↓                     ↓                ↓
+    ┌────────────────────────────────────────────────────┐
+    │    data-otservbr-global/startup/ (if exists)       │
+    │    data-otservbr-global/scripts/ (overrides)       │
+    │    data-otservbr-global/world/ (configs)           │
+    └────────┬───────────────────────────────────────────┘
+             │
+          ┌──▼────────────────────────────────────┐
+          │ FASE 4: LUA ENGINE READY              │
+          │ - All globals defined                  │
+          │ - All callbacks registered             │
+          │ - Scripts executing when triggered     │
+          └──┬─────────────────────────────────────┘
+             │
+          ┌──▼────────────────────────────────────┐
+          │ FASE 5: PLAYER DATA                   │
+          │ - Accounts cached                      │
+          │ - Players loadable on demand          │
+          │ - Storage values accessible           │
+          └──┬─────────────────────────────────────┘
+             │
+          ┌──▼────────────────────────────────────┐
+          │ FASE 6: NETWORK ONLINE                │
+          │ ✅ SERVER ACCEPTING CONNECTIONS       │
+          └───────────────────────────────────────┘
+```
+
+---
+
+## 🔑 Matriz de Dependências
+
+<Card title="O que depende de quê?" icon="matrix">
+
+| Fase | Sistema | Depende De | Falha Se |
+|------|---------|-----------|----------|
+| **1** | Config | Nenhum | config.lua ausente |
+| **1** | Database | config.lua | MySQL não rodando |
+| **1** | Logger | config.lua | Diretório de logs inacessível |
+| **2** | Items | config + database | items.xml inválido |
+| **2** | Monsters | Items loaded | monsters.xml quebrado |
+| **2** | NPCs | Items + Monsters | npc.xml inválido |
+| **3** | Map (OTBM) | Items, Monsters, NPCs | OTBM binário corrompido |
+| **3** | World Config | Map loaded | house.xml/zones.xml inválido |
+| **4** | Lua Core | config + database | core.lua quebrado |
+| **4** | Lua Startup | Lua Core + Definitions | storage_keys_update carregado errado |
+| **4** | Lua Scripts | Lua Startup | Syntax error em lua |
+| **5** | Player Data | database alive | Queries quebradas |
+| **6** | Network | Tudo acima OK | Port já em uso |
+
+</Card>
+
+---
+
+## ⚠️ Pontos Críticos de Falha
+
+<Card title="O que pode quebrar a inicialização?" icon="warning">
+
+### CRÍTICO (Servidor não inicia)
+
+```
+❌ config.lua AUSENTE
+   → main() não consegue rodar
+   → Erro: "config.lua not found"
+
+❌ MySQL OFFLINE
+   → DatabaseManager falha
+   → Erro: "Cannot connect to MySQL"
+
+❌ OTBM CORROMPIDO
+   → IOMap::loadMap() falha
+   → Erro: "Invalid OTBM file"
+```
+
+### ALTO (Funcionalidade quebrada)
+
+```
+❌ items.xml INVÁLIDO
+   → Monstos não loadem (referenciam items)
+   → Error: "Unknown item ID: 99999"
+
+❌ startup/storage_keys_update.lua CARREGADO ANTES DA HORA
+   → Players perdem quest progress
+   → Storage values com valor errado
+   → Critical: DEVE ser ÚLTIMO em startup
+
+❌ scripts/lua COM SYNTAX ERROR
+   → Callback não executa
+   → Errores "Lua runtime error" no log
+```
+
+### MÉDIO (Performance)
+
+```
+⚠️ Múltiplos config.lua em data/ E data-otservbr-global/
+   → Qual é carregado?
+   → Usar config.lua.dist como template
+
+⚠️ Muitos scripts customizados
+   → Pode slow down startup
+   → Memory usage aumenta
+```
+
+</Card>
+
+---
+
+## 📋 Checklist de Inicialização
+
+<Tabs>
+<TabItem label="Verificação">
+
+### ✅ Antes de Iniciar Servidor
+
+```
+[ ] 1. MySQL rodando e acessível
+[ ] 2. config.lua existente (cópia de config.lua.dist)
+[ ] 3. Banco de dados migrado (schema correto)
+[ ] 4. data/ pasta presente e íntegra
+[ ] 5. data-otservbr-global/ com customizações desejadas
+[ ] 6. Port 7171 (ou custom) disponível (netstat -an)
+[ ] 7. Disco com espaço suficiente (logs, database)
+[ ] 8. Permissões: leitura para data/, escrita para logs/
+[ ] 9. Compilação recente (executável atualizado)
+[ ] 10. Dependências de runtime (libmysqlclient, etc)
+```
+
+### 🔍 Após Iniciar (Verificar Logs)
+
+```
+[ ] "[info] Starting Server..."
+[ ] "[info] Loading config..."
+[ ] "[info] Connecting to database..."
+[ ] "[info] Loading items..."
+[ ] "[info] Loading monsters..."
+[ ] "[info] Loading NPCs..."
+[ ] "[info] Loading world..."
+[ ] "[info] Loading scripts..."
+[ ] "[info] Server started successfully"
+[ ] [ERROR] lines = 0
+```
+
+### 🧪 Teste de Funcionamento
+
+```
+[ ] Cliente consegue conectar (login screen)
+[ ] Autenticação funciona (teste conta válida)
+[ ] Player pode entrar no jogo
+[ ] Movimento funciona
+[ ] Combate básico funciona
+[ ] Items podem ser pegos
+[ ] NPCs aparecem no mapa
+```
+
+</TabItem>
+
+<TabItem label="Debugging">
+
+### 🔧 Se Falhar no Boot
+
+```
+1. Checar logs/canary.log para erros específicos
+   
+2. Se "config.lua not found":
+   cp data/config.lua.dist config.lua
+   Edite com configurações corretas
+   
+3. Se "MySQL ERROR":
+   mysql -h localhost -u root -p -e "USE canary; SHOW TABLES;"
+   Verifique credenciais em config.lua
+   
+4. Se "Invalid OTBM":
+   Valide OTBM com Remere's Map Editor
+   Se corrompido, restaurar backup
+   
+5. Se "Lua error at startup":
+   Check data/startup/others/functions.lua syntax
+   Erro em Phase 1/2 carregamento
+   
+6. Se memória explode:
+   Rodar: ./canary 2>&1 | head -100
+   Ver qual fase está travando
+   Possível infinite loop em script
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 📈 Timeline de Inicialização (Típico)
+
+```
+T: 0.0s   │ Servidor inicia (./canary)
+          ├─ main.cpp executa
+          │
+T: 0.1s   │ Config carregado (config.lua)
+          │
+T: 0.2s   │ Database conectado
+          │
+T: 1.0s   │ Items loaded (~2000 items)
+          │
+T: 1.5s   │ Monsters loaded
+          │
+T: 2.0s   │ NPCs loaded
+          │
+T: 3.0s   │ World/OTBM loaded
+          │
+T: 4.5s   │ Lua core initialized
+          │
+T: 5.0s   │ Startup tables loaded (Phase 1)
+          │
+T: 5.5s   │ Startup functions loaded (Phase 2)
+          │
+T: 6.0s   │ Custom scripts loaded
+          │
+T: 7.0s   │ Players data cache ready
+          │
+T: 7.5s   │ Network socket listening
+          │
+T: 7.6s   │ ✅ SERVER READY
+          │
+          │ Aguardando conexões em 7171:7172...
+```
+
+---
+
+<Aside>
+**Resumo Executivo:**
+
+1. **Ordem é CRÍTICA**: Config → DB → Items → Monsters → NPCs → Map → Lua → Network
+
+2. **data/ vs data-otservbr-global/**:
+   - `data/` = Base game padrão (Tibia)
+   - `data-otservbr-global/` = Customizações do servidor
+   - Arquivos com mesmo path em ambas: **data-otservbr-global/ GANHA**
+
+3. **Dependências Absolutas**:
+   - config.lua (MUST EXIST)
+   - MySQL (MUST RUNNING)
+   - Items loaded BEFORE Monsters
+   - Monsters/NPCs loaded BEFORE Map
+   - Items/Monsters/NPCs loaded BEFORE Scripts use them
+   - startup/storage_keys_update.lua MUST BE LAST
+
+4. **Personalização**:
+   - Customize em `data-otservbr-global/` (não em `data/`)
+   - Preserve `data/` para atualizações
+   - Scripts: colocar em `scripts/` com mesmo path tree
+
+5. **Debugging**:
+   - Sempre checar `logs/canary.log`
+   - Verificar `netstat -an | grep 7171` para port conflict
+   - Testar MySQL: `mysql -u user -p database -e "SELECT 1;"`
+</Aside>

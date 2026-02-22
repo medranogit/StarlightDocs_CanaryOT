@@ -1,0 +1,435 @@
+---
+title: "load.lua - Carregador de Funções de Startup"
+description: "Documentação técnica do arquivo de carregamento principal do módulo de inicialização do servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 📄 load.lua
+
+Arquivo de carregamento (loader) responsável por executar o arquivo de funções globais durante a inicialização do servidor. Arquivo simples que utiliza `dofile()` para carregar `functions.lua`.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/others/load.lua` |
+| **Tipo** | Arquivo de Carregamento (Loader) |
+| **Escopo** | Startup do Servidor |
+| **Dependências** | `functions.lua` (mesmo diretório) |
+| **Linhas de Código** | 1 linha efetiva |
+| **Função Principal** | Carregar funções globais via `dofile()` |
+| **Chamado por** | Sistema de startup do Canary |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/others/load.lua`
+
+Este é um arquivo **loader** - sua única funcionalidade é carregar o arquivo `functions.lua` no contexto global. Padrão comum em scripts Lua para separação de concerns.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+Arquivo extremamente simples com uma única responsabilidade:
+
+**Carrega o arquivo `functions.lua` no contexto global do servidor.**
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/others/functions.lua")
+```
+
+**Efeito**:
+- Executa `functions.lua` no escopo global
+- Todas as 6 funções ficam disponíveis globalmente
+- Permite que outras partes do código usem as funções de inicialização de mapa
+
+**Padrão**: Separação entre "loader" e "implementação"
+- `load.lua`: Apenas carrega
+- `functions.lua`: Contém lógica
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Fluxo de Execução" icon="layers">
+
+```
+┌─────────────────────────────────────────────────┐
+│         STARTUP DO SERVIDOR CANARY              │
+│  (Sistema de inicialização automático)          │
+└────────────────┬────────────────────────────────┘
+                 │
+                 ├─ Load DATA_DIRECTORY constant
+                 │
+                 ▼
+    ┌────────────────────────────────┐
+    │ load.lua (startup/others/)     │
+    │ ┌──────────────────────────────┤
+    │ │ dofile(DATA_DIRECTORY ..)    │
+    │ └──────────────────────────────┤
+    └────────┬───────────────────────┘
+             │
+             ▼
+    ┌────────────────────────────────┐
+    │ functions.lua                  │
+    │ ┌──────────────────────────────┤
+    │ │ CreateMapItem()              │
+    │ │ loadLuaMapAction()           │
+    │ │ loadLuaMapUnique()           │
+    │ │ loadLuaMapSign()             │
+    │ │ loadLuaMapBookDocument()     │
+    │ │ updateKeysStorage()          │
+    │ └──────────────────────────────┤
+    └────────┬───────────────────────┘
+             │
+             ▼
+    ┌────────────────────────────────┐
+    │ Funções disponíveis globalmente│
+    │ (para usar em outros scripts)  │
+    └────────────────────────────────┘
+```
+
+**Timeline de Execução**:
+1. Sistema de startup lê todos os loaders em `startup/`
+2. `load.lua` é lido e executado
+3. `dofile()` carrega e executa `functions.lua`
+4. Todas as funções ficam no escopo global
+5. Resto do startup pode usar as funções
+
+</Card>
+
+---
+
+## 📝 Conteúdo do Arquivo
+
+<Card title="Código Completo" icon="code">
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/others/functions.lua")
+```
+
+**Isso é tudo. Uma linha.**
+
+</Card>
+
+---
+
+## 🔍 Análise Detalhada
+
+<Card title="Breakdown da Execução" icon="magnifying-glass">
+
+### Linha 1: dofile()
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/others/functions.lua")
+```
+
+**Componentes**:
+
+| Parte | Tipo | Descrição |
+|-------|------|-----------|
+| `dofile()` | Função Lua | Executa arquivo Lua, retorna valores ou executa side effects |
+| `DATA_DIRECTORY` | Constante Global | Path base para diretório de dados (ex: `/home/otserver/data/`) |
+| `"/startup/others/functions.lua"` | String Path | Caminho relativo ao DATA_DIRECTORY |
+| `..` | Operador Lua | Concatenação de strings |
+
+**Resultado da Concatenação**:
+```
+DATA_DIRECTORY = "/home/otserver/data/"
++
+"/startup/others/functions.lua"
+=
+"/home/otserver/data/startup/others/functions.lua"
+```
+
+**Execução do dofile()**:
+1. Lê arquivo `functions.lua`
+2. Compila Lua bytecode
+3. Executa no contexto global
+4. Todas as funções definidas ficam globais
+
+**Retorno**: O retorno do último statement da função (se houver), ou `nil`
+
+</Card>
+
+---
+
+## 🎯 Padrão de Loader
+
+<Card title="Por que separar em dois arquivos?" icon="lightbulb">
+
+Este é um padrão comum em sistemas Lua complexos:
+
+### Vantagens da Separação
+
+| Vantagem | Descrição |
+|----------|-----------|
+| **Separação de Concerns** | Loader apenas carrega, implementação fica separada |
+| **Rapidez** | Fácil localizar o arquivo que carrega sem ler toda a lógica |
+| **Escalabilidade** | Múltiplos files de funções podem ser carregados aqui |
+| **Manutenção** | Alterar path é rápido, lógica não muda |
+| **Clareza** | Novo desenvolverdor vê imediatamente a estrutura |
+
+### Padrão Extended
+
+Se houvesse múltiplas dependências:
+
+```lua
+-- load.lua (versão estendida)
+dofile(DATA_DIRECTORY .. "/startup/others/functions.lua")
+dofile(DATA_DIRECTORY .. "/startup/others/helpers.lua")
+dofile(DATA_DIRECTORY .. "/startup/others/constants.lua")
+```
+
+**Atual**: Apenas `functions.lua` é necessário
+
+</Card>
+
+---
+
+## 🔗 Dependências
+
+<Card title="Relações e Dependências" icon="link">
+
+### Dependências Este Arquivo
+
+```
+load.lua
+  └─ depende de ─> functions.lua
+       ├─ logger (global)
+       ├─ Tile (global API)
+       ├─ Game (global API)
+       ├─ db (global API)
+       ├─ Position (global API)
+       ├─ ITEM_ATTRIBUTE_* (constants)
+       ├─ GlobalStorage (constants)
+       └─ getGlobalStorage/setGlobalStorage (global functions)
+```
+
+### Quem Depende deste Arquivo
+
+```
+load.lua
+  └─ é carregado por ─> Servidor Startup
+       └─ torna funções disponíveis para:
+           ├─ Outros scripts de startup
+           ├─ Scripts de inicialização de world
+           ├─ Data migration systems
+           └─ Qualquer outro script global
+```
+
+### Ordem de Carregamento
+
+```
+1. Constantes globais definidas
+2. APIs básicas (Tile, Game, db) carregadas
+3. startup/others/load.lua ← ESTE ARQUIVO
+   ├─ carrega functions.lua
+   ├─ CreateMapItem() disponível
+   ├─ loadLuaMapAction() disponível
+   ├─ loadLuaMapUnique() disponível
+   ├─ loadLuaMapSign() disponível
+   ├─ loadLuaMapBookDocument() disponível
+   └─ updateKeysStorage() disponível
+4. Rest of startup continues
+```
+
+</Card>
+
+---
+
+## ⚙️ Contexto de Execução
+
+<Card title="Ambiente de Execução" icon="settings">
+
+### Escopo Global
+
+Após `dofile()`, todas as funções estão no **escopo global**:
+
+```lua
+-- Dentro de outros scripts:
+CreateMapItem(myTable)              -- ✅ Funciona
+loadLuaMapAction(actionTable)       -- ✅ Funciona
+updateKeysStorage(migrationTable)   -- ✅ Funciona
+```
+
+### Não há Encapsulamento
+
+Sem return de tabela ou namespace:
+
+```lua
+-- ❌ NÃO seria necessary:
+local functions = require("functions")
+functions.CreateMapItem(...)
+
+-- ✅ Direto:
+CreateMapItem(...)
+```
+
+### Timing Importante
+
+- Funções carregadas **durante startup**
+- Disponíveis **antes** da inicialização do mapa
+- Podem ser chamadas por **qualquer otro startup script**
+- Requerem APIs básicas já inicializadas (Tile, Game, etc)
+
+</Card>
+
+---
+
+## 🛡️ Considerações de Implementação
+
+<Card title="Notas Técnicas" icon="shield">
+
+### DATA_DIRECTORY Constant
+
+- Definido pelo sistema Canary
+- Tipicamente: `/home/otserver/data/` ou caminho absoluto
+- Crítico estar correto para evitar "file not found"
+
+### Erro Potencial
+
+Se arquivo não existir:
+
+```
+[Error] Failed to load script: /startup/others/functions.lua
+[Error] dofile: file not found or parse error
+```
+
+**Solução**: Verificar path, permissões, syntax do functions.lua
+
+### Sem Tratamento de Erro
+
+```lua
+-- load.lua NÃO usa:
+if dofile(...) then ... end
+pcall(dofile, ...)
+```
+
+**Implicação**: Se `functions.lua` tiver erro, startup falha completamente.
+
+**Vantagem**: Erros críticos não são silenciados.
+
+### Ordem Não Importa (Neste Caso)
+
+Porque `functions.lua` é self-contained:
+- Não chama outras funções no load
+- Não depende de outros loaders
+- Apenas define funções
+
+</Card>
+
+---
+
+## 📊 Use Cases
+
+<Card title="Como e quando load.lua é acionado" icon="workflow">
+
+### Scenario 1: Startup Normal do Servidor
+
+```
+1. Servidor inicia
+2. Sistema de startup carrega todos os arquivos em /startup/others/
+3. load.lua é executado
+4. functions.lua é carregado
+5. CreateMapItem, loadLuaMapAction, etc estão prontos
+```
+
+**Quando**:Cada vez que o servidor inicia
+
+### Scenario 2: Reload Scripts
+
+Se suporta reload durante runtime:
+
+```
+1. Admin executa comando "reload scripts"
+2. Arquivos de startup são recarregados
+3. load.lua executado novamente
+4. Funções atualizadas (se tiveram mudanças)
+```
+
+**Potencial Problema**: Redefinir funções durante runtime
+
+### Scenario 3: Limpeza
+
+Se servidor tem cleanup:
+
+```
+1. Servidor em shutdown
+2. load.lua não é executado novamente
+3. Funções permanecem em memória até shutdown completo
+```
+
+</Card>
+
+---
+
+## 🎓 Extensibilidade
+
+<Card title="Como expandir este arquivo" icon="plus">
+
+### Adicionar Mais Loaders
+
+```lua
+dofile(DATA_DIRECTORY .. "/startup/others/functions.lua")
+dofile(DATA_DIRECTORY .. "/startup/others/helpers.lua")
+dofile(DATA_DIRECTORY .. "/startup/others/migrations.lua")
+```
+
+### Adicionar Verificação
+
+```lua
+local functionSuccess = dofile(DATA_DIRECTORY .. "/startup/others/functions.lua")
+if not functionSuccess then
+  logger.error("Failed to load functions.lua")
+end
+```
+
+### Adicionar Logging
+
+```lua
+logger.info("Loading startup functions...")
+dofile(DATA_DIRECTORY .. "/startup/others/functions.lua")
+logger.info("Startup functions loaded successfully")
+```
+
+### Current State: Sem Extensões
+
+Arquivo é mantido simples e direto, sem extras.
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo Loader  
+**Total de Linhas**: 1 (efetiva)  
+**Funções Carregadas**: 6  
+**Status**: ✅ Completo  
+
+**Função**:
+- ✅ Carrega functions.lua no escopo global
+
+**Relacionado a**:
+- functions.lua (arquivo carregado)
+- Startup system (chamador)
+- Todas as 6 funções de inicialização de mapa
+
+Para dúvidas sobre as funções carregadas, consulte `functions.lua.mdx`. Este arquivo é apenas o facilitador de carregamento.
+</Aside>

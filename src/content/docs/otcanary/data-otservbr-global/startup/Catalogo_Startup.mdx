@@ -1,0 +1,679 @@
+---
+title: Catálogo - Startup Scripts
+description: Catálogo completo de scripts e tabelas do sistema de inicialização do servidor Canary
+sidebar:
+  order: 2
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 📚 Catálogo - Startup Scripts
+
+Índice completo de todos os **20 arquivos** do sistema de startup, incluindo tabelas, funções e orquestração. Cada arquivo está documentado individualmente em seu arquivo .mdx correspondente.
+
+---
+
+## 📂 Estrutura Completa
+
+```
+data-otservbr-global/startup/
+├── startup.lua                    ← Entry point (2 linhas)
+│
+├── tables/
+│   ├── load.lua                   ← Orchestrator Fase 1 (16 dofiles)
+│   ├── chest.lua                  ← Containers (2,991 linhas)
+│   ├── corpse.lua                 ← Cadáveres (68 linhas)
+│   ├── create_item.lua            ← Items estáticos (15 linhas)
+│   ├── door_key.lua               ← Portas com chaves (202 linhas)
+│   ├── door_level.lua             ← Portas por level (113 linhas)
+│   ├── door_quest.lua             ← Portas de quest (930 linhas)
+│   ├── item_daily_reward.lua       ← Recompensas diárias (2 linhas)
+│   ├── item_unmovable.lua          ← Items imóveis (2 linhas)
+│   ├── item.lua                   ← Items master (3,464 linhas) ★
+│   ├── lever.lua                  ← Alavancas/botões (806 linhas)
+│   ├── storage_keys_update.lua     ← Migrações (278 linhas) ⚠️
+│   ├── teleport_item.lua           ← Teleportes-item (172 linhas)
+│   ├── teleport.lua                ← Teleportes mágicos (587 linhas)
+│   ├── tile_pick.lua               ← Items colhíveis (<30 linhas)
+│   ├── tile.lua                    ← Tiles master (1,249 linhas) ★
+│   └── writeable.lua               ← Livros/documentos (904 linhas)
+│
+└── others/
+    ├── load.lua                   ← Orchestrator Fase 2 (1 dofile)
+    └── functions.lua              ← Funções globais (200 linhas)
+```
+
+---
+
+## 🚀 Arquivos de Orquestração
+
+<Card title="Entry Points e Orchestrators" icon="layers">
+
+### 1. startup.lua
+
+**Localização**: `data-otservbr-global/startup/startup.lua`
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Entry Point (Orquestrador) |
+| **Linhas** | 2 |
+| **Responsabilidade** | Iniciar as 2 fases do startup |
+| **Chamado Por** | Server core (inicialização) |
+| **Chama** | tables/load.lua, others/load.lua |
+
+**Conteúdo**:
+```lua
+dofile('data/startup/tables/load.lua')      -- Phase 1: Load all tables
+dofile('data/startup/others/load.lua')      -- Phase 2: Load functions
+```
+
+**Crítico**: Ordem é imutável, Phase 1 ANTES Phase 2
+
+**Documentação**: Ver [startup.lua.mdx](./startup.lua.mdx)
+
+---
+
+### 2. tables/load.lua
+
+**Localização**: `data-otservbr-global/startup/tables/load.lua`
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Orchestrator (Fase 1) |
+| **Linhas** | ~16 dofiles |
+| **Responsabilidade** | Carregar todas as 16 tabelas |
+| **Chamado Por** | startup.lua |
+| **Chama** | 16 arquivos .lua de tabelas |
+
+**Função**: Centralizar o carregamento de todas as tabelas data em uma ordem determinística
+
+**Crítico**: storage_keys_update.lua DEVE ser o último dofile
+
+**Documentação**: Ver [load.lua.mdx](./load.lua.mdx) (tables)
+
+---
+
+### 3. others/load.lua
+
+**Localização**: `data-otservbr-global/startup/others/load.lua`
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Orchestrator (Fase 2) |
+| **Linhas** | 1 dofile |
+| **Responsabilidade** | Carregar functions.lua |
+| **Chamado Por** | startup.lua |
+| **Chama** | others/functions.lua |
+
+**Função**: Integrar tabelas com scripts globais via funções
+
+**Documentação**: Ver [load.lua.mdx](./others/load.lua.mdx) (others)
+
+</Card>
+
+---
+
+## ⚙️ Arquivo de Funções
+
+<Card title="Integration Functions" icon="cog">
+
+### others/functions.lua
+
+**Localização**: `data-otservbr-global/startup/others/functions.lua`
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Módulo de Funções Globais |
+| **Linhas** | ~200 |
+| **Responsabilidade** | Implementar e registrar 6 funções globais |
+| **Chamado Por** | others/load.lua |
+| **Depende De** | Todas as 16 tabelas de Phase 1 |
+
+**Funções Implementadas**:
+
+1. **CreateMapItem(itemId, position, count)**
+   - Cria items no mapa dinamicamente
+   - Uso: Spawnar rewards, items especiais
+
+2. **loadLuaMapAction(table)**
+   - Registra todos action IDs de uma tabela
+   - Uso: Disponibilizar ItemAction, ChestAction, etc para scripts
+
+3. **loadLuaMapUnique(table)**
+   - Registra todos unique IDs de uma tabela
+   - Uso: Registrar IDs únicos de itens/criaturas
+
+4. **loadLuaMapSign(table)**
+   - Carrega textos de signs/murais
+   - Uso: Display de mensagens no mapa
+
+5. **loadLuaMapBookDocument(table)**
+   - Carrega conteúdo de livros/documentos
+   - Entrada: BookDocumentTable
+   - Uso: Disponibilizar textos de livros para players
+
+6. **updateKeysStorage(player)**
+   - Migra storage keys de players antigos para novos
+   - Usa: QuestKeysUpdate table
+   - Crítico: Garante compatibilidade de dados
+
+**Documentação**: Ver [functions.lua.mdx](./functions.lua.mdx)
+
+</Card>
+
+---
+
+## 📊 Tabelas (16 Arquivos)
+
+<Tabs>
+<TabItem label="Containers & Items">
+
+### Categoria: Containers e Items Básicos
+
+#### 1. chest.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/chest.lua` |
+| **Tabela Global** | `ChestAction`, `ChestUnique` |
+| **Linhas** | 2,991 |
+| **Propósito** | Containers/baúes com ID 5000-15000 |
+| **Tipo de Dados** | Posições de containers, tipos de item |
+| **Exemplo** | Chest quest-specific, containers de treasure |
+
+**Uso**: Define onde estão os baúes no mapa e qual item eles contêm
+
+**Documentação**: Ver [chest.lua.mdx](./chest.lua.mdx)
+
+---
+
+#### 2. corpse.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/corpse.lua` |
+| **Tabela Global** | `CorpseAction`, `CorpseUnique` |
+| **Linhas** | 68 |
+| **Propósito** | Cadáveres de quest ID 20000-25000 |
+| **Tipo de Dados** | Posições de corpses, itens |
+| **Exemplo** | Cadáveres quest-specific (Threatened Dreams) |
+
+**Uso**: Cadáveres que contêm items/documentos de quests
+
+**Documentação**: Ver [corpse.lua.mdx](./corpse.lua.mdx)
+
+---
+
+#### 3. create_item.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/create_item.lua` |
+| **Tabela Global** | `CreateItemOnMap` |
+| **Linhas** | 15 |
+| **Propósito** | Items estáticos no mapa |
+| **Tipo de Dados** | Items simples sem action/unique |
+| **Exemplo** | 6 pickaxes em diferentes locations |
+
+**Uso**: Items que não precisam de action/unique IDs
+
+**Documentação**: Ver [create_item.lua.mdx](./create_item.lua.mdx)
+
+---
+
+#### 4. item_daily_reward.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/item_daily_reward.lua` |
+| **Tabela Global** | `DailyRewardAction` |
+| **Linhas** | 2 |
+| **Propósito** | Items de reward diário (template) |
+| **Status** | Vazio (pronto para expansão) |
+
+**Uso**: Recompensas que respawn diariamente
+
+**Documentação**: Ver [item_daily_reward.lua.mdx](./item_daily_reward.mdx)
+
+---
+
+#### 5. item_unmovable.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/item_unmovable.lua` |
+| **Tabela Global** | `ItemUnmovableAction` |
+| **Linhas** | 2-3 |
+| **Propósito** | Items que não podem ser movidos |
+| **Action ID Reservado** | 100 |
+
+**Uso**: Items imóveis/interativos no mapa
+
+**Documentação**: Ver [item_unmovable.lua.mdx](./item_unmovable.mdx)
+
+</TabItem>
+
+<TabItem label="Items Master">
+
+### 5a. item.lua ★
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/item.lua` |
+| **Tabela Global** | `ItemAction` |
+| **Linhas** | 3,464 |
+| **Propósito** | Master table de items com action IDs |
+| **Range** | 100-2300+ |
+| **Tamanho** | ★ MAIOR ARQUIVO |
+
+**Uso**: Centenas de items de quest, itens interativos, componentes de puzzle
+
+**Conteúdo**:
+- Quest items
+- Items collectíveis
+- Objeto de puzzle
+- Equipment especial
+
+**Documentação**: Ver [item.lua.mdx](./item.lua.mdx)
+
+</TabItem>
+
+<TabItem label="Doors">
+
+### Categoria: Sistema de Portas (3 Tipos)
+
+#### 6. door_key.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/door_key.lua` |
+| **Tabela Global** | `KeyDoorAction` |
+| **Linhas** | 202 |
+| **Propósito** | Portas que requerem chave (item) |
+| **Sistema** | Storage.Quest.Key.IDxxxx constants |
+| **Exemplo** | Draconia quest doors (8 chaves/portas) |
+
+**Uso**: Portas que abrem com items de chave específicos
+
+**Documentação**: Ver [door_key.lua.mdx](./door_key.lua.mdx)
+
+---
+
+#### 7. door_level.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/door_level.lua` |
+| **Tabela Global** | `LevelDoorAction` |
+| **Linhas** | 113 |
+| **Propósito** | Portas por level mínimo |
+| **Format Action ID** | 1[level] (ex: 1020 = level 20) |
+| **Range** | 1000-1999+ |
+
+**Uso**: Portas que abrem apenas para players com level >= X
+
+**Documentação**: Ver [door_level.lua.mdx](./door_level.lua.mdx)
+
+---
+
+#### 8. door_quest.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/door_quest.lua` |
+| **Tabela Global** | `QuestDoorAction` |
+| **Linhas** | 930 |
+| **Propósito** | Portas específicas de quests |
+| **Sistema** | Storage.Quest.* hierarchical keys |
+| **Exemplo** | The Queen of Banshees (múltiplas portas) |
+
+**Uso**: Portas que abrem conforme player progride em quest
+
+**Documentação**: Ver [door_quest.lua.mdx](./door_quest.lua.mdx)
+
+</TabItem>
+
+<TabItem label="Alavancas & Buttons">
+
+### 9. lever.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/lever.lua` |
+| **Tabela Global** | `LeverAction` |
+| **Linhas** | 806 |
+| **Propósito** | Alavancas e botões acionáveis |
+| **Range** | 4001-7799+ |
+| **Uso Típico** | Puzzles, mecanismos de porta |
+
+**Conteúdo**:
+- Botões simples
+- Puzzles multi-step
+- Acionadores de mecanismo
+
+**Documentação**: Ver [lever.lua.mdx](./lever.lua.mdx)
+
+</TabItem>
+
+<TabItem label="Teleportes">
+
+### Categoria: Sistema de Viagem (2 Tipos)
+
+#### 10. teleport_item.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/teleport_item.lua` |
+| **Tabela Global** | `TeleportItemAction` |
+| **Linhas** | 172 |
+| **Propósito** | Items que teleportam (shrines) |
+| **Range** | 15001-20000 |
+| **Tipo** | Teleporte via item recolhível |
+
+**Uso**: Shrines, hubs de viagem, portais de entrada
+
+**Documentação**: Ver [teleport_item.lua.mdx](./teleport_item.lua.mdx)
+
+---
+
+#### 11. teleport.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/teleport.lua` |
+| **Tabela Global** | `TeleportAction` |
+| **Linhas** | 587 |
+| **Propósito** | Téluportes mágicos (glifos no chão) |
+| **Range** | Variável (4905, 5517, 14562+) |
+| **Tipo** | Teleporte automático ao pisar |
+
+**Uso**: Portais mágicos, glifos, magic circles
+
+**Documentação**: Ver [teleport.lua.mdx](./teleport.lua.mdx)
+
+</TabItem>
+
+<TabItem label="Tiles">
+
+### Categoria: Sistema de Tiles (2 Tipos)
+
+#### 12. tile_pick.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/tile_pick.lua` |
+| **Tabela Global** | `TilePickAction` |
+| **Linhas** | < 30 |
+| **Propósito** | Items colhíveis em tiles |
+| **Action ID** | 101 (fixo) |
+| **Exemplo** | The Explorer Society (16 positions) |
+
+**Uso**: Items collectíveis em quests, colheita
+
+**Documentação**: Ver [tile_pick.lua.mdx](./tile_pick.lua.mdx)
+
+---
+
+#### 13. tile.lua ★
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/tile.lua` |
+| **Tabela Global** | `TileAction` |
+| **Linhas** | 1,249 |
+| **Propósito** | Master table de tiles com action IDs |
+| **Range** | Variável (12124, 20001+, 25001-25009) |
+| **Tamanho** | ★ SEGUNDO MAIOR |
+
+**Conteúdo**:
+- Tiles de vocação (Dawnport)
+- Tiles transformáveis
+- Tiles de quest
+
+**Documentação**: Ver [tile.lua.mdx](./tile.lua.mdx)
+
+</TabItem>
+
+<TabItem label="Content">
+
+### 14. writeable.lua
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/writeable.lua` |
+| **Tabela Global** | `BookDocumentTable` |
+| **Linhas** | 904 |
+| **Propósito** | Livros e documentos com conteúdo |
+| **Tipo de Dados** | Array de `{containerId, itemId, position, text}` |
+| **Quantidade** | 100+ livros |
+
+**Uso**: Conteúdo literário encontrado em containers no mundo
+
+**Documentação**: Ver [writeable.lua.mdx](./writeable.lua.mdx)
+
+</TabItem>
+
+<TabItem label="Migrations">
+
+### 15. storage_keys_update.lua ⚠️
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `startup/tables/storage_keys_update.lua` |
+| **Tabela Global** | `QuestKeysUpdate` |
+| **Linhas** | 278 |
+| **Propósito** | Migração/versioning de storage keys |
+| **Versão Atual** | 4 |
+| **Criticidade** | ⚠️ DEVE SER CARREGADO ÚLTIMO |
+
+**Sistema**:
+- `[0].latest = 4` - Versão atual
+- `[1], [2], [3], [4]` - Migrações por versão
+- Cada versão mapeia: oldKey → newKey
+
+**Uso**: Garantir compatibilidade de dados de players antigos
+
+**Documentação**: Ver [storage_keys_update.lua.mdx](./storage_keys_update.lua.mdx)
+
+</TabItem>
+</Tabs>
+
+---
+
+## 📊 Resumo Quantitativo
+
+<Card title="Estatísticas do Sistema Startup" icon="chart">
+
+### Por Arquivo
+
+| Arquivo | Linhas | Tipo | Propósito |
+|---|---|---|---|
+| startup.lua | 2 | Entry point | Orquestra 2 fases |
+| tables/load.lua | ~16 | Orchestrator | Carrega 16 tabelas |
+| others/load.lua | 1 | Orchestrator | Carrega functions |
+| others/functions.lua | ~200 | Functions | 6 funções globais |
+| **chest.lua** | **2,991** | Tabela | Containers |
+| corpse.lua | 68 | Tabela | Cadáveres |
+| create_item.lua | 15 | Tabela | Items estáticos |
+| door_key.lua | 202 | Tabela | Portas-chave |
+| door_level.lua | 113 | Tabela | Portas-level |
+| door_quest.lua | 930 | Tabela | Portas-quest |
+| item_daily_reward.lua | 2 | Tabela | Rewards diários |
+| item_unmovable.lua | 2-3 | Tabela | Items imóveis |
+| **item.lua** | **3,464** | Tabela | Items master |
+| lever.lua | 806 | Tabela | Alavancas |
+| teleport_item.lua | 172 | Tabela | Teleportes-item |
+| teleport.lua | 587 | Tabela | Teleportes-mágic |
+| tile_pick.lua | &lt;30 | Tabela | Tiles colhíveis |
+| **tile.lua** | **1,249** | Tabela | Tiles master |
+| writeable.lua | 904 | Tabela | Livros |
+| storage_keys_update.lua | 278 | Tabela | Migrações |
+| **TOTAL** | **~13,000+** | - | - |
+
+### Por Categoria
+
+| Categoria | Arquivos | Linhas | Propósito |
+|---|---|---|---|
+| **Orquestração** | 4 | ~219 | Entry points, orchestrators |
+| **Containers** | 4 | ~3,076 | Baúes, cadáveres, items |
+| **Portas** | 3 | 1,245 | Sistema de portas (key/level/quest) |
+| **Items** | 2 | 6,478 | Items master + especiais |
+| **Teleportes** | 2 | 759 | Item e mágico |
+| **Tiles** | 2 | 1,279 | Master + colhíveis |
+| **Content** | 1 | 904 | Livros/documentos |
+| **Migrations** | 1 | 278 | Versioning storage keys |
+| **Misc** | - | - | - |
+
+### Maiores Arquivos
+
+1. **item.lua** - 3,464 linhas (Items master)
+2. **chest.lua** - 2,991 linhas (Containers)
+3. **tile.lua** - 1,249 linhas (Tiles master)
+4. **door_quest.lua** - 930 linhas (Quests doors)
+5. **writeable.lua** - 904 linhas (Books)
+
+</Card>
+
+---
+
+## 🔗 Relações Entre Arquivos
+
+<Card title="Dependências e Fluxo" icon="connected">
+
+```
+startup.lua (entry)
+    │
+    ├─ Phase 1: tables/load.lua
+    │   ├─ chest.lua
+    │   ├─ corpse.lua
+    │   ├─ create_item.lua
+    │   ├─ door_key.lua
+    │   ├─ door_level.lua
+    │   ├─ door_quest.lua → usa Storage.Quest.*
+    │   ├─ item_daily_reward.lua
+    │   ├─ item_unmovable.lua
+    │   ├─ item.lua → maior arquivo
+    │   ├─ lever.lua
+    │   ├─ teleport_item.lua
+    │   ├─ teleport.lua
+    │   ├─ tile_pick.lua
+    │   ├─ tile.lua → segundo maior
+    │   ├─ writeable.lua
+    │   └─ storage_keys_update.lua ← CRÍTICO: ÚLTIMO
+    │
+    └─ Phase 2: others/load.lua
+        └─ functions.lua
+            ├─ registerAction(ItemAction)
+            ├─ registerAction(ChestAction)
+            ├─ registerAction(LeverAction)
+            ├─ registerAction(DoorAction...)
+            ├─ registerAction(TileAction)
+            └─ updateKeysStorage() → usa QuestKeysUpdate
+```
+
+**Fluxo de Dados**:
+1. Tabelas carregadas (Phase 1)
+2. Dados globais disponíveis
+3. Funções carregadas (Phase 2)
+4. Funções registram IDs
+5. Scripts usam IDs registrados
+
+</Card>
+
+---
+
+## 🎯 Guia de Uso
+
+<Card title="Como Usar Este Catálogo" icon="bulb">
+
+### Para Entender o Sistema
+1. Leia [Arquitetura_Startup.mdx](./Arquitetura_Startup.mdx)
+2. Estude o fluxo em "Relações Entre Arquivos"
+3. Analise os 3 arquivos de orquestração
+
+### Para Trabalhar com Tabelas Específicas
+1. Encontre a tabela neste catálogo
+2. Clique no link para arquivo .mdx detalhado
+3. Entenda a estrutura e padrão
+4. Veja exemplos práticos
+
+### Para Adicionar Nova Funcionalidade
+1. Leia Arquitetura (Estendendo o Sistema)
+2. Escolha a categoria apropriada
+3. Siga o padrão do arquivo mais similar
+4. Atualize tables/load.lua se necessário
+5. Considere storage_keys_update.lua se usar quests
+
+### Para Debug
+1. Verifique qual arquivo está falhando
+2. Consulte seção de Troubleshooting em Arquitetura
+3. Valide sintaxe e paths
+4. Garanta ordem correta de carregamento
+
+</Card>
+
+---
+
+## 📖 Fichário Rápido por Tipo
+
+<Card title="Encontrar o Arquivo Certo" icon="search">
+
+**Preciso de um item/container?**
+- → chest.lua, item.lua, create_item.lua
+
+**Preciso de uma porta?**
+- → door_key.lua, door_level.lua, door_quest.lua
+
+**Preciso de um teleporte?**
+- → teleport_item.lua, teleport.lua
+
+**Preciso de um botão/alavanca?**
+- → lever.lua
+
+**Preciso de um tile?**
+- → tile.lua, tile_pick.lua
+
+**Preciso de uma parede especial?**
+- → corpse.lua (cadáveres são "paredes" especiais)
+
+**Preciso de um livro/documento?**
+- → writeable.lua
+
+**Preciso de migração de dados?**
+- → storage_keys_update.lua
+
+**Preciso adicionar uma função global?**
+- → others/functions.lua
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+
+**Estatísticas**:
+- 📊 20 arquivos documentados
+- 📝 ~13,000+ linhas de código Lua
+- 📁 2 fases de inicialização
+- ⚙️ 6 funções globais
+- 📊 16 tabelas de dados
+
+**Arquivos Documentados**:
+- ✅ startup.lua
+- ✅ tables/load.lua
+- ✅ others/load.lua
+- ✅ others/functions.lua
+- ✅ 16 tabelas individuais
+
+**Próximas**:
+- 🔗 Consulte Arquitetura_Startup.mdx para entender fluxo
+- 🔗 Clique em links de cada arquivo para detalhes completos
+- 🔗 Veja seção "Guia de Uso" acima
+
+Para questões específicas, consulte o arquivo.mdx correspondente listado acima.
+</Aside>

@@ -1,0 +1,339 @@
+---
+title: "door_quest.lua - Tabela de Portas de Quest"
+description: "Documentação técnica da tabela de configuração de portas específicas de quests no servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 📖 door_quest.lua
+
+Arquivo de tabela responsável pela configuração de **portas específicas de quests** - portas que abrem apenas para players que completaram certas condições de quest.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/door_quest.lua` |
+| **Tipo** | Tabela de Configuração - Portas |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Storage.Quest.* constants |
+| **Total de Linhas** | 930 linhas |
+| **Função Principal** | Configurar portas de quests no mapa |
+| **Carregado por** | `tables/load.lua` |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/door_quest.lua`
+
+Define tabela global `QuestDoorAction` com múltiplas portas de diferentes quests, cada uma requerendo um storage key de quest específico.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+Configuração de **portas associadas a quests**:
+
+**Propósito**:
+- Portas que só abrem se player completou quest milestone
+- Rastrear progresso via storage keys
+- Progressão natural dentro de quests
+
+**Estrutura**:
+```lua
+[Storage.Quest.QUESTNAME.MILESTONENAME] = {
+    itemId = DOOR_ITEM_ID ou false,
+    itemPos = { {x, y, z}, ... }
+}
+```
+
+**Exemplos**: The Queen of Banshees, Sam's Old Backpack, To Outfox a Fox, etc
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Portas Quest" icon="layers">
+
+```
+┌────────────────────────────────┐
+│   SISTEMA DE PORTAS DE QUEST   │
+└────────────┬────────────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    ▼                 ▼
+QuestDoorAction   Player Storage
+(Definições)      (Verificação)
+    │                 │
+    ├─ Storage Key    ├─ hasStorage?
+    ├─ Item ID        ├─ getStorageValue
+    ├─ Positions      └─ Se completou → abre
+    └─ Quest-specific
+```
+
+**Fluxo**:
+1. Player passa por quest
+2. Completa milestone (armazena storage key)
+3. Encontra porta com mesmo storage key
+4. Porta abre (reconhece que completou)
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### QuestDoorAction
+
+**Propósito**: Definir portas específicas de quests
+
+**Estrutura**:
+```lua
+QuestDoorAction = {
+    [Storage.Quest.QUESTNAME.MILESTONE] = {
+        itemId = DOOR_ITEM_ID ou false,
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = xx},
+            -- múltiplas posições possíveis
+        }
+    }
+}
+```
+
+**Campos**:
+- `Storage.Quest.QUESTNAME.MILESTONE`: Storage key da quest
+- `itemId`: Tipo visual da porta (ou false)
+- `itemPos`: Posições no mapa
+
+**Padrão Naming**:
+- `Storage.Quest.U7_2.TheQueenOfTheBanshees.BansheeDoor`
+- `Storage.Quest.U7_5.SamsOldBackpack.SamsOldBackpackDoor`
+- Hierarquia clara: Quest → Milestone
+
+</Card>
+
+---
+
+## 📝 Exemplos do Código
+
+<Tabs>
+<TabItem label="Porta Quest Simples">
+
+```lua
+[Storage.Quest.U7_2.TheQueenOfTheBanshees.BansheeDoor] = {
+    itemId = 5113,
+    itemPos = {
+        {x = 32246, y = 31861, z = 14},
+        {x = 32246, y = 31862, z = 14}
+    }
+}
+```
+
+- **Quest**: The Queen of the Banshees
+- **Milestone**: BansheeDoor
+- **Item**: 5113 (Ornate Door)
+- **Duas portas** lado a lado
+- **Requer**: Storage.Quest.U7_2.TheQueenOfTheBanshees.BansheeDoor > 0
+
+</TabItem>
+
+<TabItem label="Múltiplos Milestones Quest">
+
+```lua
+[Storage.Quest.U7_2.TheQueenOfTheBanshees.FirstSealDoor] = {
+    itemId = 5104,
+    itemPos = { {x = 32223, y = 31872, z = 14} }
+},
+[Storage.Quest.U7_2.TheQueenOfTheBanshees.SecondSealDoor] = {
+    itemId = 5104,
+    itemPos = { {x = 32223, y = 31875, z = 14} }
+},
+[Storage.Quest.U7_2.TheQueenOfTheBanshees.ThirdSealDoor] = {
+    itemId = 5104,
+    itemPos = { {x = 32223, y = 31878, z = 14} }
+}
+```
+
+- **Mesma quest**
+- **3 milestones diferentes** (First, Second, Third)
+- **Progressão**: Seal after seal
+
+</TabItem>
+
+<TabItem label="Outra Quest">
+
+```lua
+[Storage.Quest.U7_5.SamsOldBackpack.SamsOldBackpackDoor] = {
+    itemId = false,
+    itemPos = { {x = 32455, y = 31967, z = 14} }
+}
+```
+
+- **Quest**: Sam's Old Backpack
+- **Sem item visual** (false)
+- **Uma posição**
+- **Abre com storage key registrado**
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Padrões de Uso
+
+<Card title="Boas Práticas" icon="star">
+
+### Estrutura de Storage Keys
+
+```lua
+-- Em constants/storage.lua
+Storage.Quest = {
+    U7_2 = {
+        TheQueenOfTheBanshees = {
+            BansheeDoor = numero_unico,
+            FirstSealDoor = numero_unico,
+            SecondSealDoor = numero_unico,
+            -- ... mais milestones
+        }
+    },
+    U7_5 = {
+        SamsOldBackpack = {
+            SamsOldBackpackDoor = numero_unico
+        }
+    }
+}
+
+-- Em door_quest.lua
+[Storage.Quest.U7_2.TheQueenOfTheBanshees.BansheeDoor] = {...}
+```
+
+### Ao Adicionar Nova Porta Quest
+
+1. **Criar storage key**:
+   - Em `constants/storage.lua`
+   - Nomear hierarquicamente
+
+2. **Adicionar porta**:
+   ```lua
+   [Storage.Quest.QUESTNAME.MILESTONE] = {
+       itemId = DOOR_ITEM,
+       itemPos = { {x, y, z} }
+   }
+   ```
+
+3. **Documentar**:
+   - Quest name em comentário
+   - Script que usa a porta
+
+4. **Testar**:
+   - Sem storage key = blocked
+   - Com storage key = open
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Como Funciona" icon="link">
+
+**Em `door_quest.lua`**:
+```lua
+QuestDoorAction = {
+    [Storage.Quest.U7_2.TheQueenOfTheBanshees.BansheeDoor] = {...}
+}
+```
+
+**Em quest script** (quando completa milestone):
+```lua
+-- Player completou The Queen of Banshees
+player:setStorageValue(Storage.Quest.U7_2.TheQueenOfTheBanshees.BansheeDoor, 1)
+-- Regrista a conclusão do milestone
+```
+
+**Em movimento script** (porta):
+```lua
+function mvEvent.onStepIn(creature, item, position, ...)
+    local player = creature:getPlayer()
+    if not player then return true end
+    
+    -- Pega action ID (que é storage key)
+    local actionId = item:getAttribute(ITEM_ATTRIBUTE_ACTIONID)
+    
+    -- Verifica storage
+    if player:getStorageValue(actionId) > 0 then
+        door:open(player)
+    else
+        player:sendCancelMessage("Access denied")
+    end
+end
+```
+
+</Card>
+
+---
+
+## 📚 Padrão de Quests
+
+<Card title="Exemplo: The Queen of Banshees" icon="book">
+
+**Quest com 8 portas progressivas**:
+
+```
+Banshee Door (entrada)
+    ↓
+First Seal Door
+    ↓
+Second Seal Door
+    ↓
+... (Third to Sixth Seals)
+    ↓
+Last Seal Door
+    ↓
+Boss arena
+```
+
+**Cada porta**:
+- Tem seu próprio storage key
+- Player completa objetivo
+- Storage atualizado
+- Próxima porta abre
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: 930  
+**Tabelas Globais**: 1 (QuestDoorAction)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ QuestDoorAction (portas de quests)
+
+**Características**:
+- Storage-based access
+- Quest progression tracking
+- Multiple milestones per quest
+- Progressive unlocking
+
+Este arquivo define portas que abrem conforme player progride em suas quests.
+</Aside>

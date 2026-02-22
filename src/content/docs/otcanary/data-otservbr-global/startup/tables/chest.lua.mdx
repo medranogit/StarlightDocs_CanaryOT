@@ -1,0 +1,334 @@
+---
+title: "chest.lua - Tabelas de Baús (Chests)"
+description: "Documentação técnica das tabelas de configuração de baús (chests) do servidor Canary, incluindo ações e rewards customizadas"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 📦 chest.lua
+
+Arquivo de tabelas responsável pela configuração de todos os baús do servidor, incluindo baús normais, customizados e com rewards especiais. Suporta tanto configuração simples quanto integração com sistema KV.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/chest.lua` |
+| **Tipo** | Tabela de Configuração - Baús |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Nenhuma (dados estáticos) |
+| **Total de Entradas** | 2.991 linhas (múltiplas entradas) |
+| **Função Principal** | Configurar baús e seus rewards no mapa |
+| **Carregado por** | `tables/load.lua` |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/chest.lua`
+
+Este arquivo define tabelas globais `ChestAction` e possivelmente `ChestUnique` contendo todas as configurações de baús do servidor.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+Arquivo principal de configuração de **baús interativos** no servidor com duas abordagens:
+
+**1. Configuração Simples**:
+```lua
+[actionId] = {
+    itemId = ITEM_ID,
+    itemPos = { {x, y, z}, ... },
+    container = CONTAINER_ID,
+    reward = {{ITEM, COUNT}, ...},
+    storage = STORAGE_KEY
+}
+```
+
+**2. Integração com KV System**:
+```lua
+[actionId] = {
+    useKV = true,
+    itemId = ITEM_ID,
+    itemPos = { {x, y, z}, ... },
+    reward = {{ITEM, COUNT}, ...},
+    questName = "name"
+}
+```
+
+**Faixas Reservadas**:
+- **5000-6000**: Reward keys
+- **6001-12472**: Quest rewards scripts
+- **12473-15000**: Outros scripts com varied rewards
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Baús" icon="layers">
+
+```
+┌──────────────────────────────────────────┐
+│      SISTEMA DE BAÚS DO SERVIDOR         │
+└────────────────┬─────────────────────────┘
+                 │
+      ┌──────────┴──────────┐
+      │                     │
+      ▼                     ▼
+┌────────────────┐  ┌──────────────────┐
+│ ChestAction    │  │  ChestUnique     │
+│ (Action IDs)   │  │ (Unique IDs)     │
+└────────────────┘  └──────────────────┘
+      │                     │
+      ├─ itemId            ├─ itemId
+      ├─ itemPos           ├─ itemPos
+      ├─ container         └─ (Opcionalmente)
+      ├─ reward
+      ├─ storage
+      └─ useKV (opção KV)
+```
+
+**Fluxo de Execução**:
+1. Durante startup, `chest.lua` é carregado
+2. Tabelas `ChestAction` e `ChestUnique` criadas
+3. Functions em `functions.lua` iterem tabelas
+4. Cada baú registra action/unique ID no mapa
+5. Script de ação ativa reward system
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabelas Principais" icon="database">
+
+### ChestAction Table
+
+**Propósito**: Define todos os baús com action IDs
+
+**Estrutura**:
+```lua
+ChestAction = {
+    [actionId] = {
+        -- Para uso do mapa
+        itemId = ITEM_ID ou false,
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = x},
+            {x = xxxxx, y = xxxxx, z = x}
+        },
+        
+        -- Para uso do script
+        container = CONTAINER_ID,  -- Opcionalmente
+        keyAction = KEY_ACTION_ID, -- Se usar chave
+        reward = {{ITEM_ID, COUNT}, ...},
+        storage = STORAGE_KEY
+    }
+}
+```
+
+**Campos Explicados**:
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| **itemId** | number/false | ID do item baú (false = piso vazio) |
+| **itemPos** | array | Posições onde o baú aparece no mapa |
+| **container** | number | ID do container para reward guardado |
+| **keyAction** | number | Action ID da chave (se necessário) |
+| **reward** | array | Array de `{ITEM_ID, COUNT}` |
+| **storage** | number | Storage key para tracker progresso |
+| **useKV** | boolean | Ativar sistema KV (alternativa) |
+| **questName** | string | Nome da quest (se usar KV) |
+
+### ChestUnique Table
+
+**Propósito**: Define baús com unique IDs (opcional)
+
+**Estrutura**: Similar a `ChestAction`, com foco em unique IDs em vez de action IDs.
+
+</Card>
+
+---
+
+## 🔑 Exemplos de Configuração
+
+<Tabs>
+<TabItem label="Baú Simples">
+
+```lua
+[5000] = {
+    itemId = 5110,
+    itemPos = {
+        {x = 32100, y = 32100, z = 7},
+        {x = 32200, y = 32200, z = 7}
+    },
+    reward = {{2160, 1}, {2165, 1}},
+    storage = 5000
+}
+```
+
+- Baú item ID 5110
+- Duas posições no mapa
+- Reward: 1x Leather Helmet + 1x Leather Armor
+- Storage key 5000 rastreia conclusão
+
+</TabItem>
+
+<TabItem label="Baú com Container">
+
+```lua
+[6001] = {
+    itemId = false,
+    itemPos = {{x = 32150, y = 32150, z = 8}},
+    container = 2595,
+    reward = {{2530, 1}, {2540, 2}},
+    storage = 6001
+}
+```
+
+- Piso vazio (itemId = false)
+- Rewards guardados em container 2595
+- Storage rastreia se foi pego
+
+</TabItem>
+
+<TabItem label="Baú com KV">
+
+```lua
+[7000] = {
+    useKV = true,
+    itemId = 5110,
+    itemPos = {{x = 32300, y = 32300, z = 7}},
+    reward = {{2165, 1}, {2166, 1}},
+    questName = "myquest"
+}
+```
+
+- Usa sistema KV em vez de storage fixo
+- Tied à quest "myquest"
+- Gerenciamento automático via KV
+
+</TabItem>
+
+<TabItem label="Baú com Chave">
+
+```lua
+[8000] = {
+    itemId = 5113,
+    itemPos = {{x = 32400, y = 32400, z = 9}},
+    container = 2595,
+    keyAction = 5020,
+    reward = {{2185, 1}},
+    storage = 8000
+}
+```
+
+- Requer chave action 5020
+- Reward em container 2595
+- Storage rastreia abertura
+
+</TabItem>
+</Tabs>
+
+---
+
+## 📝 Padrões de Uso
+
+<Card title="Boas Práticas" icon="star">
+
+### Ao Adicionar Novo Baú
+
+1. **Escolher Action ID** dentro do range apropriado (5000-15000)
+2. **Definir item e posição**:
+   - `itemId = CHEST_ITEM_ID` ou `false`
+   - `itemPos = {{x, y, z}, ...}`
+3. **Configurar reward**:
+   - Array simples `{{ITEM, COUNT}, ...}`
+4. **Registrar storage**:
+   - `storage = UNIQUE_KEY`
+5. **Testar in-game**:
+   - Verificar baú aparece
+   - Verificar reward é dado
+   - Verificar storage atualiza
+
+### Evitar
+
+- ❌ Reutilizar action IDs
+- ❌ Posições fora do mapa
+- ❌ Storage keys duplicadas
+- ❌ Rewards inválidos (itemIds que não existem)
+
+</Card>
+
+---
+
+## 🎛️ Integração com Funções
+
+<Card title="Como os Scripts Usam Esta Tabela" icon="link">
+
+**Em `functions.lua`**:
+```lua
+-- Função carrega ChestAction
+function CreateChestOnMap(tablename)
+    for index, value in pairs(tablename) do
+        -- Para cada action ID
+        -- Cria item na posição
+        -- Registra action ID no mapa
+    end
+end
+```
+
+**Chamada no startup**:
+```lua
+CreateChestOnMap(ChestAction)
+```
+
+**Em script de ação** (`quest_reward_common.lua`):
+```lua
+-- Ao usar baú
+local chestConfig = ChestAction[actionId]
+if chestConfig then
+    -- Dar reward do config
+    for _, reward in ipairs(chestConfig.reward) do
+        player:addItem(reward[1], reward[2])
+    end
+    -- Atualizar storage
+    player:setStorageValue(chestConfig.storage, 1)
+end
+```
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: 2.991  
+**Tabelas Globais**: 2 (ChestAction, ChestUnique)  
+**Status**: ✅ Completo
+
+**Tabelas Documentadas**:
+- ✅ ChestAction (action IDs)
+- ✅ ChestUnique (unique IDs - opcional)
+
+**Faixas de IDs**:
+- 5000-6000: Reward keys
+- 6001-12472: Quest rewards
+- 12473-15000: Other scripts
+
+Para adicionar novos baús, edite este arquivo seguindo os exemplos acima.
+</Aside>

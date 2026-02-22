@@ -1,0 +1,1407 @@
+---
+title: Catálogo - Source Code (C++)
+description: Índice completo e detalhado de todos os arquivos e módulos do código-fonte C++ do servidor Canary
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 📚 Catálogo - Source Code (C++)
+
+Índice completo de todos os arquivos e módulos da pasta `src/`. Use este documento para navegar, localizar e entender cada arquivo C++.
+
+---
+
+## 🎯 Guia de Uso
+
+<Card title="Como Usar Este Catálogo" icon="information">
+
+Este catálogo lista **todos os módulos e arquivos principais** do source.
+
+Cada entrada inclui:
+- 📁 Nome do arquivo/pasta
+- 📝 Tipo (Header, Source, Submodule)
+- 📖 Descrição breve da responsabilidade
+- 🔗 Relacionamentos com outros módulos
+- 💻 Exemplos de uso (quando aplicável)
+
+**Use para:**
+- Localizar onde implementar uma feature
+- Entender dependências entre módulos
+- Conhecer estrutura de classes
+- Debug de comportamentos inesperados
+
+</Card>
+
+---
+
+## 📍 Índice Rápido de Módulos
+
+- [Arquivos Raiz (Entry Point)](#arquivos-raiz)
+- [account/ - Autenticação](#account--autenticação)
+- [config/ - Configurações](#config--configurações)
+- [creatures/ - Entidades Vivas](#creatures--entidades-vivas)
+- [database/ - Persistência](#database--persistência)
+- [enums/ - Tipos Enumerados](#enums--tipos-enumerados)
+- [game/ - Lógica Central](#game--lógica-central)
+- [io/ - Entrada/Saída](#io--entradaída)
+- [items/ - Sistema de Itens](#items--sistema-de-itens)
+- [kv/ - Key-Value Storage](#kv--key-value-storage)
+- [lib/ - Bibliotecas](#lib--bibliotecas)
+- [lua/ - Integração de Scripts](#lua--integração-de-scripts)
+- [map/ - Carregamento de Mapa](#map--carregamento-de-mapa)
+- [protobuf/ - Serialização](#protobuf--serialização)
+- [security/ - Criptografia](#security--criptografia)
+- [server/ - Networking](#server--networking)
+- [utils/ - Utilitários](#utils--utilitários)
+
+---
+
+## 🔴 Arquivos Raiz
+
+<Card title="Entry Points do Servidor" icon="entry">
+
+### main.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Source (.cpp) |
+| **Função** | Função main - ponto de entrada |
+| **Responsabilidade** | Parse argumentos, startup do servidor |
+| **Fluxo** | `main()` → `canary_server.cpp::run()` → Event loop |
+| **Dependencies** | canary_server.hpp, config/, database/ |
+
+```cpp
+int main(int argc, char* argv[]) {
+    // 1. Parse command-line
+    // 2. Load config
+    // 3. Initialize services
+    // 4. Enter event loop
+    // 5. Cleanup on shutdown
+}
+```
+
+---
+
+### canary_server.cpp / canary_server.hpp
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Source + Header |
+| **Função** | Classe principal do servidor |
+| **Classe** | `CanaryServer` (Singleton) |
+| **Responsabilidade** | Orquestrar inicialização, manter servidor rodando |
+| **Métodos Principais** | `run()`, `shutdown()`, `start()` |
+
+```cpp
+class CanaryServer {
+    void run();              // Main loop
+    void shutdown();         // Graceful shutdown
+    bool doNetworkTask();    // Network processing
+};
+```
+
+---
+
+### core.hpp
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Header |
+| **Função** | Definições globais |
+| **Conteúdo** | `#define` macros, tipos globais common |
+| **Uso** | Incluído em quase todos os .cpp |
+
+---
+
+### declarations.hpp
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Header |
+| **Função** | Forward declarations |
+| **Conteúdo** | Declarações de classes sem incluir headers |
+| **Benefício** | Evita circular includes |
+
+---
+
+### pch.cpp / pch.hpp
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Source + Header |
+| **Função** | Precompiled Headers |
+| **Conteúdo** | Standard library includes, common headers |
+| **Build** | Compilado uma vez, reusado em todos .cpp |
+| **Performance** | Reduz tempo de compilação significativamente |
+
+**Inclui:**
+```cpp
+#include <vector>
+#include <map>
+#include <string>
+#include <memory>
+#include <iostream>
+// ... tudo standard lib + project common
+```
+
+---
+
+### CMakeLists.txt (raiz)
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Build Configuration |
+| **Função** | Configurar build with cmake |
+| **Conteúdo** | Add targets, link libraries, compiler flags |
+
+</Card>
+
+---
+
+## 👤 account/ - Autenticação
+
+<Card title="Gerenciamento de Contas (7 arquivos)" icon="user">
+
+```
+account/
+├── account.cpp
+├── account.hpp              ← Account class
+├── account_info.hpp
+├── account_repository.cpp
+├── account_repository.hpp   ← Interface abstrata
+├── account_repository_db.cpp
+├── account_repository_db.hpp ← Implementação MySQL
+└── CMakeLists.txt
+```
+
+### account.hpp / account.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `Account` |
+| **Responsabilidade** | Dados e lógica de uma conta |
+| **Atributos** | ID, name, email, created_at, last_login |
+| **Métodos** | Get/set properties, validation |
+
+```cpp
+class Account {
+    uint32_t id;
+    std::string name;
+    std::string password;
+    std::string email;
+    time_t createdAt;
+    time_t lastLogin;
+    
+    uint32_t getCoins() const;
+    void setCoins(uint32_t coins);
+};
+```
+
+---
+
+### account_repository.hpp
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Interface abstrata |
+| **Padrão** | Repository Pattern |
+| **Responsabilidade** | Define contrato para acesso a contas |
+| **Métodos** | `getAccount()`, `saveAccount()`, `validate()` |
+
+```cpp
+class AccountRepository {
+    virtual Account* getAccount(const std::string& name) = 0;
+    virtual bool saveAccount(Account* account) = 0;
+    virtual bool validatePassword(const std::string& name, const std::string& pwd) = 0;
+};
+```
+
+---
+
+### account_repository_db.hpp / account_repository_db.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `AccountRepositoryDB` : public `AccountRepository` |
+| **Implementação** | Via banco de dados MySQL |
+| **Queries** | SELECT accounts, INSERT/UPDATE, validation |
+| **Async** | Usa DatabaseManager para queries non-blocking |
+
+```cpp
+class AccountRepositoryDB : public AccountRepository {
+    Account* getAccount(const std::string& name) override {
+        // Query: SELECT * FROM accounts WHERE name = ?
+        // Retorna Account object ou nullptr
+    }
+};
+```
+
+---
+
+### account_info.hpp
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Header |
+| **Estrutura** | `AccountInfo` struct |
+| **Dados** | Informações de conta para transmissão |
+
+</Card>
+
+---
+
+## ⚙️ config/ - Configurações
+
+<Card title="Gerenciamento de Configurações (3 arquivos)" icon="sliders">
+
+```
+config/
+├── configmanager.cpp
+├── configmanager.hpp        ← Singleton manager
+├── config_enums.hpp         ← Enum de keys
+└── CMakeLists.txt
+```
+
+### configmanager.hpp / configmanager.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `ConfigManager` (Singleton) |
+| **Responsabilidade** | Carregar e acessar configurações |
+| **Fonte** | `config.lua.dist` em data/ |
+| **Padrão** | Singleton - acesso global único |
+
+```cpp
+class ConfigManager {
+    static ConfigManager& getInstance();
+    
+    uint32_t getNumber(ConfigKey_t key) const;
+    bool getBoolean(ConfigKey_t key) const;
+    std::string getString(ConfigKey_t key) const;
+    float getFloat(ConfigKey_t key) const;
+};
+
+// Uso
+uint32_t expRate = ConfigManager::getInstance()
+    .getNumber(CONFIG_KEY_EXP_RATE);
+```
+
+---
+
+### config_enums.hpp
+
+| Propriedade | Valor |
+|---|---|
+| **Tipo** | Header |
+| **Conteúdo** | `enum ConfigKey_t` com todas as keys |
+| **Exemplos** | CONFIG_KEY_ALLOW_PVP, CONFIG_KEY_EXP_RATE, etc |
+
+```cpp
+enum class ConfigKey_t : uint8_t {
+    CONFIG_KEY_ALLOW_PVP,
+    CONFIG_KEY_EXP_RATE,
+    CONFIG_KEY_LOOT_RATE,
+    // ... 50+ configurações
+};
+```
+
+</Card>
+
+---
+
+## 🧟 creatures/ - Entidades Vivas
+
+<Card title="Criaturas do Servidor (9+ módulos)" icon="monster">
+
+```
+creatures/
+├── creature.cpp               ← Base class (tudo vivo)
+├── creature.hpp
+├── creatures_definitions.hpp
+├── appearance/                ← Visuais (outfit, blessing)
+├── combat/                    ← Sistema de combate
+├── interactions/              ← Interações
+├── monsters/                  ← Monstros (IA, loot)
+├── npcs/                      ← NPCs (vendors, quest)
+├── players/                   ← Players (skills, storage)
+│   ├── player.cpp
+│   ├── player.hpp
+│   ├── vocations/             ← Sistema de classes
+│   ├── management/            ← Grupos, guilds
+│   ├── storages/              ← Storage values
+│   ├── imbuements/            ← Sistema de bênçãos
+│   ├── animus_mastery/        ← Mastery system
+│   └── ...mais
+└── CMakeLists.txt
+```
+
+### creature.hpp / creature.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `Creature` (base class) |
+| **Subclasses** | Player, Monster, NPC |
+| **Atributos** | ID, name, position, HP, mana |
+| **Métodos Principais** | `onThink()`, `onDeath()`, `move()` |
+
+```cpp
+class Creature {
+    uint32_t id;
+    std::string name;
+    Position position;
+    int32_t health, maxHealth;
+    int32_t mana, maxMana;
+    
+    virtual void onThink();           // Thinking loop
+    virtual void onDeath();           // Death handler
+    void receiveDamage(const Damage&); // Take damage
+    void moveCreature(Direction dir); // Move
+};
+```
+
+---
+
+### players/ - Sistema de Player
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **player.hpp/cpp** | Classe Player, atributos, inventory |
+| **vocations/** | Vocation system (Knight, Mage, etc) |
+| **storages/** | Storage values (quest progress, etc) |
+| **imbuements/** | Sistema de imbuições (itens especiais) |
+| **management/** | Guild, party, friendship |
+| **components/** | Spell/ability components |
+| **animus_mastery/** | Mastery leveling system |
+
+**Principais:**
+```cpp
+class Player : public Creature {
+    uint16_t level;
+    uint32_t experience;
+    Vocation vocation;
+    Container inventory;
+    std::map<uint32_t, int32_t> storages;  // Storage values
+    std::vector<Spell> spells;
+};
+```
+
+---
+
+### monsters/ - Sistema de Monster
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **...** | Spawn logic, behavior tree, loot |
+
+---
+
+### npcs/ - Sistema de NPC
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **...** | Script callbacks, trade, interactions |
+
+---
+
+### combat/ - Sistema de Combate
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **...** | Damage calculation, hit/miss, effects |
+
+---
+
+### appearance/ - Visual do Creature
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **...** | Outfit system, blessings, icons |
+
+</Card>
+
+---
+
+## 🗄️ database/ - Persistência
+
+<Card title="Acesso ao Banco de Dados (6 arquivos)" icon="database">
+
+```
+database/
+├── database.cpp
+├── database.hpp              ← Conexão, pool
+├── databasemanager.cpp
+├── databasemanager.hpp       ← Singleton, async queries
+├── databasetasks.cpp
+├── databasetasks.hpp         ← Query task classes
+├── database_definitions.hpp
+└── CMakeLists.txt
+```
+
+### database.hpp / database.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `Database` |
+| **Responsabilidade** | Conexão MySQL individual |
+| **Métodos** | `query()`, `executeQuery()`, `getLastError()` |
+| **Pool** | Mantido por DatabaseManager |
+
+```cpp
+class Database {
+    bool connect(const std::string& host, ...);
+    bool query(const std::string& sql);
+    DBResult* getResult();
+    
+    void disconnect();
+};
+```
+
+---
+
+### databasemanager.hpp / databasemanager.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `DatabaseManager` (Singleton) |
+| **Responsabilidade** | Pool de conexões, async task queue |
+| **Pattern** | Async non-blocking queries |
+| **Uso** | Não bloqueia server thread durante query |
+
+```cpp
+class DatabaseManager {
+    static DatabaseManager& getInstance();
+    
+    void addTask(std::unique_ptr<DatabaseTask> task);
+    // Task executa em thread pool
+    // Callback é chamado quando pronto
+};
+
+// Uso
+DatabaseManager::getInstance().addTask(
+    std::make_unique<QueryTask>(
+        "SELECT * FROM players WHERE id = ?",
+        params,
+        [](DBResult* res) {
+            // Callback com resultados
+        }
+    )
+);
+```
+
+---
+
+### databasetasks.hpp / databasetasks.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `DatabaseTask` (base), `QueryTask`, etc |
+| **Responsabilidade** | Encapsular operações de DB |
+| **Virtual** | `execute()`, `onSuccess()`, `onFailure()` |
+
+```cpp
+class DatabaseTask {
+    virtual void execute(Database* db) abstract;
+    virtual void onSuccess() {}
+    virtual void onFailure() {}
+};
+
+class QueryTask : public DatabaseTask {
+    std::string query;
+    std::function<void(DBResult*)> callback;
+    
+    void execute(Database* db) override {
+        DBResult* result = db->query(query);
+        callback(result);
+    }
+};
+```
+
+</Card>
+
+---
+
+## 📋 enums/ - Tipos Enumerados
+
+<Card title="Definições de Enums (11 arquivos)" icon="list">
+
+```
+enums/
+├── account_coins.hpp          ← Coin types
+├── account_errors.hpp         ← Error codes
+├── account_group_type.hpp     ← Account groups (admin, etc)
+├── account_type.hpp           ← Account types
+├── container_type.hpp         ← Container types
+├── forge_conversion.hpp        ← Forge system conversions
+├── item_attribute.hpp         ← Item attributes
+├── lua_variant_type.hpp       ← Lua types
+├── object_category.hpp        ← Categorias de objetos
+├── player_blessings.hpp       ← Sistema de bênçãos
+├── player_cyclopedia.hpp      ← Cyclopedia entries
+├── player_icons.hpp           ← Icons do player
+└── player_wheel.hpp           ← Wheel system (talent tree)
+```
+
+**Exemplos:**
+
+| Arquivo | Enum | Valores |
+|---------|------|---------|
+| **account_group_type.hpp** | `AccountGroup_t` | GROUP_NONE, GROUP_TUTOR, GROUP_BAN |
+| **container_type.hpp** | `ContainerType_t` | CONTAINER_DEPOT, CONTAINER_HOUSE |
+| **player_blessings.hpp** | `Blessing_t` | BLESSING_NAME, BLESSING_MANA, etc |
+| **item_attribute.hpp** | `ItemAttribute_t` | ITEM_ATTRIBUTE_NAME, ITEM_ATTRIBUTE_COUNT, etc |
+
+</Card>
+
+---
+
+## 🎮 game/ - Lógica Central do Jogo
+
+<Card title="Sistema de Jogo (8+ módulos)" icon="gamepad">
+
+```
+game/
+├── game.cpp                   ← Game singleton
+├── game.hpp
+├── game_definitions.hpp
+├── bank/                      ← Sistema bancário
+├── combat/                    ← Sistema de combate (dmg calc)
+├── functions/                 ← Funções expostas para Lua
+├── modal_window/              ← UI windows
+├── movement/                  ← Movimento, pathfinding
+├── scheduling/                ← Event scheduling
+├── zones/                     ← Zonas (PvP, rules)
+└── CMakeLists.txt
+```
+
+### game.hpp / game.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `Game` (Singleton global) |
+| **Responsabilidade** | Orquestrar toda lógica do servidor |
+| **Acesso** | `Game::getInstance()` |
+| **Métodos Principais** | `update()`, `think()`, `createCreature()` |
+
+```cpp
+class Game {
+    std::map<uint32_t, Creature*> creatures;
+    std::map<Position, std::vector<Item*>> itemsByPosition;
+    Map map;
+    
+    void update(uint32_t diff);           // Update loop
+    void addCreature(Creature* creature); // Add to game
+    void removeCreature(Creature* creature); // Remove
+    bool createMonster(const std::string& name, Position pos);
+};
+```
+
+---
+
+### combat/ - Sistema de Combate
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **...** | Damage calculation, hit/miss, conditions |
+
+```cpp
+Damage calculateDamage(attacker, defender, weapon);
+// ├── Base damage (arma)
+// ├── Skills modifier
+// ├── Armor reduction (defender)
+// ├── Resistances
+// └── RNG/Miss chance
+```
+
+---
+
+### movement/ - Movimento
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **...** | Pathfinding, tile validation, collision |
+
+---
+
+### scheduling/ - Agendamento
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **...** | Event queue, delayed actions, timers |
+
+```cpp
+game->addEvent([](){ /* ... */ }, 5000);  // Em 5s
+```
+
+---
+
+### zones/ - Zonas
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **...** | PvP rules, area effects, restrictions |
+
+</Card>
+
+---
+
+## 📁 io/ - Entrada/Saída de Arquivos
+
+<Card title="Carregamento de Dados (13 arquivos)" icon="folder">
+
+```
+io/
+├── fileloader.cpp
+├── fileloader.hpp            ← Load arquivos genéricos
+├── filestream.cpp
+├── filestream.hpp            ← File stream helper
+├── iobestiary.cpp
+├── iobestiary.hpp            ← Bestiary (creature info)
+├── io_bosstiary.cpp
+├── io_bosstiary.hpp          ← Boss info
+├── ioguild.cpp
+├── ioguild.hpp               ← Guild serialization
+├── iologindata.cpp
+├── iologindata.hpp           ← Player login data (OTStuff)
+├── iomap.cpp
+├── iomap.hpp                 ← Load OTBM (map binary)
+├── iomapserialize.cpp
+├── iomapserialize.hpp        ← Save map state
+├── iomarket.cpp
+├── iomarket.hpp              ← Market offers
+├── ioprey.cpp
+├── ioprey.hpp                ← Prey system
+├── io_wheel.cpp
+├── io_wheel.hpp              ← Wheel (talent tree) data
+├── io_definitions.hpp
+├── player_storage_repository.hpp
+├── player_storage_repository_db.cpp
+├── player_storage_repository_db.hpp
+├── functions/                ← Helper functions
+└── CMakeLists.txt
+```
+
+### iomap.hpp / iomap.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `IOMap` (Singleton) |
+| **Responsabilidade** | Carregar arquivo .otbm (mapa binário) |
+| **Formato** | OTBM (Otland Tibia Map Binary) |
+| **Método Principal** | `loadMap(const std::string& filename)` |
+
+```cpp
+class IOMap {
+    static IOMap& getInstance();
+    bool loadMap(const std::string& filename);
+    // Parse OTBM binary format
+    // Populate tiles with objects
+    // Setup monster spawns
+};
+```
+
+---
+
+### iologindata.hpp / iologindata.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `IOLoginData` |
+| **Responsabilidade** | Serializar/deserializar player data |
+| **Formato** | OTStuff binary (player state) |
+| **Uso** | Save/load player quando log out/in |
+
+---
+
+### iomapserialize.hpp / iomapserialize.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `IOMapSerialize` |
+| **Responsabilidade** | Salvar estado dinâmico do mapa |
+| **Uso** | Items em tiles, house items, etc |
+
+</Card>
+
+---
+
+## 📦 items/ - Sistema de Itens
+
+<Card title="Gerenciamento de Itens (13 arquivos)" icon="box">
+
+```
+items/
+├── item.cpp
+├── item.hpp                  ← Classe Item
+├── items.cpp
+├── items.hpp                 ← Catálogo de tipos
+├── items_definitions.hpp
+├── items_classification.hpp
+├── thing.cpp
+├── thing.hpp                 ← Base (Creature + Item)
+├── cylinder.cpp
+├── cylinder.hpp              ← Container interface
+├── tile.cpp
+├── tile.hpp                  ← Tile (posição no mundo)
+├── bed.cpp
+├── bed.hpp                   ← Bed (specials)
+├── trashholder.cpp
+├── trashholder.hpp           ← Trash containers
+├── containers/               ← Backpack, depot systems
+├── decay/                    ← Item degradation
+├── functions/                ← Item functions para Lua
+├── weapons/                  ← Weapon system
+└── CMakeLists.txt
+```
+
+### item.hpp / item.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `Item` : public `Thing` |
+| **Responsabilidade** | Representa um item (equipamento, consumível) |
+| **Atributos** | ID, count, attributes, owner |
+| **Métodos** | Get/set properties, clone, serialize |
+
+```cpp
+class Item : public Thing {
+    uint16_t id;                           // Type ID
+    uint8_t count;                         // Stack count
+    uint32_t owner;                        // Owner ID
+    std::map<ItemAttribute_t, uint32_t> attributes;
+    
+    uint16_t getId() const { return id; }
+    uint8_t getCount() const { return count; }
+    void setCount(uint8_t c) { count = c; }
+};
+```
+
+---
+
+### items.hpp / items.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `Items` (Singleton) |
+| **Responsabilidade** | Catálogo de tipos de item |
+| **Dados** | Properties de cada item (weapon, armor, etc) |
+| **Origem** | `items.xml` em data/ |
+
+```cpp
+class Items {
+    static Items& getInstance();
+    ItemType* getItemType(uint16_t id) const;
+    // ├── Name
+    // ├── Type (consumable, weapon, armor)
+    // ├── Weight
+    // ├── Attributes
+    // └── Etc
+};
+```
+
+---
+
+### containers/ - Containers
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **...** | Backpack, depot, mailbox logic |
+
+---
+
+### weapons/ - Weapons
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **...** | Weapon damage, ammo, attributes |
+
+</Card>
+
+---
+
+## 🔑 kv/ - Key-Value Storage
+
+<Card title="Storage Transiente (10 arquivos)" icon="key">
+
+```
+kv/
+├── kv.cpp
+├── kv.hpp                    ← Interface KV
+├── kv_sql.cpp
+├── kv_sql.hpp                ← SQL backend
+├── kv_definitions.hpp
+├── value_wrapper.cpp
+├── value_wrapper.hpp         ← Wrapper de valor genérico
+├── value_wrapper_proto.cpp
+├── value_wrapper_proto.hpp   ← Protobuf wrapper
+├── README.md
+└── CMakeLists.txt
+```
+
+### kv.hpp / kv.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `KV` (interface abstrata) |
+| **Responsabilidade** | Key-Value store genérico |
+| **Métodos** | `set()`, `get()`, `remove()` |
+| **Implementação** | Pode ser em-memory ou SQL |
+
+```cpp
+class KV {
+    virtual void set(const std::string& key, const std::string& value) = 0;
+    virtual std::string get(const std::string& key) = 0;
+    virtual bool exists(const std::string& key) = 0;
+};
+```
+
+---
+
+### kv_sql.hpp / kv_sql.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `KV_SQL` : public `KV` |
+| **Responsabilidade** | KV store backed by MySQL |
+| **Persistência** | Dados salvos no banco |
+| **Uso** | Valores globais, flags do servidor |
+
+```cpp
+class KV_SQL : public KV {
+    void set(const std::string& key, const std::string& value) override {
+        // INSERT INTO key_value SET key=?, value=?
+    }
+};
+```
+
+---
+
+### value_wrapper.hpp / value_wrapper.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `ValueWrapper` |
+| **Responsabilidade** | Encapsular valores genér icos (int, string, etc) |
+| **Uso** | Serializar/deserializar valores |
+
+</Card>
+
+---
+
+## 📚 lib/ - Bibliotecas
+
+<Card title="Utilities e Helpers (5 módulos)" icon="book">
+
+```
+lib/
+├── CMakeLists.txt
+├── di/                       ← Dependency Injection
+│   ├── di.hpp
+│   └── ...
+├── logging/                  ← Sistema de logs
+│   ├── logger.hpp
+│   └── ...
+├── messaging/                ← Message queues
+│   ├── message_queue.hpp
+│   └── ...
+├── metrics/                  ← Performance metrics
+│   ├── metrics.hpp
+│   └── ...
+└── thread/                   ← Thread management
+    ├── thread_pool.hpp
+    └── ...
+```
+
+### logging/ - Sistema de Logs
+
+| Módulo | Responsabilidade |
+|--------|---|
+| **logger.hpp** | Logging interface |
+| **console_logger** | Output para console |
+| **file_logger** | Output para arquivo |
+| **spdlog wrapper** | Integration com spdlog lib |
+
+**Uso:**
+```cpp
+g_logger.info("Server started");
+g_logger.warning("High memory usage");
+g_logger.error("Database connection failed");
+g_logger.debug("Player ID: {}", playerId);  // Format
+```
+
+---
+
+### di/ - Dependency Injection
+
+| Módulo | Responsabilidade |
+|--------|---|
+| **di.hpp** | Simple DI container |
+
+---
+
+### thread/ - Thread Management
+
+| Módulo | Responsabilidade |
+|--------|---|
+| **thread_pool.hpp** | Worker threads para async tasks |
+
+</Card>
+
+---
+
+## 🐍 lua/ - Integração de Scripts Lua
+
+<Card title="Scripting Engine (6+ módulos)" icon="code">
+
+```
+lua/
+├── CMakeLists.txt
+├── lua_definitions.hpp
+├── creature/                 ← Creature Lua API
+├── callbacks/                ← Event callbacks
+├── functions/                ← Functions expostas
+├── global/                   ← Global Lua state
+├── modules/                  ← Modules/tables
+└── scripts/                  ← Script manager
+```
+
+### Global Lua State
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **global/lua_state.hpp** | Global L lua_State* |
+| **scripts/script_manager.hpp** | Load/unload scripts |
+
+**Registração de Callbacks:**
+```cpp
+g_scripts.event("onCreatureSpawn")(creature, x, y, z);
+// Se script tem on_creature_spawn():
+//   └── Execute Lua function com args
+// Se não tem:
+//   └── Continua com default behavior
+```
+
+---
+
+### callbacks/ - Event Callbacks
+
+| Arquivo | Exemplo Event |
+|---------|---|
+| **creature_callbacks.hpp** | onSpawn, onDeath, onThink |
+| **item_callbacks.hpp** | onUse, onCreate, onRemove |
+| **spell_callbacks.hpp** | onCast, onEffect |
+| **...** | Muitos outros eventos |
+
+---
+
+### functions/ - Funções Expostas
+
+| Função Lua | Implementação C++ |
+|------------|---|
+| `game.createMonster(name, pos)` | Game::createMonster() C++ |
+| `player:addExperience(xp)` | Player::addExperience() C++ |
+| `creature:getTile()` | Creature::getTile() C++ |
+| `...` | Centenas de funções |
+
+</Card>
+
+---
+
+## 🗺️ map/ - Carregamento de Mapa
+
+<Card title="Sistema de Mapa (8 arquivos)" icon="map">
+
+```
+map/
+├── map.cpp
+├── map.hpp                   ← Mapão global (32k x 32k)
+├── mapcache.cpp
+├── mapcache.hpp              ← Cache de tiles
+├── spectators.cpp
+├── spectators.hpp            ← AOI (Area of Interest)
+├── map_const.hpp             ← Constants (MAX_WIDTH, etc)
+├── map_definitions.hpp
+├── town.hpp                  ← Town struct
+├── house/                    ← House management
+│   ├── house.cpp
+│   ├── house.hpp
+│   ├── house_definitions.hpp
+│   └── ...
+└── CMakeLists.txt
+```
+
+### map.hpp / map.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `Map` (Singleton) |
+| **Responsabilidade** | Representação do mundo (tiles) |
+| **Estrutura** | 3D grid de Tile objects |
+| **Métodos** | `getTile()`, `getCreaturesNear()`, etc |
+
+```cpp
+class Map {
+    // 32k x 32k x 16 layers (z-levels)
+    Tile* tiles[32768][32768][16];
+    
+    Tile* getTile(const Position& pos);
+    std::vector<Creature*> getCreaturesInRange(Position center, int radius);
+};
+
+class Tile {
+    std::vector<Thing*> things;  // Creatures + Items
+    uint32_t flags;              // Walkable, PvP, etc
+};
+```
+
+---
+
+### spectators.hpp / spectators.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `Spectators` |
+| **Conceito** | AOI - Area of Interest |
+| **Responsabilidade** | Determinar quem vê quem |
+| **Uso** | Notificar jogadores de ações (movimento, combate) |
+
+```cpp
+// Quando player se move
+std::vector<Spectator> spectators = getSpectators(newPos);
+for (auto& spec : spectators) {
+    spec.player->send(MOVE_PACKET);
+}
+```
+
+---
+
+### house/ - Sistema de Casas
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **house.hpp** | Classe House |
+| **...** | Doors, rent, owner, decorations |
+
+</Card>
+
+---
+
+## 🔐 protobuf/ - Serialização
+
+<Card title="Protocol Buffers (2 arquivos)" icon="package">
+
+```
+protobuf/
+├── appearances.proto         ← Protocol buffer definitions
+├── kv.proto                  ← KV store serialization
+└── CMakeLists.txt
+```
+
+**O que é Protocol Buffers:**
+- Formato de serialização eficiente do Google
+- Define estruturas de dados compactas
+- Gera código C++ /Python/etc automaticamente
+- Usado para network protocol
+
+**Exemplo:**
+```protobuf
+message PlayerAppearance {
+    uint32 outfit_id = 1;
+    uint32 head_color = 2;
+    uint32 body_color = 3;
+}
+```
+
+Compilado → C++ code para serializar/deserializar
+
+</Card>
+
+---
+
+## 🔒 security/ - Criptografia
+
+<Card title="Segurança (2 arquivos)" icon="lock">
+
+```
+security/
+├── argon.cpp
+├── argon.hpp                 ← Hash de senha (Argon2)
+├── rsa.cpp
+├── rsa.hpp                   ← Criptografia assimétrica
+└── CMakeLists.txt
+```
+
+### argon.hpp / argon.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Algoritmo** | Argon2id (recomendado) |
+| **Uso** | Hash de senhas (seguro contra brute force) |
+| **Métodos** | `hash()`, `verify()` |
+| **Versão** | Argon2id (GPU-resistant) |
+
+```cpp
+class Argon {
+    static std::string hash(const std::string& password);
+    static bool verify(const std::string& hashed, const std::string& password);
+};
+
+// Uso
+std::string hashedPwd = Argon::hash("minha_senha");
+bool valid = Argon::verify(hashedPwd, userInput);
+```
+
+---
+
+### rsa.hpp / rsa.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Algoritmo** | RSA (Public key encryption) |
+| **Chave** | 2048-bit típico |
+| **Uso** | Criptografia initial login |
+
+</Card>
+
+---
+
+## 🌐 server/ - Networking
+
+<Card title="Servidor de Rede (5 arquivos)" icon="globe">
+
+```
+server/
+├── server.cpp
+├── server.hpp                ← Server socket principal
+├── server_definitions.hpp
+├── network/                  ← Network protocol parsing
+│   ├── protocol.hpp
+│   ├── connection.hpp
+│   ├── packet.hpp
+│   └── ...
+├── signals.cpp
+├── signals.hpp               ← Signal handling
+└── CMakeLists.txt
+```
+
+### server.hpp / server.cpp
+
+| Propriedade | Valor |
+|---|---|
+| **Classe** | `Server` |
+| **Responsabilidade** | Main network socket, accept connections |
+| **Port** | Configurável via config.lua |
+| **Protocol** | Tibia binary protocol |
+
+```cpp
+class Server {
+    bool listen(uint16_t port);
+    void accept();  // Accept new client connection
+    // Processing de packets
+    // Management de connections
+};
+```
+
+---
+
+### network/ - Network Protocol
+
+| Arquivo | Responsabilidade |
+|---------|---|
+| **connection.hpp** | Per-client connection object |
+| **packet.hpp** | Packet structure parsing |
+| **protocol.hpp** | Protocol version handling |
+
+</Card>
+
+---
+
+## 🛠️ utils/ - Utilitários
+
+<Card title="Helpers e Utilities (20+ arquivos)" icon="wrench">
+
+```
+utils/
+├── arraylist.hpp             ← Custom ArrayList
+├── benchmark.cpp/hpp         ← Performance benchmarking
+├── const.hpp                 ← Global constants
+├── counter_pointer.cpp/hpp   ← Smart pointer com counter
+├── definitions.hpp           ← Type definitions globais
+├── hash.hpp                  ← Hash functions
+├── lockfree.hpp              ← Lock-free structures
+├── object_pool.hpp           ← Object pool (reuse)
+├── pugicast.cpp/hpp          ← XML parsing helpers
+├── simd.hpp                  ← SIMD instructions
+├── tools.cpp/hpp             ← String tools, math
+├── transparent_string_hash.hpp ← Efficient string hashing
+├── utils_definitions.hpp
+├── vectorset.hpp             ← Vector-backed set (sorted)
+├── vectorsort.hpp            ← Sorting utilities
+├── wildcardtree.cpp/hpp      ← Wildcard pattern matching
+└── CMakeLists.txt
+```
+
+### tools.hpp / tools.cpp
+
+| Função | Responsabilidade |
+|--------|---|
+| `trim()`, `split()`, `toLower()` | String manipulation |
+| `Math::distance()`, `Math::abs()` | Math operations |
+| `std::shared_ptr stuff` | Memory helpers |
+
+---
+
+### object_pool.hpp
+
+| Propriedade | Valor |
+|---|---|
+| **Pattern** | Object Pool (performance optimization) |
+| **Benefício** | Reduz alocações dinâmicas |
+| **Uso** | Creatures, Items, etc |
+
+```cpp
+ObjectPool<Creature> creaturePool;
+Creature* c = creaturePool.acquire();  // Get from pool ou create
+// Use creature
+creaturePool.release(c);  // Return to pool
+```
+
+</Card>
+
+---
+
+## 📊 Resumo Estatístico
+
+<Aside type="tip">
+
+### Contagem de Arquivos
+
+| Módulo | Arquivos | Tipo Principal |
+|--------|----------|---|
+| **account/** | 8 | Autenticação |
+| **config/** | 4 | Configurações |
+| **creatures/** | 30+ | Entidades |
+| **database/** | 7 | Persistência |
+| **enums/** | 11 | Tipos |
+| **game/** | 15+ | Lógica |
+| **io/** | 20+ | I/O |
+| **items/** | 15 | Sistema de Items |
+| **kv/** | 10 | Storage |
+| **lib/** | 20+ | Utilities |
+| **lua/** | 20+ | Scripting |
+| **map/** | 10 | Mapa |
+| **protobuf/** | 2 | Serialização |
+| **security/** | 2 | Criptografia |
+| **server/** | 10 | Networking |
+| **utils/** | 25+ | Helpers |
+| **Raíz** | 7 | Entry points |
+
+**Total**: 200+ arquivos de código-fonte
+
+### Padrões de Design
+
+| Padrão | Exemplos |
+|--------|----------|
+| **Singleton** | Game, DatabaseManager, ConfigManager |
+| **Factory** | Creature creation, Item creation |
+| **Repository** | AccountRepository, PlayerStorageRepository |
+| **Observer** | Event/Callback system |
+| **Pool** | ObjectPool para Creatures/Items |
+| **Thread-safe** | DatabaseManager, KV_SQL |
+
+### Dependencies
+
+```
+Main Dependencies:
+├── MySQL/MariaDB (via official connector)
+├── Lua 5.4
+├── Protocol Buffers
+├── Asio (networking)
+├── spdlog (logging)
+└── ... (CMake lists all)
+```
+
+</Aside>
+
+---
+
+## 🎯 Referência Rápida
+
+<Aside type="note">
+
+### Acessar Serviços Globais
+
+```cpp
+// Acesso a singletons
+Game& game = Game::getInstance();
+DatabaseManager& db = DatabaseManager::getInstance();
+ConfigManager& config = ConfigManager::getInstance();
+Map& map = Map::getInstance();
+
+// Acesso em Lua
+g_scripts, g_logger, g_creatures
+```
+
+### Tipos Comuns
+
+```cpp
+// Posição no mundo
+struct Position {
+    uint16_t x, y;
+    uint8_t z;  // z-level (0-15)
+};
+
+// Criatura genérica
+Creature* c;
+Player* p = dynamic_cast<Player*>(c);
+Monster* m = dynamic_cast<Monster*>(c);
+
+// Item genérico
+Item* item;
+item->getId();      // Type ID
+item->getCount();   // Stack count
+```
+
+### Criar Monster (C++)
+
+```cpp
+auto monster = Game::getInstance()
+    .createMonster("dragon", position);
+if (monster) {
+    // Sucesso
+}
+```
+
+### Executar em Lua
+
+```cpp
+g_scripts.event("onCreatureSpawn")(creature);
+// Se callback:
+//   onCreatureSpawn(creature)
+// Foi definido em Lua, executa
+```
+
+</Aside>
+
+---
+
+## 🎓 Próximas Consultas
+
+1. Veja [Arquitetura_Src.mdx](./Arquitetura_Src.mdx) para entender padrões
+2. Estude FluxoNormalized de um comando específico
+3. Debug com breakpoints em métodos chave
+4. Implemente feature seguindo patterns existentes
+5. Compile e teste localmente
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Linguagem:** C++17/20  
+**Total de Arquivos:** 200+  
+**Build System:** CMake  
+**Padrão:** Modern C++ (smart pointers, lambdas, etc)
+
+Este catálogo completa [Arquitetura_Src.mdx](./Arquitetura_Src.mdx) com detalhes granulares de cada arquivo.
+</Aside>

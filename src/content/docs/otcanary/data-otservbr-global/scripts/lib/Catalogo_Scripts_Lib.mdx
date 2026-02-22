@@ -1,0 +1,294 @@
+---
+title: "Catálogo de Scripts - Lib"
+description: "Referência de scripts de Lib (Bibliotecas Compartilhadas) do servidor"
+sidebar:
+  order: 2
+---
+
+import { Card, Aside } from '@astrojs/starlight/components';
+
+# 📚 Catálogo de Scripts - Lib
+
+Referência consolidada de scripts de biblioteca compartilhada do servidor Canary. Scripts nesta pasta contêm funções e utilitários reutilizáveis em múltiplos scripts.
+
+---
+
+## 📊 Índice de Scripts
+
+<Card title="Estatísticas Gerais" icon="star">
+- **Total de Scripts**: 2+
+- **Data de Atualização**: February 22, 2026
+- **Status**: Em desenvolvimento
+- **Tipo**: Bibliotecas compartilhadas e utilitários
+</Card>
+
+<Card title="Localização" icon="document">
+  Caminho Original: `data-otservbr-global\scripts\lib\`
+</Card>
+
+---
+
+## 🧟 Monster Functions
+
+Script de funções compartilhadas para comportamentos de monstros.
+
+### **monster_functions.lua**
+- **Caminho**: `data-otservbr-global/scripts/lib/monster_functions.lua`
+- **Tipo**: Lib (Biblioteca de Funções)
+- **Importação**: `local monsterFunctions = require("lib.monster_functions")`
+- **Tamanho**: ~10 linhas de código
+
+#### Funções Disponíveis
+
+##### `Monster:handleCobraOnSpawn()`
+- **Tipo**: Método
+- **Descrição**: Manipula spawn especial da cobra com verificação de storage.
+- **Parâmetros**: 
+  - `self` - Objeto Monster (vinculado automaticamente)
+- **Comportamento**:
+  - Verifica se `Global.Storage.CobraFlask` >= tempo atual (os.time())
+  - Se verdadeiro: Reduz saúde do monstro para 75% da máxima
+  - Envia efeito visual CONST_ME_GREEN_RINGS
+  - Se falso: Reseta storage para -1
+- **Storage Usado**: `Global.Storage.CobraFlask`
+- **Efeito Visual**: `CONST_ME_GREEN_RINGS`
+- **Exemplo de Uso**:
+```lua
+local monsterFunctions = require("lib.monster_functions")
+
+-- Em um script de spawn de monstro (como monster spawn script)
+-- Chamado automaticamente durante spawn da cobra
+function onSpawn(monster)
+    monster:handleCobraOnSpawn()
+end
+```
+
+#### Casos de Uso
+
+1. **Spawn Especial de Cobra**
+   - Aplicar efeito visual durante spawn
+   - Reduzir vida baseado em tempo decorrido
+   - Rastrear último spawn via storage
+
+2. **Verificações de Tempo**
+   - Usar `os.time()` para comparações de timestamp
+   - Gerenciar cooldowns de spawn
+
+#### Integração
+
+Este script é importado e usado em:
+- Scripts de spawn de monstros relacionados a cobra
+- Sistema de Flask da cobra (CobraFlask)
+- Eventos regulados por tempo
+
+---
+
+## 🎯 Register Actions
+
+Sistema de registro e implementação de múltiplas ações do servidor em um único arquivo consolidado.
+
+### **register_actions.lua**
+- **Caminho**: `data-otservbr-global/scripts/lib/register_actions.lua`
+- **Tipo**: Action Script (Registro de Múltiplas Ações)
+- **Tamanho**: 1,177 linhas de código
+- **Registro**: Automático ao carregar
+- **Status**: Script de registro principal do servidor
+
+#### Estrutura do Arquivo
+
+<Card title="Componentes Principais" icon="layers">
+
+**1. Configurações e Constantes** (linhas 1-200)
+- Listas de IDs de itens (holes, fruits, items para moer, etc)
+- Coordenadas especiais (lava positions, secretLibrary crystals)
+- Strings de configuração (exhaustMessage, timers)
+- Tabelas de mapeamento de transformação
+
+**2. Funções Auxiliares** (linhas 201-400)
+- `revertItem(position, itemId, transformId)` - Reverter transformação de item
+- `removeRemains(toPosition)` - Remover restos/debris
+- `revertCask(position)` - Reverter barril para estado original
+
+**3. Registro de Ações** (linhas 401+)
+- Múltiplas ações (action.onUse) implementadas
+- Validações de player, storage, level, etc
+- Transformações de items, teleportações, criação de monstros
+
+</Card>
+
+#### Ações Implementadas
+
+##### Categoria: Escavação (Digging)
+
+###### Holes (Buracos)
+- **Item IDs**: 294, 369, 370, 385, 394, 411, 412, 413, 432, 433, 435, 482, 483, 594, 595, 609, 610, 615, 868, 874, 1156, 4824, 7515-7522, 7737, 7755, 7762, 7767, 7768, 8144, 8690, 8709, 12203, 12961, 17239, 19220, 23364
+- **Função**: Teleportar player para cima ao escavar
+- **Transformação**: Item ID + 1
+- **Efeito**: Teleportação para Z+1, achievement "The Undertaker"
+- **Validação**: Verifica PZ lock
+
+###### Swamp Digging (Escavação em Pântano)
+- **Item IDs**: 8716, 17950, 15047, 16306, 16300
+- **Função**: Cavar itens aleatoriamente em pântano
+- **Cooldown**: 7 dias (604800 segundos)
+- **Itens Possíveis**:
+  - 1-39%: Item 3998
+  - 40-79%: Item 3028
+  - 80-100%: Item 17858
+- **Mensagem**: "You dug up a `` `{item_name}` ``."
+- **Storage**: `Storage.SwampDiggingTimeout`
+- **Efeito**: CONST_ME_GREEN_RINGS
+
+###### Sacred Place Digging (Escavação em Lugar Sagrado)
+- **Action ID**: 8024
+- **Item ID**: Qualquer
+- **Função**: Cavar em lugar sagrado e receber item 11341
+- **Mensagem**: "You dig out a handful of earth from this sacred place."
+- **Tipo de Mensagem**: TALKTYPE_MONSTER_SAY
+
+##### Categoria: Transformação de Itens (Item Transformation)
+
+###### Grinder (Moedor)
+- **Item IDs**: 675 (Sapphire dust), 16122 (Pinch of crystal dust)
+- **Função**: Moer itens em pó/poeira
+- **Transformações**:
+  - 675 → 30004 (efeito CONST_ME_BLUE_FIREWORKS)
+  - 16122 → 21507 (efeito CONST_ME_GREENSMOKE)
+
+##### Categoria: Escavação Especial
+
+###### Desert Digging (Areia do Deserto)
+- **Item IDs**: 231, 231 (areia)
+- **Chance Aleatória**:
+  - 20% de chance (AID=100): Transformar em item 615
+  - 1% de chance: Criar item 3042, achievement "Gold Digger"
+  - >95% de chance: Criar monstro "Scarab"
+- **Efeito**: CONST_ME_POFF
+
+##### Categoria: Quests
+
+###### Bone Pit Quest (Wrath of the Emperor Quest)
+- **Quest**: The Gravedigger of Drefia
+- **Função 1**: Missão 49-50
+  - **Item ID**: Qualquer (AID=4654)
+  - **Mensagem**: "You found a piece of the scroll. You pocket it quickly."
+  - **Item Recebido**: 18933
+  - **Storage Usado**: `Storage.Quest.U10_10.TheGravediggerOfDrefia.Mission50`
+
+- **Função 2**: Missão 71
+  - **Item ID**: 103 (AID=4205)
+  - **Requer**: `Storage.Quest.U8_1.TibiaTales.IntoTheBonePit` == 1
+  - **Ação**: Cria item 3133 (restos) na posição
+  - **Efeito**: CONST_ME_HITAREA
+  - **Remove**: Restos após 60 segundos
+
+##### Categoria: Mecanismos Especiais
+
+###### Wagon/Coal System (Carroça e Carvão)
+- **AID**: 50118 (wagon) e 7921 (coal)
+- **Função**: Sistema de carroça com carvão
+- **Posição**: (32717, 31492, 11) e (32699, 31492, 11)
+- **Mecanismo**: Transferir carvão entre locais
+- **Item Criado**: 7921 com AID=40023
+- **Item Crucível**: 7814 com AID=50119
+- **Efeito**: CONST_ME_POFF
+
+##### Categoria: Mapeamento de Transformações
+
+###### Cut Items (Itens Cortáveis)
+- **Quantidade**: 80+ mapeamentos
+- **Função**: Definir qual resultado cada item cortável produz
+- **Exemplo Mapeamentos**:
+  - 2291-2292 → 3146
+  - 2293-2296 → 3145
+  - 2314-2316 → 3136
+  - ... e muitos mais
+
+#### Configurações Globais
+
+##### Secret Library Crystals
+- **Quantidade**: 8 cristais
+- **Localização**: The Secret Library (Quest U11_80)
+- **Timer**: "tsl_crystaltimer"
+- **Cooldown Message**: "Digging crystal is exhausting. You're still weary from your last prospect."
+- **Items**: 27867, 27868, 27869
+
+##### Special Locations
+
+**Lava Positions** (32 coordenadas)
+- Zona: Oramond/Magma area (Z=11)
+- Usado para: Validações de digging em lava
+
+**Jungle Grass**
+- Item IDs: 3696, 3702, 17153
+
+**Wild Growth**
+- Item IDs: 2130, 3635, 30224
+
+**Fruits**
+- Item IDs: 3584-3596, 5096, 8011-8013 (16 itens)
+
+#### Exemplo de Implementação
+
+```lua
+-- O arquivo já está carregado automaticamente
+-- Exemplo de ação registrada:
+
+local action = Action()
+action:aid(50118)  -- Wagon item
+
+function action.onUse(player, item, fromPosition, itemEx, toPosition)
+    local wagonItem = Tile(Position(32717, 31492, 11)):getItemById(7131)
+    if wagonItem then
+        if Tile(Position(32717, 31492, 11)):getItemById(7921) then
+            return true
+        end
+        Game.createItem(7921, 1, wagonItem:getPosition()):setActionId(40023)
+        toPosition:sendMagicEffect(CONST_ME_POFF)
+    end
+end
+
+action:register()
+```
+
+---
+
+## 🔄 Comparação: Monster Functions vs Register Actions
+
+| Aspecto | Monster Functions | Register Actions |
+|---------|------------------|------------------|
+| **Tipo** | Lib (Biblioteca) | Action Script |
+| **Tamanho** | ~10 linhas | 1,177 linhas |
+| **Importação** | Via require() | Carregado automaticamente |
+| **Funções** | 1 função | 50+ ações |
+| **Escopo** | Monstros | Ações diversas (dig, craft, etc) |
+| **Reutilização** | Alta (importada em vários scripts) | Média (consolidado em um único arquivo) |
+| **Manutenção** | Simples | Complexo (muitos casos variados) |
+
+---
+
+## 📝 Guia de Campos
+
+| Campo | Descrição |
+|-------|-----------|
+| **Caminho** | Localização do arquivo no repositório |
+| **Tipo** | Classificação (Lib vs Action Script) |
+| **Tamanho** | Número de linhas de código |
+| **Função** | Descrição breve da funcionalidade |
+| **Item IDs/AIDs** | Identificadores de items ou ações |
+| **Storage** | Valores de armazenamento usados |
+| **Efeito** | Efeitos visuais (CONST_ME_*) aplicados |
+| **Mensagem** | Textos exibidos ao player |
+
+---
+
+## 🔗 Documentação Relacionada
+
+- **Arquitetura Lib**: [Arquitetura_Scripts_Lib.mdx](#) - Como criar e usar libs
+- **Quests**: Para entender storage de quests usados
+- **Actions**: Para entender registro de ações
+
+---
+
+**Última atualização**: February 22, 2026  
+**Próxima atualização**: Conforme novos scripts forem adicionados

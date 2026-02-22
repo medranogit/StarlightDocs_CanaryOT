@@ -1,0 +1,908 @@
+---
+title: Arquitetura - Global Events
+description: Documentação técnica da arquitetura e estrutura dos scripts de Global Events do servidor Canary
+sidebar:
+  order: 1
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🌍 Arquitetura - Global Events
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts de **Global Events** do servidor OTServ Canary. Entenda como implementar sistemas que funcionam globalmente no servidor, independente de player específico.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/globalevents/` contém scripts Lua que executam **eventos globais** no servidor - ou seja, máquinas de estado que rodam continuamente em segundo plano, sem estar associadas a um player, action, ou location específica. Esses scripts controlam sistemas como: spawn de NPCs, aplicação de efeitos visuais, premiação por estar online, execução de raids agendadas, carregamento de dados do mapa, etc.
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Eventos periódicos no servidor**: Tarefas que rodam a cada X segundos/minutos
+- **Eventos em hora específica**: Triggers em horários determinados (raids, spawns agendados)
+- **Eventos de inicialização**: Configurações ao ligar o servidor
+- **Sistemas globais**: Que não dependem de player ou location
+- **Premiação de jogadores**: Por estar online, completar quests resolvidas globalmente
+- **Movimentação de NPCs**: Spawning e teleportação automática
+- **Limpeza e reset**: De dados globais do servidor
+- **Carregamento de recursos**: Mapa, configurações, atributos
+</Card>
+
+<Card title="Estrutura da Pasta" icon="list">
+A pasta `scripts/globalevents/` é organizada em subcategorias:
+
+```
+globalevents/
+├── update.lua                    (Reset de players ao fazer update)
+├── dawnport_magic_effect.lua     (Efeito visual em Dawnport)
+├── vip/
+│   ├── online_tokens.lua         (Premia tokens por estar online)
+│   └── online_coins.lua          (Premia moedas por estar online)
+├── spawn/
+│   └── rashid.lua                (Spawna Rashid em dias diferentes)
+└── others/
+    ├── raids_schedule.lua        (Executa raids agendadas)
+    ├── map_attributes_loader.lua (Carrega atributos do mapa)
+    └── check_mount.lua           (Verifica cavalos alugados)
+```
+
+**Característica**: Scripts são registrados como GlobalEvent e executam automaticamente ao iniciar o servidor ou periodicamente.
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Tipos de Global Events](#tipos-de-global-events)
+3. [Sistema de Registro](#sistema-de-registro)
+4. [Padrões de Implementação](#padrões-de-implementação)
+5. [Exemplos Práticos](#exemplos-práticos)
+6. [Criando um Global Event](#criando-um-global-event)
+7. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="O que é um GlobalEvent?" icon="document">
+
+Um **GlobalEvent** é um script que:
+- **Não é associado** a players, items, actions, ou locations
+- **Executa automaticamente** em eventos específicos ou periodicidade
+- **Roda no contexto global** do servidor (acessa dados globais, modifica storages, spawna NPCs, etc)
+- **Pode acessar Game, Database, e todas as APIs do servidor**
+
+### Tipos de Eventos
+
+```lua
+-- 1. Evento ao Startup (Inicialização)
+local myEvent = GlobalEvent("MyStartupEvent")
+function myEvent.onStartup()
+    -- Executado UMA VEZ quando servidor inicia
+    return true
+end
+myEvent:register()
+
+-- 2. Evento Periódico (A cada X milissegundos)
+local myEvent = GlobalEvent("MyPeriodicEvent")
+function myEvent.onThink(interval)
+    -- Executado a cada 'interval' milissegundos
+    return true
+end
+myEvent:interval(5000)  -- A cada 5 segundos
+myEvent:register()
+
+-- 3. Evento em Hora Específica
+local myEvent = GlobalEvent("MyTimedEvent")
+function myEvent.onTime(interval)
+    -- Executado em horário específico
+    return true
+end
+myEvent:time("12:00")  -- Todos os dias às 12:00
+myEvent:register()
+```
+
+### Estrutura Básica
+
+```lua
+-- 1. Criar GlobalEvent com nome
+local myEvent = GlobalEvent("EventName")
+
+-- 2. Implementar função de callback (onStartup, onThink, ou onTime)
+function myEvent.onThink(interval)
+    -- Implementação
+    return true
+end
+
+-- 3. Configurar (opcional)
+myEvent:interval(5000)
+
+-- 4. Registrar
+myEvent:register()
+```
+
+</Card>
+
+---
+
+## 🎛️ Tipos de Global Events
+
+<Card title="1. GlobalEvent onStartup" icon="rocket">
+
+**Quando executa**: Uma única vez, quando o servidor inicia  
+**Uso**: Inicializar dados, spawnar NPCs, carregar configurações, resetar estados  
+**Retorno**: true/false (não significa muito, mas retorne true por padrão)
+
+### Exemplo: Update Event
+
+```lua
+local fileToUpdate = CORE_DIRECTORY .. "/update.lua"
+dofile(fileToUpdate)
+
+local update = GlobalEvent("Update")
+function update.onStartup()
+    if updated then
+        -- Se houve update, reseta posições de todos players
+        db.query("UPDATE `players` SET `posx` = 0, `posy` = 0, `posz` = 0;")
+        
+        -- Atualiza arquivo de controle
+        local readFile = io.open(fileToUpdate, "r")
+        if readFile then
+            io.input(readFile)
+            local str = io.read()
+            io.close(readFile)
+            local ae = string.match(str, "updated = true")
+            if ae then
+                afterUpdate = "updated = false"
+                local updateFile = io.open(fileToUpdate, "w")
+                io.output(updateFile)
+                io.write(afterUpdate)
+                io.close(updateFile)
+                logger.warn("Players sent to temple. Update completed.")
+            end
+        end
+    end
+    return true
+end
+
+update:register()
+```
+
+### Casos de Uso
+
+- ✅ Spawnar NPCs iniciais (Rashid, vendedores, etc)
+- ✅ Carregar dados do mapa (signs, books, actions)
+- ✅ Resetar storages globais
+- ✅ Resetar timers e eventos
+- ✅ Recuperar-se de shutdowns anteriores
+
+</Card>
+
+<Card title="2. GlobalEvent onThink" icon="repeat">
+
+**Quando executa**: Periodicamente, a cada X milissegundos  
+**Uso**: Verificações contínuas, simulações, premiações periódicas, limpeza  
+**Intervalo**: Configurável via `:interval(milliseconds)`  
+**Retorno**: true para continuar, false para parar
+
+### Exemplo: Online Coins Event
+
+```lua
+local config = {
+    enabled = true,
+    interval = 60 * 1000,  -- A cada 1 minuto
+    coinsPerHour = {
+        free = 1,
+        vip = 5,
+    },
+    awardOn = 5,  -- Premia quando acumular 5+ moedas
+}
+
+local onlineCoinsEvent = GlobalEvent("GainCoinInterval")
+local runsPerHour = 3600 / (config.interval / 1000)
+
+function onlineCoinsEvent.onThink(interval)
+    local players = Game.getPlayers()
+    if #players == 0 then
+        return true
+    end
+
+    local checkIp = {}
+    for _, player in pairs(players) do
+        -- Pular GMs
+        if player:getGroup():getId() > GROUP_TYPE_SENIORTUTOR then
+            goto continue
+        end
+
+        local ip = player:getIp()
+        if ip ~= 0 and (not config.checkDuplicateIps or not checkIp[ip]) then
+            checkIp[ip] = true
+            
+            -- Calcular moedas acumuladas
+            local remainder = math.max(0, player:getStorageValue(config.storage)) / 10000000
+            local coins = (player:isVip() and config.coinsPerHour.vip or config.coinsPerHour.free) / runsPerHour + remainder
+            
+            player:setStorageValue(config.storage, coins * 10000000)
+            
+            -- Premiar quando atingir threshold
+            if coins >= config.awardOn then
+                local coinsMath = math.floor(coins)
+                player:addTibiaCoins(coinsMath, true)
+                player:sendTextMessage(MESSAGE_FAILURE, "Você recebeu " .. coinsMath .. " moedas!")
+                player:setStorageValue(config.storage, (coins - coinsMath) * 10000000)
+            end
+        end
+
+        ::continue::
+    end
+    return true
+end
+
+if config.enabled then
+    onlineCoinsEvent:interval(config.interval)
+    onlineCoinsEvent:register()
+end
+```
+
+### Casos de Uso
+
+- ✅ Premiar jogadores online (tokens, coins, experiência)
+- ✅ Verificar estados de NPCs (cavalos alugados, etc)
+- ✅ Enviar efeitos visuais periódicos
+- ✅ Sincronizar dados com banco de dados
+- ✅ Monitorar e reportar status do servidor
+
+### Dicas de Intervalo
+
+```lua
+1 * 1000         -- 1 segundo
+5 * 1000         -- 5 segundos
+60 * 1000        -- 1 minuto
+300 * 1000       -- 5 minutos
+3600 * 1000      -- 1 hora
+```
+
+</Card>
+
+<Card title="3. GlobalEvent onTime" icon="clock">
+
+**Quando executa**: Em horário(s) específico(s)  
+**Uso**: Spawns agendados, eventos diários/semanais, limpeza programada  
+**Formato**: "HH:MM" ou os.date() patterns  
+**Retorno**: true para continuar, false para parar
+
+### Exemplo: Rashid Spawn on Time
+
+```lua
+local positionByDay = {
+    [1] = { position = Position(32328, 31782, 6), city = "Carlin" },      -- Sunday
+    [2] = { position = Position(32207, 31155, 7), city = "Svarground" },  -- Monday
+    [3] = { position = Position(32300, 32837, 7), city = "Liberty Bay" }, -- Tuesday
+    -- ... etc
+}
+
+local rashidSpawnOnTime = GlobalEvent("rashidSpawnOnTime")
+function rashidSpawnOnTime.onTime(interval)
+    local today = os.date("*t").wday
+    local rashidTarget = Npc("rashid")
+    local config = positionByDay[today]
+
+    if rashidTarget then
+        logger.info("Rashid is traveling to {}s location.", config.city)
+        rashidTarget:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+        rashidTarget:teleportTo(config.position)
+        rashidTarget:setMasterPos(config.position)
+        rashidTarget:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+    end
+
+    return true
+end
+
+rashidSpawnOnTime:time("00:01")  -- Todos os dias às 00:01
+rashidSpawnOnTime:register()
+```
+
+### Casos de Uso
+
+- ✅ Spawn de NPCs em horários específicos
+- ✅ Execução de raids em horários agendados
+- ✅ Resetar dados diários/semanais
+- ✅ Limpeza programada
+- ✅ Anúncios automáticos em horários fixos
+
+</Card>
+
+---
+
+## 🔌 Sistema de Registro
+
+<Card title="Como Registrar um GlobalEvent" icon="settings">
+
+### Passo 1: Criar Instância
+
+```lua
+local myEvent = GlobalEvent("UniqueEventName")
+```
+
+### Passo 2: Implementar Callback
+
+```lua
+function myEvent.onStartup()
+    -- Ou onThink(interval)
+    -- Ou onTime(interval)
+    return true
+end
+```
+
+### Passo 3: Configurar (se necessário)
+
+```lua
+-- Para onThink
+myEvent:interval(5000)  -- 5 segundos
+
+-- Para onTime
+myEvent:time("14:30")   -- 14:30 todos os dias
+myEvent:time("18:45")   -- Pode adicionar múltiplos horários
+```
+
+### Passo 4: Registrar
+
+```lua
+myEvent:register()
+```
+
+### Exemplo Completo
+
+```lua
+-- Seu primeiro GlobalEvent
+local helloWorld = GlobalEvent("HelloWorld")
+
+function helloWorld.onStartup()
+    logger.info("Servidor iniciado!")
+    return true
+end
+
+helloWorld:register()
+
+-- GlobalEvent periódico
+local logStatus = GlobalEvent("LogStatus")
+
+function logStatus.onThink(interval)
+    local players = Game.getPlayers()
+    logger.debug("Servidor rodando. Players online: {}", #players)
+    return true
+end
+
+logStatus:interval(60000)  -- A cada 1 minuto
+logStatus:register()
+```
+
+</Card>
+
+---
+
+## 🏗️ Padrões de Implementação
+
+<Card title="Padrões Comuns" icon="layers">
+
+### Padrão 1: Verificação com Guard Clause
+
+```lua
+local myEvent = GlobalEvent("SafeEvent")
+
+function myEvent.onThink(interval)
+    -- Guard clause
+    local players = Game.getPlayers()
+    if #players == 0 then
+        return true  -- Pula execução se sem players
+    end
+
+    -- Implementação principal
+    for _, player in pairs(players) do
+        player:say("Hello!")
+    end
+    
+    return true
+end
+
+myEvent:interval(5000)
+myEvent:register()
+```
+
+### Padrão 2: Configuração Externalizável
+
+```lua
+local config = {
+    enabled = true,
+    interval = 60 * 1000,
+    targetLevel = 50,
+    rewardExp = 1000,
+}
+
+local rewardEvent = GlobalEvent("RewardEvent")
+
+function rewardEvent.onThink(interval)
+    if not config.enabled then
+        return true
+    end
+
+    local players = Game.getPlayers()
+    for _, player in pairs(players) do
+        if player:getLevel() >= config.targetLevel then
+            player:addExperience(config.rewardExp)
+        end
+    end
+
+    return true
+end
+
+if config.enabled then
+    rewardEvent:interval(config.interval)
+    rewardEvent:register()
+end
+```
+
+### Padrão 3: Cache/Tabela Global
+
+```lua
+local questProgress = {}
+
+local trackingEvent = GlobalEvent("TrackingEvent")
+
+function trackingEvent.onThink(interval)
+    local players = Game.getPlayers()
+    
+    for _, player in pairs(players) do
+        local playerId = player:getId()
+        
+        if not questProgress[playerId] then
+            questProgress[playerId] = { kills = 0, collected = 0 }
+        end
+        
+        -- Usar cache
+        questProgress[playerId].kills = questProgress[playerId].kills + 1
+    end
+
+    return true
+end
+
+trackingEvent:interval(5000)
+trackingEvent:register()
+
+-- Função para acessar cache
+function getPlayerQuestProgress(playerId)
+    return questProgress[playerId]
+end
+```
+
+### Padrão 4: Validação de Data/Hora
+
+```lua
+local eventSchedule = GlobalEvent("EventSchedule")
+
+function eventSchedule.onTime(interval)
+    local today = os.date("*t").wday     -- 1=Sunday, 7=Saturday
+    local hour = os.date("*t").hour
+    
+    if today == 1 and hour == 20 then    -- Sunday at 20:00
+        logger.info("Weekly server maintenance started")
+        -- Implementação
+    end
+    
+    return true
+end
+
+eventSchedule:time("20:00")
+eventSchedule:register()
+```
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Startup Event">
+
+**Evento ao Iniciar Servidor**
+
+```lua
+-- Ao iniciar servidor, verifica se houve update
+local fileToUpdate = CORE_DIRECTORY .. "/update.lua"
+dofile(fileToUpdate)
+
+local update = GlobalEvent("Update")
+function update.onStartup()
+    if updated then
+        -- Se updated = true no arquivo, reseta positions
+        db.query("UPDATE `players` SET `posx` = 0, `posy` = 0, `posz` = 0;")
+        
+        -- Marca como feito alterando arquivo
+        local readFile = io.open(fileToUpdate, "r")
+        if readFile then
+            io.input(readFile)
+            local str = io.read()
+            io.close(readFile)
+            
+            local ae = string.match(str, "updated = true")
+            if ae then
+                afterUpdate = "updated = false"
+                local updateFile = io.open(fileToUpdate, "w")
+                io.output(updateFile)
+                io.write(afterUpdate)
+                io.close(updateFile)
+            end
+        end
+    end
+    return true
+end
+
+update:register()
+```
+
+</TabItem>
+
+<TabItem label="Think Event">
+
+**Evento Periódico**
+
+```lua
+-- Envia efeito visual a cada 5 segundos
+local positions = {
+    { x = 32054, y = 31889, z = 5 },
+    { x = 32056, y = 31889, z = 5 },
+    { x = 32063, y = 31880, z = 5 },
+}
+
+local dawnportMagicEffect = GlobalEvent("DawnportMagicEffect")
+
+function dawnportMagicEffect.onThink(interval)
+    for i = 1, #positions do
+        Position(positions[i]):sendMagicEffect(CONST_ME_THUNDER)
+    end
+    return true
+end
+
+dawnportMagicEffect:interval(5000)
+dawnportMagicEffect:register()
+```
+
+</TabItem>
+
+<TabItem label="Time Event">
+
+**Evento em Horário Específico**
+
+```lua
+-- Spawna Rashid em cidades diferentes a cada dia
+local positionByDay = {
+    [1] = { position = Position(32328, 31782, 6), city = "Carlin" },
+    [2] = { position = Position(32207, 31155, 7), city = "Svarground" },
+    [3] = { position = Position(32300, 32837, 7), city = "Liberty Bay" },
+    -- ... resto dos dias
+}
+
+local rashidSpawnOnTime = GlobalEvent("rashidSpawnOnTime")
+function rashidSpawnOnTime.onTime(interval)
+    local today = os.date("*t").wday
+    local config = positionByDay[today]
+    
+    if config then
+        local rashid = Npc("rashid")
+        if rashid then
+            rashid:teleportTo(config.position)
+            rashid:setMasterPos(config.position)
+            rashid:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+            logger.info("Rashid arrived at {}", config.city)
+        end
+    end
+    
+    return true
+end
+
+rashidSpawnOnTime:time("00:01")
+rashidSpawnOnTime:register()
+```
+
+</TabItem>
+
+<TabItem label="VIP Rewards">
+
+**Sistema de Premiação Online**
+
+```lua
+local config = {
+    enabled = true,
+    storage = Storage.VipSystem.OnlineTokensGain,
+    tokenItemId = 14112,
+    interval = 60 * 1000,
+    tokensPerHour = { free = 5, vip = 10 },
+    awardOn = 5,
+}
+
+local onlineTokensEvent = GlobalEvent("GainTokenInterval")
+local runsPerHour = 3600 / (config.interval / 1000)
+
+function onlineTokensEvent.onThink(interval)
+    local players = Game.getPlayers()
+    if #players == 0 then return true end
+
+    local checkIp = {}
+    for _, player in pairs(players) do
+        if player:getGroup():getId() > GROUP_TYPE_SENIORTUTOR then
+            goto continue
+        end
+
+        local ip = player:getIp()
+        if ip ~= 0 and (not config.checkDuplicateIps or not checkIp[ip]) then
+            checkIp[ip] = true
+            
+            local tokensPerRun = (player:isVip() and config.tokensPerHour.vip or config.tokensPerHour.free) / runsPerHour
+            local remainder = math.max(0, player:getStorageValue(config.storage)) / 10000000
+            local tokens = tokensPerRun + remainder
+            
+            player:setStorageValue(config.storage, tokens * 10000000)
+            
+            if tokens >= config.awardOn then
+                local tokensMath = math.floor(tokens)
+                player:addItem(config.tokenItemId, tokensMath)
+                player:sendTextMessage(MESSAGE_FAILURE, "You received " .. tokensMath .. " tokens!")
+                player:setStorageValue(config.storage, (tokens - tokensMath) * 10000000)
+            end
+        end
+
+        ::continue::
+    end
+    return true
+end
+
+if config.enabled then
+    onlineTokensEvent:interval(config.interval)
+    onlineTokensEvent:register()
+end
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🛠️ Criando um Global Event
+
+<Card title="Passo a Passo" icon="wrench">
+
+### Passo 1: Determinar Tipo
+
+Precisa executar:
+- **Uma vez ao iniciar?** → `onStartup()`
+- **Periodicamente?** → `onThink(interval)`
+- **Em horário específico?** → `onTime(interval)`
+
+### Passo 2: Criar Arquivo
+
+```bash
+# Arquivo: scripts/globalevents/{tipo}/{nome}.lua
+# Exemplo: scripts/globalevents/vip/my_reward.lua
+```
+
+### Passo 3: Implementar
+
+```lua
+local myEvent = GlobalEvent("MyEvent")
+
+function myEvent.onStartup()
+    -- Sua implementação
+    return true
+end
+
+myEvent:register()
+```
+
+### Passo 4: Configurar
+
+```lua
+-- Se onThink
+myEvent:interval(5000)
+
+-- Se onTime
+myEvent:time("12:00")
+```
+
+### Passo 5: Testar
+
+```bash
+# Reiniciar servidor e verificar logs
+tail -f server.log | grep "MyEvent"
+```
+
+### Exemplo Completo
+
+```lua
+-- scripts/globalevents/vip/my_daily_reward.lua
+
+local config = {
+    enabled = true,
+    interval = 60 * 1000,  -- Check a cada minuto
+    rewardLevel = 50,
+    rewardExp = 10000,
+}
+
+local dailyRewardEvent = GlobalEvent("MyDailyReward")
+
+function dailyRewardEvent.onThink(interval)
+    local players = Game.getPlayers()
+    if #players == 0 then
+        return true
+    end
+
+    for _, player in pairs(players) do
+        if player:getLevel() >= config.rewardLevel then
+            player:addExperience(config.rewardExp)
+            player:say("Daily reward received!")
+        end
+    end
+
+    return true
+end
+
+if config.enabled then
+    dailyRewardEvent:interval(config.interval)
+    dailyRewardEvent:register()
+end
+```
+
+</Card>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: GlobalEvent não executa
+
+**Causa**: Não foi registrado ou sintaxe errada  
+**Solução**:
+```lua
+-- ✅ Correto
+local myEvent = GlobalEvent("EventName")
+function myEvent.onStartup()
+    return true
+end
+myEvent:register()
+
+-- ❌ Errado - falta :register()
+local myEvent = GlobalEvent("EventName")
+function myEvent.onStartup()
+    return true
+end
+```
+
+### Problema: onThink não para de executar
+
+**Causa**: Retornando true indefinidamente  
+**Solução**:
+```lua
+function myEvent.onThink(interval)
+    if shouldStop then
+        return false  -- Para execution
+    end
+    return true  -- Continua
+end
+```
+
+### Problema: Erro ao acessar players
+
+**Causa**: Tentando acessar player em contexto global  
+**Solução**:
+```lua
+-- ✅ Correto - iterar sobre players
+local players = Game.getPlayers()
+for _, player in pairs(players) do
+    player:say("Hello")
+end
+
+-- ❌ Errado - Player não existe globalmente
+player:say("Hello")
+```
+
+### Problema: Storage não persiste entre chamadas
+
+**Causa**: Usando variável local em vez de storage  
+**Solução**:
+```lua
+-- ✅ Correto - usa storage
+function myEvent.onThink(interval)
+    local current = Game.getStorageValue(Storage.MyKey)
+    Game.setStorageValue(Storage.MyKey, current + 1)
+end
+
+-- ❌ Errado - variável não persiste
+local count = 0
+function myEvent.onThink(interval)
+    count = count + 1  -- Sempre retorna 1
+end
+```
+
+### Problema: Event executa múltiplas vezes
+
+**Causa**: Registrado múltiplas vezes no arquivo  
+**Solução**:
+```lua
+-- ✅ Registre apenas UMA VEZ
+myEvent:register()
+
+-- ❌ Não faça isso
+myEvent:register()
+myEvent:register()
+```
+
+### Problema: Intervalo muito curto causa lag
+
+**Causa**: interval muito pequeno (< 1000 ms)  
+**Solução**:
+```lua
+-- ✅ Use intervalo razoável
+myEvent:interval(5000)   -- 5 segundos
+myEvent:interval(60000)  -- 1 minuto
+
+-- ❌ Muito frequente
+myEvent:interval(100)    -- A cada 100ms - pode causar lag!
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Tipo de Evento mais comum**: `onThink(interval)` para verificações periódicas
+
+**Retorno Padrão**: Sempre `return true`
+
+**Intervalo Comum**: 
+- 5000ms (5 seg) para eventos com pouca carga
+- 60000ms (1 min) para eventos que podem esperar
+
+**Acessar Dados**:
+- Players: `Game.getPlayers()`
+- Armazenamento: `Game.getStorageValue()` e `Game.setStorageValue()`
+- Banco de dados: `db.query()`
+- NPCs: `Npc("name")`
+
+**Boas Práticas**:
+- ✅ Use guard clauses para pular se desnecessário
+- ✅ Sempre retorne `true`
+- ✅ Use intervals razoáveis
+- ✅ Externalize configurações
+- ✅ Teste com logs
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_GlobalEvents.mdx](#)
+2. **Analise Scripts Existentes**: Examine os 8 scripts documentados
+3. **Crie um GlobalEvent Simples**: Comece com um `onThink` básico
+4. **Teste e Expanda**: Adicione funcionalidades aos poucos
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de GlobalEvents Documentados:** 8  
+
+Para dúvidas, consulte a documentação oficial ou analise este arquivo de catálogo.
+</Aside>

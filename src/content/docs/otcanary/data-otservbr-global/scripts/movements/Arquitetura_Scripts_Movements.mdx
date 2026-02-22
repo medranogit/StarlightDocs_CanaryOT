@@ -1,0 +1,1098 @@
+---
+title: Arquitetura - Movements
+description: Documentação técnica da arquitetura e estrutura dos scripts de Movements do servidor Canary
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🏗️ Arquitetura - Movements
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts de **Movements** do servidor OTServ Canary. Entenda como os eventos de movimento são implementados, organizados e como criar novos.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/movements/` contém todos os scripts **Lua** responsáveis pela lógica de **MoveEvents** no servidor OTServer Canary. Esses scripts controlam o que acontece quando um jogador se move para uma posição específica (pisar em um tile, entrar em uma área, usar um teleporte, etc). Cada movimento pode ter interações simples (teleporte direto) até mecânicas complexas (validações, efeitos, transformações).
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Criar novos teleportes**: Implementar sistemas de transporte entre áreas
+- **Estabelecer áreas restritas**: Validar level, premium, itens antes de permitir entrada
+- **Gerar efeitos ao pisar**: Reproduzir sons, efeitos visuais, poderes ao entrar em tiles
+- **Implementar puzzles de movimento**: Sequências de passos, dança, padrões
+- **Controlar acesso a dungeons**: Verificar quest requirements antes de permitir entrada
+- **Criar armadilhas**: Teleportes surpresa, dano ao pisar, transformações
+- **Debug de problemas**: Investigar por que jogadores não conseguem passar em uma área
+- **Balanceamento**: Ajustar requerimentos, destinos, efeitos de movimento
+</Card>
+
+<Card title="Estrutura da Pasta" icon="list">
+A pasta `scripts/movements/` é organizada por **região/área** (ex: `oramond/`, `krailos/`, etc). Dentro de cada pasta, você encontrará scripts nomeados descritivamente:
+
+- `*_teleport.lua` - Sistemas de teleportação diretos
+- `*_entrance.lua` - Entrada bidirecional para áreas
+- `*_movements.lua` - Múltiplos movimentos de uma área
+- `*_puzzle.lua` - Puzzles baseados em movimento
+- Outros tipos conforme necessário
+
+**Tipo de MoveEvent**: `stepin` (quando jogador entra na posição)
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Componentes Principais](#componentes-principais)
+3. [Sistema de Validação](#sistema-de-validação)
+4. [Tipos de Movements](#tipos-de-movements)
+5. [Coordenadas e Posições](#coordenadas-e-posições)
+6. [Efeitos Visuais e Sonoros](#efeitos-visuais-e-sonoros)
+7. [Padrões Comuns](#padrões-comuns)
+8. [Como Criar um Novo Movement](#como-criar-um-novo-movement)
+9. [Exemplos Práticos](#exemplos-práticos)
+10. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="Organização de Diretórios" icon="document">
+
+```
+data-otservbr-global/scripts/movements/
+├── oramond/
+│   ├── oramond_teleport.lua
+│   ├── oramond_entrance.lua
+│   ├── oramond_movements.lua
+│   └── seacrest.lua
+├── teleport/
+│   ├── citizen.lua
+│   ├── adventurers_guild.lua
+│   ├── shrine_entrance.lua
+│   ├── shrine_exit.lua
+│   └── [... mais scripts ...]
+├── rookgaard/
+│   ├── level_bridge.lua
+│   ├── premium_bridge.lua
+│   └── rook_village.lua
+├── others/
+│   ├── dawnport_tiles.lua
+│   ├── dawnport_vocation_trial.lua
+│   ├── teleport.lua
+│   ├── walkback.lua
+│   └── remove-create_item.lua
+│
+└── Catalogo_Scripts_Movements.mdx (documentação - lista)
+└── Arquitetura_Scripts_Movements.mdx (este arquivo - como funciona)
+```
+
+**Nomenclatura de Arquivos:**
+- Padrão: `{region}_{tipo}.lua` ou `{funcionalidade}.lua`
+- Exemplo: `oramond_teleport.lua`, `citizen.lua`, `dawnport_vocation_trial.lua`
+
+**Total de Scripts:** 39 arquivos  
+**Categorias:** 6+ regiões/tipos diferentes
+
+</Card>
+
+---
+
+## 🧩 Componentes Principais
+
+<Tabs>
+<TabItem label="MoveEvent Object">
+
+### Objeto MoveEvent
+
+O objeto `MoveEvent` define o que acontece quando um jogador se move para uma posição.
+
+```lua
+local movement = MoveEvent()
+movement:type("stepin")     -- Tipo de evento
+movement:aid(4253)          -- Action ID ou
+movement:uid(9056)          -- Unique ID
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    -- Lógica aqui
+    return true
+end
+
+movement:register()
+```
+
+**Tipos de MoveEvent:**
+
+| Tipo | Descrição | Trigger |
+|------|-----------|---------|
+| `stepin` | Jogador entra na posição | Pisar no tile |
+| `stepout` | Jogador sai da posição | Sair do tile |
+| `equip` | Item é equipado | Equipar item |
+| `deequip` | Item é desequipado | Remover equipamento |
+
+<br />
+
+**Identificadores:**
+```lua
+-- Por ActionID (AID)
+movement:aid(4253)  -- Qualquer item com AID 4253
+
+-- Por UniqueID (UID)
+movement:uid(9056)  -- Item específico com UID 9056
+
+-- Por ItemID
+movement:itemid(1949)  -- Qualquer item de tipo 1949
+```
+
+</TabItem>
+
+<TabItem label="Position">
+
+### Objeto de Posição
+
+Representa uma localização no mundo com coordenadas X, Y, Z.
+
+```lua
+local pos = Position(33539, 32014, 6)
+-- ou
+local targetPos = creature:getPosition()
+
+-- Acessar coordenadas
+print(pos.x, pos.y, pos.z)
+
+-- Operações
+local newPos = pos:moveRel(1, 0, 0)  -- Mover 1 tile leste
+```
+
+**Sistema de Coordenadas:**
+- **X**: Eixo horizontal (Leste/Oeste)
+- **Y**: Eixo vertical (Norte/Sul)
+- **Z**: Altura/Nível (vários flares do mapa)
+
+</TabItem>
+
+<TabItem label="Creature">
+
+### Objeto Creature
+
+Representa o jogador ou criatura que está se movendo.
+
+```lua
+function movement.onStepIn(creature, item, position, fromPosition)
+    -- Verificações de entidade
+    if creature:isPlayer() then
+        -- É um jogador
+        local player = creature
+        print(player:getName())
+    end
+end
+```
+
+**Propriedades Principais:**
+```lua
+creature:getName()           -- Nome do jogador
+creature:getLevel()          -- Level do jogador
+creature:getHealth()         -- Vida atual
+creature:getMagicLevel()     -- Magic level
+creature:getVocation()       -- Vocação
+creature:getPosition()       -- Posição atual
+creature:getPremiumDays()    -- Dias de premium
+creature:getStorageValue(key) -- Ler storage
+creature:setStorageValue(key, value) -- Escrever storage
+```
+
+</TabItem>
+
+<TabItem label="Condiciones e Validações">
+
+### Sistema de Validações
+
+MoveEvents frequentemente precisam validar se jogador pode entrar.
+
+```lua
+function movement.onStepIn(creature, item, position, fromPosition)
+    if not creature:isPlayer() then
+        return true  -- Apenas jogadores
+    end
+    
+    local player = creature
+    
+    -- Validar level
+    if player:getLevel() < 100 then
+        player:sendTextMessage(MESSAGE_ERROR, "Você precisa de level 100")
+        player:teleportTo(fromPosition)
+        return false
+    end
+    
+    -- Validar premium
+    if player:getPremiumDays() <= 0 then
+        player:sendTextMessage(MESSAGE_ERROR, "Apenas premium!")
+        player:teleportTo(fromPosition)
+        return false
+    end
+    
+    -- Verificar item
+    if not player:hasItem(12345) then
+        player:sendTextMessage(MESSAGE_ERROR, "Você precisa de um item específico")
+        player:teleportTo(fromPosition)
+        return false
+    end
+    
+    -- Verificar quest
+    if player:getStorageValue("quest_id") ~= 2 then
+        player:sendTextMessage(MESSAGE_ERROR, "Complete a quest antes")
+        player:teleportTo(fromPosition)
+        return false
+    end
+    
+    return true  -- Permitir entrada
+end
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔐 Sistema de Validação
+
+<Card title="Estrutura de Controle de Acesso" icon="lock">
+
+### Validações Comuns
+
+```lua
+-- Level requirement
+if player:getLevel() < 250 then
+    return false
+end
+
+-- Premium requirement
+if player:getPremiumDays() <= 0 then
+    return false
+end
+
+-- Vocation check
+local vocation = player:getVocation()
+if vocation:getId() ~= VOCATION_SORCERER then
+    return false
+end
+
+-- Item requirement
+local item = player:getSlotItem(CONST_SLOT_LEFT_HAND)
+if not item or item:getId() ~= requiredItemId then
+    return false
+end
+
+-- Quest/Storage check
+if player:getStorageValue("quest_key") < 2 then
+    return false
+end
+
+-- Cooldown check
+local lastEntry = player:getStorageValue("movement_cooldown_key")
+if os.time() - (lastEntry or 0) < 60 then  -- 60 segundos
+    return false
+end
+```
+
+### Mensagens de Erro Apropriadas
+
+```lua
+-- MESSAGE_ERROR
+player:sendTextMessage(MESSAGE_ERROR, "Você não tem permissão")
+
+-- MESSAGE_WARNING
+player:sendTextMessage(MESSAGE_WARNING, "Aviso!")
+
+-- MESSAGE_INFO_DESCR
+player:sendTextMessage(MESSAGE_INFO_DESCR, "Informação descritiva")
+
+-- MESSAGE_STATUS_SMALL
+player:sendTextMessage(MESSAGE_STATUS_SMALL, "Mensagem rápida")
+```
+
+</Card>
+
+---
+
+## 🔀 Tipos de Movements
+
+<Card title="Padrões de Movimento" icon="map">
+
+### 1. Teleporte Simples (One-Way)
+
+```lua
+local movement = MoveEvent()
+movement:type("stepin")
+movement:aid(4253)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    if not creature:isPlayer() then
+        return true
+    end
+    
+    creature:teleportTo(Position(33636, 31891, 6))
+    creature:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+    return true
+end
+
+movement:register()
+```
+
+### 2. Teleporte Bidirecional
+
+```lua
+local movement = MoveEvent()
+movement:type("stepin")
+movement:uid(9056)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    local targetPos
+    
+    -- Determinar para onde teleportar baseado na posição atual
+    if position.x == 33338 then
+        targetPos = Position(33574, 32224, 7)  -- De Candia para Feyrist
+    else
+        targetPos = Position(33338, 32125, 7)  -- De Feyrist para Candia
+    end
+    
+    creature:teleportTo(targetPos)
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+    targetPos:sendMagicEffect(CONST_ME_TELEPORT)
+    return true
+end
+
+movement:register()
+```
+
+### 3. Bloqueador com Validação
+
+```lua
+local movement = MoveEvent()
+movement:type("stepin")
+movement:aid(50998)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    if not creature:isPlayer() then
+        return true
+    end
+    
+    if creature:getLevel() < 2 then
+        creature:sendTextMessage(MESSAGE_ERROR, "Você precisa de level 2")
+        creature:teleportTo(fromPosition)
+        position:sendMagicEffect(CONST_ME_MAGIC_BLUE)
+        return false
+    end
+    
+    return true  -- Permitir passagem
+end
+
+movement:register()
+```
+
+### 4. Múltiplos Destinos
+
+```lua
+local teleports = {
+    [36489] = {x=33559, y=31970, z=12},
+    [42626] = {x=33539, y=32014, z=6},
+    [42627] = {x=33491, y=31985, z=7},
+    [42630] = {x=33636, y=31891, z=6},
+}
+
+local movement = MoveEvent()
+movement:type("stepin")
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    local dest = teleports[item:getActionId()]
+    if dest then
+        creature:teleportTo(Position(dest.x, dest.y, dest.z))
+        position:sendMagicEffect(CONST_ME_GREEN_RINGS)
+        creature:say("Slrrp!")
+        return true
+    end
+    return false
+end
+
+-- Registrar para várias AIDs
+for aid, _ in pairs(teleports) do
+    local mvmt = MoveEvent()
+    mvmt:type("stepin")
+    mvmt:aid(aid)
+    mvmt.onStepIn = movement.onStepIn
+    mvmt:register()
+end
+```
+
+</Card>
+
+---
+
+## 📍 Coordenadas e Posições
+
+<Card title="Sistema de Coordenadas" icon="compass">
+
+### Mapa 3D
+
+O Tibia usa um sistema 3D com múltiplos "flares" (níveis):
+
+```
+Z=0-5:   Mundo superior/cidades
+Z=6-7:   Primeiro nível subterrâneo
+Z=8-9:   Segundo nível subterrâneo
+Z=10+:   Níveis mais profundos
+```
+
+### Calculando Distâncias
+
+```lua
+function getDistance(pos1, pos2)
+    local dx = math.abs(pos1.x - pos2.x)
+    local dy = math.abs(pos1.y - pos2.y)
+    local dz = math.abs(pos1.z - pos2.z)
+    return math.max(dx, dy) + (dz > 0 and dz * 10 or 0)
+end
+
+-- Exemplo
+local pos1 = Position(100, 100, 7)
+local pos2 = Position(110, 105, 7)
+local dist = getDistance(pos1, pos2)  -- ~10
+```
+
+### Áreas Retangulares
+
+```lua
+function isInArea(pos, topLeft, bottomRight)
+    return pos.x >= topLeft.x and pos.x <= bottomRight.x and
+           pos.y >= topLeft.y and pos.y <= bottomRight.y and
+           pos.z == topLeft.z
+end
+
+-- Verificar se jogador está em dungeon específica
+local dungeonTopLeft = Position(32100, 32100, 8)
+local dungeonBottomRight = Position(32200, 32200, 8)
+
+if isInArea(creature:getPosition(), dungeonTopLeft, dungeonBottomRight) then
+    -- Jogador está no dungeon
+end
+```
+
+</Card>
+
+---
+
+## ✨ Efeitos Visuais e Sonoros
+
+<Card title="Feedback Visual e Auditivo" icon="sparkles">
+
+### Efeitos Visuais (CONST_ME_*)
+
+```lua
+-- Teleportação
+CONST_ME_TELEPORT              -- Flash padrão
+CONST_ME_GREEN_RINGS           -- Anéis verdes
+CONST_ME_POFF                  -- Fumaça/desaparecimento
+CONST_ME_WATERSPLASH           -- Respingo de água
+
+-- Explosões/Impactos
+CONST_ME_EXPLOSIONAREA         -- Explosão grande
+CONST_ME_FIREAREA              -- Área de fogo
+CONST_ME_ICEAREA               -- Área de gelo
+CONST_ME_ENERGYAREA            -- Área de energia
+CONST_ME_POISONAREA            -- Nuvem de veneno
+
+-- Magia/Efeitos especiais
+CONST_ME_MAGIC_BLUE            -- Magia azul/rejeição
+CONST_ME_ENERGYHIT             -- Golpe elétrico
+CONST_ME_HITBYFIRE             -- Golpe de fogo
+CONST_ME_STONE_STORM           -- Tempestade de pedras
+CONST_ME_SUMMONDARK            -- Invocação sombria
+```
+
+### Reproduzindo Efeitos
+
+```lua
+-- No tile específico
+position:sendMagicEffect(CONST_ME_TELEPORT)
+
+-- Em múltiplos tiles
+for _, pos in ipairs(positionList) do
+    pos:sendMagicEffect(CONST_ME_EXPLOSIONAREA)
+end
+
+-- Criar som
+position:sendMagicEffect(CONST_ME_TELEPORT)
+creature:say("Slrrp!")  -- Texto de som
+```
+
+### Sons
+
+```lua
+-- Reproduzir som via mensagem de texto
+creature:say("Slrrp!")          -- Som de teleporte
+creature:say("Boom!")           -- Som de explosão
+creature:say("Whoosh!")         -- Som de vento
+```
+
+</Card>
+
+---
+
+## 📐 Padrões Comuns
+
+<Card title="Estruturas Padrão" icon="layers">
+
+### Padrão 1: Teleporte com Efeito Simples
+
+```lua
+local movement = MoveEvent()
+movement:type("stepin")
+movement:aid(4253)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    creature:teleportTo(Position(33636, 31891, 6))
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+    creature:say("Slrrp!")
+    return true
+end
+
+movement:register()
+```
+
+### Padrão 2: Validação + Teleporte
+
+```lua
+local movement = MoveEvent()
+movement:type("stepin")
+movement:aid(4253)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    if not creature:isPlayer() then
+        return true
+    end
+    
+    local player = creature
+    
+    -- Validações
+    if player:getLevel() < 200 then
+        player:sendTextMessage(MESSAGE_ERROR, "Level 200 required")
+        player:teleportTo(fromPosition)
+        return false
+    end
+    
+    -- Teleportar
+    player:teleportTo(Position(33636, 31891, 6))
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+    return true
+end
+
+movement:register()
+```
+
+### Padrão 3: Teleporte Bidirecional com Validação
+
+```lua
+local destinations = {
+    [Position(100, 100, 7)] = Position(200, 200, 7),
+    [Position(200, 200, 7)] = Position(100, 100, 7),
+}
+
+local movement = MoveEvent()
+movement:type("stepin")
+movement:uid(9056)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    local targetPos = destinations[position]
+    
+    if not targetPos then
+        return false
+    end
+    
+    creature:teleportTo(targetPos)
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+    targetPos:sendMagicEffect(CONST_ME_TELEPORT)
+    return true
+end
+
+movement:register()
+```
+
+### Padrão 4: Múltiplos Destinos por AID
+
+```lua
+local teleportMap = {
+    [36489] = {x=33559, y=31970, z=12},
+    [42626] = {x=33539, y=32014, z=6},
+    [42627] = {x=33491, y=31985, z=7},
+}
+
+local function createTeleport(aid)
+    local movement = MoveEvent()
+    movement:type("stepin")
+    movement:aid(aid)
+    
+    function movement.onStepIn(creature, item, position, fromPosition)
+        local dest = teleportMap[aid]
+        if dest then
+            creature:teleportTo(Position(dest.x, dest.y, dest.z))
+            position:sendMagicEffect(CONST_ME_GREEN_RINGS)
+            return true
+        end
+        return false
+    end
+    
+    movement:register()
+end
+
+for aid, _ in pairs(teleportMap) do
+    createTeleport(aid)
+end
+```
+
+</Card>
+
+---
+
+## 🛠️ Como Criar um Novo Movement
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Criar o Arquivo
+
+```bash
+# Arquivo: {region}_{tipo}.lua ou {funcionalidade}.lua
+# Exemplo: myregion_teleport.lua ou custom_puzzle.lua
+```
+
+### Passo 2: Criar Instância MoveEvent
+
+```lua
+local movement = MoveEvent()
+movement:type("stepin")  -- ou "stepout", "equip", "deequip"
+```
+
+### Passo 3: Identificar o Trigger
+
+```lua
+-- Por ActionID (para items com AID)
+movement:aid(4253)
+
+-- Ou por UniqueID (para items específicos)
+movement:uid(9056)
+
+-- Ou por ItemID (para tipos de items)
+movement:itemid(1949)
+```
+
+### Passo 4: Implementar a Função
+
+```lua
+function movement.onStepIn(creature, item, position, fromPosition)
+    -- Lógica aqui
+    return true  -- true = permitir, false = bloquear
+end
+```
+
+### Passo 5: Adicionar Lógica
+
+```lua
+-- Exemplo completo: Teleporte com validação
+function movement.onStepIn(creature, item, position, fromPosition)
+    if not creature:isPlayer() then
+        return true
+    end
+    
+    local player = creature
+    
+    -- Validação
+    if player:getLevel() < 100 then
+        player:sendTextMessage(MESSAGE_ERROR, "Level 100 required")
+        player:teleportTo(fromPosition)
+        position:sendMagicEffect(CONST_ME_MAGIC_BLUE)
+        return false
+    end
+    
+    -- Executar
+    player:teleportTo(Position(33636, 31891, 6))
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+    player:say("Slrrp!")
+    
+    return true
+end
+```
+
+### Passo 6: Registrar
+
+```lua
+movement:register()
+```
+
+### Arquivo Completo Exemplo
+
+```lua
+-- myregion_teleport.lua
+
+local movement = MoveEvent()
+movement:type("stepin")
+movement:aid(50001)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    if not creature:isPlayer() then
+        return true
+    end
+    
+    local player = creature
+    local target = Position(33636, 31891, 6)
+    
+    -- Validar level
+    if player:getLevel() < 150 then
+        player:sendTextMessage(MESSAGE_ERROR, "Você precisa de level 150")
+        player:teleportTo(fromPosition)
+        position:sendMagicEffect(CONST_ME_MAGIC_BLUE)
+        return false
+    end
+    
+    -- Teleportar
+    player:teleportTo(target)
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+    target:sendMagicEffect(CONST_ME_TELEPORT)
+    player:say("Slrrp!")
+    
+    return true
+end
+
+movement:register()
+```
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Simple Teleport">
+
+**Movement Simples: Teleporte One-Way**
+
+```lua
+-- simple_teleport.lua
+
+local movement = MoveEvent()
+movement:type("stepin")
+movement:aid(4253)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    creature:teleportTo(Position(33636, 31891, 6))
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+    return true
+end
+
+movement:register()
+```
+
+</TabItem>
+
+<TabItem label="Bidirectional">
+
+**Teleporte Bidirecional**
+
+```lua
+-- candia_feyrist_tp.lua
+
+local movement = MoveEvent()
+movement:type("stepin")
+movement:uid(9056)
+
+local candia = Position(33338, 32125, 7)
+local feyrist = Position(33574, 32224, 7)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    local targetPos = (position == candia) and feyrist or candia
+    
+    creature:teleportTo(targetPos)
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+    targetPos:sendMagicEffect(CONST_ME_TELEPORT)
+    creature:say("Slrrp!")
+    
+    return true
+end
+
+movement:register()
+```
+
+</TabItem>
+
+<TabItem label="With Validation">
+
+**Teleporte com Validação**
+
+```lua
+-- level_restricted_tp.lua
+
+local movement = MoveEvent()
+movement:type("stepin")
+movement:aid(15998)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    if not creature:isPlayer() then
+        return true
+    end
+    
+    local player = creature
+    
+    -- Validação de level
+    if player:getLevel() < 999 then
+        player:sendTextMessage(MESSAGE_ERROR, "Level 999 requerido!")
+        player:teleportTo(fromPosition)
+        position:sendMagicEffect(CONST_ME_MAGIC_BLUE)
+        return false
+    end
+    
+    -- Teleportar
+    player:teleportTo(Position(32883, 32527, 11))
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+    
+    return true
+end
+
+movement:register()
+```
+
+</TabItem>
+
+<TabItem label="Multi-Destination">
+
+**Múltiplos Destinos**
+
+```lua
+-- oramond_multitp.lua
+
+local teleports = {
+    [36489] = {x=33559, y=31970, z=12},
+    [42626] = {x=33539, y=32014, z=6},
+    [42627] = {x=33491, y=31985, z=7},
+    [42630] = {x=33636, y=31891, z=6},
+}
+
+local function registerTeleport(aid, dest)
+    local movement = MoveEvent()
+    movement:type("stepin")
+    movement:aid(aid)
+    
+    function movement.onStepIn(creature, item, position, fromPosition)
+        creature:teleportTo(Position(dest.x, dest.y, dest.z))
+        position:sendMagicEffect(CONST_ME_GREEN_RINGS)
+        creature:say("Slrrp!")
+        return true
+    end
+    
+    movement:register()
+end
+
+-- Registrar todos
+for aid, dest in pairs(teleports) do
+    registerTeleport(aid, dest)
+end
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Movement não é acionado
+
+**Causa:** Item não tem ActionID/UniqueID configurado corretamente  
+**Solução:** Verificar que AID/UID no script corresponde ao XML/database
+
+```lua
+-- Verificar qual AID está sendo usado
+movement:aid(4253)  -- Garantir que valor é o correto
+```
+
+### Problema: Jogador fica preso/bug
+
+**Causa:** Teleporte falhou ou script não retorna valor correto  
+**Solução:**
+```lua
+function movement.onStepIn(creature, item, position, fromPosition)
+    if not creature:isPlayer() then
+        return true  -- Deixar não-jogadores passar
+    end
+    
+    -- Sempre retornar valor booleano
+    return true  -- ou false para bloquear
+end
+```
+
+### Problema: Validação não funciona
+
+**Causa:** Lógica condicional incorreta  
+**Solução:** Verificar player:getLevel() e outras propriedades
+
+```lua
+-- ❌ Errado - creature pode não ser player
+if creature:getLevel() < 100 then
+    -- ...
+end
+
+-- ✅ Correto
+if creature:isPlayer() then
+    local player = creature
+    if player:getLevel() < 100 then
+        -- ...
+    end
+end
+```
+
+### Problema: Múltiplos teleportes quebram
+
+**Causa:** Usando mesma variável para múltiplos registros  
+**Solução:** Usar função factory ou tabela diferente por registro
+
+```lua
+-- ✅ Correto - cada AID tem seu próprio closure
+local function createTeleport(aid)
+    local movement = MoveEvent()
+    movement:type("stepin")
+    movement:aid(aid)
+    
+    function movement.onStepIn(creature, item, position, fromPosition)
+        -- 'aid' é diferente para cada chamada
+        local dest = teleportMap[aid]
+        if dest then
+            creature:teleportTo(Position(dest.x, dest.y, dest.z))
+            return true
+        end
+        return false
+    end
+    
+    movement:register()
+end
+```
+
+### Problema: Efeito não aparece
+
+**Causa:** Position/MagicEffect inválido  
+**Solução:**
+```lua
+-- Verificar que position é válida
+if position then
+    position:sendMagicEffect(CONST_ME_TELEPORT)
+end
+
+-- Ou usar creature
+creature:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+```
+
+### Problema: Jogador volta para posição anterior
+
+**Causa:** Função retorna `false` ou teleportação falha  
+**Solução:** Garantir return `true` e posição válida
+
+```lua
+function movement.onStepIn(creature, item, position, fromPosition)
+    if not validarAcesso(creature) then
+        creature:teleportTo(fromPosition)  -- Voltar
+        return false
+    end
+    
+    creature:teleportTo(targetPos)
+    return true  -- Permitir movimento
+end
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Estrutura Básica:**
+```lua
+local movement = MoveEvent()
+movement:type("stepin")
+movement:aid(123)  -- ou uid(456) ou itemid(789)
+
+function movement.onStepIn(creature, item, position, fromPosition)
+    -- Lógica aqui
+    return true
+end
+
+movement:register()
+```
+
+**MoveEvent Types:**
+- `stepin`: Quando entra na posição
+- `stepout`: Quando sai da posição
+- `equip`: Quando equipa item
+- `deequip`: Quando remove item
+
+**Identificadores:**
+- `aid(XXX)`: ActionID (item com AID específico)
+- `uid(XXX)`: UniqueID (item único específico)
+- `itemid(XXX)`: ItemID (tipo de item)
+
+**Função Principal:**
+```lua
+function movement.onStepIn(creature, item, position, fromPosition)
+    -- creature: Jogador/criatura
+    -- item: Item que acionou
+    -- position: Posição atual
+    -- fromPosition: Posição anterior
+    return true/false
+end
+```
+
+**Propriedades Principais:**
+- `creature:isPlayer()`: É jogador?
+- `creature:getLevel()`: Level atual
+- `creature:getPremiumDays()`: Dias premium
+- `creature:hasItem(id)`: Tem item?
+- `creature:getStorageValue(key)`: Ler storage
+- `creature:getVocation()`: Vocação
+
+**Teleportação:**
+```lua
+creature:teleportTo(Position(x, y, z))
+creature:teleportTo(fromPosition)  -- Voltar
+```
+
+**Efeitos:**
+```lua
+position:sendMagicEffect(CONST_ME_TELEPORT)
+creature:say("Slrrp!")
+```
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_Movements.mdx](#)
+2. **Analise Scripts Existentes**: Examine arquivos como `oramond_teleport.lua`
+3. **Teste Localmente**: Crie um movement de teste em um servidor local
+4. **Implemente Seus Próprios**: Combine padrões para criar movements únicos
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Scripts Documentados:** 39  
+
+Para dúvidas ou sugestões, consulte a documentação oficial ou o arquivo de catálogo.
+</Aside>

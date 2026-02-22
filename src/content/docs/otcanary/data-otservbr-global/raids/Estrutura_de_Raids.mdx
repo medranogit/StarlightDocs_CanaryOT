@@ -1,0 +1,344 @@
+---
+title: Estrutura de Raids
+description: Guia completo da estrutura e anatomia de um Raid
+sidebar:
+  order: 1
+---
+
+# Estrutura de Raids - Guia Completo
+
+## 📋 Visão Geral
+
+Este documento explica a estrutura padrão utilizada para documentar cada Raid no Canary Server. Raids são eventos de spawn massivo de criaturas em áreas específicas do mapa, com horários programados e anúncios públicos.
+
+---
+
+## 1️⃣ Seção: Informações Básicas
+
+**Propriedades fundamentais do Raid:**
+
+| Propriedade | Descrição |
+|---|---|
+| **Nome** | Nome do arquivo XML (ex: wasp_bear, dragons, badger) |
+| **Cidade** | Localização geográfica (Abdendriel, Ankrahmun, etc) |
+| **Tipo de Evento** | Classificação do raid (invasão, spike, spawn, etc) |
+| **Frequência** | Como é ativado (horário fixo, aleatório, manual) |
+
+### Exemplo:
+```
+Nome: wasp_bear.xml | Cidade: Abdendriel | Tipo: Animal Invasion
+Nome: dragons.xml | Cidade: Abdendriel | Tipo: Dragon Spawn
+```
+
+---
+
+## 2️⃣ Seção: Anúncio (Announce)
+
+**Sistema de notificação pública do raid:**
+
+| Propriedade | Descrição |
+|---|---|
+| **delay** | Atraso em ms antes do anúncio (1000 = 1 segundo) |
+| **type** | Tipo de mensagem (event, warning, status) |
+| **message** | Texto do anúncio em português |
+
+### Tipos de Anúncio:
+- **event**: Evento normal (invasão de animais, spawn especial)
+- **warning**: Aviso de perigo iminente
+- **status**: Atualização de status
+
+### Exemplo:
+```xml
+<announce delay="1000" type="event" message="Forest animals spread out close to Ab'Dendriel!" />
+```
+
+---
+
+## 3️⃣ Seção: Coordenadas & Mapa
+
+**Localização geográfica do spawn no mapa:**
+
+| Propriedade | Descrição |
+|---|---|
+| **fromx** | Coordenada X inicial (oeste) do retângulo de spawn |
+| **fromy** | Coordenada Y inicial (norte) do retângulo |
+| **fromz** | Coordenada Z inicial (andar) do retângulo |
+| **tox** | Coordenada X final (leste) do retângulo de spawn |
+| **toy** | Coordenada Y final (sul) do retângulo |
+| **toz** | Coordenada Z final (andar) do retângulo |
+
+### Interpretação:
+- **X, Y, Z coordenadas Tibia**: Formato padrão do servidor
+- **Retângulo**: Área definida por "from" (canto NO) e "to" (canto SE)
+- **Z (andar)**: 0-15 (0-7 subterrâneo, 7-15 acima)
+
+### Exemplo:
+```
+From: (32600, 31712, 7) To: (32634, 31739, 7)
+= Área quadrada ~34x27 tiles no andar 7
+```
+
+---
+
+## 4️⃣ Seção: Spawn & Criaturas
+
+**Definição de quais criaturas spawnam:**
+
+| Propriedade | Descrição |
+|---|---|
+| **name** | Nome da criatura (deve existir em data/monsters/) |
+| **amount** | Quantidade de cópias a spawnar |
+| **delay** | Atraso do spawn em ms (por areaspawn) |
+
+### Tipos de Spawn:
+- **areaspawn**: Spawna criaturas aleatoriamente em área retangular
+- **singlespawn**: Spawna em ponto específico (raramente usado)
+
+### Exemplo:
+```xml
+<areaspawn delay="60000" ...>
+  <monster name="Wasp" amount="30" />
+  <monster name="Bear" amount="30" />
+</areaspawn>
+```
+
+---
+
+## 5️⃣ Seção: Timing & Duração
+
+**Cronograma de execução do raid:**
+
+| Campo | Descrição |
+|---|---|
+| **delay (announce)** | Quando o anúncio é feito |
+| **delay (areaspawn)** | Quando as criaturas spawnam |
+| **Duração implícita** | Quanto tempo criaturas permanecem ativas |
+
+### Interpretação:
+- **delay em ms**: 1000 = 1 segundo, 60000 = 1 minuto
+- **Múltiplos spawns**: Podem ter delays diferentes para spawn faseado
+- **Persistência**: Criaturas permanecem até morte ou despawn automático
+
+---
+
+## 6️⃣ Seção: Categoria & Tipo
+
+**Classificação do raid:**
+
+| Tipo | Descrição |
+|---|---|
+| **Animal Invasion** | Spawns de animais normais em área |
+| **Dragon Spawn** | Spawns de dragões e variantes |
+| **Demon Invasion** | Spawns de demônios/creatures malignas |
+| **Elemental Surge** | Spawns de elementais |
+| **Boss Event** | Spawns com boss ou criaturas elite |
+| **Seasonal** | Raids temáticos por data |
+| **Quest Raid** | Raids relacionados a quests |
+
+---
+
+## 7️⃣ Seção: Rotina & Ativação
+
+**Como e quando o raid é ativado:**
+
+| Campo | Descrição |
+|---|---|
+| **Modo** | Manual, automático por hora, aleatório |
+| **Horários** | Se fixo, entre que horas ocorre |
+| **Frequência** | Diária, semanal, evento único |
+| **Duração Total** | Quanto tempo o evento dura |
+
+### Interpretação:
+- **Lei do servidor**: Verificar arquivo `raids.xml` principal para schedule
+- **Manual**: Ativação por comando admin
+- **Automático**: Roda em horários pré-definidos
+
+---
+
+## 8️⃣ Seção: Densidade & Dificuldade
+
+**Avaliação da intensidade do raid:**
+
+| Métrica | Cálculo |
+|---|---|
+| **Criaturas Totais** | Sum de todos `<monster amount="">` |
+| **Área de Spawn** | (tox - fromx) × (toy - fromy) em tiles |
+| **Densidade** | Criaturas/Area |
+| **Nível Recomendado** | Baseado na criatura mais forte |
+
+### Exemplos:
+```
+Wasp & Bear: 30+30 = 60 criaturas em ~900 tiles = 0.067 criaturas/tile
+Dragons: 5 dragões em ~400 tiles = 0.0125 criaturas/tile (mais raro/desafiador)
+```
+
+---
+
+## 9️⃣ Seção: Localização Narrativa
+
+**Contexto de mundo do raid:**
+
+| Campo | Descrição |
+|---|---|
+| **Cidade** | Cidade afetada pelo raid |
+| **Zona Específica** | Local dentro da cidade (floresta, caverna, campo) |
+| **Contexto** | Por que as criaturas spawnam ali |
+| **NPCs Afetados** | Quais NPCs/merchants são impactados |
+
+### Exemplos:
+```
+Raid: Wasp & Bear
+- Cidade: Abdendriel
+- Zona: Forest near Abdendriel
+- Contexto: Animal migration/invasion
+
+Raid: Dragons
+- Cidade: Edron
+- Zona: Dragon Lair
+- Contexto: Seasonal breeding season
+```
+
+---
+
+## 🔟 Seção: Nota Contextual
+
+**Resumo narrativo caracterizando o raid:**
+
+Parágrafo único em português PT-BR que descreve:
+- Tipo de raid (invasão, spawn sazonal, etc)
+- Criaturas envolvidas e quantidade
+- Localização e impacto na cidade
+- Dificuldade/nível recomendado
+- Contexto narrativo ou mecânico
+
+### Exemplo:
+```
+"Wasp & Bear é raid de invasão animal em Abdendriel, spawning 30 Wasps + 30 Bears 
+em área florestal próxima (32600-32634, 31712-31739, floor 7). Evento de tipo 'event' 
+com atraso 1000ms. Moderada dificuldade (~lvl 20+). Contexto: migração sazonal de animais 
+para próximo à cidade. Total 60 criaturas em ~900 tiles = densidade baixa-moderada."
+```
+
+---
+
+## 📊 Tabela Comparativa: Tipos de Raids
+
+| Tipo | Criaturas | Dificuldade | Nível Recomendado | Localização |
+|---|---|---|---|---|
+| **Animal Invasion** | 40-80 | Baixa-Média | 20-50 | Margens de cidades |
+| **Dragon Spawn** | 5-15 | Alta | 50-100 | Lairs/Caves |
+| **Demon Invasion** | 30-60 | Muito Alta | 60+ | Underworld areas |
+| **Boss Event** | 1-3 + minions | Extrema | 80+ | Specific dungeons |
+| **Elemental** | 20-50 | Média | 40-70 | Elemental areas |
+
+---
+
+## 🎯 Checklista de Documentação
+
+Ao documentar um novo raid, verificar:
+
+- [ ] **Seção 1**: Nome, cidade, tipo de evento identificados
+- [ ] **Seção 2**: Anúncio (delay, type, message) documentado
+- [ ] **Seção 3**: Coordenadas (from/to X,Y,Z) verificadas no mapa
+- [ ] **Seção 4**: Todos criaturas e amounts listados
+- [ ] **Seção 5**: Timings e delays documentados
+- [ ] **Seção 6**: Categoria apropriada atribuída
+- [ ] **Seção 7**: Rotina de ativação (manual/automática) identificada
+- [ ] **Seção 8**: Densidade e dificuldade calculadas
+- [ ] **Seção 9**: Localização narrativa documentada
+- [ ] **Seção 10**: Nota contextual em português PT-BR
+
+---
+
+## 🔗 Referência Rápida de Abbreviações
+
+| Abreviação | Significado |
+|---|---|
+| **ms** | Milissegundos |
+| **X, Y, Z** | Coordenadas do mapa Tibia |
+| **from** | Canto noroeste do retângulo de spawn |
+| **to** | Canto sudeste do retângulo de spawn |
+| **areaspawn** | Spawn em área (aleatório dentro do retângulo) |
+| **singlespawn** | Spawn em ponto específico |
+| **Tile** | Quadrado unitário no mapa (1x1) |
+| **Floor/andar** | Nível vertical (0-15) |
+| **Boss** | Criatura principal/chefe |
+| **Minion** | Criatura secundária/ajudante |
+
+---
+
+## 📝 Templates de Exemplos
+
+### Template Invasão Animal
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<raid>
+  <announce delay="1000" type="event" message="Animals invading [City]!" />
+  <areaspawn delay="60000" fromx="X1" fromy="Y1" fromz="Z1" tox="X2" toy="Y2" toz="Z2">
+    <monster name="[Creature1]" amount="N1" />
+    <monster name="[Creature2]" amount="N2" />
+  </areaspawn>
+</raid>
+```
+
+### Template Dragon Spawn
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<raid>
+  <announce delay="1000" type="warning" message="Dragons appear in [Location]!" />
+  <areaspawn delay="120000" fromx="X1" fromy="Y1" fromz="Z1" tox="X2" toy="Y2" toz="Z2">
+    <monster name="Dragon" amount="5" />
+    <monster name="Dragon Lord" amount="2" />
+  </areaspawn>
+</raid>
+```
+
+### Template Boss Event
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<raid>
+  <announce delay="1000" type="warning" message="BOSS ALERT: [Boss Name] appears!" />
+  <areaspawn delay="180000" fromx="X1" fromy="Y1" fromz="Z1" tox="X2" toy="Y2" toz="Z2">
+    <monster name="[Boss]" amount="1" />
+    <monster name="[Minion]" amount="5" />
+  </areaspawn>
+</raid>
+```
+
+---
+
+## 📚 Estrutura de Pastas
+
+O projeto de Raids está organizado por cidades:
+
+```
+data-otservbr-global/raids/
+  ├── abdendriel/
+  │   ├── wasp_bear.xml
+  │   ├── dragons.xml
+  │   └── warwolf.xml
+  ├── ankrahmun/
+  ├── carlin/
+  ├── [other cities...]
+  ├── raids.xml (scheduler principal)
+  └── Estrutura_de_Raids.mdx (este arquivo)
+```
+
+**Total: [a ser preenchido com contagem de raids]**
+
+---
+
+## 🎓 Conclusão
+
+Este guia fornece a base estrutural para compreender e documentar qualquer Raid no Canary Server. Cada raid, independentemente de tipo ou complexidade, segue este template de 10 seções, garantindo documentação consistente e navegável.
+
+Para consultar raids ativas, sempre verifique:
+1. O arquivo `raids.xml` principal (schedule/scheduler)
+2. A pasta da cidade específica
+3. Este guia de estrutura para interpretação
+
+---
+
+**Última Atualização**: February 21, 2026
+**Total de Raids Documentados**: [a ser preenchido]
+**Cidades Cobertas**: Abdendriel, Ankrahmun, Carlin, Chayenne, Darashia, Edron, Farmine, Fury Gate, Kazordoon, Liberty Bay, Oramond, Port Hope, Rookgaard, Roshamuul, Svargrond, Thais, Venore

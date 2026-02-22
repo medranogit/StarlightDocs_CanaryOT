@@ -1,0 +1,353 @@
+---
+title: "tile.lua - Tabela Master de Tiles com Action"
+description: "Documentação técnica da tabela principal de tiles com action IDs no servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🏛️ tile.lua
+
+Arquivo de tabela responsável pelos **tiles com action IDs** - o segundo maior arquivo de configuração com tiles específicas de quests e sistemas.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/tile.lua` |
+| **Tipo** | Tabela de Configuração - Tiles |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Storage.Quest constants (variável) |
+| **Total de Linhas** | 1,249 linhas |
+| **Função Principal** | Configurar tiles com action IDs |
+| **Carregado por** | `tables/load.lua` |
+| **Faixa de IDs** | Variável (12124, 20001, 25001-25009+) |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/tile.lua`
+
+Define tabela global `TileAction` - segundo maior arquivo com tiles interativos de quests, transformações, e efeitos.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+**Escopo**: Master table de tiles
+
+**Categorias**:
+- Tiles de vocação (Dawnport)
+- Tiles de quest-específico
+- Tiles transformáveis
+- Tiles com efeito
+
+**Estrutura Principal**:
+```lua
+[actionId] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+```
+
+**Cobertura**: 1,249 linhas, centenas de tiles
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura Master de Tiles" icon="layers">
+
+```
+┌──────────────────────────────┐
+│   TABELA MASTER - TileAction │
+└────────────┬─────────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    ▼                 ▼
+TileAction Queue     Tile Scripts
+(1,249 linhas)       (OnStepIn)
+    │                 │
+    ├─ Quest tiles    ├─ Effect
+    ├─ Vocation prep  ├─ Transformation
+    ├─ Special floors ├─ Damage
+    └─ Transformations└─ Storage update
+```
+
+**Características**:
+- Segundo maior arquivo
+- Cobertura ampla de quests
+- Multipl action IDs
+- Sistema modular
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### TileAction
+
+**Propósito**: Definir tiles com action IDs
+
+**Estrutura**:
+```lua
+TileAction = {
+    [actionId] = {
+        itemId = false,
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = xx},
+            -- múltiplas posições possíveis
+        }
+    }
+}
+```
+
+**Campos**:
+- `actionId`: ID único (variável)
+- `itemId`: false (visually transparent)
+- `itemPos`: Array de posições no mapa
+
+**Range de IDs**:
+- 12124: Uma série de transformação
+- 20001+: Tiles quest-específicas
+- 25001-25009+: Dawnport vocacao tiles
+
+</Card>
+
+---
+
+## 📝 Exemplos do Código
+
+<Tabs>
+<TabItem label="Tile Quest Simples">
+
+```lua
+[20001] = {
+    itemId = false,
+    itemPos = {
+        {x = 32741, y = 31710, z = 7}
+    }
+}
+```
+
+- **Action ID**: 20001
+- **Sem item visual** (false)
+- **Uma posição**
+- **Tile de quest**
+
+</TabItem>
+
+<TabItem label="Dawnport Vocation Tiles">
+
+```lua
+[25001] = {
+    itemId = false,
+    itemPos = { {x = 32420, y = 31666, z = 7} }  -- Knight
+},
+[25002] = {
+    itemId = false,
+    itemPos = { {x = 32420, y = 31670, z = 7} }  -- Paladin
+},
+[25003] = {
+    itemId = false,
+    itemPos = { {x = 32420, y = 31674, z = 7} }  -- Druid
+},
+[25004] = {
+    itemId = false,
+    itemPos = { {x = 32420, y = 31678, z = 7} }  -- Sorcerer
+}
+```
+
+- **4 vocações**
+- **Action IDs consecutivos**
+- **Dawnport choice tiles**
+- **Cada pisa = vira aquela vocação**
+
+</TabItem>
+
+<TabItem label="Multi-Position Tile">
+
+```lua
+[12124] = {
+    itemId = false,
+    itemPos = {
+        {x = 32456, y = 31654, z = 6},
+        {x = 32457, y = 31654, z = 6},
+        {x = 32458, y = 31654, z = 6}
+    }
+}
+```
+
+- **3 tiles** mesma ação
+- **Transformação sequencial**
+- **Mesmo efeito** em todos
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Categorias Principais
+
+<Card title="Tipos de Tiles" icon="star">
+
+### 1. Vocação Tiles (Dawnport)
+```lua
+[25001] = {  -- Knight
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+-- Player vira Knight ao pisar
+```
+
+### 2. Transformação Tiles
+```lua
+[12124] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+-- Player transforma ao pisar
+```
+
+### 3. Efeito Tiles
+```lua
+[20001] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+-- Tile com efeito especial
+```
+
+### 4. Damage Tiles
+```lua
+[20100] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+-- Tile causa dano ao pisar
+```
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Como Funciona" icon="link">
+
+**Em `tile.lua`**:
+```lua
+TileAction = {
+    [25001] = {
+        itemId = false,
+        itemPos = { {x = 32420, y = 31666, z = 7} }
+    }
+}
+```
+
+**Em movimento script** (`movements/...`):
+```lua
+function mvEvent.onStepIn(creature, item, position, ...)
+    if not creature:isPlayer() then return true end
+    
+    local player = creature:getPlayer()
+    local actionId = item:getAttribute(ITEM_ATTRIBUTE_ACTIONID)
+    
+    -- Vocação tiles (Dawnport)
+    if actionId >= 25001 and actionId <= 25004 then
+        local vocations = {
+            [25001] = VOCATION_KNIGHT,
+            [25002] = VOCATION_PALADIN,
+            [25003] = VOCATION_DRUID,
+            [25004] = VOCATION_SORCERER
+        }
+        
+        local voc = vocations[actionId]
+        if voc then
+            player:setVocation(voc)
+            player:sendTextMessage(MESSAGE_STATUS, "You became a " .. voc:getName())
+        end
+    end
+    
+    return true
+end
+```
+
+**Fluxo**:
+1. Player pisa na tile
+2. Script lê action ID
+3. Executa lógica específica
+4. Aplica transformação/efeito
+
+</Card>
+
+---
+
+## 📊 Distribuição de Tiles
+
+<Card title="Padrão de Configuração" icon="bar">
+
+| Range | Tipo | Exemplos |
+|-------|---|---|
+| 12124 | Transformações | Morphing, liquids |
+| 20000-20999 | Quest tiles genéricas | Múltiplas quests |
+| 25001-25009 | Dawnport vocações | 4 escolhas + extras |
+
+**Total**: 1,249 linhas cobrindo centenas de tiles
+
+</Card>
+
+---
+
+## 💡 Comparação com Outras Tabelas
+
+<Card title="Relação com Sistemas" icon="chart">
+
+| Tabela | Tipo | Linhas | Foco |
+|---|---|---|---|
+| **item.lua** | Items | 3,464 | Quests |
+| **tile.lua** | **Tiles** | **1,249** | **Quests+Vocation** |
+| **lever.lua** | Buttons | 806 | Puzzles |
+| **teleport.lua** | Portals | 587 | Travel |
+
+**Segundo Maior**: tile.lua com 1,249 linhas
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: 1,249  
+**Tabelas Globais**: 1 (TileAction)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ TileAction (master tiles)
+
+**Características**:
+- Segundo maior arquivo de tabelas
+- Centenas de tiles
+- Suporta transformações
+- Vocação tiles (Dawnport)
+- Multi-position support
+
+Este arquivo é a master table de tiles com action IDs, com configurações para vocações e tiles de quest.
+</Aside>

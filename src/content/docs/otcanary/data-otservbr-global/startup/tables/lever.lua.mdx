@@ -1,0 +1,338 @@
+---
+title: "lever.lua - Tabela de Alavancas e Botões"
+description: "Documentação técnica da tabela de configuração de alavancas e botões interativos no servidor Canary"
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🎛️ lever.lua
+
+Arquivo de tabela responsável pelas **alavancas e botões** - objetos interativos acionáveis pelo player para ativar mecanismos.
+
+---
+
+## 🛠️ Informações do Arquivo
+
+<Card title="Detalhes Técnicos" icon="document">
+
+| Propriedade | Valor |
+|---|---|
+| **Caminho** | `data-otservbr-global/startup/tables/lever.lua` |
+| **Tipo** | Tabela de Configuração - Items |
+| **Escopo** | Global (carregado no startup) |
+| **Dependências** | Storage.Quest constants (variável) |
+| **Total de Linhas** | 806 linhas |
+| **Função Principal** | Configurar alavancas/botões interativos |
+| **Carregado por** | `tables/load.lua` |
+| **Faixa de IDs** | 4001-7799+ |
+
+</Card>
+
+<Aside type="tip">
+**Caminho Original**: `data-otservbr-global/startup/tables/lever.lua`
+
+Define tabela global `LeverAction` com botões e alavancas que acionam mecanismos de puzzle, portas, e efeitos especiais.
+</Aside>
+
+---
+
+## 📋 Resumo Executivo
+
+<Card title="O que este arquivo faz?" icon="info">
+
+**Escopo**: Sistema de alavancas interativas
+
+**Tipos de Levers**:
+- Botões de puzzle
+- Alavancas de porta
+- Acionadores de mecanismo
+- Botões temáticos
+
+**Estrutura**:
+```lua
+[actionId] = {
+    itemId = false,  -- Geralmente false 
+    itemPos = { {x, y, z} }
+}
+```
+
+**Range**: 4001-7799+ action IDs (centenas de alavancas)
+
+</Card>
+
+---
+
+## 🏗️ Estrutura de Funcionalidades
+
+<Card title="Arquitetura de Alavancas" icon="layers">
+
+```
+┌─────────────────────────┐
+│  SISTEMA DE ALAVANCAS   │
+└────────────┬────────────┘
+             │
+    ┌────────┴────────┐
+    │                 │
+    ▼                 ▼
+LeverAction         Player Action
+(Configuração)      (Trigger)
+    │                 │
+    ├─ Position       ├─ Usa alavanca
+    ├─ Action ID      ├─ Script executa
+    ├─ Effect         └─ Mecanismo ativa
+    └─ Item visual
+```
+
+**Fluxo**:
+1. Player encontra alavanca
+2. Player clica/usa
+3. Script lê action ID
+4. Ativa lógica associada
+
+</Card>
+
+---
+
+## 📊 Variáveis Globais
+
+<Card title="Tabela Principal" icon="database">
+
+### LeverAction
+
+**Propósito**: Definir alavancas e botões acionáveis
+
+**Estrutura**:
+```lua
+LeverAction = {
+    [actionId] = {
+        itemId = false,  -- Geralmente false
+        itemPos = {
+            {x = xxxxx, y = xxxxx, z = xx},
+            -- múltiplas posições possíveis
+        }
+    }
+}
+```
+
+**Campos**:
+- `actionId`: ID único (4001-7799+)
+- `itemId`: false (botão/alavanca invisível)
+- `itemPos`: Posições no mapa
+
+**Range de IDs**:
+- Começa em 4001
+- Vai até 7799+
+- Centenas de alavancas
+- Organized by area
+
+</Card>
+
+---
+
+## 📝 Exemplos do Código
+
+<Tabs>
+<TabItem label="Alavanca Simples">
+
+```lua
+[4001] = {
+    itemId = false,
+    itemPos = {
+        {x = 32352, y = 31654, z = 6}
+    }
+}
+```
+
+- **Action ID**: 4001
+- **Sem item visual** (false)
+- **Uma posição**
+- **Alavanca acionável**
+
+</TabItem>
+
+<TabItem label="Botão de Puzzle">
+
+```lua
+[4050] = {
+    itemId = false,
+    itemPos = {
+        {x = 32400, y = 31700, z = 6},
+        {x = 32400, y = 31701, z = 6},
+        {x = 32400, y = 31702, z = 6}
+    }
+}
+```
+
+- **Puzzle com 3 botões**
+- **Mesma action ID** (4050)
+- **Mesma lógica** em todos
+- **Sequência necessária?**
+
+</TabItem>
+
+<TabItem label="Progressão de Mecanismo">
+
+```lua
+-- Fase 1
+[4100] = {
+    itemId = false,
+    itemPos = { {x = 32450, y = 31750, z = 6} }
+},
+-- Fase 2
+[4101] = {
+    itemId = false,
+    itemPos = { {x = 32451, y = 31750, z = 6} }
+},
+-- Fase 3
+[4102] = {
+    itemId = false,
+    itemPos = { {x = 32452, y = 31750, z = 6} }
+}
+```
+
+- **3 alavancas em sequência**
+- **Action IDs consecutivos**
+- **Múltiplos estágios**
+- **Progressão de puzzle**
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔑 Tipos de Mecanismos
+
+<Card title="Casos de Uso" icon="star">
+
+### 1. Puzzle Simples
+```lua
+[4001] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+-- Alavanca abre porta
+```
+
+### 2. Multi-Step Puzzle
+```lua
+[4050] = {
+    itemId = false,
+    itemPos = { {x1, y1, z}, {x2, y2, z}, {x3, y3, z} }
+}
+-- 3 botões devem ser acionados na sequência
+```
+
+### 3. Mecanismo de Ruína
+```lua
+[4200] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+-- Alavanca ativa destruição/mudança de area
+```
+
+### 4. Alavanca de Respawn
+```lua
+[5000] = {
+    itemId = false,
+    itemPos = { {x, y, z} }
+}
+-- Alavanca reseta puzzle/dungeon
+```
+
+</Card>
+
+---
+
+## 🎛️ Integração com Sistema
+
+<Card title="Como Funciona" icon="link">
+
+**Em `lever.lua`**:
+```lua
+LeverAction = {
+    [4001] = {
+        itemId = false,
+        itemPos = { {x = 32352, y = 31654, z = 6} }
+    }
+}
+```
+
+**Em action script** (`actions/other/lever.lua`):
+```lua
+local leverAction = Action()
+leverAction:id(4001)
+
+function leverAction.onUse(player, item, fromPos, target, toPos)
+    -- Verifica cooldown
+    if item:getAttribute(ITEM_ATTRIBUTE_ACTIONID) ~= 4001 then
+        return false
+    end
+    
+    -- Executa efeito
+    fromPos:sendMagicEffect(CONST_ME_CRACKGROUND)
+    
+    -- Abre porta ou ativa mecanismo
+    local doorPos = Position(32352, 31660, 6)
+    local door = Tile(doorPos):getGround()
+    if door then
+        door:transform(1211)  -- Abre
+    end
+    
+    return true
+end
+
+leverAction:register()
+```
+
+**Fluxo**:
+1. Alavanca na posição `{x, y, z}`
+2. Player usa (action 4001)
+3. Verifica se é correta
+4. Ativa mecanismo
+5. Efeito visual
+
+</Card>
+
+---
+
+## 💡 Comparação com Outras Tabelas
+
+<Card title="Relação com Sistemas" icon="chart">
+
+| Tabela | Tipo | Range | Visual |
+|---|---|---|---|
+| **item.lua** | Quest items | 100-2300+ | Variável |
+| **chest.lua** | Containers | 5000-15000 | Chest |
+| **lever.lua** | **Buttons** | **4001-7799+** | **Invisible** |
+| **door_*.lua** | Doors | Variável | Door |
+
+**Único com visual invisível por padrão**
+
+</Card>
+
+---
+
+## 🤖 Informações da Documentação
+
+<Aside>
+**Versão**: 1.0  
+**Data**: February 22, 2026  
+**Servidor**: OTServ Canary  
+**Tipo**: Arquivo de Tabela - Configuração  
+**Total de Linhas**: 806  
+**Tabelas Globais**: 1 (LeverAction)  
+**Status**: ✅ Completo
+
+**Tabela Documentada**:
+- ✅ LeverAction (alavancas/botões)
+
+**Características**:
+- 806 linhas de configuração
+- Centenas de alavancas e botões
+- Supports multi-position setup
+- Puzzle and mechanism triggers
+- Area-organized action IDs
+
+Este arquivo define todas as alavancas e botões interativos usados em puzzles e mecanismos do servidor.
+</Aside>

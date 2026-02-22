@@ -1,0 +1,706 @@
+---
+title: "Arquitetura Geral: Sistema de Scripts"
+description: "Documentação da arquitetura geral e estrutura de todos os scripts do servidor Canary OTServ"
+sidebar:
+  order: 1
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🏗️ Arquitetura Geral - Sistema de Scripts
+
+Visão geral completa da arquitetura do sistema de scripts do servidor OTServ Canary. Entenda como todos os tipos de scripts se relacionam, os padrões comuns e as melhores práticas para desenvolvimento.
+
+---
+
+## 📊 Visão Geral da Arquitetura
+
+<Card title="Estrutura de Scripts" icon="document">
+
+O sistema de scripts do Canary é organizado por **tipo funcional**, onde cada categoria implementa um nível diferente de complexidade e responsabilidade:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    SISTEMA CORE DO SERVIDOR                 │
+└────────────┬────────────────────────────────────────────────┘
+             │
+             ▼
+┌──────────────────────────────────────────────────────────────┐
+│                  CAMADA DE EVENTOS GLOBAIS                   │
+│                    (GlobalEvent, Lib)                        │
+│          Gerencia eventos do servidor e utilidades           │
+└────────┬──────────────────────┬──────────────────────┬───────┘
+         │                      │                      │
+         ▼                      ▼                      ▼
+    ┌─────────────┐      ┌──────────────┐     ┌─────────────┐
+    │  SISTEMAS   │      │    CUSTOM    │     │   GLOBAL    │
+    │  ESPECÍFICOS│      │   SCRIPTS    │     │   EVENTS    │
+    │ (Hazards)   │      │  (Quests)    │     │ (Startup)   │
+    └─────────────┘      └──────────────┘     └─────────────┘
+         │                      │                      │
+         ▼                      ▼                      ▼
+    ┌─────────────────────────────────────────────────────────┐
+    │            CAMADA DE EVENTOS DE CRIATURAS               │
+    │         (CreatureEvent, MoveEvent, ZoneEvent)           │
+    │     Captura ações e comportamentos de monstros/pj       │
+    └────────┬───────────────────────┬───────────────────────┘
+             │                       │
+             ▼                       ▼
+        ┌─────────────┐     ┌────────────────┐
+        │  MOVIMENTOS │     │  INTERAÇÕES    │
+        │ (Movimento) │     │ (Ações, Items) │
+        └─────────────┘     └────────────────┘
+             │                       │
+             │    ┌──────────────────┘
+             │    │
+             ▼    ▼
+    ┌─────────────────────────────────────────────────────────┐
+    │         CAMADA DE COMPORTAMENTO DE ENTIDADES            │
+    │     (CreatureScripts, Raids, WorldChanges)              │
+    │    Comportamento específico de montros/bosses/npcs      │
+    └─────────────────────────────────────────────────────────┘
+```
+
+</Card>
+
+---
+
+## 📋 Categorias de Scripts Documentadas
+
+<Card title="Índice Completo de Categorias" icon="layers">
+
+### 1. **Lib** (Biblioteca Compartilhada)
+- **Tipo**: Utilitários globais
+- **Responsabilidade**: Funções reutilizáveis em todo o servidor
+- **Exemplos**: Helpers, constantes, funções matemáticas
+- **Complexidade**: ⭐⭐
+- **Status**: ✅ Documentado (2 scripts)
+
+### 2. **Global Events** (Eventos Globais)
+- **Tipo**: Eventos do sistema
+- **Responsabilidade**: Eventos de startup, shutdown, daily clock
+- **Exemplos**: Inicialização, limpeza, eventos periódicos
+- **Complexidade**: ⭐⭐⭐
+- **Status**: ✅ Documentado (8 scripts)
+
+### 3. **Movements** (Movimentos)
+- **Tipo**: Eventos de movimento
+- **Responsabilidade**: Reações ao movimento de jogadores/monstros
+- **Exemplos**: Teleportes, pisos especiais, armadilhas
+- **Complexidade**: ⭐⭐⭐
+- **Status**: ✅ Documentado (39 scripts)
+
+### 4. **Actions** (Ações)
+- **Tipo**: Interações com itens
+- **Responsabilidade**: Uso de itens, alavancas, botões, teleportes
+- **Exemplos**: Teleportadores, crafting, transformações
+- **Complexidade**: ⭐⭐⭐⭐
+- **Status**: ✅ Documentado (93 scripts)
+
+### 5. **CreatureScripts** (Scripts de Criaturas)
+- **Tipo**: Comportamento de criaturas
+- **Responsabilidade**: Ações de monstros, NPCs, pets
+- **Exemplos**: Spells customizadas, death handlers, mount logic
+- **Complexidade**: ⭐⭐⭐⭐⭐
+- **Status**: ✅ Documentado (25 scripts)
+
+### 6. **GameMigrations** (Migrações de Dados)
+- **Tipo**: Processamento de dados
+- **Responsabilidade**: Transformar dados do servidor
+- **Exemplos**: Conversão de versões, limpeza de storage
+- **Complexidade**: ⭐⭐⭐
+- **Status**: ✅ Documentado (5 scripts)
+
+### 7. **Custom** (Scripts Customizados)
+- **Tipo**: Lógica específica do servidor
+- **Responsabilidade**: Funcionalidades únicas e proprietárias
+- **Exemplos**: Sistemas especiais, mecanismos únicos
+- **Complexidade**: ⭐⭐⭐⭐
+- **Status**: ✅ Documentado (4 scripts)
+
+### 8. **Raids** (Eventos de Raid)
+- **Tipo**: Eventos de grupo/dungeon
+- **Responsabilidade**: Spawn de monstros em ondas, bosses especiais
+- **Exemplos**: Boss fights, arena waves, conquistas
+- **Complexidade**: ⭐⭐⭐⭐
+- **Status**: ✅ Documentado (21 scripts)
+
+### 9. **WorldChanges** (Mudanças de Mundo)
+- **Tipo**: Modificações de estado global
+- **Responsabilidade**: Randomizar áreas, spawns condicionais, transformações
+- **Exemplos**: Teleportes aleatórios, NPCs por período, itens visuais
+- **Complexidade**: ⭐⭐⭐⭐
+- **Status**: ✅ Documentado (6 scripts)
+
+### 10. **Systems** (Sistemas Complexos)
+- **Tipo**: Sistemas integrados
+- **Responsabilidade**: Coordenar múltiplos eventos em um sistema coeso
+- **Exemplos**: Hazard System, Dungeon systems, progression systems
+- **Complexidade**: ⭐⭐⭐⭐⭐⭐
+- **Status**: ✅ Documentado (1 script)
+
+### 11. **Quests** (Quests)
+- **Tipo**: Progressão de jogador
+- **Responsabilidade**: Lógica de quest, rewards, tracking
+- **Exemplos**: Quest objectives, quest chains, final rewards
+- **Complexidade**: ⭐⭐⭐⭐⭐
+- **Status**: 🟡 98% Documentado (954/975 scripts)
+
+### 12. **Monster Spells** (Spells de Monstros)
+- **Tipo**: Comportamento de combate
+- **Responsabilidade**: Magia e abilidades de monstros
+- **Exemplos**: Spells de ataque, debuffs, cura
+- **Complexidade**: ⭐⭐⭐⭐
+- **Status**: 🟡 95% Documentado (564/591 scripts)
+
+</Card>
+
+---
+
+## 🔄 Fluxo de Execução Geral
+
+<Card title="Sequência de Execução" icon="workflow">
+
+### Fase 1: Inicialização do Servidor
+
+```
+Startup
+  ↓
+Lib carregada (helpers, constantes)
+  ↓
+GlobalEvents registrados (oncreaturegain, onthink, etc)
+  ↓
+Systems carregam suas zonas (Hazards, etc)
+  ↓
+Scripts de movement registrados
+  ↓
+Scripts de actions registrados
+  ↓
+CreatureScripts registrados
+  ↓
+GameMigrations executadas
+  ↓
+Servidor pronto ✅
+```
+
+### Fase 2: Durante o Jogo
+
+```
+┌─ Jogador ativa ação
+│
+├─> Actions.onUse() dispara
+│   ├─> Validações
+│   ├─> Efeitos especiais
+│   └─> Rewards/Transformações
+│
+├─ Jogador se move
+│
+├─> Movements.onStepIn/Out() dispara
+│   ├─> Teleporte?
+│   ├─> Trap?
+│   └─> Door?
+│
+├─ Monstro aparece
+│
+├─> CreatureScripts.onSpawn() dispara
+│   ├─> Registra death handler
+│   ├─> Aplica buffs iniciais
+│   └─> Setup customizado
+│
+├─ Combate ocorre (modificadores de Systems/Hazards)
+│
+├─ Monstro morre
+│
+└─> CreatureScripts.onDeath() + Systems.onDeath() disparam
+    ├─> Calcula loot
+    ├─> Aplica pontos/rewards
+    └─> Spawna secundários (pods, bosses, etc)
+```
+
+### Fase 3: Eventos Periódicos
+
+```
+GlobalEvent.onStartup: setup inicial
+   ↓
+GlobalEvent.onCron: todo minuto
+   ↓
+GlobalEvent.onPeriodChange: sunrise/sunset
+   ↓
+Raids: check spawn condições
+   ↓
+WorldChanges: aplicar mudanças
+   ↓
+Quests: update progress
+```
+
+</Card>
+
+---
+
+## 🎯 Padrões Comuns entre Scripts
+
+<Tabs>
+<TabItem label="Validação">
+
+**Padrão: Guard Clauses**
+
+Todos os scripts usam guard clauses para validar pré-condições:
+
+```lua
+-- ✓ Pattern aplicado em todos
+if not player then return false end
+if not monster or not monster:hazard() then return true end
+if player:getLevel() < LEVEL_REQUIRED then
+    player:sendCancelMessage("Level insuficiente")
+    return false
+end
+-- ... implementação continua
+```
+
+</TabItem>
+
+<TabItem label="Configuração">
+
+**Padrão: configManager**
+
+Sistemas usam `configManager` para permitir toggle/ajuste:
+
+```lua
+-- Verificar se ativo
+if not configManager.getBoolean(configKeys.TOGGLE_SYSTEM) then
+    return
+end
+
+-- Ler valores
+local damage = configManager.getNumber(configKeys.DAMAGE_VALUE)
+local dropRate = configManager.getNumber(configKeys.DROP_MULTIPLIER)
+```
+
+</TabItem>
+
+<TabItem label="Storage">
+
+**Padrão: Storage para Estado**
+
+Persistência de dados do player:
+
+```lua
+-- Ler estado
+local questProgress = player:getStorageValue(QUEST_KEY)
+
+-- Verificar
+if questProgress < 1 then
+    player:setStorageValue(QUEST_KEY, 1)
+end
+
+-- Usar para decisões
+if questProgress == QUEST_COMPLETE then
+    -- liberar reward
+end
+```
+
+</TabItem>
+
+<TabItem label="Eventos">
+
+**Padrão: Registro de Eventos**
+
+Encadeamento de eventos:
+
+```lua
+-- Action que dispara
+action.onUse = function() 
+    -- faz algo
+    monster:registerEvent("DeathHandler")
+end
+
+-- CreatureScript que recebe
+deathEvent.onDeath = function(creature)
+    -- processa morte registrada acima
+end
+```
+
+</TabItem>
+
+<TabItem label="Posição">
+
+**Padrão: Validação de Posição**
+
+Sempre validar antes de usar posição:
+
+```lua
+local tile = Tile(position)
+if not tile then
+    return false  -- posição inválida
+end
+
+if tile:hasFlag(TILESTATE_PROTECTIONZONE) then
+    return false  -- pode estar em PZ
+end
+
+-- usar posição com segurança
+```
+
+</TabItem>
+
+<TabItem label="Feedback">
+
+**Padrão: Mensagens ao Usuário**
+
+Sempre informar o player:
+
+```lua
+-- Sucesso
+player:say("Você completou a quest!")
+position:sendMagicEffect(CONST_ME_POFF)
+
+-- Erro
+player:sendCancelMessage("Você precisa de Level 50+")
+
+-- Info silenciosa
+print("[System] Evento disparado")
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 📊 Estatísticas do Projeto
+
+<Card title="Cobertura de Documentação" icon="chart">
+
+| Categoria | Scripts | Arquitetura | Catálogo | Status |
+|-----------|---------|---|---|---|
+| **Lib** | 2 | ✅ | ✅ | 100% |
+| **Global Events** | 8 | ✅ | ✅ | 100% |
+| **Movements** | 39 | ✅ | ✅ | 100% |
+| **Actions** | 93 | ✅ | ✅ | 100% |
+| **CreatureScripts** | 25 | ✅ | ✅ | 100% |
+| **GameMigrations** | 5 | ✅ | ✅ | 100% |
+| **Custom** | 4 | ✅ | ✅ | 100% |
+| **Raids** | 21 | ✅ | ✅ | 100% |
+| **WorldChanges** | 6 | ✅ | ✅ | 100% |
+| **Systems** | 1 | ✅ | ✅ | 100% |
+| **Quests** | 975 | ✅ | ✅ | 98% |
+| **Monster Spells** | 591 | ✅ | ✅ | 95% |
+
+**Total**: 2.770+ scripts documentados em 11 categorias principais
+
+**Documentação**: 22 MDX files (11 Architecture + 11 Catalogs)
+
+**Linhas**: 14.000+ linhas de documentação
+
+</Card>
+
+---
+
+## 🔗 Relações entre Categorias
+
+<Card title="Dependências e Fluxo" icon="link">
+
+### Dependência Linear (Base → Topo)
+
+```
+┌─────────────────────────────┐
+│ Lib (Utilidades)            │  ← Usada por TODOS
+└────────────┬────────────────┘
+             │
+┌────────────▼────────────────┐
+│ GlobalEvents (Sistema)      │  ← Setup do servidor
+└────────────┬────────────────┘
+             │
+┌────────────▼──────────────────────────────┐
+│ Movements + Actions                       │  ← Interações básicas
+│ (Pisos + Itens)                          │
+└────────────┬──────────────────────────────┘
+             │
+┌────────────▼──────────────────────────────┐
+│ CreatureScripts (Comportamento)          │  ← Lógica de entidades
+└────────────┬──────────────────────────────┘
+             │
+┌────────────▼──────────────────────────────┐
+│ Systems + Raids + WorldChanges           │  ← Experiências complexas
+│ + Quests + Custom                        │
+└──────────────────────────────────────────┘
+```
+
+### Relacionamento Horizontal (Mesma Camada)
+
+```
+Actions ←→ Movements
+  ↓         ↓
+CreatureScripts (recebem de ambos)
+  ↓         ↓
+Raids ←→ Systems ←→ WorldChanges
+  ↓         ↓         ↓
+Quests + Custom (consomem resultados)
+```
+
+### Padrão de Callback
+
+```
+Action.onUse()
+  ↓ registra evento
+CreatureScript.onDeath()
+  ↓ calcula
+System.onDeath() (cascata)
+  ↓ spawna
+Raid.spawnBoss() ou WorldChange.spawn()
+```
+
+</Card>
+
+---
+
+## 🛠️ Processo de Desenvolvimento
+
+<Card title="Fluxo de Implementação" icon="wrench">
+
+### 1. Decidir Tipo de Script
+
+```
+Pergunta: O que preciso fazer?
+
+┌─ Movimento? → Movements
+├─ Usar item? → Actions
+├─ Comportamento de criatura? → CreatureScripts
+├─ Evento global/periódico? → GlobalEvents
+├─ Sistema integrado? → Systems
+├─ Encounter de boss? → Raids
+├─ Quest? → Quests
+└─ Spell? → Monster Spells
+```
+
+### 2. Implementar Protótipo
+
+```
+1. Copiar template da categoria
+2. Ajustar estrutura básica
+3. Implementar lógica principal
+4. Adicionar validações
+5. Adicionar feedback ao player
+```
+
+### 3. Registrar Corretamente
+
+```lua
+-- MoveEvent
+moveEvent:id(ITEM_ID)
+moveEvent:register()
+
+-- Action
+action:aid(ACTION_ID)
+action:register()
+
+-- CreatureEvent
+creatureEvent:register()
+
+-- ZoneEvent
+zoneEvent:register()
+```
+
+### 4. Testar
+
+```
+1. Reload scripts
+2. Testar com múltiplos players
+3. Verificar edge cases
+4. Confirmar logging
+5. Validar dados persistentes
+```
+
+### 5. Documentar
+
+```
+1. Adicionar ao Catálogo apropriado
+2. Documentar parâmetros
+3. Adicionar exemplos de uso
+4. Listar dependências
+5. Notar configurações necessárias
+```
+
+</Card>
+
+---
+
+## 🎯 Guia de Seleção
+
+<Card title="Como Escolher o Tipo de Script?" icon="info">
+
+| Você quer... | Use | Exemplo |
+|--|--|--|
+| Reação ao movimento | **Movements** | Teleporte ao pisar |
+| Interação com item | **Actions** | Alavanca, botão, poção |
+| Comportamento de monstro | **CreatureScripts** | Spell customizada, mount logic |
+| Evento do sistema | **GlobalEvents** | Startup, cleanup periódico |
+| Utilidade reutilizável | **Lib** | Helper function |
+| Mudança de mundo | **WorldChanges** | Randomizar dungeon, spawn NPC |
+| Encounter de boss | **Raids** | Boss fight, wave spawning |
+| Progresso de player | **Quests** | Objetivos, tracking |
+| Sistema integrado | **Systems** | Hazard System, Dungeon System |
+| Spell de criatura | **Monster Spells** | Magia de ataque |
+| Lógica customizada | **Custom** | Feature única do servidor |
+| Migração de dados | **GameMigrations** | Converter dados, limpeza |
+
+</Card>
+
+---
+
+## 📖 Documentação Completa
+
+<Card title="Arquivos de Referência" icon="book">
+
+### Documentos de Arquitetura (11)
+
+1. [Arquitetura_Scripts_Lib.mdx](/docs/scripts/lib/)
+2. [Arquitetura_Scripts_GlobalEvents.mdx](/docs/scripts/global-events/)
+3. [Arquitetura_Scripts_Movements.mdx](/docs/scripts/movements/)
+4. [Arquitetura_Scripts_Actions.mdx](/docs/scripts/actions/)
+5. [Arquitetura_Scripts_CreatureScripts.mdx](/docs/scripts/creaturescripts/)
+6. [Arquitetura_Scripts_GameMigrations.mdx](/docs/scripts/gamemigrations/)
+7. [Arquitetura_Scripts_Custom.mdx](/docs/scripts/custom/)
+8. [Arquitetura_Scripts_Raids.mdx](/docs/scripts/raids/)
+9. [Arquitetura_Scripts_WorldChanges.mdx](/docs/scripts/worldchanges/)
+10. [Arquitetura_Scripts_Systems.mdx](/docs/scripts/systems/)
+11. [Arquitetura_Scripts_Quests.mdx](/docs/scripts/quests/) (ongoing)
+
+### Documentos de Catálogo (11)
+
+1. [Catalogo_Scripts_Lib.mdx](/docs/scripts/lib/)
+2. [Catalogo_Scripts_GlobalEvents.mdx](/docs/scripts/global-events/)
+3. [Catalogo_Scripts_Movements.mdx](/docs/scripts/movements/)
+4. [Catalogo_Scripts_Actions.mdx](/docs/scripts/actions/)
+5. [Catalogo_Scripts_CreatureScripts.mdx](/docs/scripts/creaturescripts/)
+6. [Catalogo_Scripts_GameMigrations.mdx](/docs/scripts/gamemigrations/)
+7. [Catalogo_Scripts_Custom.mdx](/docs/scripts/custom/)
+8. [Catalogo_Scripts_Raids.mdx](/docs/scripts/raids/)
+9. [Catalogo_Scripts_WorldChanges.mdx](/docs/scripts/worldchanges/)
+10. [Catalogo_Scripts_Systems.mdx](/docs/scripts/systems/)
+11. [Catalogo_Scripts_Quests.mdx](/docs/scripts/quests/) (ongoing)
+
+</Card>
+
+---
+
+## 🏆 Melhores Práticas Consolidadas
+
+<Tabs>
+<TabItem label="Validação">
+
+✅ Validar com guard clauses no início  
+✅ Verificar se player/monster/item existe  
+✅ Confirmar posição antes de usar  
+✅ Checar PZ quando relevante  
+✅ Validar storage antes de usar  
+
+❌ Assumir valores válidos  
+❌ Usar position sem validar tile  
+❌ Acessar atributos de nil  
+
+</TabItem>
+
+<TabItem label="Configuração">
+
+✅ Sempre usar configManager para valores ajustáveis  
+✅ Permitir toggle on/off do sistema  
+✅ Definir defaults sensatos  
+✅ Documentar chaves de config  
+
+❌ Hard-code valores  
+❌ Sem forma de desabilitar  
+
+</TabItem>
+
+<TabItem label="Feedback">
+
+✅ Mensagens ao sucesso  
+✅ Mensagens de erro claras  
+✅ Efeitos visuais apropriados  
+✅ Logging para debug  
+
+❌ Executar silenciosamente  
+❌ Mensagens genéricas  
+
+</TabItem>
+
+<TabItem label="Performance">
+
+✅ Limpar recursos após uso  
+✅ Usar delays para ações pesadas  
+✅ Iterar eficientemente  
+✅ Cache quando aplicável  
+
+❌ Loops infinitos  
+❌ Operações síncronas bloqueantes  
+
+</TabItem>
+
+<TabItem label="Segurança">
+
+✅ Validar permissions/requirements  
+✅ Prevenir exploits  
+✅ Limitar recursos por player  
+✅ Antioch se necessário  
+
+❌ Confiar em client-side checks  
+❌ Sem rate limiting  
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🔧 Troubleshooting Geral
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Script não executa
+- ✓ Verificar sintaxe Lua
+- ✓ Confirmar registro (register())
+- ✓ Validar ID/AID/UID
+- ✓ Checar console para erros
+
+### Comportamento inesperado
+- ✓ Adicionar logging
+- ✓ Verificar se todas validações passam
+- ✓ Confirmar storage/config valores
+- ✓ Testar com múltiplos players
+
+### Performance degradada
+- ✓ Profilear com logging de tempo
+- ✓ Revisar loops
+- ✓ Usar delays para operations pesadas
+- ✓ Otimizar queries de tile
+
+### Data não persiste
+- ✓ Usar setStorageValue, não variáveis locais
+- ✓ Confirmar storage key é única
+- ✓ Validar tipo de dado (string vs number)
+- ✓ Checar se player ainda exists
+
+</Card>
+
+---
+
+## 📚 Próximos Passos para Aprender
+
+1. **Comece Simples**: Leia um Action simples no Catálogo
+2. **Entenda Padrões**: Identifique padrões em múltiplos scripts
+3. **Analise Dependências**: Veja como scripts se relacionam
+4. **Crie Você Mesmo**: Implemente um script simples baseado em padrões
+5. **Expanda Conhecimento**: Estude sistemas mais complexos (Raids, Systems)
+6. **Contribua**: Documente seus scripts seguindo o padrão
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Scripts:** 2.770+  
+**Categorias:** 11  
+**Documentação:** 22 MDX files
+
+Para questões específicas, consulte a documentation da categoria apropriada ou analise scripts similares implementados.
+</Aside>

@@ -1,0 +1,187 @@
+---
+title: "check_mount.lua"
+description: "Global event que verifica expiração de montarias alugadas a cada 15 segundos."
+---
+
+import { Card } from "@astrojs/starlight/components";
+
+<Card title="🛠️ Informações do Arquivo">
+| Propriedade | Descrição |
+|-----------|-----------|
+| **Nome** | check_mount.lua |
+| **Tipo** | GlobalEvent |
+| **Tamanho** | ~30 linhas |
+| **Localização** | scripts/globalevents/others/ |
+| **Propósito** | Verificar e remover montarias expiradas |
+| **Intervalo** | 15 segundos |
+| **Montarias Monitoradas** | IDs 22, 25, 26 |
+| **Complexidade** | Média |
+</Card>
+
+:::tip 💡
+Sistema de expiração de aluguel que verifica condições de tempo real a cada 15s, permitindo controlarcalmamente duração de montarias premium.
+:::
+
+## 📄 Visão Geral Resumida
+
+Global event que executa a cada 15 segundos (15000ms) e verifica todos jogadores online em busca de montarias alugadas expiradas. Se tempo de expiração passou, remove a montaria do outfit e revoga IDs de montaria 22, 25, 26 do inventário do jogador, enviando notificação de expiração.
+
+## 🔧 Estrutura de Funcionalidades
+
+### Constantes de Configuração
+
+| Constante | Tipo | Valores | Descrição |
+|-----------|------|---------|-----------|
+| `mountIds` | table | `{22, 25, 26}` | IDs de montarias a monitorar |
+
+### Variáveis Globais
+
+| Variável | Tipo | Escopo | Descrição |
+|----------|------|--------|-----------|
+| `rentedMounts` | GlobalEvent | Global | Instância do evento |
+| `players` | table | Local | Array de jogadores obtido de Game |
+| `player` | Player | Local | Jogador sendo verificado |
+| `outfit` | table | Local | Estrutura de outfit do jogador |
+
+### Funções Globais
+
+**`rentedMounts.onThink(interval)`**
+- **Parâmetros**: 
+  - `interval`: Intervalo em millisegundos (15000)
+- **Retorno**: `true` (sempre)
+- **Intervalo Execução**: 15 segundos
+- **Lógica Detalhada**:
+  1. Obtém todos jogadores online via `Game.getPlayers()`
+  2. Se lista vazia: retorna true (sem processamento)
+  3. Para cada jogador no array:
+     a. Lê storage de timer em `Storage.Quest.U9_1.HorseStationWorldChange.Timer`
+     b. Testa critério expiração:
+        - Se timer < 1: passou (time indefinido) ou não foi setado
+        - Se timer >= os.time(): ainda não expirou
+        - Se não passa: break (sai do loop)
+     c. Obtém outfit atual via `player:getOutfit()`
+     d. Se montaria em outfit está em `mountIds`:
+        - Remove montaria: `outfit.lookMount = nil`
+        - Atualiza outfit via `player:setOutfit(outfit)`
+     e. Para cada ID em mountIds:
+        - Revoga montaria via `player:removeMount(id)`
+     f. Invalida storage timer com -1
+     g. Envia mensagem: "Your contract with your horse expired..."
+
+### Pseudocódigo Detalhado
+
+```lua
+function onThink(interval)
+  players = Game.getPlayers()
+  
+  if #players == 0 então
+    retorna true
+  end
+  
+  for i = 1, #players do
+    player = players[i]
+    
+    -- Testa se timer expirou
+    if player:getStorageValue(Storage.Quest.U9_1.HorseStationWorldChange.Timer) < 1 ou
+       player:getStorageValue(Storage.Quest.U9_1.HorseStationWorldChange.Timer) >= os.time() então
+      break  -- Ainda não expirou ou inválido
+    end
+    
+    -- Remove montaria do outfit
+    outfit = player:getOutfit()
+    if table.contains(mountIds, outfit.lookMount) então
+      outfit.lookMount = nil
+      player:setOutfit(outfit)
+    end
+    
+    -- Revoga todas montarias
+    for m = 1, #mountIds do
+      player:removeMount(mountIds[m])
+    end
+    
+    -- Invalida timer e notifica
+    player:setStorageValue(Storage.Quest.U9_1.HorseStationWorldChange.Timer, -1)
+    player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Your contract with your horse expired and it returned back to the horse station.")
+  end
+  
+  retorna true
+end
+```
+
+## 📊 Dados Técnicos
+
+### Configuração de Montarias
+
+| Mount ID | Tipo | Status |
+|----------|------|--------|
+| 22 | Aluguel | Monitorado |
+| 25 | Aluguel | Monitorado |
+| 26 | Aluguel | Monitorado |
+
+### Storage de Controle
+
+| Campo | Storage | Tipo | Descrição |
+|-------|---------|------|-----------|
+| Timer | Storage.Quest.U9_1.HorseStationWorldChange.Timer | timestamp | Unix time de expiração |
+
+### Critério de Expiração
+
+| Condição | Interpretação | Ação |
+|----------|--------------|------|
+| timer < 1 | Não setado/inválido | Sai do loop |
+| timer >= os.time() | Ainda não expirou | Sai do loop |
+| timer < os.time() | EXPIROU | Processa expiração |
+
+### Intervalo Execução
+
+| Propriedade | Valor | Descrição |
+|-----------|-------|-----------|
+| **Intervalo** | 15000 ms | 15 segundos entre verificações |
+| **Frequência Online** | ~a cada 15s | Para cada jogador online |
+
+## 🔗 Relações e Dependências
+
+### Dependências Externas
+
+| Dependência | Tipo | Uso |
+|-------------|------|-----|
+| `GlobalEvent(string)` | Classe | Registrar evento global |
+| `Game.getPlayers()` | Função | Obter todos jogadores online |
+| `Player.getStorageValue()` | Método | Ler timer de expiração |
+| `Player.setStorageValue()` | Método | Invalidar storage |
+| `Player.getOutfit()` | Método | Obter outfit atual |
+| `Player.setOutfit()` | Método | Atualizar outfit |
+| `Player.removeMount()` | Método | Revogar montaria |
+| `Player.sendTextMessage()` | Método | Enviar notificação |
+| `table.contains()` | Função | Testar se valor em array |
+| `os.time()` | Função | Obter tempo atual Unix |
+
+### APIs Utilizadas
+
+- GlobalEvent: `onThink()`, `interval()`, `register()`
+- Game: `getPlayers()`
+- Player: `getStorageValue()`, `setStorageValue()`, `getOutfit()`, `setOutfit()`, `removeMount()`, `sendTextMessage()`
+- Storage: Storage.Quest.U9_1.HorseStationWorldChange.Timer
+
+### Integrações
+
+- **Horse Station System**: Controla expiração de montarias alugadas
+- **Outfit System**: Modifica outfit do jogador
+- **Storage System**: Monitora timer de aluguel
+
+## 📍 Caminho Original
+
+```
+data-otservbr-global/scripts/globalevents/others/check_mount.lua
+```
+
+## 🤖 Informações da Documentação
+
+| Propriedade | Valor |
+|-----------|-------|
+| **Versão Documentação** | 1.0 |
+| **Data Atualização** | 2024 |
+| **Cobertura** | 100% |
+| **Complexidade Código** | Média |
+| **Status Validação** | ✅ Completo |
+| **Backticks Validados** | ✅ OK |

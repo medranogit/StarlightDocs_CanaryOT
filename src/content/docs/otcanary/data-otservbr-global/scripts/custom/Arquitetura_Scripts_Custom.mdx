@@ -1,0 +1,1028 @@
+---
+title: Arquitetura - Custom Scripts
+description: Documentação técnica da arquitetura e estrutura dos scripts Custom do servidor Canary
+sidebar:
+    order: 1
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🎨 Arquitetura - Custom Scripts
+
+Guia completo sobre a arquitetura e estrutura técnica dos scripts **Custom** do servidor OTServ Canary. Entenda como implementar componentes especializados, sistemas customizados e features extras.
+
+---
+
+## 🎯 Sobre essa Pasta de Scripts
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/scripts/custom/` contém scripts **Lua** que implementam **features customizadas e especializadas** do servidor que não se encaixam em categorias padrão. Cada custom script adiciona funcionalidades únicas - sistemas de audio, controles administrativos, salas de treinamento, etc. Scripts custom são perfeitos para features próprias do servidor, experimentações ou sistemas complementares que aprimoram a experiência.
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Sistema de Audio/Visuais**: Sons ambientes baseado em zona/período
+- **Controles Administrativos**: Comandos para GMs/Admins (força período, resetar coisas)
+- **Salas de Treinamento**: Áreas especializadas para múltiplos players
+- **Features Únicas**: Sistemas específicos do servidor
+- **Eventos Especiais**: Lógicas que ocorrem em zonas/períodos
+- **Integração de Sistemas**: Conectar múltiplos scripts para funcionar juntos
+- **Period-based Logic**: Comportamento diferente baseado em dia/noite
+- **Grid Calculations**: Distribuir players em posições de forma inteligente
+- **Zone Events**: Reagir a entrada/saída de zonas
+- **Admin Commands**: TalkActions restritas para staff
+</Card>
+
+<Card title="Estrutura da Pasta" icon="list">
+A pasta `scripts/custom/` é organizada por **funcionalidade/sistema**:
+
+```
+custom/
+├── ambient_sounds.lua           (Sistema de áudio ambiente)
+├── force_period.lua             (Comando para forçar período)
+├── movement_trainer_entrance.lua (Entrada da sala de treinamento)
+└── movement_trainer_exit.lua     (Saída da sala de treinamento)
+```
+
+**Padrão de Organização**: Funcionalidades relacionadas podem usar múltiplos arquivos que se integram.
+
+**Histórico**: Conforme novas features customizadas são desenvolvidas, novos scripts são adicionados aqui.
+
+**Total**: 4 scripts documentados, cobrendo sistemas de áudio, período, e treinamento.
+
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Tipos de Custom Scripts](#tipos-de-custom-scripts)
+3. [Padrões de Implementação](#padrões-de-implementação)
+4. [Integração Entre Sistemas](#integração-entre-sistemas)
+5. [Exemplos Práticos](#exemplos-práticos)
+6. [Criando um Custom Script](#criando-um-custom-script)
+7. [Guia de Troubleshooting](#guia-de-troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="Entendendo Custom Scripts" icon="document">
+
+Um **Custom Script** é um script que:
+- **Implementa feature customizada** do servidor (não padrão)
+- **Pode usar qualquer tipo de registro**: MoveEvent, ZoneEvent, GlobalEvent, TalkAction, etc
+- **Frequentemente integra-se com outros scripts**: Múltiplos custom scripts trabalhando juntos
+- **É modular**: Facio de inserir/remover sem quebrar resto do servidor
+- **Pode ser específico do servidor**: Feature que só existe neste servidor
+
+### Categorias de Custom Scripts
+
+```lua
+-- Tipo 1: Event-Based
+-- Registra eventos de zona, globais, ou movimentos
+local event = ZoneEvent(zone)
+function event.afterEnter(zone, creature)
+    -- Executado quando entra na zona
+end
+event:register()
+
+-- Tipo 2: Command-Based
+-- Comandos para players ou admins
+local command = TalkAction("/comando")
+function command.onSay(player, words, param)
+    -- Executado quando fala o comando
+end
+command:register()
+
+-- Tipo 3: Scheduler-Based
+-- Executa em intervalos periódicos
+local globalEvent = GlobalEvent("MyEvent")
+function globalEvent.onThink(interval)
+    -- Executado a cada X segundos
+end
+globalEvent:register()
+
+-- Tipo 4: Handler-Based
+-- Responde a callbacks específicos
+local moveEvent = MoveEvent()
+function moveEvent.onStepIn(creature, item, position, fromPosition)
+    -- Executado ao pisar
+end
+moveEvent:register()
+```
+
+### Padrão Básico
+
+```lua
+-- 1. Definir dados/configuração
+local config = {
+    param1 = value1,
+    param2 = value2,
+}
+
+-- 2. Definir funções helper
+local function helperFunction()
+    -- Lógica compartilhada
+end
+
+-- 3. Registrar evento(s)
+local myEvent = SomeEventType()
+
+function myEvent.callback(...)
+    -- Implementação principal
+    return true
+end
+
+myEvent:register()
+```
+
+### Técnicas Avançadas
+
+```lua
+-- Múltiplos registros (mesmo script, diferentes eventos)
+local zone1 = ZoneEvent(Zone("zone-1"))
+local zone2 = ZoneEvent(Zone("zone-2"))
+
+function zone1.afterEnter(zone, creature)
+    -- Logic para zone-1
+end
+
+function zone2.afterEnter(zone, creature)
+    -- Logic para zone-2
+end
+
+zone1:register()
+zone2:register()
+
+-- Ou iterar para registrar múltiplos
+for _, zoneData in ipairs(zoneList) do
+    local event = ZoneEvent(Zone(zoneData.name))
+    function event.afterEnter(zone, creature)
+        -- Logic comum para todas as zonas
+    end
+    event:register()
+end
+```
+
+</Card>
+
+---
+
+## 🎪 Tipos de Custom Scripts
+
+<Card title="Padrões e Tipos Comuns" icon="layers">
+
+### Tipo 1: Zone-Based (Zona Específica)
+
+```lua
+-- Executa quando entra/sai de zona específica
+
+local zone = Zone("myzone")
+local zoneEvent = ZoneEvent(zone)
+
+function zoneEvent.afterEnter(zone, creature)
+    if creature:isPlayer() then
+        creature:say("Bem-vindo!")
+    end
+    return true
+end
+
+function zoneEvent.afterLeave(zone, creature)
+    if creature:isPlayer() then
+        creature:say("Adeus!")
+    end
+    return true
+end
+
+zoneEvent:register()
+```
+
+### Tipo 2: Period-Based (Dia/Noite)
+
+```lua
+-- Comportamento diferente baseado em período
+
+local function getEffectivePeriod()
+    if globalForcePeriod then
+        return globalForcePeriod
+    end
+    return getTibiaTimerDayOrNight()
+end
+
+local function onPeriodChange(period)
+    -- React a mudança de período
+    logger.info("Period changed to: {}", period)
+end
+
+-- Registrar para period changes
+-- GlobalEvent que reage a mudanças
+```
+
+### Tipo 3: Grid-Based (Distribuição em Grade)
+
+```lua
+-- Distribui players em grid de posições
+
+local config = {
+    firstPosition = { x = 100, y = 100, z = 7 },
+    distanceX = 5,
+    distanceY = 10,
+    columns = 4,
+    lines = 8,
+}
+
+local function findAvailableRoom(startPos, columns, lines)
+    for line = 0, lines - 1 do
+        for col = 0, columns - 1 do
+            local roomPos = {
+                x = startPos.x + (col * config.distanceX),
+                y = startPos.y + (line * config.distanceY),
+                z = startPos.z
+            }
+            if isTileAvailable(roomPos) then
+                return roomPos
+            end
+        end
+    end
+    return nil
+end
+```
+
+### Tipo 4: Multi-Position (Múltiplas Locações)
+
+```lua
+-- Registra mesmo evento em múltiplas posições
+
+local positions = {
+    { x = 100, y = 100, z = 7 },
+    { x = 200, y = 200, z = 7 },
+    { x = 300, y = 300, z = 7 },
+}
+
+local event = MoveEvent()
+
+for _, pos in ipairs(positions) do
+    event:position(pos)
+end
+
+function event.onStepIn(creature, item, position, fromPosition)
+    -- Mesmo callback para todas as posições
+    return true
+end
+
+event:register()
+```
+
+### Tipo 5: Integration-Based (Integração Entre Sistemas)
+
+```lua
+-- Conecta múltiplos sistemas que dependem um do outro
+
+-- Script 1: Força período (comando)
+-- Script 2: Ambientes reagem ao período (zonas)
+-- Integração: ambos usam variável global `forcePeriod`
+
+-- Script 1: force_period.lua
+_G.forcePeriod = false  -- Variável global
+
+-- Script 2: ambient_sounds.lua
+if _G.forcePeriod then
+    -- Use forced period
+else
+    -- Use natural period
+end
+```
+
+</Card>
+
+---
+
+## 🏗️ Padrões de Implementação
+
+<Card title="Padrões Avançados para Custom Scripts" icon="wrench">
+
+### Padrão 1: Configuration-Driven
+
+```lua
+-- Fácil customização através de tabela config
+
+local config = {
+    zones = {
+        "zone1", "zone2", "zone3"
+    },
+    soundDay = 100,
+    soundNight = 101,
+    soundLeave = 0,
+}
+
+for _, zoneName in ipairs(config.zones) do
+    local zoneEvent = ZoneEvent(Zone(zoneName))
+    
+    function zoneEvent.afterEnter(zone, creature)
+        local currentTime = getTibiaTimerDayOrNight()
+        local sound = (currentTime == "day") and config.soundDay or config.soundNight
+        creature:sendSoundEffect(sound)
+    end
+    
+    zoneEvent:register()
+end
+
+-- Resultado: Mudar config é trivial, sem mexer na lógica
+```
+
+### Padrão 2: Helper Functions
+
+```lua
+-- Funções auxiliares para lógica complexa
+
+local function isTileAvailable(position)
+    local tile = Tile(position)
+    if not tile then return false end
+    
+    if tile:getTopCreature() then return false end
+    if tile:getGround():hasProperty(CONST_PROP_BLOCKSOLID) then return false end
+    
+    for i = 1, tile:getItemCount() do
+        if isBlocking(tile:getItems()[i]) then
+            return false
+        end
+    end
+    
+    return true
+end
+
+local function findNextAvailable(startPos, step)
+    local pos = {x = startPos.x, y = startPos.y, z = startPos.z}
+    while true do
+        if isTileAvailable(pos) then
+            return pos
+        end
+        pos.x = pos.x + step  -- Incrementa busca
+    end
+end
+
+-- Uso: Separar complexidade da lógica principal
+local moveEvent = MoveEvent()
+function moveEvent.onStepIn(creature, item, pos, fromPos)
+    local availablePos = findNextAvailable(config.firstPosition, 5)
+    creature:teleportTo(availablePos)
+    return true
+end
+```
+
+### Padrão 3: Validation Guards
+
+```lua
+-- Validar condições antes de executar
+
+local function executeIfValid(player, callback)
+    -- Guard 1: Player exists
+    if not player then
+        return false
+    end
+    
+    -- Guard 2: Player online
+    if not player:isOnline() then
+        logger.warn("Player offline: {}", player:getName())
+        return false
+    end
+    
+    -- Guard 3: Custom condition
+    if not isAllowedInZone(player) then
+        player:sendCancelMessage("Você não tem permissão!")
+        return false
+    end
+    
+    -- Executa só se todos os guards passaram
+    return callback(player)
+end
+
+-- Uso simples
+executeIfValid(player, function(p)
+    p:say("Executado com segurança!")
+    return true
+end)
+```
+
+### Padrão 4: Callback Chaining
+
+```lua
+-- Encadear múltiplas ações
+
+local function chainActions(actions)
+    for _, action in ipairs(actions) do
+        if not action() then
+            logger.error("Action failed in chain")
+            return false
+        end
+    end
+    return true
+end
+
+-- Uso
+local moveEvent = MoveEvent()
+function moveEvent.onStepIn(creature, item, position, fromPosition)
+    return chainActions({
+        function() return validatePlayer(creature) end,
+        function() return checkLevel(creature, 50) end,
+        function() return executeMainLogic(creature) end,
+        function() return sendFeedback(creature) end,
+    })
+end
+```
+
+### Padrão 5: Global State Management
+
+```lua
+-- Gerenciar estado global (cuidado!)
+
+_G.globalState = {
+    forcePeriod = false,        -- Pode ser "day", "night", ou false
+    trainingRoomStatus = {},    -- Rastreia salas em uso
+    lastPeriodChange = os.time(),
+}
+
+-- Funções para acessar state seguramente
+local function getGlobalState(key)
+    return _G.globalState[key]
+end
+
+local function setGlobalState(key, value)
+    _G.globalState[key] = value
+    logger.debug("Global state {} = {}", key, value)
+end
+
+-- Uso
+if getGlobalState("forcePeriod") then
+    -- Use forced period
+else
+    -- Use natural period
+end
+```
+
+</Card>
+
+---
+
+## 🔗 Integração Entre Sistemas
+
+<Card title="Como Custom Scripts Trabalham Juntos" icon="link">
+
+### Arquivo 1: force_period.lua
+```lua
+-- Define variável global
+_G.forcePeriod = false
+
+-- Command para alterá-la
+local cmd = TalkAction("/forceperiod")
+function cmd.onSay(player, words, param)
+    if param == "day" then
+        _G.forcePeriod = "day"
+    elseif param == "night" then
+        _G.forcePeriod = "night"
+    else
+        _G.forcePeriod = false  -- auto
+    end
+end
+cmd:register()
+```
+
+### Arquivo 2: ambient_sounds.lua
+```lua
+-- Lê a variável global
+local function getEffectivePeriod()
+    if _G.forcePeriod then
+        return _G.forcePeriod == "night" and NIGHT or DAY
+    end
+    return getTibiaTimerDayOrNight() == "night" and NIGHT or DAY
+end
+
+-- Zone events usam getEffectivePeriod()
+local event = ZoneEvent(zone)
+function event.afterEnter(zone, creature)
+    local period = getEffectivePeriod()  -- Respeita força manual
+    local sound = getSoundForPeriod(period)
+    creature:sendSoundEffect(sound)
+end
+```
+
+### Integração Result
+```
+Admin usa /forceperiod night
+    ↓
+_G.forcePeriod = "night"
+    ↓
+Player entra na zona
+    ↓
+ambient_sounds.lua lê _G.forcePeriod
+    ↓
+Envia som de noite (mesmo se for dia)
+```
+
+### Padrão de Integração
+
+```lua
+-- Padrão: Variáveis globais para comunicação
+
+-- Arquivo A: Define e fornece controle
+_G.myFeature = {
+    enabled = true,
+    config = { ... },
+    lastUpdate = os.time(),
+}
+
+-- Arquivo B: Lê a variável
+if _G.myFeature.enabled then
+    -- Comportamento quando feature está ativa
+end
+
+-- Arquivo C: Reage a mudanças
+GlobalEvent("FeatureMonitor"):onThink(1000, function()
+    if _G.myFeature.lastUpdate > lastChangedTime then
+        -- Algo mudou, re-sincronizar
+    end
+end)
+```
+
+</Card>
+
+---
+
+## 📚 Exemplos Práticos
+
+<Tabs>
+<TabItem label="Zone Audio">
+
+**Sistema simples de som em zona**
+
+```lua
+local ZONE_NAME = "myzone"
+local SOUND_ENTER = 100
+local SOUND_LEAVE = 0
+
+local zone = Zone(ZONE_NAME)
+local event = ZoneEvent(zone)
+
+function event.afterEnter(zone, creature)
+    if creature:isPlayer() then
+        creature:sendAmbientSoundEffect(SOUND_ENTER)
+        return true
+    end
+    return false
+end
+
+function event.afterLeave(zone, creature)
+    if creature:isPlayer() then
+        creature:sendAmbientSoundEffect(SOUND_LEAVE)
+        return true
+    end
+    return false
+end
+
+event:register()
+```
+
+</TabItem>
+
+<TabItem label="Admin Command">
+
+**Comando restrito a admins**
+
+```lua
+local cmd = TalkAction("/mycommand")
+
+function cmd.onSay(player, words, param)
+    logCommand(player, words, param)
+    
+    if param == "" then
+        player:sendCancelMessage("Use: /mycommand value")
+        return true
+    end
+    
+    -- Fazer algo com param
+    _G.myGlobalSetting = param
+    
+    player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "Setting: " .. param)
+    return true
+end
+
+cmd:separator(" ")
+cmd:groupType("god")  -- Apenas admins
+cmd:register()
+```
+
+</TabItem>
+
+<TabItem label="Grid Distribution">
+
+**Distribuir players em grid de salas**
+
+```lua
+local config = {
+    firstPosition = { x = 100, y = 100, z = 7 },
+    distanceX = 10,
+    distanceY = 10,
+    columns = 5,
+    lines = 10,
+}
+
+local function findAvailable(startPos)
+    for line = 0, config.lines - 1 do
+        for col = 0, config.columns - 1 do
+            local pos = {
+                x = startPos.x + (col * config.distanceX),
+                y = startPos.y + (line * config.distanceY),
+                z = startPos.z
+            }
+            if isTileEmpty(pos) then
+                return pos
+            end
+        end
+    end
+    return nil
+end
+
+local event = MoveEvent()
+function event.onStepIn(creature, item, position, fromPosition)
+    if not creature:isPlayer() then
+        return true
+    end
+    
+    local room = findAvailable(config.firstPosition)
+    if room then
+        creature:teleportTo(room)
+        creature:getPosition():sendMagicEffect(CONST_ME_TELEPORT)
+    else
+        creature:sendCancelMessage("No rooms available")
+    end
+    
+    return true
+end
+
+event:position({ x = 50, y = 50, z = 7 })
+event:register()
+```
+
+</TabItem>
+
+<TabItem label="Multi-Position">
+
+**Mesmo evento em várias posições**
+
+```lua
+local positions = {
+    { x = 100, y = 100, z = 7 },
+    { x = 200, y = 200, z = 7 },
+    { x = 300, y = 300, z = 7 },
+}
+
+local event = MoveEvent()
+
+-- Registrar todas as posições
+for _, pos in ipairs(positions) do
+    event:position(pos)
+end
+
+-- Um callback para todas
+function event.onStepIn(creature, item, position, fromPosition)
+    creature:teleportTo(Position(400, 400, 7))
+    return true
+end
+
+event:register()
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🛠️ Criando um Custom Script
+
+<Card title="Guia Passo a Passo" icon="wrench">
+
+### Passo 1: Determinar Tipo
+
+Escolha qual tipo melhor se encaixa:
+- **Zone-based**: Reage a entrada/saída de zona
+- **Period-based**: Comportamento varia com período
+- **Command-based**: Admin ou player commands
+- **Grid-based**: Distribuição inteligente
+- **Multi-feature**: Integração de múltiplos scripts
+
+### Passo 2: Criar Arquivo
+
+```bash
+# Nome descritivo e minúsculo com underscore
+# Exemplos:
+# my_custom_feature.lua
+# admin_tool.lua
+# zone_effects.lua
+```
+
+### Passo 3: Implementar Básico
+
+```lua
+-- 1. Configuration (se aplicável)
+local config = {
+    param1 = value1,
+}
+
+-- 2. Helper Functions
+local function helperFunc()
+    -- Lógica auxiliar
+end
+
+-- 3. Main Event Registration
+local myEvent = SomeEventType()
+
+function myEvent.callback(...)
+    -- Implementação principal
+    return true
+end
+
+myEvent:register()
+```
+
+### Passo 4: Adicionar Lógica
+
+```lua
+function myEvent.callback(creature, item, position, fromPosition)
+    -- Validar
+    if not creature:isPlayer() then
+        return false
+    end
+    
+    -- Executar
+    logger.debug("Processing: {}", creature:getName())
+    
+    -- Feedback
+    creature:say("Algo aconteceu!")
+    
+    return true
+end
+```
+
+### Passo 5: Testar
+
+```bash
+# 1. Salve arquivo em scripts/custom/
+# 2. Reinicie servidor
+# 3. Teste funcionalidade
+# 4. Verifique logs para erros
+# 5. Refine conforme necessário
+```
+
+### Exemplo Completo
+
+```lua
+-- scripts/custom/my_first_custom.lua
+
+-- Configuration
+local CONFIG = {
+    zoneName = "myzone",
+    messageEnter = "Bem-vindo à minha zona!",
+    messageLeave = "Você deixou minha zona!",
+}
+
+-- Main Event
+local myZone = Zone(CONFIG.zoneName)
+local zoneEvent = ZoneEvent(myZone)
+
+function zoneEvent.afterEnter(zone, creature)
+    if not creature:isPlayer() then
+        return false
+    end
+    
+    local player = creature:getPlayer()
+    player:say(CONFIG.messageEnter)
+    
+    logger.info("Player entered zone: {}", player:getName())
+    
+    return true
+end
+
+function zoneEvent.afterLeave(zone, creature)
+    if not creature:isPlayer() then
+        return false
+    end
+    
+    local player = creature:getPlayer()
+    player:say(CONFIG.messageLeave)
+    
+    logger.info("Player left zone: {}", player:getName())
+    
+    return true
+end
+
+zoneEvent:register()
+```
+
+</Card>
+
+---
+
+## 🔧 Guia de Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Custom script não executa
+
+**Causa**: Arquivo não está em `scripts/custom/` ou evento não registrado  
+**Solução**:
+```lua
+-- ✅ Correto - Arquivo em lugar certo e registrado
+local event = MoveEvent()
+function event.onStepIn(creature, item, position, fromPosition)
+    return true
+end
+event:register()  -- Essencial!
+
+-- ❌ Errado - Sem register()
+local event = MoveEvent()
+function event.onStepIn(creature, item, position, fromPosition)
+    return true
+end
+-- Sem event:register() - NÃO FUNCIONA!
+```
+
+### Problema: Múltiplas posições não funcionam
+
+**Causa**: Registrou event:register() antes de adicionar todas as posições  
+**Solução**:
+```lua
+-- ✅ Correto - Adiciona posições ANTES de registrar
+local event = MoveEvent()
+event:position({ x = 100, y = 100, z = 7 })
+event:position({ x = 200, y = 200, z = 7 })
+event:position({ x = 300, y = 300, z = 7 })
+
+function event.onStepIn(creature, item, position, fromPosition)
+    return true
+end
+
+event:register()  -- Registra DEPOIS
+
+-- ❌ Errado - Registra no meio
+local event = MoveEvent()
+event:position({ x = 100, y = 100, z = 7 })
+event:register()  -- ← Cedo demais!
+event:position({ x = 200, y = 200, z = 7 })  -- ← Não funciona
+```
+
+### Problema: Variável global não persiste
+
+**Causa**: Variável local em vez de _G (global)  
+**Solução**:
+```lua
+-- ✅ Correto - Variável global
+_G.forcePeriod = false  -- Acessível de anywhere
+
+-- Script 2 pode ler/alterar
+if _G.forcePeriod then
+    -- ...
+end
+
+-- ❌ Errado - Variável local
+local forcePeriod = false  -- Só neste arquivo!
+-- Outro arquivo NÃO consegue ler
+```
+
+### Problema: Zone event não dispara
+
+**Causa**: Zona não existe ou nome incorreto  
+**Solução**:
+```lua
+-- ✅ Correto - Verifica se zona existe
+local zoneObject = Zone("myzone")
+if zoneObject then
+    local event = ZoneEvent(zoneObject)
+    -- ...
+end
+
+-- ✅ Verifica nome exatamente
+-- Se zone.xml define <zone name="my-zone">, use "my-zone" EXATAMENTE
+
+-- ❌ Errado - Nome errado
+local event = ZoneEvent(Zone("myzone"))  -- Se arquivo é "my-zone"
+```
+
+### Problema: Grid muito lento para achar sala
+
+**Causa**: Grid muito grande ou muitos players  
+**Solução**:
+```lua
+-- ✅ Correto - Cache de salas disponíveis
+local function findAvailableQuick()
+    -- Busca nur próximas salas (não todas)
+    for i = 1, 20 do
+        local pos = getRandomRoom()
+        if isTileEmpty(pos) then
+            return pos
+        end
+    end
+    return nil
+end
+
+-- ❌ Ineficiente - Itera todas
+for line = 0, 100 do
+    for col = 0, 100 do
+        -- Muito lento com muitas salas
+    end
+end
+```
+
+### Problema: Comando diz "Unknown command"
+
+**Causa**: Comando não registrado ou sintaxe errada  
+**Solução**:
+```lua
+-- ✅ Correto
+local cmd = TalkAction("/mycommand")
+function cmd.onSay(player, words, param)
+    return true
+end
+cmd:separator(" ")
+cmd:register()
+
+-- ✅ Parâmetros opcionais
+cmd:groupType("god")  -- Apenas admins
+cmd:accountType(ACCOUNT_TYPE_NORMAL)  -- Conta específica
+
+-- ❌ Errado - Sem register()
+local cmd = TalkAction("/mycommand")
+function cmd.onSay(player, words, param)
+    return true
+end
+-- Sem cmd:register() - FALHA!
+```
+
+</Card>
+
+---
+
+## 📖 Referência Rápida
+
+<Aside type="tip">
+
+**Estrutura Padrão de Custom Script**:
+```lua
+-- Config
+local config = { ... }
+
+-- Helpers
+local function helper() ... end
+
+-- Event Registration
+local myEvent = EventType()
+function myEvent.callback(...) 
+    return true 
+end
+myEvent:register()
+```
+
+**Tipos de Eventos Comuns**:
+- `MoveEvent()` - Pisar em tile
+- `ZoneEvent()` - Entrar/sair zona
+- `GlobalEvent()` - Periódico/time-based
+- `TalkAction()` - Comandos de fala
+
+**Boas Práticas**:
+- ✅ Nomeie descritivamente
+- ✅ Use config tables
+- ✅ Faça funções auxiliares
+- ✅ Valide entradas
+- ✅ Logue progresso
+- ✅ Integre com sistema global
+
+**Integration Pattern**:
+- Use `_G.variableName` para comunicação entre scripts
+- Export funções úteis para global
+- Documente dependências
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_Scripts_Custom.mdx](#)
+2. **Analise Scripts Existentes**: Examine os 4 scripts custom fornecidos
+3. **Crie Seu Primeiro Custom**: Comece com uma feature simples
+4. **Integre com Outros**: Faça múltiplos scripts trabalhar juntos
+5. **Expanda Sistema**: Adicione mais features conforme necessário
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Custom Scripts Documentados:** 4  
+**Categorias**: Audio, Administration, Training
+
+Para dúvidas, consulte o arquivo de catálogo ou analise scripts similares.
+</Aside>

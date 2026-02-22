@@ -1,0 +1,938 @@
+---
+title: Arquitetura - World
+description: Documentação técnica da arquitetura e estrutura dos arquivos de mundo (World) do servidor Canary
+---
+
+import { Card, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# 🌍 Arquitetura - World
+
+Guia completo sobre a arquitetura e estrutura técnica dos arquivos de **World** do servidor OTServ Canary. Entenda como o mundo é organizado, configurado e expandido com eventos anuais, quests imersivas e mudanças dinâmicas.
+
+---
+
+## 🎯 Sobre essa Pasta de World
+
+<Card title="O que é?" icon="information">
+A pasta `data-otservbr-global/world/` contém todos os arquivos que definem **configurações do mundo do servidor**, incluindo:
+- **Mapas OTBM** - Arquivos binários que contêm o layout físico do mundo
+- **Configurações XML** - Casas, NPCs, Monstros e Zonas
+- **Eventos Anuais** - World changes sazonais (Winterlight Solstice, etc.)
+- **Quests Imersivas** - Áreas de quest específicas com mapas e NPCs
+- **World Changes Dinâmicos** - Eventos que alteram o mundo em datas específicas (Full Moon, Fury Gates, etc.)
+
+O world é o **coração do servidor** - define onde os jogadores podem estar, como o mapa parece, quais eventos ocorrem e como o mundo muda ao longo do tempo.
+</Card>
+
+<Card title="Casos de Uso" icon="target">
+Você utilizará essa pasta quando precisar:
+
+- **Adicionar novo mapa/área**: Criar islandas, cavernas, boss arenas
+- **Modificar casas**: Adicionar/remover casas jogáveis, ajustar preços
+- **Configurar NPCs**: Definir posições, diálogos, função (vendedor, quest giver, etc.)
+- **Ajustar monstros**: Adicionar novos monstros ao mundo, modificar spawns
+- **Criar zonas de PvP**: Definir áreas onde PvP é permitido/bloqueado
+- **Implementar eventos sazonais**: Winterlight, Orcsoberfest, etc.
+- **Adicionar world changes**: Full Moon, Nightmare Isle, eventos periódicos
+- **Criar novas quests**: Soul War, Ferumbras, The Percht Queen, etc.
+- **World expansion**: Adicionar continentes, cidades, dungeons
+</Card>
+
+<Card title="Estrutura Geral da Pasta" icon="list">
+A pasta `world/` é organizada em **categorias temáticas**:
+
+```
+world/
+├── [Files Raiz - Base World]
+│   ├── otservbr-house.xml        (Casas padrão)
+│   ├── otservbr-monster.xml      (Monstros padrão)
+│   ├── otservbr-npc.xml          (NPCs padrão)
+│   └── otservbr-zones.xml        (Zonas padrão)
+│
+├── annual_events/                (Eventos Anuais Sazonais)
+│   └── winterlight_solstice/
+│
+├── custom/                       (Customizações do Servidor)
+│   ├── otservbr-custom-house.xml
+│   ├── otservbr-custom-monster.xml
+│   ├── otservbr-custom-npc.xml
+│   ├── otservbr-custom-zones.xml
+│   └── otservbr-custom.otbm
+│
+├── quest/                        (Áreas de Quest Imersivas - 4 quests)
+│   ├── cults_of_tibia/
+│   ├── ferumbras_ascendant/
+│   ├── soul_war/
+│   └── the_dream_courts/
+│
+└── world_changes/               (Mudanças Dinâmicas do Mundo - 4 eventos)
+    ├── full_moon/
+    ├── fury_gates/
+    ├── nightmare_isle/
+    └── oriental_trader/
+```
+
+**Total**: 4 XML bases + 4 eventos anuais + 4 quests + 4 world changes = **Estrutura completa com 25+ arquivos de mapa**
+
+</Card>
+
+---
+
+## 📋 Índice de Conteúdo
+
+1. [Estrutura Geral](#estrutura-geral)
+2. [Arquivos de Base do World](#arquivos-de-base-do-world)
+3. [Formato XML](#formato-xml)
+4. [Formato OTBM](#formato-otbm)
+5. [Eventos Anuais](#eventos-anuais)
+6. [Quests Imersivas](#quests-imersivas)
+7. [World Changes Dinâmicos](#world-changes-dinâmicos)
+8. [Como Expandir o World](#como-expandir-o-world)
+9. [Padrões de Organização](#padrões-de-organização)
+10. [Troubleshooting](#troubleshooting)
+
+---
+
+## 🔍 Estrutura Geral
+
+<Card title="Camadas do World System" icon="layers">
+
+O world é construído em **camadas hierárquicas**:
+
+### Camada 1: Mapa Base (OTBM)
+
+```
+OTBM (Tibia Map Binary File)
+├── Layout físico dos tiles
+├── Estruturas (paredes, pisos, objetos)
+├── Spawn points
+└── Waypoints/Portals
+```
+
+**Responsabilidade**: Definir onde o players podem andar e o que veem visualmente.
+
+### Camada 2: Configuração Estática (XML)
+
+```
+XML Configuration Files
+├── Houses (otservbr-house.xml)       - Casas jogáveis
+├── Monsters (otservbr-monster.xml)   - Spawns de monstros
+├── NPCs (otservbr-npc.xml)           - Posições/tipos de NPCs
+└── Zones (otservbr-zones.xml)        - Definições de zonas
+```
+
+**Responsabilidade**: Definir o que existe no mundo (NPCs, monstros, casas).
+
+### Camada 3: Eventos Sazonais (Annual Events)
+
+```
+Annual Events
+├── Winterlight Solstice (Dezembro)
+└── [Outras celebrações sazonais]
+```
+
+**Responsabilidade**: Adicionar conteúdo temporário durante períodos específicos.
+
+### Camada 4: Quests Imersivas (Quest Areas)
+
+```
+Quest Areas (Integrated into World)
+├── Cults of Tibia
+├── Ferumbras Ascendant
+├── Soul War
+└── The Dream Courts
+```
+
+**Responsabilidade**: Fornecer mapas e ambientes para quests complexas.
+
+### Camada 5: Mudanças Dinâmicas (World Changes)
+
+```
+World Changes (Dynamic Events)
+├── Full Moon (Boss Arena Muda)
+├── Fury Gates (Novos NPC/Itens)
+├── Nightmare Isle (Área Especial)
+└── Oriental Trader (Trader Especial)
+```
+
+**Responsabilidade**: Alterar o mundo em datas/períodos específicos.
+
+</Card>
+
+---
+
+## 📄 Arquivos de Base do World
+
+<Card title="Configurações XML Principais" icon="document">
+
+### 1. otservbr-house.xml
+
+```xml
+<!-- Define casas jogáveis no mundo -->
+<house id="1" name="House Name" town="3" entry="32000,31000,7">
+    <door id="1" x="32001" y="31000" z="7" />
+</house>
+```
+
+**Conteúdo:**
+- ID único de cada casa
+- Nome visível para jogadores
+- Cidade associada (town ID)
+- Ponto de entrada (entry)
+- Posições de portas
+
+**Uso**: Gerenciar propriedades imobiliárias, aluguéis, decorações pessoais.
+
+### 2. otservbr-monster.xml
+
+```xml
+<!-- Define spawns de monstros no mundo -->
+<spawn type="monster" x="32000" y="31000" z="7">
+    <monstertype name="Demon" />
+    <monstertype name="Dragon Lord" />
+</spawn>
+```
+
+**Conteúdo:**
+- Posição de spawn
+- Tipo(s) de monstros
+- Quantidade/frequência (implicado pelo tipo)
+
+**Uso**: Definir áreas de encontro, dificuldade regional, balanceamento de monstros.
+
+### 3. otservbr-npc.xml
+
+```xml
+<!-- Define posições e tipos de NPCs -->
+<npc id="1" name="NPC Name" script="script_name.lua">
+    <position x="32000" y="31000" z="7" />
+</npc>
+```
+
+**Conteúdo:**
+- ID único do NPC
+- Nome visível
+- Script Lua associado
+- Posição no mundo
+
+**Uso**: Fornecer NPCs para vendas, quests, informações.
+
+### 4. otservbr-zones.xml
+
+```xml
+<!-- Define zonas (áreas com propriedades comuns) -->
+<zone name="Thais" type="normal">
+    <rect x1="32000" y1="31000" x2="32100" y2="31100" z="7" />
+</zone>
+```
+
+**Conteúdo:**
+- Nome/tipo de zona
+- Retângulo de área (coordenadas)
+- Propriedades (PvP, agressão permitida, etc.)
+
+**Uso**: Controlar regras regionais, restrições de PvP, ações de comando.
+
+</Card>
+
+---
+
+## 💻 Formato XML
+
+<Tabs>
+<TabItem label="Estrutura Básica">
+
+### Elementos Principais
+
+```xml
+<!-- Raiz do documento -->
+<config>
+    <!-- Definições individuais -->
+    <house id="1" name="House Name" .../>
+    <spawn type="monster" x="32000" y="31000" z="7" .../>
+    <npc id="1" name="NPC Name" .../>
+    <zone name="Thais" type="normal" .../>
+</config>
+```
+
+### Atributos Comuns
+
+```xml
+<!-- Posição no mundo -->
+<element x="32000" y="31000" z="7" />
+
+<!-- Identificação -->
+<element id="1" name="Name" type="Type" />
+
+<!-- Referência a script/tipo -->
+<element script="script_name.lua" monstertype="Dragon" />
+
+<!-- Dados numéricos -->
+<element rent="1000" townid="3" level="10" />
+```
+
+</TabItem>
+
+<TabItem label="Exemplo Completo">
+
+```xml
+<!-- Exemplo: otservbr-house.xml partial -->
+<config>
+    <house id="1" 
+           name="Small House" 
+           town="3" 
+           entry="32000,31000,7"
+           rent="5000"
+           level="0">
+        <door id="1" x="32001" y="31000" z="7" />
+        <door id="2" x="32001" y="31001" z="7" />
+    </house>
+    
+    <house id="2" 
+           name="Medium House" 
+           town="4" 
+           entry="32050,31050,7"
+           rent="10000"
+           level="20">
+        <door id="1" x="32051" y="31050" z="7" />
+    </house>
+</config>
+```
+
+**Leitura:**
+- Casa ID 1: Thais (town 3), 5000 gold/mês, level 0
+- Casa ID 2: Carlin (town 4), 10000 gold/mês, level 20
+
+</TabItem>
+
+<TabItem label="Validação">
+
+### Verificações Importantes
+
+```xml
+<!-- ✅ Válido -->
+<house id="1" name="House" town="3" entry="32000,31000,7" />
+
+<!-- ❌ Inválido - ID duplicado -->
+<house id="1" name="House1" ... />
+<house id="1" name="House2" ... />  <!-- Erro: ID já existe -->
+
+<!-- ❌ Inválido - Posição fora do mundo -->
+<house id="3" entry="60000,60000,10" ... />  <!-- Fora dos limites -->
+
+<!-- ❌ Inválido - Town ID não existe -->
+<house id="4" town="999" ... />  <!-- Town 999 não existe -->
+```
+
+</TabItem>
+</Tabs>
+
+---
+
+## 🗺️ Formato OTBM
+
+<Card title="Arquivos de Mapa Binários" icon="map">
+
+### O que é OTBM?
+
+**OTBM** (Otland Tibia Binary Map) é um **formato binário** que armazena o mapa do Tibia.
+
+```
+.otbm (Binary)
+├── Tile Data (Pixels do mapa)
+│   └── Terreno, estruturas, objetos
+├── Spawn Markers
+│   └── Posições onde NPCs/monstros spawnnam
+├── Waypoints
+│   └── Pontos de referência ou teletransportes
+└── Metadados
+    └── Versão, tamanho, propriedades
+```
+
+### Criação e Edição
+
+**Ferramentas:**
+- **Tibia Map Editor** - Editor padrão para .otbm
+- **Remere's Map Editor** - Editor visual moderno
+- **OTLand Tools** - Ferramentas de exportação/conversão
+
+**Fluxo Comum:**
+```
+1. Abrir arquivo .otbm em editor
+2. Desenhar/modificar tiles
+3. Adicionar spawns (se necessário)
+4. Verificar erros
+5. Salvar e testar no servidor
+```
+
+### Estrutura para Mapas de Quest/Event
+
+```
+Quest Map (ex: Soul War - Ebb and Flow)
+├── Base Map (ebb-flow.otbm)
+│   └── Mapa padrão da área
+├── Variant A (ebb-flow-inundate.otbm)
+│   └── Mapa com água (fase enchented)
+└── Variant B (ebb-flow-empty.otbm)
+    └── Mapa seco (fase dreno)
+```
+
+**Uso**: Permitir que o mundo mude dinamicamente durante eventos.
+
+</Card>
+
+---
+
+## 🎉 Eventos Anuais
+
+<Card title="Annual Events System" icon="calendar">
+
+### Estrutura
+
+```
+annual_events/
+└── winterlight_solstice/
+    ├── island.otbm              (Mapa da ilha)
+    ├── island-monster.xml       (Monstros)
+    ├── island-npc.xml           (NPCs)
+    └── README.md
+```
+
+### Winterlight Solstice (Dezembro)
+
+**O que é:**
+- Evento anual de inverno
+- Permite desafiar **The Percht Queen**
+- Adiciona island temporária ao mundo
+
+**Datas:**
+- Dezembro (período específico)
+
+**Mapa:**
+- Local: Orcsoberfest Island (posição compartilhada)
+- Coordenadas: 33768,31051,7
+- Contém arena para boss fight
+
+**NPCs/Monstros:**
+- The Percht Queen (boss)
+- Monstros temáticos de inverno
+
+### Como Eventos Anuais Funcionam
+
+```
+1. Evento é configurado com datas no servidor
+2. Em data específica, worldchange é ativado
+3. Arquivo .otbm especial é carregado
+4. Mapas alternativos substituem seções do mundo
+5. NPCs/monstros especiais spawnam
+6. Após período, volta ao normal
+```
+
+**Integração:**
+- Eventos anuais usam o **mesmo sistema world_changes**
+- Diferem apenas em periodicidade e temática
+
+</Card>
+
+---
+
+## 📜 Quests Imersivas
+
+<Card title="Quest Area System (4 Quests Principais)" icon="scroll">
+
+### 1. Cults of Tibia (Seita Maldita)
+
+```
+quest/cults_of_tibia/
+├── misguided/
+│   ├── illusion.otbm            (Arena de ilusão)
+│   ├── illusion-monster.xml
+│   ├── reality.otbm             (Arena real)
+│   ├── reality-monster.xml
+│   └── README.md
+```
+
+**Campaign Quest**: Revelada progressivamente  
+**Boss**: Fera de Ilusão  
+**Mecânica**: Múltiplas arenas, realidade/ilusão
+
+---
+
+### 2. Ferumbras Ascendant (Ascensão de Ferumbras)
+
+```
+quest/ferumbras_ascendant/
+├── habitats.otbm                (Habitat do boss)
+└── README.md
+```
+
+**Campaign Quest**: Progressão da história  
+**Boss**: Ferumbras (versão ascendida)  
+**Dificuldade**: Muito alta
+
+---
+
+### 3. Soul War (Guerra da Alma)
+
+```
+quest/soul_war/
+├── ebb_and_flow/
+│   ├── ebb-flow.otbm            (Mapa padrão)
+│   ├── ebb-flow-inundate.otbm   (Fase encharcada)
+│   ├── ebb-flow-empty.otbm      (Fase seca)
+│   └── README.md
+```
+
+**Campaign Quest**: Conflito com hemoplague  
+**Boss**: Hemoplague  
+**Mecânica**: Mapa muda entre fases (inundado/seco)
+
+---
+
+### 4. The Dream Courts (Cortes do Sonho)
+
+```
+quest/the_dream_courts/
+├── alptramun.otbm               (Boss arena 1)
+├── izcandar_the_banished.otbm   (Boss arena 2)
+├── malofur_mangrinder.otbm      (Boss arena 3)
+├── maxxenius.otbm               (Boss arena 4)
+└── plagueroot.otbm              (Boss arena 5)
+```
+
+**Campaign Quest**: Série de boss fights  
+**Bosses**: 5 bosses diferentes  
+**Estrutura**: Cada arquivo = uma arena
+
+---
+
+### Integração com Scripts
+
+```lua
+-- Script de quest usa coordenadas do world
+function onKill(creature, killer)
+    -- Localiza boss em área específica
+    if creature:getName() == "Hemoplague" then
+        -- Mapa está em coordenadas soul_war/ebb_and_flow
+        -- Script sabe onde procurar
+    end
+end
+```
+
+</Card>
+
+---
+
+## 🌙 World Changes Dinâmicos
+
+<Card title="Dynamic World Change Events (4 Eventos)" icon="zap">
+
+### 1. Full Moon (Lua Cheia)
+
+```
+world_changes/full_moon/
+├── final.otbm                   (Mapa final/boss arena)
+├── middle.otbm                  (Estágio intermediário)
+└── README.md
+```
+
+**Periodicidade**: 12-14 de cada mês  
+**Boss**: Feroxa  
+**Mudança**: Arena muda durante luta (3 estágios)
+
+---
+
+### 2. Fury Gates (Portões da Fúria)
+
+```
+world_changes/fury_gates/
+├── abdendriel.otbm
+├── ankrahmun.otbm
+├── carlin.otbm
+├── darashia.otbm
+├── edron.otbm
+├── kazordoon.otbm
+├── libertybay.otbm
+├── porthope.otbm
+├── thais.otbm
+├── venore.otbm
+└── README.md
+```
+
+**Periodicidade**: Período específico  
+**NPCs**: Fury/Demons em várias cidades  
+**Mudança**: Novos NPCs aparecem, novas áreas desbloqueadas
+
+---
+
+### 3. Nightmare Isle (Ilha do Pesadelo)
+
+```
+world_changes/nightmare_isle/
+├── ankrahmun-north.otbm        (Variante norte)
+├── darashia-north.otbm         (Variante norte)
+├── darashia-west.otbm          (Variante oeste)
+└── README.md
+```
+
+**Periodicidade**: Período específico  
+**Área**: Nightmare Isle (especial)  
+**Mudança**: Layou da ilha muda, novos spawns
+
+---
+
+### 4. Oriental Trader (Vendedor Oriental)
+
+```
+world_changes/oriental_trader/
+├── ankrahmun.otbm
+├── carlin.otbm
+├── libertybay.otbm
+└── README.md
+```
+
+**Periodicidade**: Período específico  
+**Funcionalidade**: Trader especial em cidades  
+**Mudança**: NPCs especiais aparecem com novos itens
+
+---
+
+### Como World Changes Funcionam
+
+```
+Timeline:
+1. Servidor inicia (carrega otbm padrão)
+2. Script monitora data/hora
+3. Em data específica, mundo é recarregado
+4. Novo .otbm é carregado (substitui seção)
+5. Novos NPCs/monstros spawnam
+6. Após período, volta ao .otbm padrão
+
+Exemplo (Full Moon):
+├── Dias 1-11: Mapa normal (middle.otbm)
+├── Dias 12-14: Boss arena (final.otbm)
+└── Dias 15-30: Volta ao normal
+```
+
+</Card>
+
+---
+
+## 🛠️ Como Expandir o World
+
+<Card title="Guia para Adicionar Conteúdo" icon="wrench">
+
+### Caso 1: Adicionar Nova Casa
+
+```xml
+<!-- Editar: otservbr-house.xml -->
+<house id="NOVO_ID" 
+       name="Minha Casa" 
+       town="3" 
+       entry="32500,31500,7"
+       rent="5000"
+       level="0">
+    <door id="1" x="32501" y="31500" z="7" />
+</house>
+```
+
+**Passos:**
+1. Encontrar próximo ID disponível
+2. Escolher localização (deve estar no mapa)
+3. Definir cidade (town ID)
+4. Adicionar portas
+5. Testar no servidor
+
+---
+
+### Caso 2: Adicionar Novo NPC
+
+```xml
+<!-- Editar: otservbr-npc.xml -->
+<npc id="NOVO_ID" name="Vendedor" script="trader.lua">
+    <position x="32000" y="31000" z="7" />
+</npc>
+```
+
+**Passos:**
+1. Criar arquivo script em `scripts/npcs/`
+2. Atribuir ID único
+3. Adicionar posição válida
+4. Referenciar script `.lua`
+5. Testar diálogos
+
+---
+
+### Caso 3: Adicionar Spawns de Monstro
+
+```xml
+<!-- Editar: otservbr-monster.xml -->
+<spawn type="monster" x="32000" y="31000" z="7">
+    <monstertype name="Dragon" />
+    <monstertype name="Demon" />
+</spawn>
+```
+
+**Passos:**
+1. Escolher custo/localização
+2. Definir tipos de monstros
+3. Considerar balanceamento de dificuldade
+4. Testar frequência de spawn
+
+---
+
+### Caso 4: Criar Novo Quest com Mapas
+
+```
+Estrutura:
+quest/minha_quest/
+├── mapa_principal.otbm
+├── mapa_boss.otbm
+├── mapa_boss-monster.xml
+├── mapa_boss-npc.xml
+└── README.md
+```
+
+**Passos:**
+1. Criar mapas com Remere's Map Editor
+2. Adicionar spawns de monstro
+3. Adicionar NPCs
+4. Criar scripts de quest
+5. Documentar em README
+6. Testar ciclo completo
+
+---
+
+### Caso 5: Adicionar World Change Sazonal
+
+```
+Estrutura:
+world_changes/meu_evento/
+├── variante_1.otbm
+├── variante_2.otbm
+└── README.md
+```
+
+**Passos:**
+1. Criar mapas variantes
+2. Definir período (datas)
+3. Criar script que alterna mapas
+4. Testar transição
+5. Considerar sincronização com scripts
+
+</Card>
+
+---
+
+## 📐 Padrões de Organização
+
+<Card title="Boas Práticas" icon="list">
+
+### Padrão 1: Nomenclatura de Arquivos
+
+```
+✅ Bom:
+- otservbr-custom-house.xml      (prefixo-tipo-recurso.xml)
+- winterlight_solstice.otbm       (nome_evento.otbm)
+- soul_war-ebb_and_flow.otbm     (quest-variante.otbm)
+
+❌ Ruim:
+- house_file_123.xml
+- map123.otbm
+- zzzmap.otbm
+```
+
+---
+
+### Padrão 2: Organização de Diretórios
+
+```
+✅ Bom:
+world/
+├── annual_events/
+│   └── winterlight_solstice/
+├── quest/
+│   └── soul_war/
+│       └── ebb_and_flow/
+└── world_changes/
+    └── full_moon/
+
+❌ Ruim:
+world/
+├── old_events/
+└── archive/
+    └── maps/
+```
+
+---
+
+### Padrão 3: Documentação
+
+```
+✅ Cada pasta deve ter:
+- README.md com descrição
+- Referência a Wiki do Tibia
+- Posições/Coordenadas geográficas
+- Datas/Periodicidade
+
+❌ Sem documentação:
+- Difícil entender o propósito
+- Difícil encontrar recursos
+- Fácil quebrar ao modificar
+```
+
+---
+
+### Padrão 4: Versionamento
+
+```
+✅ Bom:
+- Manter histórico de mudanças
+- Comentar modificações em README
+- Testar antes de commitar
+
+❌ Ruim:
+- Sobrescrever sem backup
+- Sem registro de mudanças
+- Testar apenas no prod
+```
+
+</Card>
+
+---
+
+## 🔧 Troubleshooting
+
+<Card title="Problemas Comuns" icon="bug">
+
+### Problema: Casa não aparece no mundo
+
+**Causa**: ID duplicado ou posição fora do mapa  
+**Solução:**
+```xml
+<!-- Verificar ID único -->
+<house id="1" ... />  <!-- ✅ Único -->
+
+<!-- Verificar posição válida -->
+entry="32000,31000,7"  <!-- ✅ Dentro do mundo -->
+
+<!-- Verificar town existe -->
+town="3"  <!-- ✅ Town existe -->
+```
+
+---
+
+### Problema: NPC não spawna
+
+**Causa**: Script ausente ou posição inválida  
+**Solução:**
+```xml
+<!-- Verificar script existe -->
+script="trader.lua"  <!-- Arquivo deve estar em scripts/npcs/ -->
+
+<!-- Verificar posição -->
+<position x="32000" y="31000" z="7" />  <!-- Deve ser walkable -->
+```
+
+---
+
+### Problema: Monstros não spawnam
+
+**Causa**: Tipo inválido ou posição bloqueada  
+**Solução:**
+```xml
+<!-- Verificar tipo existe -->
+<monstertype name="Dragon" />  <!-- Deve estar em monsters/ -->
+
+<!-- Verificar posição -->
+<spawn type="monster" x="32000" y="31000" z="7">
+    <!-- Coordenadas devem estar em área válida do mapa -->
+</spawn>
+```
+
+---
+
+### Problema: World Change não carrega
+
+**Causa**: Arquivo OTBM não encontrado ou script desabilita  
+**Solução:**
+```lua
+-- Verificar arquivo existe:
+-- world_changes/evento/mapa.otbm
+
+-- Verificar datas no script:
+if os.date("%d") >= 12 and os.date("%d") <= 14 then
+    -- Carregar Full Moon map
+end
+```
+
+---
+
+### Problema: Mapa corrompido
+
+**Causa**: Arquivo OTBM danificado  
+**Solução:**
+```bash
+# 1. Restaurar backup
+cp world/mundo-original.otbm world/mundo.otbm
+
+# 2. Validar com editor Remere's
+# 3. Recriar em seção menor se necessário
+```
+
+</Card>
+
+---
+
+## 📊 Estatísticas do World
+
+<Aside type="tip">
+
+### Conteúdo Total
+
+| Categoria | Quantidade | Descrição |
+|-----------|-----------|-----------|
+| **Arquivos XML Base** | 4 | Houses, Monsters, NPCs, Zones |
+| **Customizações** | 5 | Custom variants de base |
+| **Eventos Anuais** | 1 série | Winterlight Solstice |
+| **Quests Imersivas** | 4 | Cults, Ferumbras, Soul War, Dream Courts |
+| **World Changes** | 4 | Full Moon, Fury Gates, Nightmare Isle, Oriental Trader |
+| **Mapas OTBM** | 25+ | Variantes e especialidades |
+
+### Estruturas
+
+| Tipo | Exemplo | Função |
+|------|---------|--------|
+| **House** | otservbr-house.xml | ~100+ casas jogáveis |
+| **Monster** | otservbr-monster.xml | Definir todos os spawns |
+| **NPC** | otservbr-npc.xml | Definir posições de NPCs |
+| **Zone** | otservbr-zones.xml | Controlar regras regionais |
+
+### Mapas Especiais
+- **18 mapas de quest** (4 campaigns × múltiplos estágios)
+- **11 mapas de world change** (eventos dinâmicos)
+- **1 mapa de evento anual** (Winterlight)
+
+</Aside>
+
+---
+
+## 🎓 Próximas Etapas
+
+1. **Estude o Catálogo**: Veja [Catalogo_World.mdx](#)
+2. **Analise Mapas Existentes**: Abra .otbm em editor visual
+3. **Modifique XML**: Comece addicionando casa/NPC
+4. **Crie Novo Event**: Implemente novo world change sazonal
+5. **Expanda Quests**: Adicione mapas e bosses para novas quests
+
+---
+
+<Aside>
+**Versão:** 1.0  
+**Data:** February 22, 2026  
+**Servidor:** OTServ Canary  
+**Total de Arquivos de Mundo:** 25+  
+**Categorias:** Base Configs (4) + Customizações (4) + Eventos Anuais (1) + Quests (4) + World Changes (4)
+
+A documentação mantém-se em linha com a arquitetura do servidor. Para novos eventos ou quests, siga os padrões já estabelecidos.
+</Aside>
